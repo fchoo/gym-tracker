@@ -15,6 +15,7 @@ import {
   assertV12NativeAcceptanceProductionHandlerRegistry,
   dispatchV12NativeAcceptanceProductionOperation,
   executeV12NativeAcceptanceReadAction,
+  prepareV12NativeAcceptanceProductionOperation,
   resolveV12NativeAcceptanceProductionHandler,
   validateV12NativeAcceptanceAuthorityTables,
   type V12NativeAcceptanceRequest,
@@ -38,6 +39,22 @@ function request(overrides: Partial<V12NativeAcceptanceRequest> = {}): V12Native
     nonce: "a".repeat(48),
     ...overrides,
   };
+}
+
+function requestForContract(
+  contract: V12NativeAcceptanceCaseContract,
+  nonce = "b".repeat(48),
+): V12NativeAcceptanceRequest {
+  return request({
+    shard: contract.shard,
+    caseId: contract.caseId,
+    requirement: contract.requirement,
+    action: contract.actionId,
+    readback: contract.uiReadback.label,
+    sourceProbe: contract.sourceProbe,
+    authorityTables: contract.probes.post.tables,
+    nonce,
+  });
 }
 
 function kernel(options: Readonly<{
@@ -103,6 +120,38 @@ const execute = (runtime: SqliteKernel, value: V12NativeAcceptanceRequest) => ex
   sha256,
   executeOperation: ({ contract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({ kernel: runtime, contract, request: operationRequest }),
 });
+
+async function authoritativeFacts(
+  runtime: SqliteKernel,
+  contract: V12NativeAcceptanceCaseContract,
+  value: V12NativeAcceptanceRequest,
+) {
+  return V12_NATIVE_ACCEPTANCE_AUTHORITY_READER_REGISTRY[contract.operation.id]!.read({
+    query: runtime,
+    request: { caseId: value.caseId, fixtureId: value.fixtureId, nonce: value.nonce },
+    sha256,
+  });
+}
+
+async function operationFactsFor(
+  runtime: SqliteKernel,
+  contract: V12NativeAcceptanceCaseContract,
+  value: V12NativeAcceptanceRequest,
+  input: Readonly<{
+    receiptId?: string | null;
+    outcome?: "committed" | "already_committed" | null;
+    committedEffects?: number;
+  }> = {},
+) {
+  return {
+    handler_id: contract.operation.handlerId,
+    postcondition_id: contract.operation.postcondition.id,
+    receipt_id: input.receiptId ?? null,
+    outcome: input.outcome ?? null,
+    committed_effects: input.committedEffects ?? 0,
+    authoritative_readback: await authoritativeFacts(runtime, contract, value),
+  };
+}
 
 describe("v1.2 native acceptance production executor", () => {
   it("owns one exact action/operation/probe/table/readback contract for all 101 source cases", () => {
@@ -278,6 +327,65 @@ describe("v1.2 native acceptance production executor", () => {
     })).rejects.toThrow("v12_native_acceptance_request_required");
   });
 
+  it("rejects missing production runtimes and propagates a failed source-owned wrapper", async () => {
+    const running = v12NativeAcceptanceCaseContract("workout", "workout.context-running");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel(), contract: running, request: requestForContract(running),
+    })).rejects.toThrow("v12_native_acceptance_running_runtime_required");
+
+    const custom = v12NativeAcceptanceCaseContract("library-running", "library.exercise-favorites");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel(), contract: custom, request: requestForContract(custom),
+    })).rejects.toThrow("v12_native_acceptance_custom_exercise_runtime_required");
+
+    const metric = v12NativeAcceptanceCaseContract("library-running", "library.metric-profile-migration");
+    await expect(prepareV12NativeAcceptanceProductionOperation({
+      kernel: kernel(), contract: metric, request: requestForContract(metric),
+      runtime: { customExercises: {} as never },
+    })).rejects.toThrow("v12_native_acceptance_owned_plan_runtime_required");
+
+    const wrapper = v12NativeAcceptanceCaseContract("multi-plan", "phase13-map01-activation");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel(), contract: wrapper, request: requestForContract(wrapper),
+      runtime: {
+        multiPlan: {
+          runWrapper: async () => ({
+            schemaVersion: 1,
+            contractVersion: 1,
+            status: "failed",
+            total: MULTI_PLAN_RUNNING_CONTRACT_CASES.length,
+            passed: MULTI_PLAN_RUNNING_CONTRACT_CASES.length - 1,
+            failed: 1,
+            skipped: 0,
+            cases: MULTI_PLAN_RUNNING_CONTRACT_CASES.map((id) => ({
+              id,
+              status: id === wrapper.caseId ? "failed" as const : "passed" as const,
+              durationMs: 1,
+            })),
+            startedAt: "2026-10-01T00:00:00.000Z",
+            finishedAt: "2026-10-01T00:00:01.000Z",
+          }),
+        },
+      },
+    })).rejects.toThrow("v12_native_acceptance_multi_plan_wrapper_failed");
+  });
+
+  it("fails preparation before a missing request or fixture can mint a production operation", async () => {
+    const workout = v12NativeAcceptanceCaseContract("workout", "workout.day-switch");
+    await expect(prepareV12NativeAcceptanceProductionOperation({
+      kernel: kernel(), contract: workout,
+    })).rejects.toThrow("v12_native_acceptance_request_required");
+
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ empty: true }), contract: workout, request: requestForContract(workout),
+    })).rejects.toThrow("v12_native_acceptance_workout_read_precondition_missing");
+
+    const active = v12NativeAcceptanceCaseContract("workout", "workout.context-running");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ empty: true }), contract: active, request: requestForContract(active),
+    })).rejects.toThrow("v12_native_acceptance_running_runtime_required");
+  });
+
   it("consumes the full multi-plan wrapper projection through the outer source receipt", async () => {
     const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ shard, caseId }) => (
       shard === "multi-plan" && caseId === "phase13-map01-activation"
@@ -320,6 +428,7 @@ describe("v1.2 native acceptance production executor", () => {
         },
       }),
     });
+
     expect(calls).toBe(1);
     expect(result.source_receipt).toMatchObject({
       operation_result: "committed",
@@ -357,6 +466,80 @@ describe("v1.2 native acceptance production executor", () => {
       kernel: kernel(), request: request(), sha256: async () => "bad",
       executeOperation: async () => ({ result: "read", facts: {} }),
     })).rejects.toThrow("v12_native_acceptance_source_state_invalid");
+  });
+
+  it("rejects authoritative proof hash, source drift, postcondition drift, and illegal mutation transitions", async () => {
+    const readContract = v12NativeAcceptanceCaseContract("workout", "workout.day-switch");
+    const readRequest = requestForContract(readContract);
+    const invalidHashKernel = kernel();
+    await expect(executeV12NativeAcceptanceReadAction({
+      kernel: invalidHashKernel,
+      request: readRequest,
+      sha256: async (value) => value.includes('"operation_id"') && value.includes(readContract.operation.id) ? "invalid" : sha256(value),
+      executeOperation: async () => ({
+        result: "read" as const,
+        facts: await operationFactsFor(invalidHashKernel, readContract, readRequest),
+      }),
+    })).rejects.toThrow("v12_native_acceptance_operation_result_invalid");
+
+    const readDriftKernel = kernel({ snapshotValues: [1, 1, 2, 2] });
+    await expect(executeV12NativeAcceptanceReadAction({
+      kernel: readDriftKernel,
+      request: readRequest,
+      sha256,
+      executeOperation: async () => ({
+        result: "read" as const,
+        facts: await operationFactsFor(readDriftKernel, readContract, readRequest),
+      }),
+    })).rejects.toThrow("v12_native_acceptance_read_action_drift");
+
+    const mutationContract = v12NativeAcceptanceCaseContract("library-running", "library.metric-profile-migration");
+    const mutationRequest = requestForContract(mutationContract);
+    const receiptId = "durable-mutation-receipt";
+    const missingEffectKernel = kernel();
+    await expect(executeV12NativeAcceptanceReadAction({
+      kernel: missingEffectKernel,
+      request: mutationRequest,
+      sha256,
+      executeOperation: async () => ({
+        result: "committed" as const,
+        facts: await operationFactsFor(missingEffectKernel, mutationContract, mutationRequest, {
+          receiptId, outcome: "committed", committedEffects: 1,
+        }),
+      }),
+    })).rejects.toThrow("v12_native_acceptance_mutation_effect_missing");
+
+    const replayMutationKernel = kernel();
+    await expect(executeV12NativeAcceptanceReadAction({
+      kernel: replayMutationKernel,
+      request: mutationRequest,
+      sha256,
+      executeOperation: async () => {
+        await replayMutationKernel.write((transaction) => transaction.execute("UPDATE exercises SET revision = revision"));
+        return {
+          result: "committed" as const,
+          facts: await operationFactsFor(replayMutationKernel, mutationContract, mutationRequest, {
+            receiptId, outcome: "already_committed", committedEffects: 0,
+          }),
+        };
+      },
+    })).rejects.toThrow("v12_native_acceptance_replay_mutated");
+
+    const postconditionDriftKernel = kernel({ snapshotValues: [1, 2, 2, 3] });
+    await expect(executeV12NativeAcceptanceReadAction({
+      kernel: postconditionDriftKernel,
+      request: mutationRequest,
+      sha256,
+      executeOperation: async () => {
+        await postconditionDriftKernel.write((transaction) => transaction.execute("UPDATE exercises SET revision = revision"));
+        return {
+          result: "committed" as const,
+          facts: await operationFactsFor(postconditionDriftKernel, mutationContract, mutationRequest, {
+            receiptId, outcome: "committed", committedEffects: 1,
+          }),
+        };
+      },
+    })).rejects.toThrow("v12_native_acceptance_postcondition_drift");
   });
 
   it("rejects generic count metadata and unrelated facts even when the wrapper names the right case", async () => {

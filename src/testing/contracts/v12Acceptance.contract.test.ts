@@ -259,6 +259,10 @@ describe("v1.2 aggregate SQLite acceptance contract", () => {
 
       expect(() => assertV12AcceptanceSourceDefinitions([])).toThrow("v12_acceptance_source_definition_count_invalid");
       expect(() => assertV12AcceptanceSourceDefinitions([
+        { ...V12_ACCEPTANCE_SQLITE_CASES[0]!, sources: [] },
+        ...V12_ACCEPTANCE_SQLITE_CASES.slice(1),
+      ])).toThrow("v12_acceptance_source_definition_invalid");
+      expect(() => assertV12AcceptanceSourceDefinitions([
         ...V12_ACCEPTANCE_SQLITE_CASES.slice(0, 9),
         { ...V12_ACCEPTANCE_SQLITE_CASES[9]!, sources: [{ sourceRegistry: "migrations", sourceCaseIds: [] }] },
       ])).toThrow("v12_acceptance_source_definition_invalid");
