@@ -1439,6 +1439,30 @@ describe("v1.2 native acceptance production executor", () => {
     } finally { jest.dontMock("../domains/scheduling/scheduleCommands"); jest.resetModules(); }
   });
 
+  it("rejects a Running collision fixture when its production occurrence is not materialized", async () => {
+    const missingOccurrence = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/runningPlanRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/runningPlanRepository")>("../platform/sqlite/repositories/runningPlanRepository"),
+        createRunningPlanRepository: () => ({ createInactiveMinimum: async () => undefined, activateMinimum: async () => undefined, materializeOccurrences: async () => [] }),
+      }),
+    }]);
+    const contract = missingOccurrence.contracts.v12NativeAcceptanceCaseContract("library-running", "library.running-conflict");
+    const runtime = kernel();
+    const queryAll = runtime.queryAll.bind(runtime);
+    runtime.queryAll = async <Row extends Record<string, unknown>,>(sql: string, params?: readonly SqliteParameter[]) => {
+      if (sql.includes("FROM starter_plan_activation_requests")) return [{ result_plan_id: "strength-plan", result_schedule_id: "strength-schedule" }] as unknown as readonly Row[];
+      if (sql.includes("FROM owned_plan_schedule_opportunities")) return [{ id: "strength-opportunity" }] as unknown as readonly Row[];
+      if (sql.includes("FROM plans WHERE id = ? AND plan_kind = 'running'")) return [] as readonly Row[];
+      return queryAll(sql, params);
+    };
+    try {
+      await expect(missingOccurrence.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: runtime, contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_collision_running_materialization_missing");
+    } finally { jest.resetModules(); }
+  });
+
   it("rejects plan-impact handlers without their nonce-bound plan day or occurrence", async () => {
     const dayRemoval = v12NativeAcceptanceCaseContract("library-running", "library.day-removal-impact");
     await expect(dispatchV12NativeAcceptanceProductionOperation({
