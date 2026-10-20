@@ -1034,6 +1034,36 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects plan-impact replays without a parseable nonce-bound receipt", async () => {
+    const invalidReceipt = v12NativeAcceptanceCaseContract("library-running", "library.day-removal-impact");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel(), contract: invalidReceipt, request: requestForContract(invalidReceipt),
+    })).rejects.toThrow("v12_native_acceptance_plan_impact_receipt_invalid");
+
+    const missingReceipt = isolateExecutorWithMocks([{
+      moduleName: "../domains/plans/planImpactCommands",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/plans/planImpactCommands")>("../domains/plans/planImpactCommands"),
+        previewDayRemoval: async () => ({
+          restructuringBlocked: false,
+          schedule: { revision: 1 },
+          replacementDays: [{ id: "replacement-day" }],
+          planRevision: 1,
+          previewToken: "preview",
+        }),
+        removePlanDayWithImpact: async () => ({ outcome: "committed", planRevision: 2, scheduleRevision: 2 }),
+      }),
+    }]);
+    try {
+      const contract = missingReceipt.contracts.v12NativeAcceptanceCaseContract("library-running", "library.day-removal-impact");
+      await expect(missingReceipt.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /owned_plan_schedule_events/u }), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_plan_impact_receipt_missing");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("rejects workout exercise commands that report a replay before a nonce-bound receipt exists", async () => {
     const { executor, contracts } = isolateExecutorWithMocks([{
       moduleName: "../domains/workout/sessionExerciseCommands",
