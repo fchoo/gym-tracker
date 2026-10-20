@@ -967,6 +967,24 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects an unavailable logical-backup production command", async () => {
+    const { executor, contracts } = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/logicalBackupRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/logicalBackupRepository")>("../platform/sqlite/repositories/logicalBackupRepository"),
+        createLogicalBackupRepository: () => ({}),
+      }),
+    }]);
+    try {
+      const contract = contracts.v12NativeAcceptanceCaseContract("workout", "workout.offline-recovery");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_logical_backup_command_unavailable");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("consumes the full multi-plan wrapper projection through the outer source receipt", async () => {
     const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ shard, caseId }) => (
       shard === "multi-plan" && caseId === "phase13-map01-activation"
