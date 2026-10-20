@@ -633,6 +633,95 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects late Workout reader and conflict postconditions after valid setup", async () => {
+    const rest = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/restRepository",
+      factory: () => {
+        let reads = 0;
+        return {
+          ...jest.requireActual<typeof import("../platform/sqlite/repositories/restRepository")>("../platform/sqlite/repositories/restRepository"),
+          createRestRepository: () => ({
+            getRestContext: async () => {
+              reads += 1;
+              return reads < 3 ? { state: { state: "running", revision: 1 } } : null;
+            },
+          }),
+        };
+      },
+    }]);
+    try {
+      const contract = rest.contracts.v12NativeAcceptanceCaseContract("workout", "workout.rest-dock");
+      await expect(rest.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_read_precondition_missing");
+    } finally {
+      jest.resetModules();
+    }
+
+    const outcome = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/workoutOutcomeRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/workoutOutcomeRepository")>("../platform/sqlite/repositories/workoutOutcomeRepository"),
+        createWorkoutOutcomeRepository: () => ({
+          getSessionDetail: async () => ({ id: "substituted-session", status: "in_progress", exercises: [] }),
+        }),
+      }),
+    }]);
+    try {
+      const contract = outcome.contracts.v12NativeAcceptanceCaseContract("workout", "workout.completion-review");
+      await expect(outcome.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_read_precondition_missing");
+    } finally {
+      jest.resetModules();
+    }
+
+    const conflict = isolateExecutorWithMocks([{
+      moduleName: "../domains/workout/setCommands",
+      factory: () => {
+        const actual = jest.requireActual<typeof import("../domains/workout/setCommands")>("../domains/workout/setCommands");
+        const active = jest.requireActual<typeof import("../domains/workout/activeWorkout")>("../domains/workout/activeWorkout");
+        return {
+          ...actual,
+          completeSet: async ({ haptics, invalidate, drainEffects }: Readonly<{
+            haptics: Readonly<{ committed(): Promise<void>; cue(): Promise<void> }>;
+            invalidate(): Promise<void>;
+            drainEffects(): Promise<void>;
+          }>) => {
+            await haptics.committed();
+            await haptics.cue();
+            await invalidate();
+            await drainEffects();
+            throw new active.WorkoutCommandConflictError("complete_set_conflict");
+          },
+        };
+      },
+    }]);
+    try {
+      const contract = conflict.contracts.v12NativeAcceptanceCaseContract("workout", "workout.complete-failure");
+      const runtime = kernel({ values: { metric_profile: "load_reps" } });
+      const queryAll = runtime.queryAll.bind(runtime);
+      runtime.queryAll = async <Row extends Record<string, unknown>,>(sql: string, params?: readonly SqliteParameter[]) => {
+        if (sql === "SELECT status, revision FROM session_sets WHERE id = ?") {
+          return [{ status: "completed", revision: 1 }] as unknown as readonly Row[];
+        }
+        return queryAll(sql, params);
+      };
+      await expect(conflict.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: runtime, contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_complete_conflict_postcondition_failed");
+    } finally {
+      jest.resetModules();
+    }
+
+    const source = v12NativeAcceptanceCaseContract("workout", "workout.root-identity");
+    await expect(resolveV12NativeAcceptanceProductionHandler(source).execute({
+      kernel: kernel(),
+      contract: { ...source, operation: { ...source.operation, handlerId: "workout.substituted-read-handler" } },
+      request: requestForContract(source),
+    })).rejects.toThrow("v12_native_acceptance_workout_read_handler_unimplemented");
+  });
+
   it("rejects invalid Workout history and plan-increment repository projections", async () => {
     const history = isolateExecutorWithMocks([{
       moduleName: "../platform/sqlite/repositories/historyRepository",
