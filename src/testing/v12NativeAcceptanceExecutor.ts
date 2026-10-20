@@ -69,6 +69,10 @@ import { adjustRest, pauseRest, resumeRest, startManualRest } from "../domains/r
 import { acceptRecommendation } from "../domains/progression";
 import { createScheduleVersionPreviewToken, saveScheduleVersion } from "../domains/scheduling/scheduleCommands";
 import { previewDayRemoval, previewExerciseReplacement, removePlanDayWithImpact, replacePlanExercise } from "../domains/plans/planImpactCommands";
+import {
+  runV12NativeAcceptanceCompletionWriteback,
+  type V12CompletionWritebackAcceptanceProof,
+} from "./v12NativeAcceptanceCompletionWriteback";
 
 export type { V12NativeAcceptanceShard } from "./contracts/phase15Workout.contract";
 
@@ -158,6 +162,8 @@ type V12NativeAcceptanceProductionHandlerInput = Readonly<{
   request?: V12NativeAcceptanceRequest;
   runtime?: V12NativeAcceptanceProductionRuntime;
 }>;
+
+const completionWritebackProofs = new WeakMap<SqliteKernel, Map<string, V12CompletionWritebackAcceptanceProof>>();
 
 /**
  * Production command ports deliberately live at the acceptance boundary.  The
@@ -2264,6 +2270,61 @@ async function ensureWorkoutRest(input: V12NativeAcceptanceProductionHandlerInpu
   return Object.freeze({ sessionId: session.id, restRevision: started.state.revision });
 }
 
+async function executeCompletionWriteback(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  let proofs = completionWritebackProofs.get(input.kernel);
+  if (proofs === undefined) {
+    proofs = new Map();
+    completionWritebackProofs.set(input.kernel, proofs);
+  }
+  let proof = proofs.get(request.nonce);
+  const firstDispatch = proof === undefined;
+  if (proof === undefined) {
+    proof = await runV12NativeAcceptanceCompletionWriteback({
+      kernel: input.kernel,
+      nonce: request.nonce,
+      sha256: runtimeSha256,
+    });
+    proofs.set(request.nonce, proof);
+  }
+  const [receipt] = await input.kernel.queryAll<Readonly<{
+    request_id: string;
+    request_sha256: string;
+    result_plan_id: string;
+    result_revision: number;
+  }>>(
+    `SELECT request_id, request_sha256, result_plan_id, result_revision
+     FROM owned_plan_mutation_requests
+     WHERE request_id = ?`,
+    [proof.request.request_id],
+  );
+  const action = firstDispatch ? proof.first : proof.replay;
+  if (receipt?.request_id !== proof.receipt.receipt_id
+    || receipt.request_sha256 !== proof.request.request_sha256
+    || receipt.result_revision !== proof.first.authoritative_source.plan_revision
+    || action.outcome !== (firstDispatch ? "committed" : "already_committed")
+    || action.committed_effects !== (firstDispatch ? proof.first.committed_effects : 0)
+    || action.durable_receipt_sha256 !== proof.receipt.receipt_sha256) {
+    throw new Error("v12_native_acceptance_completion_writeback_postcondition_failed");
+  }
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ request_id: receipt.request_id }),
+    outcome: action.outcome,
+    verify: async () => {
+      const [state] = await input.kernel.queryAll<Readonly<{
+        plan_revision: number;
+      }>>(
+        `SELECT revision AS plan_revision FROM plans WHERE id = ?`,
+        [receipt.result_plan_id],
+      );
+      if (state?.plan_revision !== proof.first.authoritative_source.plan_revision) {
+        throw new Error("v12_native_acceptance_completion_writeback_postcondition_failed");
+      }
+    },
+  });
+}
+
 async function executeWorkoutRestAdjust(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
   await prepareActiveWorkoutFixture(input);
   const request = requireRequest(input);
@@ -3368,6 +3429,9 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   [WORKOUT_FINISH_PARTIAL_HANDLER]: Object.freeze({
     prepare: prepareActiveWorkoutFixture,
     execute: executeWorkoutFinishPartial,
+  }),
+  "owned-plan.owned-plan-repository.apply-session-exercise-edits-to-plan": Object.freeze({
+    execute: executeCompletionWriteback,
   }),
   [WORKOUT_REST_ADJUST_HANDLER]: Object.freeze({
     prepare: prepareActiveWorkoutFixture,

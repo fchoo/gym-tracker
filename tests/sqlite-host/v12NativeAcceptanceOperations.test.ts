@@ -121,7 +121,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
             current = current.cause;
           }
           const unresolvedProductionCommands = new Set([
-            "workout.completion-writeback", "workout.offline-recovery",
+            "workout.offline-recovery",
             "library.running-conflict",
           ]);
           const expectedFailure = unresolvedProductionCommands.has(contract.caseId)
@@ -208,6 +208,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
       "workout.undo",
       "workout.plan-increment",
       "workout.outcomes",
+      "workout.completion-writeback",
       "workout.timing-policy",
       "workout.appearance",
       "library.starter-activation",
