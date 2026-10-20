@@ -15,6 +15,7 @@ import {
 } from "./contracts/multiPlanRunning.contract";
 import type { RunningPlanRuntimePort } from "../bootstrap/runningPlanRuntime";
 import type { OwnedPlanRuntimePort } from "../bootstrap/ownedPlanRuntime";
+import { createLibrarySectionPreferencePort } from "../bootstrap/librarySectionPreferencePort";
 import {
   runningTargetForDistance,
   type RunningPlanAggregate,
@@ -754,6 +755,43 @@ async function executePlanCreateIntentRead(input: V12NativeAcceptanceProductionH
   const plan = await createOwnedPlanRepository(input.kernel).read(absentPlanId);
   if (plan !== null) {
     throw new Error("v12_native_acceptance_plan_create_intent_postcondition_failed");
+  }
+  return Object.freeze({
+    result: "read" as const,
+    facts: operationFacts({
+      contract: input.contract,
+      authoritativeReadback: await workoutAuthorityReadback(input),
+    }),
+  });
+}
+
+/**
+ * The Library screen owns this preference through its runtime port, not a
+ * generic app-settings lookup.  Seed the case precondition through that same
+ * production port before the acceptance pre-state is captured, then require
+ * the persisted section and revision on the read path.
+ */
+async function prepareLibrarySectionPreference(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
+  const request = requireRequest(input);
+  const preference = createLibrarySectionPreferencePort(
+    input.kernel,
+    () => workoutFixtureActivatedAt(request),
+  );
+  const current = await preference.read();
+  const persisted = await preference.write("exercises", current.revision);
+  if (persisted.section !== "exercises" || persisted.revision < 1) {
+    throw new Error("v12_native_acceptance_library_section_precondition_failed");
+  }
+}
+
+async function executeLibrarySectionPreferenceRead(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "read"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const preference = await createLibrarySectionPreferencePort(
+    input.kernel,
+    () => workoutFixtureActivatedAt(request),
+  ).read();
+  if (preference.section !== "exercises" || preference.revision < 1) {
+    throw new Error("v12_native_acceptance_library_section_postcondition_failed");
   }
   return Object.freeze({
     result: "read" as const,
@@ -2882,6 +2920,10 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   "library.content-repository.read-exercise-instructions": Object.freeze({
     prepare: prepareLibrarySearch,
     execute: executeBundledExerciseInstructionsRead,
+  }),
+  "library.app-settings-repository.read-library-view-state": Object.freeze({
+    prepare: prepareLibrarySectionPreference,
+    execute: executeLibrarySectionPreferenceRead,
   }),
   "owned-plan.owned-plan-repository.read": Object.freeze({
     prepare: prepareOwnedPlanReadFixture,

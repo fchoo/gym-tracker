@@ -120,30 +120,14 @@ describe("v1.2 Workout and Library production operation registry", () => {
             messages.push(current.message);
             current = current.cause;
           }
-          const expectedFailure = (contract.caseId.startsWith("library.running-") && contract.caseId !== "library.running-conflict")
-            || [
-              "library.exercise-favorites", "library.create-exercise", "library.custom-exercise",
-              "library.custom-exercise-edit", "library.custom-exercise-hide", "library.custom-exercise-unhide",
-              "library.custom-exercise-copy-bundled", "library.custom-exercise-archive", "library.custom-exercise-reactivate",
-              "library.copy-metric-migration", "library.metric-profile-migration",
-              "library.starter-activation",
-              "library.true-no-plans", "library.create-strength", "library.owned-lifecycle",
-              "library.plan-editor",
-              "workout.start-alternate", "workout.row-edit", "workout.load-reps-editor",
-              "workout.duration-editor", "workout.all-metrics", "workout.add-set", "workout.complete-commit",
-              "workout.rest-controls", "workout.rest-recovery",
-              "workout.add-exercise", "workout.reorder",
-              "workout.replace-exercise", "workout.delete-exercise",
-              "workout.undo",
-              "workout.timing-policy", "workout.appearance",
-              "workout.root-identity", "workout.day-switch", "workout.scheduled-rest-empty",
-              "workout.start-resume", "workout.active-layout", "workout.active-back",
-              "workout.exercise-disclosure", "workout.active-indicator", "workout.set-states",
-              "workout.warmup-order", "workout.completion-collapse", "workout.exercise-menu",
-              "workout.timing-flat", "workout.rest-dock",
-            ].includes(contract.caseId)
-            ? "v12_native_acceptance_request_required"
-            : "v12_native_acceptance_mutation_receipt_missing";
+          const unresolvedProductionCommands = new Set([
+            "workout.plan-increment", "workout.completion-writeback", "workout.offline-recovery",
+            "library.schedule-editor", "library.replacement-impact", "library.day-removal-impact",
+            "library.running-conflict",
+          ]);
+          const expectedFailure = unresolvedProductionCommands.has(contract.caseId)
+            ? "v12_native_acceptance_mutation_receipt_missing"
+            : "v12_native_acceptance_request_required";
           if (!messages.includes(expectedFailure)) {
             throw new Error(`${contract.caseId}:${messages.join(":")}`);
           }
@@ -155,17 +139,12 @@ describe("v1.2 Workout and Library production operation registry", () => {
         "workout.complete-failure", "workout.readonly-presentation", "workout.accessibility", "workout.performance",
         "workout.trend",
         "workout.completion-review",
-        "library.exercise-search",
+        "library.exercise-search", "library.builtin-exercise", "library.remembered-state", "library.neutral-plan-chooser",
         "library.plan-groups", "library.owned-summary", "library.editor-draft-guards", "library.load-error-recovery", "workout.plan-after-workout",
         "workout.warmup-order", "workout.completion-collapse", "workout.exercise-menu",
         "workout.timing-flat", "workout.rest-dock",
       ].includes(contract.caseId) || contract.operation.handlerId.startsWith("running-plan.")) {
         await expect(execution).rejects.toThrow("v12_native_acceptance_request_required");
-      } else if ([
-        "workout.scheduled-rest-empty",
-        "library.neutral-plan-chooser",
-      ].includes(contract.caseId)) {
-        await expect(execution).resolves.toMatchObject({ result: "read" });
       } else {
         await expect(execution).rejects.toThrow("v12_native_acceptance_postcondition_failed");
       }
@@ -300,6 +279,28 @@ describe("v1.2 Workout and Library production operation registry", () => {
       title: "Library", source: "PHASE17_CASE_ACTION_CONTRACTS", requirement: contract.requirement,
       action: contract.actionId, readback: contract.uiReadback.label, sourceProbe: contract.sourceProbe,
       authorityTables: contract.probes.post.tables, nonce: `ef${"a".repeat(46)}`,
+    };
+    const result = await executeV12NativeAcceptanceReadAction({
+      kernel, request,
+      sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+      prepareOperation: ({ contract: operationContract, request: operationRequest }) => prepareV12NativeAcceptanceProductionOperation({
+        kernel, contract: operationContract, request: operationRequest,
+      }),
+      executeOperation: ({ contract: operationContract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
+        kernel, contract: operationContract, request: operationRequest,
+      }),
+    });
+    expect(result.source_receipt).toMatchObject({ operation_result: "read", command_receipt_id: null, committed_effects: 0 });
+  });
+
+  it("reads the persisted Library section through its production preference port", async () => {
+    const kernel = await open();
+    const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ caseId }) => caseId === "library.remembered-state")!;
+    const request: V12NativeAcceptanceRequest = {
+      shard: contract.shard, caseId: contract.caseId, fixtureId: "v12-synthetic-fixtures-r18",
+      title: "Library", source: "PHASE17_CASE_ACTION_CONTRACTS", requirement: contract.requirement,
+      action: contract.actionId, readback: contract.uiReadback.label, sourceProbe: contract.sourceProbe,
+      authorityTables: contract.probes.post.tables, nonce: `f1${"a".repeat(46)}`,
     };
     const result = await executeV12NativeAcceptanceReadAction({
       kernel, request,
