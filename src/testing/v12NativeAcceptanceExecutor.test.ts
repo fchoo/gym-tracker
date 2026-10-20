@@ -3191,6 +3191,80 @@ describe("v1.2 native acceptance production executor", () => {
       .rejects.toThrow("v12_native_acceptance_operation_result_invalid");
   });
 
+  it("rejects collision confirmation command and durable projection drift", async () => {
+    const contract = v12NativeAcceptanceCaseContract("library-running", "library.running-conflict");
+    const input = requestForContract(contract);
+    const id = (suffix: string) => `v12:collision:${input.nonce}:${suffix}`;
+    const collisionKernel = () => {
+      const base = kernel();
+      const queryAll = base.queryAll.bind(base);
+      base.queryAll = async <Row extends Record<string, unknown>,>(sql: string, params?: readonly SqliteParameter[]) => {
+        if (sql.includes("FROM starter_plan_activation_requests")) return [{ result_plan_id: "strength-plan", result_schedule_id: "strength-schedule" }] as unknown as readonly Row[];
+        if (sql.includes("FROM owned_plan_schedule_opportunities")) return [{ id: id("strength-opportunity") }] as unknown as readonly Row[];
+        if (sql.includes("FROM plans WHERE id = ? AND plan_kind = 'running'")) return [{ id: id("running-plan") }] as unknown as readonly Row[];
+        if (sql.includes("FROM schedule_collision_receipts")) return [] as readonly Row[];
+        return queryAll(sql, params);
+      };
+      return base;
+    };
+    const preview = {
+      running: { occurrenceId: id("running-opportunity"), scheduleId: id("running-schedule"), localDate: "2027-01-18" },
+      strength: { occurrenceId: id("strength-opportunity"), scheduleId: "strength-schedule", localDate: "2027-01-18" },
+    };
+    const command = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/scheduleCollisionRepository",
+      factory: () => ({ ...jest.requireActual<typeof import("../platform/sqlite/repositories/scheduleCollisionRepository")>("../platform/sqlite/repositories/scheduleCollisionRepository"), createScheduleCollisionRepository: () => ({ previewForRunningPlan: async () => preview, confirm: async () => ({ outcome: "already_committed", choice: "keep_both", outcomeId: "outcome" }) }) }),
+    }]);
+    try {
+      await expect(command.executor.dispatchV12NativeAcceptanceProductionOperation({ kernel: collisionKernel(), contract, request: input }))
+        .rejects.toThrow("v12_native_acceptance_collision_command_failed");
+    } finally { jest.resetModules(); }
+
+    const stale = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/scheduleCollisionRepository",
+      factory: () => ({ ...jest.requireActual<typeof import("../platform/sqlite/repositories/scheduleCollisionRepository")>("../platform/sqlite/repositories/scheduleCollisionRepository"), createScheduleCollisionRepository: () => ({ previewForRunningPlan: async () => preview, confirm: async () => ({ outcome: "committed", choice: "keep_both", outcomeId: "outcome" }) }) }),
+    }]);
+    try {
+      await expect(stale.executor.dispatchV12NativeAcceptanceProductionOperation({ kernel: collisionKernel(), contract, request: input }))
+        .rejects.toThrow("v12_native_acceptance_collision_postcondition_failed");
+    } finally { jest.resetModules(); }
+  });
+
+  it("rejects schedule-version commands and replay projections that cannot prove the saved version", async () => {
+    const contract = v12NativeAcceptanceCaseContract("library-running", "library.schedule-editor");
+    const input = requestForContract(contract);
+    const rotationState = { scheduleId: "schedule", planId: "plan", scheduleRevision: 1, planRevision: 1, localDate: "2027-01-18", version: { mode: "rotation", timeZone: "UTC", versionNumber: 1, bindings: [{ ordinal: 0, planDayId: "day" }] } };
+    const fixtureKernel = (withReceipt = false) => {
+      const base = kernel();
+      const queryAll = base.queryAll.bind(base);
+      base.queryAll = async <Row extends Record<string, unknown>,>(sql: string, params?: readonly SqliteParameter[]) => {
+        if (sql.includes("FROM starter_plan_activation_requests")) return [{ result_plan_id: "plan", result_schedule_id: "schedule" }] as unknown as readonly Row[];
+        if (sql.includes("FROM owned_plan_schedule_events")) return withReceipt
+          ? [{ id: `schedule-command:v12:schedule-editor:${input.nonce}`, schedule_id: "schedule", event_type: "schedule_version_saved", schedule_revision: 2, payload_json: JSON.stringify({ requestSha256: "a".repeat(64) }) }] as unknown as readonly Row[]
+          : [] as readonly Row[];
+        return queryAll(sql, params);
+      };
+      return base;
+    };
+    const command = isolateExecutorWithMocks([
+      { moduleName: "../platform/sqlite/repositories/scheduleRepository", factory: () => ({ ...jest.requireActual<typeof import("../platform/sqlite/repositories/scheduleRepository")>("../platform/sqlite/repositories/scheduleRepository"), createScheduleRepository: () => ({ readActionState: async () => rotationState }) }) },
+      { moduleName: "../domains/scheduling/scheduleCommands", factory: () => ({ ...jest.requireActual<typeof import("../domains/scheduling/scheduleCommands")>("../domains/scheduling/scheduleCommands"), saveScheduleVersion: async ({ input: save }: Readonly<{ input: Readonly<{ next: Readonly<{ mode: string; bindings: readonly unknown[] }> }> }>) => { if (save.next.mode !== "rotation" || save.next.bindings.length !== 1) throw new Error("rotation schedule lost"); return { outcome: "already_committed", operation: "save_schedule_version", version: { versionNumber: 1 } }; } }) },
+    ]);
+    try {
+      await expect(command.executor.dispatchV12NativeAcceptanceProductionOperation({ kernel: fixtureKernel(), contract, request: input }))
+        .rejects.toThrow("v12_native_acceptance_schedule_command_failed");
+    } finally { jest.dontMock("../domains/scheduling/scheduleCommands"); jest.resetModules(); }
+
+    const stale = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/scheduleRepository",
+      factory: () => ({ ...jest.requireActual<typeof import("../platform/sqlite/repositories/scheduleRepository")>("../platform/sqlite/repositories/scheduleRepository"), createScheduleRepository: () => ({ readActionState: async () => rotationState, readCommandResult: async () => ({ outcome: "already_committed", operation: "save_schedule_version", scheduleRevision: 2, planRevision: 2, version: { versionNumber: 2 } }) }) }),
+    }]);
+    try {
+      await expect(stale.executor.dispatchV12NativeAcceptanceProductionOperation({ kernel: fixtureKernel(true), contract, request: input }))
+        .rejects.toThrow("v12_native_acceptance_schedule_postcondition_failed");
+    } finally { jest.resetModules(); }
+  });
+
   it("rejects every canonical production handler against an empty authority database", async () => {
     for (const contract of V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS) {
       await expect(dispatchV12NativeAcceptanceProductionOperation({
