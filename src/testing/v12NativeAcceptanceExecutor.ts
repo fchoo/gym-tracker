@@ -47,6 +47,7 @@ import { createRestRepository } from "../platform/sqlite/repositories/restReposi
 import { createWorkoutPreferenceRepository } from "../platform/sqlite/repositories/workoutPreferenceRepository";
 import { createOwnedPlanRepository } from "../platform/sqlite/repositories/ownedPlanRepository";
 import { createStarterPlanRepository } from "../platform/sqlite/repositories/starterPlanRepository";
+import { createScheduleRepository } from "../platform/sqlite/repositories/scheduleRepository";
 import { createHistoryRepository } from "../platform/sqlite/repositories/historyRepository";
 import { createHistoryProjectionRepository } from "../platform/sqlite/repositories/historyProjectionRepository";
 import { runtimeSha256 } from "../platform/crypto/runtimeSha256";
@@ -65,6 +66,7 @@ import { WorkoutCommandConflictError } from "../domains/workout/activeWorkout";
 import { finishPartial, PARTIAL_CONFIRMATION } from "../domains/workout/finishWorkout";
 import { adjustRest, pauseRest, resumeRest, startManualRest } from "../domains/rest/restCommands";
 import { acceptRecommendation } from "../domains/progression";
+import { createScheduleVersionPreviewToken, saveScheduleVersion } from "../domains/scheduling/scheduleCommands";
 
 export type { V12NativeAcceptanceShard } from "./contracts/phase15Workout.contract";
 
@@ -1150,6 +1152,193 @@ async function executeAcceptedStarterActivation(input: V12NativeAcceptanceProduc
       );
       if (receipt?.request_id !== requestId || receipt.choice !== "initial" || plan?.id !== receipt.result_plan_id || plan.is_active !== 1) {
         throw new Error("v12_native_acceptance_starter_activation_postcondition_failed");
+      }
+    },
+  });
+}
+
+type ScheduleEditorFixture = Readonly<{
+  planId: string;
+  scheduleId: string;
+}>;
+
+function nextUtcLocalDate(localDate: string): string {
+  const date = new Date(`${localDate}T00:00:00.000Z`);
+  if (Number.isNaN(date.valueOf())) throw new Error("v12_native_acceptance_schedule_local_date_invalid");
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+async function prepareScheduleEditorFixture(input: V12NativeAcceptanceProductionHandlerInput): Promise<ScheduleEditorFixture> {
+  const request = requireRequest(input);
+  const requestId = `v12:schedule-editor:fixture:${request.nonce}`;
+  const [existing] = await input.kernel.queryAll<Readonly<{
+    request_id: string;
+    result_plan_id: string;
+    result_schedule_id: string;
+  }>>(
+    `SELECT request_id, result_plan_id, result_schedule_id
+     FROM starter_plan_activation_requests
+     WHERE request_id = ?`,
+    [requestId],
+  );
+  if (existing !== undefined) {
+    return Object.freeze({ planId: existing.result_plan_id, scheduleId: existing.result_schedule_id });
+  }
+  await createContentRepository(input.kernel).importAcceptedCatalog({
+    catalog: await parseAcceptedPhase2Catalog(runtimeSha256),
+  });
+  const pack = await parseAcceptedStarterPlanPack({
+    starterPackBytes: prettyJson(starterPlansAsset),
+    acceptanceBytes: prettyJson(starterPlansAcceptanceAsset),
+    sha256: runtimeSha256,
+  });
+  const template = pack.templates.find(({ id }) => id === "full-body-foundation");
+  if (template === undefined) throw new Error("v12_native_acceptance_starter_template_missing");
+  const schedule = acceptedStarterSchedule(template);
+  const activation = await activateStarterPlan({
+    kind: "accepted",
+    starterPackBytes: prettyJson(starterPlansAsset),
+    acceptanceBytes: prettyJson(starterPlansAcceptanceAsset),
+    sha256: runtimeSha256,
+    repository: createStarterPlanRepository(input.kernel),
+    requestId,
+    activatedAtMs: workoutFixtureActivatedAt(request),
+    expectedActiveScheduleRevision: null,
+    confirmationToken: createStarterPlanActivationConfirmationToken({
+      assetSha256: pack.assetSha256,
+      templateId: template.id,
+      templateRevision: template.revision,
+      ...schedule,
+      bindings: schedule.bindings as never,
+      copyChoice: null,
+    }),
+    templateId: template.id,
+    templateRevision: template.revision,
+    ...schedule,
+    bindings: schedule.bindings as never,
+    copyChoice: null,
+  });
+  if (activation.outcome !== "committed" || activation.schedule.lifecycle !== "active") {
+    throw new Error("v12_native_acceptance_schedule_fixture_seed_invalid");
+  }
+  return Object.freeze({ planId: activation.plan.id, scheduleId: activation.schedule.id });
+}
+
+async function scheduleEditorReceipt(kernel: SqliteKernel, requestId: string) {
+  const [receipt] = await kernel.queryAll<Readonly<{
+    id: string;
+    schedule_id: string;
+    event_type: string;
+    schedule_revision: number;
+    payload_json: string;
+  }>>(
+    `SELECT id, schedule_id, event_type, schedule_revision, payload_json
+     FROM owned_plan_schedule_events
+     WHERE id = ?`,
+    [`schedule-command:${requestId}`],
+  );
+  return receipt;
+}
+
+async function executeScheduleVersionSave(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const fixture = await prepareScheduleEditorFixture(input);
+  const repository = createScheduleRepository(input.kernel);
+  const state = await repository.readActionState({
+    scheduleId: fixture.scheduleId,
+    instantMs: workoutFixtureActivatedAt(request),
+  });
+  if (state === null || state.planId !== fixture.planId || state.version.bindings.length === 0) {
+    throw new Error("v12_native_acceptance_schedule_precondition_missing");
+  }
+  const requestId = `v12:schedule-editor:${request.nonce}`;
+  const before = await scheduleEditorReceipt(input.kernel, requestId);
+  if (before === undefined) {
+    const next = state.version.mode === "weekday"
+      ? Object.freeze({
+          effectiveLocalDate: nextUtcLocalDate(state.localDate),
+          mode: "weekday" as const,
+          timeZone: state.version.timeZone,
+          bindings: Object.freeze(state.version.bindings.map((binding) => {
+            if (!("weekIndex" in binding)) throw new Error("v12_native_acceptance_schedule_binding_invalid");
+            return Object.freeze({
+              ordinal: binding.ordinal,
+              weekIndex: binding.weekIndex,
+              weekday: binding.weekday,
+              planDayId: binding.planDayId,
+            });
+          })),
+        })
+      : Object.freeze({
+          effectiveLocalDate: nextUtcLocalDate(state.localDate),
+          mode: "rotation" as const,
+          timeZone: state.version.timeZone,
+          bindings: Object.freeze(state.version.bindings.map((binding) => Object.freeze({
+            ordinal: binding.ordinal,
+            planDayId: binding.planDayId,
+          }))),
+        });
+    const confirmationToken = await createScheduleVersionPreviewToken({
+      sha256: runtimeSha256,
+      preview: {
+        scheduleId: state.scheduleId,
+        planId: state.planId,
+        expectedScheduleRevision: state.scheduleRevision,
+        expectedPlanRevision: state.planRevision,
+        before: state.version,
+        after: next,
+      },
+    });
+    const result = await saveScheduleVersion({
+      repository,
+      invalidate: async () => undefined,
+      sha256: runtimeSha256,
+      input: {
+        requestId,
+        scheduleId: state.scheduleId,
+        planId: state.planId,
+        expectedScheduleRevision: state.scheduleRevision,
+        expectedPlanRevision: state.planRevision,
+        todayLocalDate: state.localDate,
+        savedAtMs: workoutFixtureActivatedAt(request) + 1_000,
+        before: state.version,
+        next,
+        confirmationToken,
+      },
+    });
+    if (result.outcome !== "committed" || result.operation !== "save_schedule_version" || result.version.versionNumber !== state.version.versionNumber + 1) {
+      throw new Error("v12_native_acceptance_schedule_command_failed");
+    }
+  }
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ request_id: requestId }),
+    outcome: before === undefined ? "committed" : "already_committed",
+    verify: async () => {
+      const receipt = await scheduleEditorReceipt(input.kernel, requestId);
+      const replay = await repository.readCommandResult({
+        requestId,
+        requestSha256: (() => {
+          const parsed = receipt === undefined ? null : JSON.parse(receipt.payload_json) as Readonly<{ requestSha256?: unknown }>;
+          if (typeof parsed?.requestSha256 !== "string") throw new Error("v12_native_acceptance_schedule_receipt_invalid");
+          return parsed.requestSha256;
+        })(),
+      });
+      const post = await repository.readActionState({
+        scheduleId: fixture.scheduleId,
+        instantMs: workoutFixtureActivatedAt(request) + 86_400_000,
+      });
+      const replayVersionNumber = replay?.operation === "save_schedule_version"
+        ? replay.version.versionNumber
+        : null;
+      if (receipt?.id !== `schedule-command:${requestId}` || receipt.schedule_id !== fixture.scheduleId
+        || receipt.event_type !== "schedule_version_saved"
+        || replay?.outcome !== "already_committed" || replay.operation !== "save_schedule_version"
+        || receipt.schedule_revision !== replay.scheduleRevision
+        || post?.scheduleRevision !== replay.scheduleRevision || post.planRevision !== replay.planRevision
+        || post.version.versionNumber !== replayVersionNumber) {
+        throw new Error("v12_native_acceptance_schedule_postcondition_failed");
       }
     },
   });
@@ -3060,6 +3249,10 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   }),
   "owned-plan.owned-plan-repository.save": Object.freeze({
     execute: executeOwnedPlanSave,
+  }),
+  "owned-plan.schedule-repository.save-version": Object.freeze({
+    prepare: async (input) => { await prepareScheduleEditorFixture(input); },
+    execute: executeScheduleVersionSave,
   }),
   "starter-plan.starter-plan-repository.activate-accepted-starter-plan": Object.freeze({
     execute: executeAcceptedStarterActivation,
