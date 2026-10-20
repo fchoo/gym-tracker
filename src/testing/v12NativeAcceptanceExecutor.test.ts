@@ -1239,6 +1239,101 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects Running commands that cannot prove their requested mutation or durable receipt", async () => {
+    const plan = {
+      id: "running-plan",
+      revision: 1,
+      active: false,
+      lifecycle: "inactive",
+      goal: { goalDistanceMeters: 3_000 },
+      sessions: [],
+    } as never;
+    const aggregate = v12NativeAcceptanceCaseContract("workout", "workout.context-running");
+    const queryKernel = kernel();
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: { queryAll: queryKernel.queryAll } as SqliteKernel,
+      contract: aggregate,
+      request: requestForContract(aggregate),
+      runtime: { running: { loadPlan: async () => plan } as never },
+    })).rejects.toThrow("v12_native_acceptance_snapshot_unavailable");
+
+    const zeroSessions = v12NativeAcceptanceCaseContract("library-running", "library.running-create-zero-sessions");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ emptySql: /running_plan_receipts/u }),
+      contract: zeroSessions,
+      request: requestForContract(zeroSessions),
+      runtime: {
+        running: {
+          createInactivePlan: async () => ({ sessions: [{}], lifecycle: "active" }),
+        } as never,
+      },
+    })).rejects.toThrow("v12_native_acceptance_running_postcondition_failed");
+
+    const session = v12NativeAcceptanceCaseContract("library-running", "library.running-session-common");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ emptySql: /running_plan_receipts/u }),
+      contract: session,
+      request: requestForContract(session),
+      runtime: {
+        running: {
+          loadPlan: async () => plan,
+          saveSession: async () => ({ plan: { sessions: [] } }),
+        } as never,
+      },
+    })).rejects.toThrow("v12_native_acceptance_running_postcondition_failed");
+
+    const typed = v12NativeAcceptanceCaseContract("library-running", "library.running-create-typed-sessions");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ emptySql: /running_plan_receipts/u }),
+      contract: typed,
+      request: requestForContract(typed),
+      runtime: {
+        running: {
+          loadPlan: async () => plan,
+          savePlan: async () => ({ sessions: [] }),
+        } as never,
+      },
+    })).rejects.toThrow("v12_native_acceptance_running_postcondition_failed");
+
+    const lifecycle = v12NativeAcceptanceCaseContract("library-running", "library.running-session-lifecycle");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ emptySql: /running_plan_receipts/u }),
+      contract: lifecycle,
+      request: requestForContract(lifecycle),
+      runtime: {
+        running: {
+          previewLifecycle: async () => ({ id: "preview" }),
+          confirmLifecycle: async () => ({ lifecycle: "inactive" }),
+        } as never,
+      },
+    })).rejects.toThrow("v12_native_acceptance_running_postcondition_failed");
+
+    const goal = v12NativeAcceptanceCaseContract("library-running", "library.running-goal-edit");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ emptySql: /running_plan_receipts/u }),
+      contract: goal,
+      request: requestForContract(goal),
+      runtime: {
+        running: {
+          loadPlan: async () => plan,
+          saveRunningTarget: async () => ({ outcome: "already_committed" }),
+        } as never,
+      },
+    })).rejects.toThrow("v12_native_acceptance_running_postcondition_failed");
+
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel(),
+      contract: zeroSessions,
+      request: requestForContract(zeroSessions),
+      runtime: {
+        running: {
+          loadPlan: async () => plan,
+          createInactivePlan: async () => ({ sessions: [], lifecycle: "inactive" }),
+        } as never,
+      },
+    })).rejects.toThrow("v12_native_acceptance_running_receipt_invalid");
+  });
+
   it("rejects a Running seed that the production runtime cannot read back", async () => {
     const contract = v12NativeAcceptanceCaseContract("library-running", "library.running-goal-edit");
     await expect(prepareV12NativeAcceptanceProductionOperation({
