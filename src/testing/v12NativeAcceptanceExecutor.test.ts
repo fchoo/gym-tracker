@@ -9,6 +9,7 @@ import {
   type V12NativeAcceptanceCaseContract,
 } from "./contracts/phase15Workout.contract";
 import { MULTI_PLAN_RUNNING_CONTRACT_CASES } from "./contracts/multiPlanRunning.contract";
+import { V12_NATIVE_ACCEPTANCE_AUTHORITY_READER_REGISTRY } from "./v12NativeAcceptanceAuthorityReaders";
 import {
   authorityTablesForV12NativeAcceptance,
   assertV12NativeAcceptanceProductionHandlerRegistry,
@@ -16,7 +17,6 @@ import {
   executeV12NativeAcceptanceReadAction,
   resolveV12NativeAcceptanceProductionHandler,
   validateV12NativeAcceptanceAuthorityTables,
-  V12_NATIVE_ACCEPTANCE_AUTHORITY_PROJECTION_REGISTRY,
   type V12NativeAcceptanceRequest,
 } from "./v12NativeAcceptanceExecutor";
 
@@ -26,14 +26,14 @@ const sha256 = async (value: string): Promise<string> =>
 function request(overrides: Partial<V12NativeAcceptanceRequest> = {}): V12NativeAcceptanceRequest {
   return {
     shard: "workout",
-    caseId: "workout.root-identity",
+    caseId: "workout.day-switch",
     fixtureId: "v12-synthetic-fixtures-r18",
     title: "Workout",
     source: "PHASE15_REQUIRED_CASES",
-    requirement: "WRK-01",
-    action: "root-identity",
+    requirement: "WRK-02",
+    action: "day-switch",
     readback: "Workout source contract observation",
-    sourceProbe: "phase15-workout-ledger:workout.root-identity",
+    sourceProbe: "phase15-workout-ledger:workout.day-switch",
     authorityTables: ["plans", "owned_plan_schedules", "workout_sessions"],
     nonce: "a".repeat(48),
     ...overrides,
@@ -142,16 +142,16 @@ describe("v1.2 native acceptance production executor", () => {
   it("resolves every case-owned handler to an executable production function", () => {
     expect(assertV12NativeAcceptanceProductionHandlerRegistry()).toBe(true);
     const sourceOwned = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.filter(({ shard }) => shard !== "multi-plan");
-    expect(Object.keys(V12_NATIVE_ACCEPTANCE_AUTHORITY_PROJECTION_REGISTRY)).toHaveLength(88);
+    expect(Object.keys(V12_NATIVE_ACCEPTANCE_AUTHORITY_READER_REGISTRY)).toHaveLength(88);
     for (const contract of V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS) {
       const handler = resolveV12NativeAcceptanceProductionHandler(contract);
       expect(typeof handler.execute).toBe("function");
       expect(handler.operationIds).toContain(contract.operation.id);
     }
     for (const contract of sourceOwned) {
-      const projection = V12_NATIVE_ACCEPTANCE_AUTHORITY_PROJECTION_REGISTRY[contract.operation.id];
-      expect(projection).toMatchObject({ caseId: contract.caseId, tables: contract.probes.post.tables });
-      expect(typeof projection?.read).toBe("function");
+      const reader = V12_NATIVE_ACCEPTANCE_AUTHORITY_READER_REGISTRY[contract.operation.id];
+      expect(reader).toMatchObject({ caseId: contract.caseId, authorityTables: contract.probes.post.tables });
+      expect(typeof reader?.read).toBe("function");
     }
     const source = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ shard }) => shard === "workout")!;
     expect(() => resolveV12NativeAcceptanceProductionHandler({
@@ -164,7 +164,7 @@ describe("v1.2 native acceptance production executor", () => {
         ...source.probes,
         post: { ...source.probes.post, tables: ["missing_authority_table"] },
       },
-    }])).toThrow("v12_native_acceptance_authority_fact_columns_missing");
+    }])).toThrow("v12_native_acceptance_authority_reader_unresolved");
     expect(() => assertV12NativeAcceptanceProductionHandlerRegistry([{
       ...source,
       probes: {
@@ -172,7 +172,7 @@ describe("v1.2 native acceptance production executor", () => {
         post: { ...source.probes.post, tables: [...source.probes.post.tables].reverse() },
       },
     }, ...V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.filter((entry) => entry !== source)])).toThrow(
-      "v12_native_acceptance_authority_projection_unimplemented",
+      "v12_native_acceptance_authority_reader_unresolved",
     );
   });
 
@@ -254,10 +254,10 @@ describe("v1.2 native acceptance production executor", () => {
     expect(result.source_receipt).toMatchObject({
       authority: "sqlite-production-operation",
       shard: "workout",
-      case_id: "workout.root-identity",
+      case_id: "workout.day-switch",
       nonce: "a".repeat(48),
-      action_id: "root-identity",
-      operation_id: "workout:workout.root-identity:root-identity",
+      action_id: "day-switch",
+      operation_id: "workout:workout.day-switch:day-switch",
       operation_kind: "repository-read",
       operation_result: "read",
       authority_tables: ["plans", "owned_plan_schedules", "workout_sessions"],
@@ -268,7 +268,7 @@ describe("v1.2 native acceptance production executor", () => {
     expect(commands.some((sql) => /SELECT COUNT\(\*\)/u.test(sql))).toBe(false);
     expect(commands.some((sql) => /SELECT[^;]*(?:\bid\b|\brevision\b|\bstatus\b)/u.test(sql))).toBe(true);
     expect(commands.filter((sql) => sql !== "PRAGMA user_version").every((sql) => !sql.includes("app_settings"))).toBe(true);
-    expect(result.ui_readback.readback_id).toBe("workout.root-identity:ui:Workout source contract observation");
+    expect(result.ui_readback.readback_id).toBe("workout.day-switch:ui:Workout source contract observation");
   });
 
   it("fails closed when a production mutation handler is called without its nonce-bound request", async () => {

@@ -131,6 +131,7 @@ const MULTI_PLAN_TABLES: Readonly<Record<string, readonly string[]>> = Object.fr
 
 const WORKOUT_TABLES = Object.freeze({
   root: tables("plans", "owned_plan_schedules", "workout_sessions"),
+  running: tables("plans", "running_plans", "running_plan_receipts"),
   active: tables("workout_sessions", "session_exercises", "session_sets"),
   set: tables("session_sets", "workout_receipts"),
   rest: tables("session_rest_states", "pending_effects"),
@@ -138,6 +139,14 @@ const WORKOUT_TABLES = Object.freeze({
   plan: tables("plans", "owned_plan_aggregate_states", "progression_recommendations", "progression_recommendation_decision_receipts"),
   edit: tables("session_exercises", "session_sets", "workout_session_exercise_edit_receipts"),
   completion: tables("workout_sessions", "workout_receipts", "workout_provenance"),
+  completionWriteback: tables(
+    "starter_plan_activation_requests",
+    "owned_plan_mutation_requests",
+    "plans",
+    "plan_days",
+    "owned_plan_day_exercises",
+    "owned_plan_working_set_targets",
+  ),
   settings: tables("app_settings", "session_advanced_timing_states"),
 });
 
@@ -151,13 +160,15 @@ const WORKOUT_MUTATIONS = new Set([
 ]);
 
 function workoutTables(caseId: string): readonly string[] {
-  if (["workout.root-identity", "workout.day-switch", "workout.scheduled-rest-empty", "workout.start-alternate", "workout.start-resume", "workout.context-running"].includes(caseId)) return WORKOUT_TABLES.root;
+  if (["workout.root-identity", "workout.day-switch", "workout.scheduled-rest-empty", "workout.start-alternate", "workout.start-resume"].includes(caseId)) return WORKOUT_TABLES.root;
+  if (caseId === "workout.context-running") return WORKOUT_TABLES.running;
   if (["workout.rest-dock", "workout.rest-controls", "workout.rest-recovery"].includes(caseId)) return WORKOUT_TABLES.rest;
   if (caseId === "workout.trend") return WORKOUT_TABLES.history;
   if (["workout.plan-increment", "workout.plan-after-workout"].includes(caseId)) return WORKOUT_TABLES.plan;
   if (["workout.add-exercise", "workout.replace-exercise", "workout.delete-exercise", "workout.reorder", "workout.undo"].includes(caseId)) return WORKOUT_TABLES.edit;
   if (caseId === "workout.offline-recovery") return tables("logical_backup_receipts", "portable_owner_identity");
-  if (["workout.outcomes", "workout.completion-review", "workout.completion-writeback"].includes(caseId)) return WORKOUT_TABLES.completion;
+  if (["workout.outcomes", "workout.completion-review"].includes(caseId)) return WORKOUT_TABLES.completion;
+  if (caseId === "workout.completion-writeback") return WORKOUT_TABLES.completionWriteback;
   if (["workout.timing-policy", "workout.appearance", "workout.accessibility", "workout.performance", "workout.readonly-presentation"].includes(caseId)) return WORKOUT_TABLES.settings;
   if (["workout.set-states", "workout.row-edit", "workout.load-reps-editor", "workout.duration-editor", "workout.all-metrics", "workout.warmup-order", "workout.add-set", "workout.complete-commit", "workout.complete-failure", "workout.completion-collapse"].includes(caseId)) return WORKOUT_TABLES.set;
   return WORKOUT_TABLES.active;
@@ -168,7 +179,7 @@ const LIBRARY_PROBE_TABLES: Readonly<Record<string, readonly string[]>> = Object
   custom_exercise_metric_migrations: tables("metric_profile_migration_events", "exercises"),
   metric_profile_migration_events: tables("metric_profile_migration_events", "exercises"),
   custom_exercises: tables("exercises", "exercise_owner_preferences"),
-  exercise_instruction_sets: tables("exercise_library_entries"),
+  exercise_instruction_sets: tables("exercise_library_entries", "exercise_instruction_sets"),
   exercise_preferences: tables("exercise_owner_preferences"),
   exercise_search_index: tables("exercise_search_terms"),
   library_action_state: tables("plans", "taxonomy_terms"),

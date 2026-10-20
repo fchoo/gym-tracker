@@ -180,7 +180,14 @@ describe("v1.2 Workout and Library production operation registry", () => {
 
     const receiptIds = new Set<string>();
     for (const [index, contract] of sourceOwned.entries()) {
-      const { first, replay } = await executeSourceContractAudit(contract, index + 128);
+      let audit: Awaited<ReturnType<typeof executeSourceContractAudit>>;
+      try {
+        audit = await executeSourceContractAudit(contract, index + 128);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(`v12_native_acceptance_source_contract_audit_failed:${contract.caseId}:${detail}`);
+      }
+      const { first, replay } = audit;
       expect(first.source_receipt).toMatchObject({
         operation_id: contract.operation.id,
         operation_handler_id: contract.operation.handlerId,
@@ -336,6 +343,8 @@ describe("v1.2 Workout and Library production operation registry", () => {
     const cases = [
       "workout.start-alternate",
       "workout.row-edit",
+      "workout.duration-editor",
+      "workout.all-metrics",
       "workout.add-set",
       "workout.complete-commit",
       "workout.rest-controls",
