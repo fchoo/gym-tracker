@@ -1679,6 +1679,52 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects metric migration when a seeded authority fact or command acknowledgement drifts", async () => {
+    const contract = v12NativeAcceptanceCaseContract("library-running", "library.metric-profile-migration");
+    const missingFacts = [
+      [/SELECT revision, metric_profile/u, "v12_native_acceptance_metric_exercise_precondition_missing"],
+      [/owned_plan_working_set_targets/u, "v12_native_acceptance_metric_target_precondition_missing"],
+      [/owned_plan_progression_policies/u, "v12_native_acceptance_metric_policy_precondition_missing"],
+    ] as const;
+    for (const [missingSql, error] of missingFacts) {
+      const runtime = kernel();
+      const queryAll = runtime.queryAll.bind(runtime);
+      runtime.queryAll = async <Row extends Record<string, unknown>,>(sql: string, params?: readonly SqliteParameter[]) => {
+        if (missingSql.test(sql) || sql.includes("FROM metric_profile_migration_events")) return [] as readonly Row[];
+        return queryAll(sql, params);
+      };
+      await expect(prepareV12NativeAcceptanceProductionOperation({
+        kernel: runtime,
+        contract,
+        request: requestForContract(contract),
+        runtime: {
+          customExercises: {} as never,
+          ownedPlans: { loadPlan: async () => ({ id: "metric-plan" }) } as never,
+        },
+      })).rejects.toThrow(error);
+    }
+
+    const migration = isolateExecutorWithMocks([{
+      moduleName: "../domains/metrics/migrateCustomExerciseMetricProfile",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/metrics/migrateCustomExerciseMetricProfile")>("../domains/metrics/migrateCustomExerciseMetricProfile"),
+        migrateCustomExerciseMetricProfile: async () => ({
+          outcome: "already_committed", exerciseRevision: 1, metricIdentity: { exerciseMetricGeneration: 1 },
+        }),
+      }),
+    }]);
+    try {
+      const migrationContract = migration.contracts.v12NativeAcceptanceCaseContract("library-running", "library.metric-profile-migration");
+      await expect(migration.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /metric_profile_migration_events/u }),
+        contract: migrationContract,
+        request: requestForContract(migrationContract),
+      })).rejects.toThrow("v12_native_acceptance_metric_postcondition_failed");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("rejects Running handlers whose nonce-bound aggregate is absent", async () => {
     const runtime = { running: { loadPlan: async () => null } as never };
     const cases = [
