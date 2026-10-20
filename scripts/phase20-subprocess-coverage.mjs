@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createV12PosixProcessTreeTracker } from "./v12-posix-process-tree.mjs";
 
 const require = createRequire(import.meta.url);
 const v8ToIstanbul = require("v8-to-istanbul");
@@ -90,14 +91,6 @@ function processGroupIsEmpty(processGroupId, { platform, killImplementation, win
   catch (error) { return error?.code === "ESRCH"; }
 }
 
-async function verifyProcessGroupEmpty(processGroupId, timeoutMs, dependencies) {
-  const deadline = Date.now() + timeoutMs;
-  while (!processGroupIsEmpty(processGroupId, dependencies) && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  return processGroupIsEmpty(processGroupId, dependencies);
-}
-
 function runTestProject(project, {
   projectRoot,
   rawDirectory,
@@ -111,6 +104,7 @@ function runTestProject(project, {
   killImplementation,
   taskkillImplementation,
   windowsTreeProbeImplementation,
+  posixProcessProbeImplementation,
 }) {
   return new Promise((resolve, reject) => {
     const { name, tests, concurrency = 1 } = project;
@@ -150,24 +144,48 @@ function runTestProject(project, {
       windowsHide: true,
     });
     const processGroupId = child.pid;
+    let posixTree;
+    let posixEnumerationFailed = false;
+    if (platform !== "win32") {
+      try {
+        posixTree = createV12PosixProcessTreeTracker({ leaderPid: child.pid, probeImplementation: posixProcessProbeImplementation,
+          killImplementation, probeTimeoutMs: terminateGraceMs });
+      } catch {
+        posixEnumerationFailed = true;
+      }
+    }
     const notifyAndSignal = (treeSignal) => {
       onProjectSignal?.({ project: name, signal: treeSignal });
       if (treeSignal === "SIGTERM") termSent = true;
       if (treeSignal === "SIGKILL") killSent = true;
-      signalProcessGroup(child, treeSignal, processDependencies);
+      if (posixTree !== undefined) posixTree.signal(treeSignal);
+      else signalProcessGroup(child, treeSignal, processDependencies);
+    };
+    const treeIsEmpty = () => {
+      if (platform === "win32") return processGroupIsEmpty(processGroupId, processDependencies);
+      if (posixTree === undefined) return false;
+      try { return posixTree.treeState() === "empty"; }
+      catch { return false; }
+    };
+    const verifyTreeEmpty = async (timeoutMs) => {
+      const deadline = Date.now() + timeoutMs;
+      while (!treeIsEmpty() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
+      return treeIsEmpty();
     };
     const finish = async (code, childSignal) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout); clearTimeout(terminateTimer); clearTimeout(killTimer);
       signal?.removeEventListener("abort", onAbort);
-      if (!await verifyProcessGroupEmpty(processGroupId, 0, processDependencies)) {
+      if (!await verifyTreeEmpty(0)) {
         if (!termSent) notifyAndSignal("SIGTERM");
-        if (!await verifyProcessGroupEmpty(processGroupId, terminateGraceMs, processDependencies)) {
+        if (!await verifyTreeEmpty(terminateGraceMs)) {
           if (!killSent) notifyAndSignal("SIGKILL");
-          cleanupVerified = await verifyProcessGroupEmpty(processGroupId, terminateGraceMs, processDependencies);
+          cleanupVerified = await verifyTreeEmpty(terminateGraceMs);
         }
       }
+      posixTree?.stop();
+      if (posixEnumerationFailed) cleanupVerified = false;
       if (!cleanupVerified) {
         reject(new Error(`phase20_coverage_project_cleanup_failed:${name}:${stopReason ?? "exit"}`));
       } else if (terminalError !== undefined) {
@@ -398,6 +416,7 @@ export async function runPhase20SubprocessCoverage({
   killImplementation = process.kill.bind(process),
   taskkillImplementation = childProcess.spawnSync,
   windowsTreeProbeImplementation = childProcess.spawnSync,
+  posixProcessProbeImplementation = childProcess.spawnSync,
 }) {
   const { registeredModules, registeredTests } = validateCoverageProjects(projects, projectRoot);
   rmSync(outputDirectory, { force: true, recursive: true });
@@ -423,6 +442,7 @@ export async function runPhase20SubprocessCoverage({
             killImplementation,
             taskkillImplementation,
             windowsTreeProbeImplementation,
+            posixProcessProbeImplementation,
           });
           assertNoSkippedTests(testReportPath, project.name);
           if (project.coverage === false) return {

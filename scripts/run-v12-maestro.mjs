@@ -44,6 +44,7 @@ import {
   v12NativeAcceptanceProductDefinition,
 } from "../src/testing/v12NativeAcceptanceProductRegistry.ts";
 import { PHASE20_VISUAL_STATE_REGISTRY } from "../src/testing/phase20VisualStateRegistry.generated.ts";
+import { createV12PosixProcessTreeTracker } from "./v12-posix-process-tree.mjs";
 
 const ROOT = process.cwd();
 const FLOW = "maestro/v1.2/calendar.yaml";
@@ -130,12 +131,13 @@ export function runV12BoundedProcess(program, args, {
   killImplementation = process.kill.bind(process),
   taskkillImplementation = spawnSync,
   windowsTreeProbeImplementation = spawnSync,
+  posixProcessProbeImplementation = spawnSync,
 } = {}) {
   if (typeof program !== "string" || !path.isAbsolute(program) || !Array.isArray(args)
     || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || !Number.isSafeInteger(termGraceMs) || termGraceMs < 1
     || !Number.isSafeInteger(killGraceMs) || killGraceMs < 1 || !["win32", "darwin", "linux", "freebsd", "openbsd", "aix", "sunos"].includes(platform)
     || typeof spawnImplementation !== "function" || typeof killImplementation !== "function" || typeof taskkillImplementation !== "function"
-    || typeof windowsTreeProbeImplementation !== "function"
+    || typeof windowsTreeProbeImplementation !== "function" || typeof posixProcessProbeImplementation !== "function"
     || signal?.aborted) {
     return Promise.reject(new Error(signal?.aborted ? "v12_maestro_process_cancelled" : "v12_maestro_process_arguments_invalid"));
   }
@@ -143,6 +145,15 @@ export function runV12BoundedProcess(program, args, {
     const child = spawnImplementation(program, args, { cwd, env, detached: platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
     let stdout = ""; let stdoutBytes = 0; let stderrBytes = 0; let settled = false; let terminationCode; let terminalOutcome;
     let timeout; let escalation; let killDeadline;
+    let posixTree;
+    if (platform !== "win32") {
+      try {
+        posixTree = createV12PosixProcessTreeTracker({ leaderPid: child.pid, probeImplementation: posixProcessProbeImplementation,
+          killImplementation, probeTimeoutMs: killGraceMs });
+      } catch {
+        terminationCode = "process_tree_enumeration_failed";
+      }
+    }
     const windowsTreePids = () => {
       if (child.pid === undefined) return [];
       const script = "$root=[uint32]$args[0];$all=@(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId);$seen=@{};$queue=New-Object System.Collections.Queue;$queue.Enqueue($root);while($queue.Count -gt 0){$parent=[uint32]$queue.Dequeue();foreach($item in $all){if([uint32]$item.ParentProcessId -eq $parent -and -not $seen.ContainsKey([uint32]$item.ProcessId)){$seen[[uint32]$item.ProcessId]=$true;$queue.Enqueue([uint32]$item.ProcessId)}}};foreach($item in $all){if([uint32]$item.ProcessId -eq $root){$seen[$root]=$true}};$seen.Keys | Sort-Object";
@@ -163,8 +174,9 @@ export function runV12BoundedProcess(program, args, {
         const pids = windowsTreePids();
         return pids === null ? "unknown" : pids.length === 0 ? "empty" : "alive";
       }
-      try { killImplementation(-child.pid, 0); return "alive"; }
-      catch (error) { return error?.code === "ESRCH" ? "empty" : "unknown"; }
+      if (posixTree === undefined) return "unknown";
+      try { return posixTree.treeState(); }
+      catch { return "unknown"; }
     };
     const taskkillTree = (force) => {
       if (child.pid === undefined) return false;
@@ -187,6 +199,7 @@ export function runV12BoundedProcess(program, args, {
     const killTree = (signalName) => {
       if (child.pid === undefined) return false;
       if (platform === "win32") return taskkillTree(signalName === "SIGKILL");
+      if (posixTree !== undefined) return posixTree.signal(signalName);
       try {
         killImplementation(-child.pid, signalName);
         return true;
@@ -198,10 +211,13 @@ export function runV12BoundedProcess(program, args, {
     const cleanup = () => {
       clearTimeout(timeout); clearTimeout(escalation); clearTimeout(killDeadline);
       signal?.removeEventListener("abort", onAbort);
+      posixTree?.stop();
     };
     const settleAfterTree = () => {
       if (settled) return;
-      if (treeState() !== "empty") terminationCode = "process_tree_termination_failed";
+      const state = treeState();
+      if (state !== "empty") terminationCode ??= state === "unknown" && platform !== "win32"
+        ? "process_tree_enumeration_failed" : "process_tree_termination_failed";
       settled = true; cleanup();
       if (terminationCode !== undefined) reject(new Error(`v12_maestro_${terminationCode}`));
       else if (terminalOutcome?.code !== 0 || terminalOutcome?.signal !== null) reject(new Error("v12_maestro_process_failed"));

@@ -491,6 +491,82 @@ test("bounded supervisor drains a TERM-resistant descendant after a successful P
   }
 });
 
+test("bounded supervisor drains a detached POSIX descendant before successful resolution", {
+  skip: process.platform === "win32",
+  timeout: 10_000,
+}, async (t) => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "v12-maestro-detached-tree-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const childPid = path.join(root, "detached-child.pid");
+  const script = path.join(root, "detached-leader.mjs");
+  writeFileSync(script, [
+    'import { spawn } from "node:child_process";',
+    'import { writeFileSync } from "node:fs";',
+    'import { setTimeout as delay } from "node:timers/promises";',
+    `const child = spawn(process.execPath, ["-e", ${JSON.stringify('process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);')}], { detached: true, stdio: "ignore" });`,
+    `writeFileSync(${JSON.stringify(childPid)}, String(child.pid));`,
+    "child.unref();",
+    "await delay(125);",
+    "",
+  ].join("\n"));
+  let descendant;
+  try {
+    assert.equal(await runV12BoundedProcess(process.execPath, [script], {
+      cwd: root, timeoutMs: 2_000, termGraceMs: 100, killGraceMs: 1_000,
+    }), "");
+    descendant = Number(readFileSync(childPid, "utf8"));
+    assert.throws(() => process.kill(descendant, 0), /ESRCH/u);
+    descendant = undefined;
+  } finally {
+    if (descendant !== undefined) { try { process.kill(descendant, "SIGKILL"); } catch { /* already gone */ } }
+  }
+});
+
+test("bounded supervisor rejects reused detached PIDs without signalling the new owner", async () => {
+  const child = simulatedWindowsChild();
+  child.pid = 500;
+  let leaderAlive = true;
+  const signals = [];
+  const processTable = () => ({ status: 0, signal: null, error: undefined, stdout: leaderAlive
+    ? "500 1 500 500 Ss Mon Oct 20 12:00:00 2026\n600 500 600 600 Ss Mon Oct 20 12:00:01 2026\n"
+    : "600 1 888 888 Ss Mon Oct 20 12:00:02 2026\n" });
+  const running = runV12BoundedProcess(process.execPath, ["-e", ""], {
+    spawnImplementation: () => {
+      queueMicrotask(() => { leaderAlive = false; child.emit("close", 0, null); });
+      return child;
+    },
+    killImplementation: (target, signal) => {
+      signals.push([target, signal]);
+      throw new Error("PID reuse must not be signalled");
+    },
+    posixProcessProbeImplementation: processTable,
+    timeoutMs: 1_000,
+    termGraceMs: 5,
+    killGraceMs: 20,
+  });
+  assert.equal(await running, "");
+  assert.deepEqual(signals, []);
+});
+
+test("bounded supervisor fails closed when POSIX descendant enumeration is unavailable", async () => {
+  const child = simulatedWindowsChild();
+  child.pid = 500;
+  const signals = [];
+  const running = runV12BoundedProcess(process.execPath, ["-e", ""], {
+    spawnImplementation: () => {
+      queueMicrotask(() => child.emit("close", 0, null));
+      return child;
+    },
+    killImplementation: (target, signal) => { signals.push([target, signal]); },
+    posixProcessProbeImplementation: () => { throw new Error("ps unavailable"); },
+    timeoutMs: 1_000,
+    termGraceMs: 5,
+    killGraceMs: 20,
+  });
+  await assert.rejects(running, /v12_maestro_process_tree_enumeration_failed/u);
+  assert.deepEqual(signals, [[-500, "SIGTERM"], [-500, "SIGKILL"]]);
+});
+
 function simulatedWindowsChild() {
   const child = new EventEmitter();
   child.pid = 4242;
@@ -552,6 +628,28 @@ test("Windows bounded supervisor verifies and drains a resistant descendant afte
   assert.equal(await running, "");
   assert.deepEqual(taskkillCalls, [["/PID", "5252", "/T"], ["/PID", "5252", "/T", "/F"]]);
   assert.equal(descendantAlive, false);
+});
+
+test("Windows bounded supervisor fails closed when it cannot verify the final task tree", async () => {
+  const child = simulatedWindowsChild();
+  const taskkillCalls = [];
+  const running = runV12BoundedProcess("/tools/maestro.exe", ["test"], {
+    platform: "win32",
+    spawnImplementation: () => {
+      queueMicrotask(() => child.emit("close", 0, null));
+      return child;
+    },
+    windowsTreeProbeImplementation: () => null,
+    taskkillImplementation: (_program, args) => {
+      taskkillCalls.push(args);
+      return { status: 0, signal: null, error: undefined };
+    },
+    timeoutMs: 1_000,
+    termGraceMs: 5,
+    killGraceMs: 20,
+  });
+  await assert.rejects(running, /v12_maestro_process_tree_termination_failed/u);
+  assert.deepEqual(taskkillCalls, [["/PID", "4242", "/T"], ["/PID", "4242", "/T", "/F"]]);
 });
 
 test("Windows bounded supervisor escalates the complete tree and rejects failed taskkill outcomes", async () => {

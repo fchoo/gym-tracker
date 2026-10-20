@@ -2392,6 +2392,7 @@ test("a successful coverage leader drains its TERM-resistant POSIX process group
   const child = new EventEmitter();
   child.pid = 5151; child.exitCode = null; child.signalCode = null;
   child.stdio = [null, null, null, new PassThrough()];
+  let leaderAlive = true;
   let descendantAlive = true;
   const signals = [];
   try {
@@ -2407,21 +2408,61 @@ test("a successful coverage leader drains its TERM-resistant POSIX process group
       spawnImplementation: () => {
         const report = path.join(root, "coverage/projects/success/test-results.tap");
         mkdirSync(path.dirname(report), { recursive: true }); writeFileSync(report, "# skipped 0\n");
-        queueMicrotask(() => { child.exitCode = 0; child.emit("close", 0, null); });
+        queueMicrotask(() => { leaderAlive = false; child.exitCode = 0; child.emit("close", 0, null); });
         return child;
       },
-      killImplementation: (_target, signal) => {
+      killImplementation: (target, signal) => {
         if (signal === 0) {
           if (descendantAlive) return;
           const error = new Error("gone"); error.code = "ESRCH"; throw error;
         }
-        signals.push(signal);
+        signals.push([target, signal]);
         if (signal === "SIGKILL") descendantAlive = false;
       },
+      posixProcessProbeImplementation: () => ({ status: 0, signal: null, error: undefined,
+        stdout: `${leaderAlive ? "5151 1 5151 5151 Ss Mon Oct 20 12:00:00 2026\n" : ""}${descendantAlive ? `${leaderAlive ? "5152 5151" : "5152 1"} 5151 5151 Ss Mon Oct 20 12:00:01 2026\n` : ""}` }),
     });
-    assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
+    assert.deepEqual(signals, [[-5151, "SIGTERM"], [5152, "SIGTERM"], [-5151, "SIGKILL"], [5152, "SIGKILL"]]);
     assert.equal(descendantAlive, false);
   } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a successful coverage leader drains a detached POSIX descendant before resolving", {
+  skip: process.platform === "win32",
+  timeout: 10_000,
+}, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "phase20-project-detached-success-"));
+  const pidFile = path.join(root, "detached.pid");
+  let detachedPid;
+  try {
+    writeFileSync(path.join(root, "detached.test.mjs"), [
+      "import { spawn } from 'node:child_process';",
+      "import { writeFileSync } from 'node:fs';",
+      "import { setTimeout as delay } from 'node:timers/promises';",
+      "import test from 'node:test';",
+      "test('detaches an owned child', async () => {",
+      "  const child = spawn(process.execPath, ['--input-type=module', '--eval', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);\"], { detached: true, stdio: 'ignore' });",
+      `  writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));`,
+      "  child.unref();",
+      "  await delay(125);",
+      "});",
+      "",
+    ].join("\n"));
+    await runPhase20SubprocessCoverage({
+      projectRoot: root,
+      projects: [{ name: "detached", coverage: false, tests: ["detached.test.mjs"] }],
+      outputDirectory: path.join(root, "coverage"),
+      maxParallel: 1,
+      projectTimeoutMs: 2_000,
+      terminateGraceMs: 100,
+    });
+    detachedPid = Number(readFileSync(pidFile, "utf8"));
+    assert.throws(() => process.kill(detachedPid, 0), /ESRCH/u);
+    detachedPid = undefined;
+  } finally {
+    if (detachedPid !== undefined) { try { process.kill(detachedPid, "SIGKILL"); } catch { /* already gone */ } }
     rmSync(root, { recursive: true, force: true });
   }
 });
