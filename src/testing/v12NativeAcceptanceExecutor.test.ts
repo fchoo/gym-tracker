@@ -1555,6 +1555,61 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects plan-impact replays and postconditions that cannot reproduce their durable command", async () => {
+    const replayKernel = () => {
+      const base = kernel();
+      const queryAll = base.queryAll.bind(base);
+      base.queryAll = async <Row extends Record<string, unknown>,>(sql: string, params?: readonly SqliteParameter[]) => {
+        if (sql.includes("FROM owned_plan_schedule_events")) {
+          return [{ id: `plan-impact-command:${params?.[0]}`, event_type: "plan_day_removed", payload_json: JSON.stringify({ requestSha256: "a".repeat(64), command: {}, result: {} }) }] as unknown as readonly Row[];
+        }
+        return queryAll(sql, params);
+      };
+      return base;
+    };
+    const replay = isolateExecutorWithMocks([{
+      moduleName: "../domains/plans/planImpactCommands",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/plans/planImpactCommands")>("../domains/plans/planImpactCommands"),
+        removePlanDayWithImpact: async () => { throw new Error("v12_native_acceptance_day_replay_reached"); },
+        replacePlanExercise: async () => { throw new Error("v12_native_acceptance_replacement_replay_reached"); },
+      }),
+    }]);
+    try {
+      for (const [caseId, error] of [["library.day-removal-impact", "v12_native_acceptance_day_replay_reached"], ["library.replacement-impact", "v12_native_acceptance_replacement_replay_reached"]] as const) {
+        const contract = replay.contracts.v12NativeAcceptanceCaseContract("library-running", caseId);
+        await expect(replay.executor.dispatchV12NativeAcceptanceProductionOperation({ kernel: replayKernel(), contract, request: requestForContract(contract) })).rejects.toThrow(error);
+      }
+    } finally { jest.dontMock("../domains/plans/planImpactCommands"); jest.resetModules(); }
+
+    const stale = isolateExecutorWithMocks([
+      {
+        moduleName: "../platform/sqlite/repositories/planImpactRepository",
+        factory: () => ({
+          ...jest.requireActual<typeof import("../platform/sqlite/repositories/planImpactRepository")>("../platform/sqlite/repositories/planImpactRepository"),
+          createPlanImpactRepository: () => ({
+            readCommandResult: async () => ({ outcome: "already_committed", planRevision: 1, scheduleRevision: 1 }),
+            readExerciseReplacementCommandResult: async () => ({ outcome: "already_committed", replacementExerciseId: "replacement", planRevision: 1 }),
+          }),
+        }),
+      },
+      {
+        moduleName: "../domains/plans/planImpactCommands",
+        factory: () => ({
+          ...jest.requireActual<typeof import("../domains/plans/planImpactCommands")>("../domains/plans/planImpactCommands"),
+          removePlanDayWithImpact: async () => undefined,
+          replacePlanExercise: async () => undefined,
+        }),
+      },
+    ]);
+    try {
+      const day = stale.contracts.v12NativeAcceptanceCaseContract("library-running", "library.day-removal-impact");
+      await expect(stale.executor.dispatchV12NativeAcceptanceProductionOperation({ kernel: replayKernel(), contract: day, request: requestForContract(day) })).rejects.toThrow("v12_native_acceptance_day_removal_postcondition_failed");
+      const replacement = stale.contracts.v12NativeAcceptanceCaseContract("library-running", "library.replacement-impact");
+      await expect(stale.executor.dispatchV12NativeAcceptanceProductionOperation({ kernel: replayKernel(), contract: replacement, request: requestForContract(replacement) })).rejects.toThrow("v12_native_acceptance_replacement_postcondition_failed");
+    } finally { jest.dontMock("../domains/plans/planImpactCommands"); jest.resetModules(); }
+  });
+
   it("rejects workout exercise commands that report a replay before a nonce-bound receipt exists", async () => {
     const { executor, contracts } = isolateExecutorWithMocks([{
       moduleName: "../domains/workout/sessionExerciseCommands",
