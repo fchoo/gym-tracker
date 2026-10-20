@@ -256,6 +256,44 @@ describe("v1.2 native acceptance production executor", () => {
     );
   });
 
+  it("rejects a declared handler that has no executable registry entry during construction", () => {
+    try {
+      jest.isolateModules(() => {
+        jest.doMock("./contracts/phase15Workout.contract", () => {
+          const actual = jest.requireActual<typeof import("./contracts/phase15Workout.contract")>("./contracts/phase15Workout.contract");
+          const source = actual.V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS[0]!;
+          return {
+            ...actual,
+            V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS: Object.freeze([
+              ...actual.V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS,
+              Object.freeze({
+                ...source,
+                operation: Object.freeze({
+                  ...source.operation,
+                  id: "workout:registry-construction:missing-handler",
+                  handlerId: "workout.missing-executable-handler",
+                }),
+              }),
+            ]),
+          };
+        });
+        jest.doMock("./v12NativeAcceptanceAuthorityReaders", () => ({
+          assertV12NativeAcceptanceAuthorityReaderRegistry: () => true,
+          resolveV12NativeAcceptanceAuthorityReader: () => ({
+            caseId: "unreachable",
+            authorityTables: [],
+            read: async () => "unreachable",
+          }),
+        }));
+        expect(() => require("./v12NativeAcceptanceExecutor")).toThrow("v12_native_acceptance_handler_unresolved");
+      });
+    } finally {
+      jest.dontMock("./contracts/phase15Workout.contract");
+      jest.dontMock("./v12NativeAcceptanceAuthorityReaders");
+      jest.resetModules();
+    }
+  });
+
   it("rejects an authority reader whose case contract is substituted or whose query fails", async () => {
     const contract = v12NativeAcceptanceCaseContract("workout", "workout.day-switch");
     const value = requestForContract(contract);

@@ -4151,9 +4151,7 @@ export function assertV12NativeAcceptanceProductionHandlerRegistry(
 ): true {
   assertV12NativeAcceptanceAuthorityReaderRegistry();
   for (const contract of contracts) {
-    if (typeof resolveV12NativeAcceptanceProductionHandler(contract).execute !== "function") {
-      throw new Error("v12_native_acceptance_handler_unresolved");
-    }
+    resolveV12NativeAcceptanceProductionHandler(contract);
     if (contract.shard !== "multi-plan") {
       const reader = resolveV12NativeAcceptanceAuthorityReader(contract.operation.id);
       if (reader.caseId !== contract.caseId
