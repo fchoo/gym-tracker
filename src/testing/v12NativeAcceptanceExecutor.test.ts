@@ -244,6 +244,37 @@ describe("v1.2 native acceptance production executor", () => {
     }, ...V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.filter((entry) => entry !== source)])).toThrow(
       "v12_native_acceptance_authority_reader_unresolved",
     );
+    expect(() => assertV12NativeAcceptanceProductionHandlerRegistry([{
+      ...source,
+      operation: { ...source.operation, handlerId: "workout.not-registered" },
+    }, ...V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.filter((entry) => entry !== source)])).toThrow(
+      "v12_native_acceptance_handler_unresolved",
+    );
+  });
+
+  it("rejects an authority reader whose case contract is substituted or whose query fails", async () => {
+    const contract = v12NativeAcceptanceCaseContract("workout", "workout.day-switch");
+    const value = requestForContract(contract);
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel(),
+      contract: { ...contract, caseId: "workout.substituted-case" },
+      request: value,
+    })).rejects.toThrow("v12_native_acceptance_authority_reader_unresolved");
+
+    const readerFailureKernel = {
+      readSnapshot: async <Result,>(read: (transaction: SqliteReadTransactionExecutor) => Promise<Result>) => read({
+        queryAll: async <Row,>(sql: string): Promise<readonly Row[]> => {
+          if (sql === "PRAGMA user_version") return [{ user_version: 42 }] as Row[];
+          throw new Error("v12_native_acceptance_authority_reader_query_failed");
+        },
+      }),
+    } as SqliteKernel;
+    await expect(executeV12NativeAcceptanceReadAction({
+      kernel: readerFailureKernel,
+      request: value,
+      sha256,
+      executeOperation: async () => ({ result: "read", facts: {} }),
+    })).rejects.toThrow("v12_native_acceptance_authority_reader_query_failed");
   });
 
   it("audits count, identity, handler, postcondition, receipt, and collapse invariants independently", () => {
