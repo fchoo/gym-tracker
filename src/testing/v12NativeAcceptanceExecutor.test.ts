@@ -891,6 +891,57 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects malformed custom-exercise command acknowledgements", async () => {
+    const { executor, contracts } = isolateExecutorWithMocks([{
+      moduleName: "../domains/library/customExerciseCommands",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/library/customExerciseCommands")>("../domains/library/customExerciseCommands"),
+        createCustomExercise: async () => ({ outcome: "already_committed", exercise: { exerciseId: "wrong-exercise", revision: 1 } }),
+        editCustomExercise: async () => ({ outcome: "already_committed", exercise: { revision: 1 } }),
+        setExerciseHidden: async () => ({ outcome: "already_committed", hidden: false }),
+        previewCustomExerciseArchive: async () => ({ previewRevision: 1 }),
+        archiveCustomExercise: async () => ({ outcome: "already_committed", archived: false }),
+        restoreCustomExercise: async () => ({ outcome: "already_committed", archived: true }),
+        createCustomCopy: async () => ({ outcome: "already_committed", exercise: { exerciseId: "wrong-exercise", revision: 1 } }),
+      }),
+    }]);
+    const runtime = { customExercises: {} as never };
+    const mutationKernel = () => kernel({ emptySql: /custom_exercise_mutation_receipts/u });
+    try {
+      const favorite = contracts.v12NativeAcceptanceCaseContract("library-running", "library.exercise-favorites");
+      await expect(executor.prepareV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /FROM exercises/u }), contract: favorite, request: requestForContract(favorite), runtime,
+      })).rejects.toThrow("v12_native_acceptance_custom_exercise_seed_invalid");
+
+      const create = contracts.v12NativeAcceptanceCaseContract("library-running", "library.create-exercise");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: mutationKernel(), contract: create, request: requestForContract(create), runtime,
+      })).rejects.toThrow("v12_native_acceptance_custom_exercise_postcondition_failed");
+
+      const edit = contracts.v12NativeAcceptanceCaseContract("library-running", "library.custom-exercise-edit");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: mutationKernel(), contract: edit, request: requestForContract(edit), runtime,
+      })).rejects.toThrow("v12_native_acceptance_custom_exercise_postcondition_failed");
+
+      const hidden = contracts.v12NativeAcceptanceCaseContract("library-running", "library.custom-exercise-hide");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: mutationKernel(), contract: hidden, request: requestForContract(hidden), runtime,
+      })).rejects.toThrow("v12_native_acceptance_custom_exercise_postcondition_failed");
+
+      const archived = contracts.v12NativeAcceptanceCaseContract("library-running", "library.custom-exercise-archive");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: mutationKernel(), contract: archived, request: requestForContract(archived), runtime,
+      })).rejects.toThrow("v12_native_acceptance_custom_exercise_postcondition_failed");
+
+      const copy = contracts.v12NativeAcceptanceCaseContract("library-running", "library.custom-exercise-copy-bundled");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: mutationKernel(), contract: copy, request: requestForContract(copy), runtime,
+      })).rejects.toThrow("v12_native_acceptance_custom_exercise_postcondition_failed");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("rejects Running handlers whose nonce-bound aggregate is absent", async () => {
     const runtime = { running: { loadPlan: async () => null } as never };
     const cases = [
