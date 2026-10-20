@@ -1332,6 +1332,21 @@ describe("v1.2 native acceptance production executor", () => {
         } as never,
       },
     })).rejects.toThrow("v12_native_acceptance_running_receipt_invalid");
+
+    const goalReplayNonce = "c".repeat(48);
+    const goalPlan = { ...plan, id: `v12:running:${goalReplayNonce}` } as never;
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({
+        values: {
+          operation: "edit",
+          plan_id: `v12:running:${goalReplayNonce}`,
+          request_sha256: "a".repeat(64),
+        },
+      }),
+      contract: goal,
+      request: requestForContract(goal, goalReplayNonce),
+      runtime: { running: { loadPlan: async () => goalPlan } as never },
+    })).rejects.toThrow("v12_native_acceptance_running_receipt_invalid");
   });
 
   it("rejects a Running seed that the production runtime cannot read back", async () => {
