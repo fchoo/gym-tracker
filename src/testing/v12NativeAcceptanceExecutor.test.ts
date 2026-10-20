@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it, jest } from "@jest/globals";
+
 
 import type { SqliteKernel, SqliteReadTransactionExecutor, SqliteTransactionExecutor } from "../platform/sqlite/sqliteKernel";
 import {
@@ -64,6 +65,7 @@ function kernel(options: Readonly<{
   rowCount?: number;
   changes?: number;
   empty?: boolean;
+  emptySql?: RegExp;
   initialRevision?: number;
   snapshotValues?: readonly number[];
   values?: Readonly<Record<string, unknown>>;
@@ -73,7 +75,7 @@ function kernel(options: Readonly<{
   const queryAll = async <Row,>(sql: string): Promise<readonly Row[]> => {
     options.commands?.push(sql);
     if (sql === "PRAGMA user_version") return (options.version === null ? [] : [{ user_version: options.version ?? 42 }]) as Row[];
-    if (options.empty && /^SELECT /u.test(sql)) return [];
+    if ((options.empty || options.emptySql?.test(sql)) && /^SELECT /u.test(sql)) return [];
     if (/SELECT COUNT\(\*\) AS row_count/u.test(sql)) return [{ row_count: options.rowCount ?? 2 }] as Row[];
     const current = snapshot;
     const selected = /^SELECT ([\s\S]+?) FROM /u.exec(sql)?.[1]
@@ -384,6 +386,147 @@ describe("v1.2 native acceptance production executor", () => {
     await expect(dispatchV12NativeAcceptanceProductionOperation({
       kernel: kernel({ empty: true }), contract: active, request: requestForContract(active),
     })).rejects.toThrow("v12_native_acceptance_running_runtime_required");
+  });
+
+  it("rejects invalid Workout fixture writers before a handler can observe their synthetic state", async () => {
+    let isolatedExecutor: typeof import("./v12NativeAcceptanceExecutor") | undefined;
+    let isolatedContracts: typeof import("./contracts/phase15Workout.contract") | undefined;
+    jest.isolateModules(() => {
+      jest.doMock("../domains/plans", () => {
+        const actual = jest.requireActual<typeof import("../domains/plans")>("../domains/plans");
+        return { ...actual, activateStarterPlan: async () => ({ plan: { id: "wrong-plan" }, days: [] }) };
+      });
+      isolatedExecutor = require("./v12NativeAcceptanceExecutor") as typeof import("./v12NativeAcceptanceExecutor");
+      isolatedContracts = require("./contracts/phase15Workout.contract") as typeof import("./contracts/phase15Workout.contract");
+    });
+    try {
+      if (isolatedExecutor === undefined || isolatedContracts === undefined) {
+        throw new Error("v12_native_acceptance_isolated_module_missing");
+      }
+      const workout = isolatedContracts.v12NativeAcceptanceCaseContract("workout", "workout.day-switch");
+      const fixtureRequest = requestForContract(workout, "d".repeat(48));
+      await expect(isolatedExecutor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ empty: true }), contract: workout, request: fixtureRequest,
+      })).rejects.toThrow("v12_native_acceptance_workout_fixture_seed_invalid");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
+  it("rejects an absent Workout fixture day and non-running production start results", async () => {
+    let isolatedExecutor: typeof import("./v12NativeAcceptanceExecutor") | undefined;
+    let isolatedContracts: typeof import("./contracts/phase15Workout.contract") | undefined;
+    jest.isolateModules(() => {
+      jest.doMock("../domains/plans", () => {
+        const actual = jest.requireActual<typeof import("../domains/plans")>("../domains/plans");
+        return {
+          ...actual,
+          activateStarterPlan: async ({ activatedAtMs }: Readonly<{ activatedAtMs: number }>) => ({
+            plan: { id: `plan_copy_${activatedAtMs}` }, days: [{}],
+          }),
+        };
+      });
+      jest.doMock("../domains/workout/startWorkout", () => ({
+        ...jest.requireActual<typeof import("../domains/workout/startWorkout")>("../domains/workout/startWorkout"),
+        startWorkout: async () => ({ status: "abandoned", id: "not-a-running-session" }),
+      }));
+      isolatedExecutor = require("./v12NativeAcceptanceExecutor") as typeof import("./v12NativeAcceptanceExecutor");
+      isolatedContracts = require("./contracts/phase15Workout.contract") as typeof import("./contracts/phase15Workout.contract");
+    });
+    try {
+      if (isolatedExecutor === undefined || isolatedContracts === undefined) {
+        throw new Error("v12_native_acceptance_isolated_module_missing");
+      }
+      const contract = isolatedContracts.v12NativeAcceptanceCaseContract("workout", "workout.start-alternate");
+      const fixtureRequest = requestForContract(contract, "e".repeat(48));
+      await expect(isolatedExecutor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ empty: true }), contract, request: fixtureRequest,
+      })).rejects.toThrow("v12_native_acceptance_workout_fixture_day_missing");
+      await expect(isolatedExecutor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /(?:SELECT id FROM plans WHERE|SELECT id FROM workout_sessions)/u }),
+        contract,
+        request: fixtureRequest,
+      })).rejects.toThrow("v12_native_acceptance_workout_start_postcondition_failed");
+
+      const activeContract = isolatedContracts.v12NativeAcceptanceCaseContract("workout", "workout.row-edit");
+      await expect(isolatedExecutor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /(?:SELECT id FROM plans WHERE|SELECT id FROM workout_sessions)/u }),
+        contract: activeContract,
+        request: requestForContract(activeContract, fixtureRequest.nonce),
+      })).rejects.toThrow("v12_native_acceptance_workout_fixture_start_invalid");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
+  it("rejects Workout repository reads whose case-specific projections lose their required facts", async () => {
+    let isolatedExecutor: typeof import("./v12NativeAcceptanceExecutor") | undefined;
+    let isolatedContracts: typeof import("./contracts/phase15Workout.contract") | undefined;
+    jest.isolateModules(() => {
+      jest.doMock("../platform/sqlite/repositories/plansWorkoutRepository", () => {
+        const actual = jest.requireActual<typeof import("../platform/sqlite/repositories/plansWorkoutRepository")>("../platform/sqlite/repositories/plansWorkoutRepository");
+        return {
+          ...actual,
+          createPlansWorkoutRepository: () => ({
+            getTodayView: async () => ({ state: "missing" }),
+            getPlanDays: async () => [],
+          }),
+        };
+      });
+      isolatedExecutor = require("./v12NativeAcceptanceExecutor") as typeof import("./v12NativeAcceptanceExecutor");
+      isolatedContracts = require("./contracts/phase15Workout.contract") as typeof import("./contracts/phase15Workout.contract");
+    });
+    try {
+      if (isolatedExecutor === undefined || isolatedContracts === undefined) {
+        throw new Error("v12_native_acceptance_isolated_module_missing");
+      }
+      const today = isolatedContracts.v12NativeAcceptanceCaseContract("workout", "workout.root-identity");
+      await expect(isolatedExecutor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract: today, request: requestForContract(today),
+      })).rejects.toThrow("v12_native_acceptance_workout_today_view_precondition_missing");
+
+      const days = isolatedContracts.v12NativeAcceptanceCaseContract("workout", "workout.day-switch");
+      await expect(isolatedExecutor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract: days, request: requestForContract(days),
+      })).rejects.toThrow("v12_native_acceptance_workout_read_precondition_missing");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
+  it("rejects missing and non-running active Workout repository projections", async () => {
+    let isolatedExecutor: typeof import("./v12NativeAcceptanceExecutor") | undefined;
+    let isolatedContracts: typeof import("./contracts/phase15Workout.contract") | undefined;
+    jest.isolateModules(() => {
+      jest.doMock("../platform/sqlite/repositories/workoutRepository", () => {
+        const actual = jest.requireActual<typeof import("../platform/sqlite/repositories/workoutRepository")>("../platform/sqlite/repositories/workoutRepository");
+        return {
+          ...actual,
+          createWorkoutRepository: () => ({
+            getWorkoutSession: async () => null,
+            getActiveWorkout: async () => ({ status: "paused" }),
+          }),
+        };
+      });
+      isolatedExecutor = require("./v12NativeAcceptanceExecutor") as typeof import("./v12NativeAcceptanceExecutor");
+      isolatedContracts = require("./contracts/phase15Workout.contract") as typeof import("./contracts/phase15Workout.contract");
+    });
+    try {
+      if (isolatedExecutor === undefined || isolatedContracts === undefined) {
+        throw new Error("v12_native_acceptance_isolated_module_missing");
+      }
+      const session = isolatedContracts.v12NativeAcceptanceCaseContract("workout", "workout.start-resume");
+      await expect(isolatedExecutor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract: session, request: requestForContract(session),
+      })).rejects.toThrow("v12_native_acceptance_workout_read_precondition_missing");
+
+      const active = isolatedContracts.v12NativeAcceptanceCaseContract("workout", "workout.exercise-disclosure");
+      await expect(isolatedExecutor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract: active, request: requestForContract(active),
+      })).rejects.toThrow("v12_native_acceptance_workout_read_precondition_missing");
+    } finally {
+      jest.resetModules();
+    }
   });
 
   it("consumes the full multi-plan wrapper projection through the outer source receipt", async () => {
