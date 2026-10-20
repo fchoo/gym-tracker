@@ -5,7 +5,6 @@ import {
   it,
 } from "@jest/globals";
 import { DatabaseSync } from "node:sqlite";
-import { createHash } from "node:crypto";
 import {
   mkdtempSync,
   rmSync,
@@ -204,37 +203,46 @@ describe("logical backup repository", () => {
   it("persists a request-bound snapshot receipt and replays only the exact source digest", async () => {
     const kernel = await open();
     const repository = createLogicalBackupRepository(kernel);
-    const collectWithReceipt = repository.collectWithReceipt;
-    if (collectWithReceipt === undefined) throw new Error("logical_backup_receipt_command_missing");
     const input = Object.freeze({
-      requestId: "logical-backup-request",
-      requestSha256: "a".repeat(64),
       snapshotId: "logical-backup-snapshot",
       createdAtMs: 1_786_853_900_000,
-      sha256: async (value: string) => createHash("sha256").update(value).digest("hex"),
     });
 
-    const first = await collectWithReceipt(input);
-    const replay = await collectWithReceipt(input);
+    const first = await repository.collect(input);
+    const [firstReceipt] = await kernel.queryAll<Readonly<{
+      request_id: string;
+      request_sha256: string;
+      snapshot_id: string;
+      snapshot_sha256: string;
+      total_rows: number;
+      committed_at_ms: number;
+    }>>(
+      `SELECT request_id, request_sha256, snapshot_id, snapshot_sha256,
+              total_rows, committed_at_ms
+         FROM logical_backup_receipts
+        WHERE snapshot_id = ?`,
+      [input.snapshotId],
+    );
+    const replay = await repository.collect(input);
 
-    expect(first.outcome).toBe("committed");
-    expect(first.receipt).toMatchObject({
-      requestId: input.requestId,
-      requestSha256: input.requestSha256,
-      snapshotId: input.snapshotId,
-      totalRows: first.snapshot.manifest.totalRows,
+    expect(firstReceipt).toMatchObject({
+      request_id: expect.stringMatching(/^logical-backup:[a-f0-9]{64}$/u),
+      request_sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      snapshot_id: input.snapshotId,
+      total_rows: first.manifest.totalRows,
+      committed_at_ms: input.createdAtMs,
     });
-    expect(replay).toMatchObject({ outcome: "already_committed", receipt: first.receipt });
-    await expect(collectWithReceipt({ ...input, requestSha256: "b".repeat(64) }))
+    expect(replay).toEqual(first);
+    await expect(repository.collect({ ...input, createdAtMs: input.createdAtMs + 1 }))
       .rejects.toThrow("logical_backup_request_identity_conflict");
     await expect(kernel.queryAll(
       "SELECT request_id, snapshot_id, snapshot_sha256, total_rows FROM logical_backup_receipts WHERE request_id = ?",
-      [input.requestId],
+      [firstReceipt?.request_id],
     )).resolves.toEqual([{
-      request_id: input.requestId,
+      request_id: firstReceipt?.request_id,
       snapshot_id: input.snapshotId,
-      snapshot_sha256: first.receipt.snapshotSha256,
-      total_rows: first.snapshot.manifest.totalRows,
+      snapshot_sha256: firstReceipt?.snapshot_sha256,
+      total_rows: first.manifest.totalRows,
     }]);
   });
 

@@ -61,7 +61,10 @@ import { createRunningPlanRepository } from "../platform/sqlite/repositories/run
 import { createScheduleCollisionRepository } from "../platform/sqlite/repositories/scheduleCollisionRepository";
 import { createHistoryRepository } from "../platform/sqlite/repositories/historyRepository";
 import { createHistoryProjectionRepository } from "../platform/sqlite/repositories/historyProjectionRepository";
-import { createLogicalBackupRepository } from "../platform/sqlite/repositories/logicalBackupRepository";
+import {
+  createLogicalBackupRepository,
+  logicalBackupCollectionIdentity,
+} from "../platform/sqlite/repositories/logicalBackupRepository";
 import { runtimeSha256 } from "../platform/crypto/runtimeSha256";
 import { parseAcceptedPhase2Catalog } from "./contracts/phase2Content.contract";
 import fullBodyFoundationAsset from "../../assets/content/full-body-foundation.v1.json";
@@ -2599,41 +2602,42 @@ async function executeWorkoutFinishPartial(input: V12NativeAcceptanceProductionH
   const request = requireRequest(input);
   const sessionId = await workoutFixtureSessionId(input.kernel, request);
   if (sessionId === null) throw new Error("v12_native_acceptance_workout_finish_partial_precondition_missing");
-  const requestId = `v12:workout-finish-partial:${request.nonce}`;
-  const requestSha256 = await runtimeSha256(stableJson(Object.freeze({
-    request_id: requestId,
-    workout_session_id: sessionId,
-    nonce: request.nonce,
-    action: input.contract.actionId,
-  })));
+  const repository = createWorkoutOutcomeRepository(input.kernel);
+  if (typeof repository.finishPartial !== "function") {
+    throw new Error("v12_native_acceptance_workout_finish_partial_handler_missing");
+  }
   const [before] = await input.kernel.queryAll<Readonly<{
     id: string;
     workout_session_id: string;
     request_sha256: string;
+    committed_at_ms: number;
   }>>(
-    `SELECT id, workout_session_id, request_sha256
+    `SELECT id, workout_session_id, request_sha256, committed_at_ms
      FROM workout_receipts
-     WHERE id = ?`,
-    [requestId],
+     WHERE workout_session_id = ? AND id LIKE 'finish-partial:%'
+     ORDER BY committed_at_ms DESC, id DESC
+     LIMIT 1`,
+    [sessionId],
   );
   const session = before === undefined
     ? await workoutFixtureSessionRevision(input.kernel, request)
     : null;
-  const repository = createWorkoutOutcomeRepository(input.kernel);
-  if (repository.finishPartialWithReceipt === undefined) {
-    throw new Error("v12_native_acceptance_workout_finish_partial_handler_missing");
+  const replayRevision = before?.id.match(/^finish-partial:([0-9]+):[a-f0-9]{64}$/u)?.[1];
+  if (before !== undefined && replayRevision === undefined) {
+    throw new Error("v12_native_acceptance_workout_finish_partial_postcondition_failed");
   }
-  const result = await repository.finishPartialWithReceipt({
-    sessionId,
-    expectedSessionRevision: session?.revision ?? 1,
-    confirmation: PARTIAL_CONFIRMATION,
-    endedAtMs: workoutFixtureActivatedAt(request) + 7_000,
-    requestId,
-    requestSha256,
+  const result = await finishPartial({
+    repository,
+    input: {
+      sessionId,
+      expectedSessionRevision: session?.revision ?? Number(replayRevision),
+      confirmation: PARTIAL_CONFIRMATION,
+      endedAtMs: before?.committed_at_ms ?? workoutFixtureActivatedAt(request) + 7_000,
+    },
   });
   return workoutMutationFacts({
     handler: input,
-    receiptId: stableJson(Object.freeze({ id: requestId })),
+    receiptId: stableJson(Object.freeze({ id: result.receipt.requestId })),
     outcome: result.outcome,
     verify: async () => {
       const [receipt] = await input.kernel.queryAll<Readonly<{
@@ -2644,11 +2648,11 @@ async function executeWorkoutFinishPartial(input: V12NativeAcceptanceProductionH
         `SELECT id, workout_session_id, request_sha256
          FROM workout_receipts
          WHERE id = ?`,
-        [requestId],
+        [result.receipt.requestId],
       );
       const detail = await createWorkoutOutcomeRepository(input.kernel).getSessionDetail(sessionId);
-      if (receipt?.id !== requestId || receipt.workout_session_id !== sessionId
-        || receipt.request_sha256 !== requestSha256 || detail.status !== "partial") {
+      if (receipt?.id !== result.receipt.requestId || receipt.workout_session_id !== sessionId
+        || receipt.request_sha256 !== result.receipt.requestSha256 || detail.status !== "partial") {
         throw new Error("v12_native_acceptance_workout_finish_partial_postcondition_failed");
       }
     },
@@ -3773,25 +3777,22 @@ async function executeMetricMigration(input: V12NativeAcceptanceProductionHandle
 
 async function executeLogicalBackupCollection(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
   const request = requireRequest(input);
-  const requestId = `v12:logical-backup:${request.nonce}`;
   const snapshotId = `v12:logical-backup-snapshot:${request.nonce}`;
-  const requestSha256 = await runtimeSha256(stableJson(Object.freeze({
-    operation: input.contract.operation.id,
-    requestId,
-    snapshotId,
-    nonce: request.nonce,
-  })));
-  const repository = createLogicalBackupRepository(input.kernel);
-  if (repository.collectWithReceipt === undefined) {
-    throw new Error("v12_native_acceptance_logical_backup_command_unavailable");
-  }
-  const collected = await repository.collectWithReceipt({
-    requestId,
-    requestSha256,
+  const collectionInput = Object.freeze({
     snapshotId,
     createdAtMs: workoutFixtureActivatedAt(request) + 12_000,
-    sha256: runtimeSha256,
   });
+  const identity = await logicalBackupCollectionIdentity(collectionInput);
+  const repository = createLogicalBackupRepository(input.kernel);
+  if (typeof repository.collect !== "function") {
+    throw new Error("v12_native_acceptance_logical_backup_command_unavailable");
+  }
+  const [before] = await input.kernel.queryAll<Readonly<{ request_id: string }>>(
+    "SELECT request_id FROM logical_backup_receipts WHERE request_id = ?",
+    [identity.requestId],
+  );
+  const collected = await repository.collect(collectionInput);
+  const collectedSha256 = await runtimeSha256(JSON.stringify(collected));
   const [durable, owner] = await Promise.all([
     input.kernel.queryAll<Readonly<{
       request_id: string;
@@ -3805,26 +3806,26 @@ async function executeLogicalBackupCollection(input: V12NativeAcceptanceProducti
               total_rows, committed_at_ms
          FROM logical_backup_receipts
         WHERE request_id = ?`,
-      [requestId],
+      [identity.requestId],
     ),
     input.kernel.queryAll<Readonly<{ id: number; owner_namespace: string }>>(
       "SELECT id, owner_namespace FROM portable_owner_identity WHERE id = 1",
     ),
   ]);
-  const snapshotOwner = collected.snapshot.tables.portable_owner_identity?.[0]?.owner_namespace;
+  const snapshotOwner = collected.tables.portable_owner_identity?.[0]?.owner_namespace;
   const row = durable[0];
-  if (durable.length !== 1 || row === undefined || row.request_id !== requestId
-    || row.request_sha256 !== requestSha256 || row.snapshot_id !== snapshotId
-    || row.snapshot_sha256 !== collected.receipt.snapshotSha256
-    || row.total_rows !== collected.snapshot.manifest.totalRows || row.total_rows < 1
-    || row.committed_at_ms !== collected.receipt.committedAtMs
+  if (durable.length !== 1 || row === undefined || row.request_id !== identity.requestId
+    || row.request_sha256 !== identity.requestSha256 || row.snapshot_id !== snapshotId
+    || row.snapshot_sha256 !== collectedSha256
+    || row.total_rows !== collected.manifest.totalRows || row.total_rows < 1
+    || row.committed_at_ms !== collectionInput.createdAtMs
     || owner[0]?.id !== 1 || owner[0]?.owner_namespace !== snapshotOwner) {
     throw new Error("v12_native_acceptance_logical_backup_postcondition_failed");
   }
   return workoutMutationFacts({
     handler: input,
-    receiptId: stableJson(Object.freeze({ request_id: requestId })),
-    outcome: collected.outcome,
+    receiptId: stableJson(Object.freeze({ request_id: identity.requestId })),
+    outcome: before === undefined ? "committed" : "already_committed",
     verify: async () => {
       const [receipt] = await input.kernel.queryAll<Readonly<{
         request_id: string; snapshot_id: string; snapshot_sha256: string; total_rows: number;
@@ -3832,11 +3833,11 @@ async function executeLogicalBackupCollection(input: V12NativeAcceptanceProducti
         `SELECT request_id, snapshot_id, snapshot_sha256, total_rows
            FROM logical_backup_receipts
           WHERE request_id = ?`,
-        [requestId],
+        [identity.requestId],
       );
-      if (receipt?.request_id !== requestId || receipt.snapshot_id !== snapshotId
-        || receipt.snapshot_sha256 !== collected.receipt.snapshotSha256
-        || receipt.total_rows !== collected.snapshot.manifest.totalRows) {
+      if (receipt?.request_id !== identity.requestId || receipt.snapshot_id !== snapshotId
+        || receipt.snapshot_sha256 !== collectedSha256
+        || receipt.total_rows !== collected.manifest.totalRows) {
         throw new Error("v12_native_acceptance_logical_backup_postcondition_failed");
       }
     },

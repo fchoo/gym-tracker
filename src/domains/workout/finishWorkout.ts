@@ -22,6 +22,14 @@ export type FinishPartialInput = FinishCompletedInput & Readonly<{
   confirmation: string;
 }>;
 
+export type FinishPartialResult = FinishOutcomeResult & Readonly<{
+  outcome: "committed" | "already_committed";
+  receipt: Readonly<{
+    requestId: string;
+    requestSha256: string;
+  }>;
+}>;
+
 export type SaveZeroSetInput = FinishPartialInput;
 export type DiscardWorkoutInput = FinishPartialInput;
 
@@ -207,6 +215,16 @@ export function finishCompleted(input: Readonly<{
   return input.repository.finishCompleted(input.input);
 }
 
+export function finishPartial(input: Readonly<{
+  repository: WorkoutOutcomeRepository & Readonly<{
+    finishPartial(input: FinishPartialInput): Promise<FinishPartialResult>;
+  }>;
+  input: FinishPartialInput;
+}>): Promise<FinishPartialResult>;
+export function finishPartial(input: Readonly<{
+  repository: WorkoutOutcomeRepository;
+  input: FinishPartialInput;
+}>): Promise<FinishOutcomeResult>;
 export function finishPartial(input: Readonly<{
   repository: WorkoutOutcomeRepository;
   input: FinishPartialInput;

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { describe, expect, it, jest } from "@jest/globals";
 
 
@@ -25,6 +26,30 @@ import {
 
 const sha256 = async (value: string): Promise<string> =>
   createHash("sha256").update(value).digest("hex");
+
+describe("v1.2 acceptance production API parity", () => {
+  it("registers only canonical operations that retain non-test production callers", () => {
+    const executorSource = readFileSync(
+      require.resolve("./v12NativeAcceptanceExecutor"),
+      "utf8",
+    );
+    const runtimeSource = readFileSync(
+      require.resolve("../bootstrap/workoutAppRuntime"),
+      "utf8",
+    );
+    const backupSource = readFileSync(
+      require.resolve("../domains/portability/backupCommands"),
+      "utf8",
+    );
+
+    expect(executorSource).toContain("await finishPartial({");
+    expect(runtimeSource).toContain("finishPartial({ repository, input })");
+    expect(executorSource).not.toContain("finishPartialWithReceipt");
+    expect(executorSource).toContain("await repository.collect(");
+    expect(backupSource).toContain("dependencies.collector.collect({");
+    expect(executorSource).not.toContain("collectWithReceipt");
+  });
+});
 
 function request(overrides: Partial<V12NativeAcceptanceRequest> = {}): V12NativeAcceptanceRequest {
   return {
@@ -1833,7 +1858,12 @@ describe("v1.2 native acceptance production executor", () => {
       factory: () => ({
         ...jest.requireActual<typeof import("../platform/sqlite/repositories/workoutOutcomeRepository")>("../platform/sqlite/repositories/workoutOutcomeRepository"),
         createWorkoutOutcomeRepository: () => ({
-          finishPartialWithReceipt: async () => ({ outcome: "committed" }),
+          finishPartial: async () => ({
+            outcome: "committed",
+            receipt: { requestId: "finish-partial:1:receipt", requestSha256: "a".repeat(64) },
+            detail: { status: "in_progress" },
+            invalidationScopes: [],
+          }),
           getSessionDetail: async () => ({ status: "in_progress" }),
         }),
       }),
@@ -2541,13 +2571,9 @@ describe("v1.2 native acceptance production executor", () => {
       factory: () => ({
         ...jest.requireActual<typeof import("../platform/sqlite/repositories/logicalBackupRepository")>("../platform/sqlite/repositories/logicalBackupRepository"),
         createLogicalBackupRepository: () => ({
-          collectWithReceipt: async () => ({
-            outcome: "committed",
-            receipt: { snapshotSha256: "snapshot-digest", committedAtMs: 1 },
-            snapshot: {
-              manifest: { totalRows: 1 },
-              tables: { portable_owner_identity: [{ owner_namespace: "owner" }] },
-            },
+          collect: async () => ({
+            manifest: { totalRows: 1 },
+            tables: { portable_owner_identity: [{ owner_namespace: "owner" }] },
           }),
         }),
       }),
@@ -2563,22 +2589,19 @@ describe("v1.2 native acceptance production executor", () => {
   });
 
   it("rejects a logical-backup receipt that drifts after its initial durable check", async () => {
-    let command: Readonly<{ requestId: string; requestSha256: string; snapshotId: string }> | undefined;
+    let command: Readonly<{ snapshotId: string; createdAtMs: number }> | undefined;
+    const snapshot = {
+      manifest: { totalRows: 1 },
+      tables: { portable_owner_identity: [{ owner_namespace: "owner" }] },
+    };
     const backup = isolateExecutorWithMocks([{
       moduleName: "../platform/sqlite/repositories/logicalBackupRepository",
       factory: () => ({
         ...jest.requireActual<typeof import("../platform/sqlite/repositories/logicalBackupRepository")>("../platform/sqlite/repositories/logicalBackupRepository"),
         createLogicalBackupRepository: () => ({
-          collectWithReceipt: async (input: Readonly<{ requestId: string; requestSha256: string; snapshotId: string }>) => {
+          collect: async (input: Readonly<{ snapshotId: string; createdAtMs: number }>) => {
             command = input;
-            return {
-              outcome: "committed",
-              receipt: { snapshotSha256: "initial-digest", committedAtMs: 1 },
-              snapshot: {
-                manifest: { totalRows: 1 },
-                tables: { portable_owner_identity: [{ owner_namespace: "owner" }] },
-              },
-            };
+            return snapshot;
           },
         }),
       }),
@@ -2590,15 +2613,29 @@ describe("v1.2 native acceptance production executor", () => {
       let receiptReads = 0;
       runtime.queryAll = async <Row extends Record<string, unknown>,>(sql: string, params?: readonly SqliteParameter[]) => {
         if (sql.includes("FROM logical_backup_receipts")) {
+          if (sql.includes("SELECT request_id FROM")) return [];
           receiptReads += 1;
-          const digest = receiptReads === 1 ? "initial-digest" : "drifted-digest";
+          if (command === undefined) return [];
+          const requestId = `logical-backup:${await sha256(JSON.stringify({
+            operation: "logical_backup_collection",
+            snapshotId: command.snapshotId,
+          }))}`;
+          const requestSha256 = await sha256(JSON.stringify({
+            operation: "logical_backup_collection",
+            requestId,
+            snapshotId: command.snapshotId,
+            createdAtMs: command.createdAtMs,
+          }));
+          const digest = receiptReads === 1
+            ? await sha256(JSON.stringify(snapshot))
+            : "d".repeat(64);
           return [{
-            request_id: command?.requestId ?? params?.[0],
-            request_sha256: command?.requestSha256,
-            snapshot_id: command?.snapshotId,
+            request_id: params?.[0],
+            request_sha256: requestSha256,
+            snapshot_id: command.snapshotId,
             snapshot_sha256: digest,
             total_rows: 1,
-            committed_at_ms: 1,
+            committed_at_ms: command.createdAtMs,
           }] as unknown as readonly Row[];
         }
         if (sql.includes("FROM portable_owner_identity")) {

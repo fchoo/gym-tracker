@@ -47,6 +47,7 @@ import {
   type FinishCompletedInput,
   type FinishOutcomeResult,
   type FinishPartialInput,
+  type FinishPartialResult,
   type ResumePartialWorkoutInput,
   type SaveZeroSetInput,
   type SessionDetail,
@@ -199,17 +200,6 @@ type RecommendationDecisionReceiptRow = Readonly<{
   recommendation_id: string;
   decision: RecommendationDecision;
   result_json: string;
-}>;
-
-export type FinishPartialWithReceiptInput = FinishPartialInput & Readonly<{
-  requestId: string;
-  requestSha256: string;
-}>;
-
-export type FinishPartialWithReceiptResult = Readonly<{
-  outcome: "committed" | "already_committed";
-  detail: FinishOutcomeResult["detail"];
-  invalidationScopes: FinishOutcomeResult["invalidationScopes"];
 }>;
 
 type CompleteRecommendationDecisionInput = Readonly<{
@@ -2480,11 +2470,11 @@ export function createWorkoutOutcomeRepository(
   kernel: SqliteKernel,
 ): WorkoutOutcomeRepository & ProgressionRepository & Readonly<{
   getCalendarSessionDetail(sessionId: string): Promise<SessionDetail | null>;
-  finishPartialWithReceipt?(input: FinishPartialWithReceiptInput): Promise<FinishPartialWithReceiptResult>;
+  finishPartial(input: FinishPartialInput): Promise<FinishPartialResult>;
 }> {
   const repository: WorkoutOutcomeRepository & ProgressionRepository & Readonly<{
     getCalendarSessionDetail(sessionId: string): Promise<SessionDetail | null>;
-    finishPartialWithReceipt?(input: FinishPartialWithReceiptInput): Promise<FinishPartialWithReceiptResult>;
+    finishPartial(input: FinishPartialInput): Promise<FinishPartialResult>;
   }> = {
     getSessionDetail: (sessionId) => loadSessionDetail(kernel, sessionId),
     getSessionDetailAtRevision: async (sessionId, sourceRevision) => {
@@ -2533,14 +2523,17 @@ export function createWorkoutOutcomeRepository(
         finish(transaction, input, "finish_completed"),
       ),
 
-    finishPartial: (input: FinishPartialInput) =>
-      kernel.write((transaction) =>
-        finish(transaction, input, "finish_partial"),
-      ),
-
-    async finishPartialWithReceipt(input) {
-      if (!/^[A-Za-z0-9:_-]{8,160}$/u.test(input.requestId)
-        || !/^[a-f0-9]{64}$/u.test(input.requestSha256)) {
+    async finishPartial(input: FinishPartialInput): Promise<FinishPartialResult> {
+      const requestSha256 = await runtimeSha256(JSON.stringify({
+        operation: "finish_partial",
+        sessionId: input.sessionId,
+        expectedSessionRevision: input.expectedSessionRevision,
+        confirmation: input.confirmation,
+        endedAtMs: input.endedAtMs,
+      }));
+      const requestId = `finish-partial:${input.expectedSessionRevision}:${await runtimeSha256(input.sessionId)}`;
+      if (!/^[A-Za-z0-9:_-]{8,160}$/u.test(requestId)
+        || !/^[a-f0-9]{64}$/u.test(requestSha256)) {
         throw new WorkoutOutcomeConflictError("finish_partial_receipt_input_invalid");
       }
       return kernel.write(async (transaction) => {
@@ -2552,11 +2545,11 @@ export function createWorkoutOutcomeRepository(
           `SELECT id, workout_session_id, request_sha256
            FROM workout_receipts
            WHERE id = ?`,
-          [input.requestId],
+          [requestId],
         );
         if (receipt !== undefined) {
           if (receipt.workout_session_id !== input.sessionId
-            || receipt.request_sha256 !== input.requestSha256) {
+            || receipt.request_sha256 !== requestSha256) {
             throw new WorkoutOutcomeConflictError("finish_partial_receipt_identity_conflict");
           }
           const detail = await loadSessionDetail(transaction, input.sessionId);
@@ -2565,6 +2558,7 @@ export function createWorkoutOutcomeRepository(
           }
           return Object.freeze({
             outcome: "already_committed" as const,
+            receipt: Object.freeze({ requestId, requestSha256 }),
             detail,
             invalidationScopes: Object.freeze([
               ["today"],
@@ -2578,9 +2572,13 @@ export function createWorkoutOutcomeRepository(
           `INSERT INTO workout_receipts
             (id, workout_session_id, request_sha256, committed_at_ms)
            VALUES (?, ?, ?, ?)`,
-          [input.requestId, input.sessionId, input.requestSha256, input.endedAtMs],
+          [requestId, input.sessionId, requestSha256, input.endedAtMs],
         );
-        return Object.freeze({ outcome: "committed" as const, ...result });
+        return Object.freeze({
+          outcome: "committed" as const,
+          receipt: Object.freeze({ requestId, requestSha256 }),
+          ...result,
+        });
       });
     },
 
