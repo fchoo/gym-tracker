@@ -180,6 +180,7 @@ type V12NativeAcceptanceProductionHandlerInput = Readonly<{
 }>;
 
 const completionWritebackProofs = new WeakMap<SqliteKernel, Map<string, V12CompletionWritebackAcceptanceProof>>();
+const multiPlanWrapperProjections = new WeakMap<SqliteKernel, Map<string, unknown>>();
 
 /**
  * Production command ports deliberately live at the acceptance boundary.  The
@@ -4006,6 +4007,12 @@ async function executeMultiPlanRunningWrapper(input: V12NativeAcceptanceProducti
       skipped: result.skipped,
       case: Object.freeze({ id: caseResult.id, status: caseResult.status }),
     });
+    let projections = multiPlanWrapperProjections.get(input.kernel);
+    if (projections === undefined) {
+      projections = new Map();
+      multiPlanWrapperProjections.set(input.kernel, projections);
+    }
+    projections.set(request.nonce, projection);
     return Object.freeze({
       result: "committed" as const,
       facts: operationFacts({
@@ -4331,8 +4338,16 @@ async function readAuthorityState(input: Readonly<{
   if (input.kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
   const snapshot = await input.kernel.readSnapshot(async (transaction: SqliteReadTransactionExecutor) => {
     const [version] = await transaction.queryAll<{ user_version: number }>("PRAGMA user_version");
-    const facts = await readCaseAuthorityFacts(transaction, input.contract, input.request, input.kernel);
-    return Object.freeze({ schemaVersion: version?.user_version ?? -1, facts, rowCount: facts.rowCount });
+    const multiPlanFacts = input.contract.shard === "multi-plan"
+      ? multiPlanWrapperProjections.get(input.kernel)?.get(input.request.nonce)
+        ?? Object.freeze({ status: "not-run", case: Object.freeze({ id: input.contract.caseId, status: "not-run" }) })
+      : undefined;
+    const scopedFacts = multiPlanFacts === undefined
+      ? await readCaseAuthorityFacts(transaction, input.contract, input.request, input.kernel)
+      : undefined;
+    const facts = multiPlanFacts ?? scopedFacts!;
+    const rowCount = scopedFacts?.rowCount ?? 1;
+    return Object.freeze({ schemaVersion: version?.user_version ?? -1, facts, rowCount });
   });
   const factsSha256 = await input.sha256(stableJson({ schema_version: snapshot.schemaVersion, facts: snapshot.facts }));
   const digest = await input.sha256(stableJson({

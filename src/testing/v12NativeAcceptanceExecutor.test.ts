@@ -8,6 +8,7 @@ import {
   v12NativeAcceptanceCaseContract,
   type V12NativeAcceptanceCaseContract,
 } from "./contracts/phase15Workout.contract";
+import { MULTI_PLAN_RUNNING_CONTRACT_CASES } from "./contracts/multiPlanRunning.contract";
 import {
   authorityTablesForV12NativeAcceptance,
   assertV12NativeAcceptanceProductionHandlerRegistry,
@@ -275,6 +276,56 @@ describe("v1.2 native acceptance production executor", () => {
     await expect(dispatchV12NativeAcceptanceProductionOperation({
       kernel: kernel(), contract,
     })).rejects.toThrow("v12_native_acceptance_request_required");
+  });
+
+  it("consumes the full multi-plan wrapper projection through the outer source receipt", async () => {
+    const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ shard, caseId }) => (
+      shard === "multi-plan" && caseId === "phase13-map01-activation"
+    ))!;
+    const runtime = kernel();
+    let calls = 0;
+    const result = await executeV12NativeAcceptanceReadAction({
+      kernel: runtime,
+      request: request({
+        shard: contract.shard,
+        caseId: contract.caseId,
+        action: contract.actionId,
+        readback: contract.uiReadback.label,
+        sourceProbe: contract.sourceProbe,
+        authorityTables: contract.probes.post.tables,
+      }),
+      sha256,
+      executeOperation: ({ contract: operationContract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
+        kernel: runtime,
+        contract: operationContract,
+        request: operationRequest,
+        runtime: {
+          multiPlan: {
+            runWrapper: async () => {
+              calls += 1;
+              return {
+                schemaVersion: 1,
+                contractVersion: 1,
+                status: "passed",
+                total: MULTI_PLAN_RUNNING_CONTRACT_CASES.length,
+                passed: MULTI_PLAN_RUNNING_CONTRACT_CASES.length,
+                failed: 0,
+                skipped: 0,
+                cases: MULTI_PLAN_RUNNING_CONTRACT_CASES.map((id) => ({ id, status: "passed", durationMs: 1 })),
+                startedAt: "2026-10-01T00:00:00.000Z",
+                finishedAt: "2026-10-01T00:00:01.000Z",
+              };
+            },
+          },
+        },
+      }),
+    });
+    expect(calls).toBe(1);
+    expect(result.source_receipt).toMatchObject({
+      operation_result: "committed",
+      command_outcome: "committed",
+      committed_effects: 1,
+    });
   });
 
   it("maps source families to exact authority tables and rejects unowned probes", () => {
