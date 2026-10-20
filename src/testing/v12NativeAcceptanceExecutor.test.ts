@@ -1734,6 +1734,70 @@ describe("v1.2 native acceptance production executor", () => {
     })).rejects.toThrow("v12_native_acceptance_running_seed_invalid");
   });
 
+  it("rejects Running receipts whose loaded aggregate no longer proves the command effect", async () => {
+    const runningKernel = (
+      contract: V12NativeAcceptanceCaseContract,
+      operation: string,
+      nonce: string,
+      withSnapshot = true,
+    ) => {
+      const base = kernel({ values: {
+        operation,
+        plan_id: `v12:running:${nonce}`,
+        request_sha256: "a".repeat(64),
+      } });
+      return (withSnapshot ? base : { queryAll: base.queryAll, write: base.write }) as SqliteKernel;
+    };
+    const plan = (nonce: string, overrides: Record<string, unknown> = {}) => ({
+      id: `v12:running:${nonce}`,
+      revision: 1,
+      active: false,
+      lifecycle: "inactive",
+      goal: { goalDistanceMeters: 3_000 },
+      sessions: [],
+      ...overrides,
+    }) as never;
+    const assertPostcondition = async (
+      caseId: string,
+      operation: string,
+      expected: string,
+      override: Record<string, unknown> = {},
+    ) => {
+      const nonce = "a".repeat(48);
+      const contract = v12NativeAcceptanceCaseContract("library-running", caseId);
+      await expect(dispatchV12NativeAcceptanceProductionOperation({
+        kernel: runningKernel(contract, operation, nonce),
+        contract,
+        request: requestForContract(contract, nonce),
+        runtime: { running: { loadPlan: async () => plan(nonce, override) } as never },
+      })).rejects.toThrow(expected);
+    };
+
+    await assertPostcondition("library.running-create-zero-sessions", "create", "v12_native_acceptance_running_postcondition_failed", { sessions: [{}] });
+    await assertPostcondition("library.running-session-common", "edit", "v12_native_acceptance_running_postcondition_failed");
+    await assertPostcondition("library.running-create-typed-sessions", "edit", "v12_native_acceptance_running_postcondition_failed");
+    await assertPostcondition("library.running-two-same-day-slots", "edit", "v12_native_acceptance_running_postcondition_failed");
+    await assertPostcondition("library.running-session-lifecycle", "archive", "v12_native_acceptance_running_postcondition_failed");
+
+    const zeroNonce = "d".repeat(48);
+    const zero = v12NativeAcceptanceCaseContract("library-running", "library.running-create-zero-sessions");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: runningKernel(zero, "create", zeroNonce, false),
+      contract: zero,
+      request: requestForContract(zero, zeroNonce),
+      runtime: { running: { loadPlan: async () => plan(zeroNonce) } as never },
+    })).rejects.toThrow("v12_native_acceptance_snapshot_unavailable");
+
+    const goalNonce = "e".repeat(48);
+    const goal = v12NativeAcceptanceCaseContract("library-running", "library.running-goal-edit");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: runningKernel(goal, "edit", goalNonce, false),
+      contract: goal,
+      request: requestForContract(goal, goalNonce),
+      runtime: { running: { loadPlan: async () => plan(goalNonce, { goal: { goalDistanceMeters: 5_000 } }) } as never },
+    })).rejects.toThrow("v12_native_acceptance_snapshot_unavailable");
+  });
+
   it("rejects a substituted Running session kind before the runtime can save it", async () => {
     const contract = v12NativeAcceptanceCaseContract("library-running", "library.running-session-common");
     await expect(dispatchV12NativeAcceptanceProductionOperation({
