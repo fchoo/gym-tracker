@@ -1717,6 +1717,111 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects custom and metric commands whose claimed effects cannot be made authoritative", async () => {
+    const favorite = isolateExecutorWithMocks([{
+      moduleName: "../domains/library/customExerciseCommands",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/library/customExerciseCommands")>("../domains/library/customExerciseCommands"),
+        setExerciseFavorite: async () => ({ outcome: "already_committed", favorite: false }),
+      }),
+    }]);
+    try {
+      const contract = favorite.contracts.v12NativeAcceptanceCaseContract("library-running", "library.exercise-favorites");
+      await expect(favorite.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /custom_exercise_mutation_receipts/u }),
+        contract,
+        request: requestForContract(contract),
+        runtime: { customExercises: {} as never },
+      })).rejects.toThrow("v12_native_acceptance_custom_exercise_postcondition_failed");
+    } finally {
+      jest.resetModules();
+    }
+
+    const create = v12NativeAcceptanceCaseContract("library-running", "library.create-exercise");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel(),
+      contract: create,
+      request: requestForContract(create),
+      runtime: { customExercises: {} as never },
+    })).rejects.toThrow("v12_native_acceptance_custom_exercise_receipt_invalid");
+
+    const copy = v12NativeAcceptanceCaseContract("library-running", "library.custom-exercise-copy-bundled");
+    await expect(resolveV12NativeAcceptanceProductionHandler(copy).execute({
+      kernel: kernel({ emptySql: /(?:custom_exercise_mutation_receipts|origin = 'bundled')/u }),
+      contract: copy,
+      request: requestForContract(copy),
+      runtime: { customExercises: {} as never },
+    })).rejects.toThrow("v12_native_acceptance_copy_precondition_missing");
+
+    const metric = v12NativeAcceptanceCaseContract("library-running", "library.metric-profile-migration");
+    const metricRequest = requestForContract(metric, "c".repeat(48));
+    const missingExercise = isolateExecutorWithMocks([{
+      moduleName: "../domains/library/customExerciseCommands",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/library/customExerciseCommands")>("../domains/library/customExerciseCommands"),
+        createCustomExercise: async () => ({ outcome: "already_committed", exercise: { exerciseId: "wrong-exercise" } }),
+      }),
+    }]);
+    try {
+      const runtime = kernel({ emptySql: /FROM exercises\s+WHERE id = \? AND origin = 'custom'/u });
+      await expect(missingExercise.executor.prepareV12NativeAcceptanceProductionOperation({
+        kernel: runtime,
+        contract: metric,
+        request: metricRequest,
+        runtime: { customExercises: {} as never, ownedPlans: {} as never },
+      })).rejects.toThrow("v12_native_acceptance_metric_seed_invalid");
+    } finally {
+      jest.resetModules();
+    }
+
+    await expect(prepareV12NativeAcceptanceProductionOperation({
+      kernel: kernel(),
+      contract: metric,
+      request: metricRequest,
+      runtime: {
+        customExercises: {} as never,
+        ownedPlans: {
+          loadPlan: async () => null,
+          createFixtureDraft: async () => ({ outcome: "already_committed" }),
+        } as never,
+      },
+    })).rejects.toThrow("v12_native_acceptance_metric_plan_seed_invalid");
+
+    await expect(prepareV12NativeAcceptanceProductionOperation({
+      kernel: kernel(),
+      contract: metric,
+      request: metricRequest,
+      runtime: {
+        customExercises: {} as never,
+        ownedPlans: {
+          loadPlan: async () => null,
+          createFixtureDraft: async () => ({ outcome: "committed", plan: { revision: 1 } }),
+          savePlan: async () => ({ outcome: "already_committed" }),
+        } as never,
+      },
+    })).rejects.toThrow("v12_native_acceptance_metric_plan_seed_invalid");
+
+    const replay = kernel({
+      values: {
+        revision: 2,
+        exercise_revision: 2,
+        exercise_id: `v12:metric-exercise:${metricRequest.nonce}`,
+        to_exercise_metric_generation: 2,
+        exercise_metric_generation: 2,
+        result_json: '{"outcome":"committed"}',
+      },
+    });
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: { queryAll: replay.queryAll, write: replay.write } as SqliteKernel,
+      contract: metric,
+      request: metricRequest,
+      runtime: {
+        customExercises: {} as never,
+        ownedPlans: { loadPlan: async () => ({ id: "existing-metric-plan" }) } as never,
+      },
+    })).rejects.toThrow("v12_native_acceptance_snapshot_unavailable");
+  });
+
   it("rejects metric migration when a seeded authority fact or command acknowledgement drifts", async () => {
     const contract = v12NativeAcceptanceCaseContract("library-running", "library.metric-profile-migration");
     const missingFacts = [
