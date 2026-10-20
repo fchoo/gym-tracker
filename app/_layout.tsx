@@ -60,6 +60,7 @@ import {
 import {
   resolveV12NativeAcceptanceProductRequest,
   V12NativeAcceptanceProductGate,
+  type V12NativeAcceptanceProductActionExecutor,
   type V12NativeAcceptanceProductPreparer,
 } from "../src/testing/v12NativeAcceptanceFixture";
 
@@ -304,9 +305,13 @@ function V12NativeAcceptanceProductNavigator({
   const prepareProductCase = (runtime as typeof runtime & Readonly<{
     prepareV12NativeAcceptanceProductCase?: V12NativeAcceptanceProductPreparer;
   }>).prepareV12NativeAcceptanceProductCase;
-  if (prepareProductCase === undefined) return <Redirect href="/" />;
+  const executeProductAction = (runtime as typeof runtime & Readonly<{
+    executeV12NativeAcceptanceProductAction?: V12NativeAcceptanceProductActionExecutor;
+  }>).executeV12NativeAcceptanceProductAction;
+  if (prepareProductCase === undefined || executeProductAction === undefined) return <Redirect href="/" />;
   return (
     <V12NativeAcceptanceProductGate
+      executeProductAction={executeProductAction}
       prepareProductCase={prepareProductCase}
       request={request}
     >

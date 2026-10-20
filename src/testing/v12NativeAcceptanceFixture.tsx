@@ -11,6 +11,7 @@ import {
   type V12NativeAcceptanceRequest,
   type V12NativeAcceptanceShard as NativeAcceptanceShard,
 } from "./v12NativeAcceptanceExecutor";
+import { v12NativeAcceptanceProductDefinition } from "./v12NativeAcceptanceProductRegistry";
 
 export const V12_NATIVE_ACCEPTANCE_FIXTURE_ID = "v12-synthetic-fixtures-r18";
 
@@ -161,12 +162,35 @@ export type V12NativeAcceptanceProductPreparer = (
   request: V12NativeAcceptanceRequest,
 ) => Promise<void>;
 
+export type V12NativeAcceptanceProductActionExecutor = (
+  request: V12NativeAcceptanceRequest,
+) => Promise<void>;
+
+export type V12NativeAcceptanceProductActionBinding = Readonly<{
+  actionId: string;
+  execute(): Promise<void>;
+}>;
+
+const V12NativeAcceptanceProductActionContext = React.createContext<Readonly<{
+  request: V12NativeAcceptanceRequest;
+  binding: V12NativeAcceptanceProductActionBinding;
+}> | null>(null);
+
+export function useV12NativeAcceptanceProductAction(
+  shard: V12NativeAcceptanceRequest["shard"],
+): V12NativeAcceptanceProductActionBinding | undefined {
+  const value = React.useContext(V12NativeAcceptanceProductActionContext);
+  return value?.request.shard === shard ? value.binding : undefined;
+}
+
 export function V12NativeAcceptanceProductGate({
   children,
+  executeProductAction,
   prepareProductCase,
   request,
 }: Readonly<{
   children: React.ReactNode;
+  executeProductAction: V12NativeAcceptanceProductActionExecutor;
   prepareProductCase: V12NativeAcceptanceProductPreparer;
   request: V12NativeAcceptanceRequest;
 }>) {
@@ -183,7 +207,19 @@ export function V12NativeAcceptanceProductGate({
   }, [prepareProductCase, request]);
   if (status === "preparing") return <Text testID="native-acceptance-product-preparing">Preparing product state</Text>;
   if (status === "failed") return <Text testID="native-acceptance-product-error">Product state unavailable</Text>;
-  return <>{children}</>;
+  const definition = v12NativeAcceptanceProductDefinition(request.shard, request.caseId);
+  const contextValue = Object.freeze({
+    request,
+    binding: Object.freeze({
+      actionId: definition.actionId,
+      execute: () => executeProductAction(request),
+    }),
+  });
+  return (
+    <V12NativeAcceptanceProductActionContext.Provider value={contextValue}>
+      {children}
+    </V12NativeAcceptanceProductActionContext.Provider>
+  );
 }
 
 /** Read-only post-action bridge. Product UI owns every action; this component

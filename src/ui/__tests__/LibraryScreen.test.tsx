@@ -169,6 +169,18 @@ async function renderLibrary(
 }
 
 describe("LibraryScreen section state", () => {
+  it("runs the case-owned production operation before opening the normal Actions sheet", async () => {
+    const execute = jest.fn(async () => undefined);
+    await renderLibrary({
+      nativeAcceptanceAction: { actionId: "v12-product-action-library-case", execute },
+    });
+
+    await screen.findByText("Library");
+    await fireEvent.press(screen.getByTestId("v12-product-action-library-case"));
+    expect(await screen.findByTestId("library-actions-sheet-frame")).toBeOnTheScreen();
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
   it("renders both source-backed active sport identities without collapsing either row", async () => {
     await renderLibrary({
       loadLibrary: jest.fn(async () => ({

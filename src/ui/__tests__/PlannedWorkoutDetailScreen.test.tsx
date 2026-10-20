@@ -37,6 +37,16 @@ function occurrenceWithTargets(
 describe("PlannedWorkoutDetailScreen", () => {
   afterEach(() => { jest.restoreAllMocks(); });
 
+  it("runs the domain case before the real occurrence disclosure and exposes its result", async () => {
+    const execute = jest.fn(async () => undefined);
+    await render(<AppearanceProvider><PlannedWorkoutDetailScreen nativeAcceptanceAction={{ actionId: "v12-product-action-multi-plan-case", execute }} occurrenceId="occurrence-1" loadOccurrence={jest.fn(async () => occurrence)} onBack={jest.fn()} /></AppearanceProvider>);
+    await screen.findByText("Planned preview · read only");
+
+    await fireEvent.press(screen.getByTestId("v12-product-action-multi-plan-case"));
+    expect(await screen.findByTestId("planned-workout-expanded-result")).toBeOnTheScreen();
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps Back as the preferred entry target while the exact occurrence is loading", async () => {
     await render(<AppearanceProvider><PlannedWorkoutDetailScreen occurrenceId="occurrence-1" loadOccurrence={() => new Promise(() => undefined)} onBack={jest.fn()} /></AppearanceProvider>);
     expect(screen.getByRole("button", { name: "Back to Calendar agenda" }).props.hasTVPreferredFocus).toBe(true);

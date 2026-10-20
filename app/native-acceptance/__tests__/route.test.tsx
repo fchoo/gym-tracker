@@ -206,6 +206,7 @@ describe("v1.2 native acceptance route", () => {
     }));
     const view = await render(
       <V12NativeAcceptanceProductGate
+        executeProductAction={jest.fn(async () => undefined)}
         prepareProductCase={prepareProductCase}
         request={request!}
       >

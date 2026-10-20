@@ -94,6 +94,7 @@ export type TodayScreenProps = Readonly<{
   headingRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionNativeID?: string;
+  nativeAcceptanceAction?: Readonly<{ actionId: string; execute(): Promise<void> }>;
   onUsefulContent?: () => void;
 }>;
 
@@ -443,6 +444,7 @@ export function TodayScreen({
   headingRef,
   settingsActionRef,
   settingsActionNativeID,
+  nativeAcceptanceAction,
   onUsefulContent,
 }: TodayScreenProps) {
   const [activationPreview, setActivationPreview] = useState(false);
@@ -566,8 +568,15 @@ export function TodayScreen({
                   disabled={!trusted}
                   icon="settings"
                   nativeID={settingsActionNativeID}
-                  onPress={onOpenSettings}
+                  onPress={() => {
+                    if (nativeAcceptanceAction === undefined) {
+                      onOpenSettings();
+                      return;
+                    }
+                    void nativeAcceptanceAction.execute().then(onOpenSettings);
+                  }}
                   ref={settingsActionRef as React.Ref<View>}
+                  {...(nativeAcceptanceAction === undefined ? {} : { testID: nativeAcceptanceAction.actionId })}
                 />
               }
               title="Workout"

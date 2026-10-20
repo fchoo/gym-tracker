@@ -15,6 +15,7 @@ import {
 import {
   STARTER_TEMPLATE_UPDATE_MODE,
 } from "../../src/bootstrap/starterPlanRuntime";
+import { useV12NativeAcceptanceProductAction } from "../../src/testing/v12NativeAcceptanceFixture";
 import {
   LibraryScreen,
 } from "../../src/ui/screens/LibraryScreen";
@@ -25,6 +26,7 @@ import {
 } from "../../src/ui/shell/rootFocus";
 
 export default function LibraryRoute() {
+  const nativeAcceptanceAction = useV12NativeAcceptanceProductAction("library-running");
   const settingsActionNativeID = rootSettingsTriggerNativeID("library");
   const headingRef = useRootHeadingRef("library");
   const settingsActionRef = useRef(null);
@@ -50,6 +52,7 @@ export default function LibraryRoute() {
         ? {}
         : { contentUpdateFailed: runtime.contentUpdateFailed })}
       loadLibrary={runtime.loadLibrary}
+      {...(nativeAcceptanceAction === undefined ? {} : { nativeAcceptanceAction })}
       retryInitialLibraryLoad={runtime.retryLibraryLoad}
       refreshGeneration={refreshGeneration}
       listRecentExercises={runtime.listLibraryRecentExercises}

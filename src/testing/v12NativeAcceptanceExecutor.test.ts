@@ -17,6 +17,7 @@ import {
   authorityTablesForV12NativeAcceptance,
   assertV12NativeAcceptanceProductionHandlerRegistry,
   dispatchV12NativeAcceptanceProductionOperation,
+  executeV12NativeAcceptanceProductAction,
   executeV12NativeAcceptanceReadAction,
   prepareV12NativeAcceptanceProductCase,
   prepareV12NativeAcceptanceProductionOperation,
@@ -52,12 +53,16 @@ describe("v1.2 acceptance production API parity", () => {
     expect(executorSource).not.toContain("collectWithReceipt");
     expect(executorSource).not.toContain("completionWritebackProofs");
     const prepareHookStart = runtimeSource.lastIndexOf("prepareV12NativeAcceptanceProductCase: async");
+    const actionHookStart = runtimeSource.lastIndexOf("executeV12NativeAcceptanceProductAction: async");
     const readHookStart = runtimeSource.lastIndexOf("readV12NativeAcceptanceReceipt: async");
     const nextHookStart = runtimeSource.indexOf("triggerPhase20ProgressRebuild:", readHookStart);
     expect(prepareHookStart).toBeGreaterThan(-1);
-    expect(readHookStart).toBeGreaterThan(prepareHookStart);
-    expect(runtimeSource.slice(prepareHookStart, readHookStart))
+    expect(actionHookStart).toBeGreaterThan(prepareHookStart);
+    expect(readHookStart).toBeGreaterThan(actionHookStart);
+    expect(runtimeSource.slice(prepareHookStart, actionHookStart))
       .not.toContain("dispatchV12NativeAcceptanceProductionOperation");
+    expect(runtimeSource.slice(actionHookStart, readHookStart))
+      .toContain("dispatchV12NativeAcceptanceProductionOperation");
     expect(runtimeSource.slice(readHookStart, nextHookStart))
       .not.toMatch(/prepareV12NativeAcceptanceProductionOperation|dispatchV12NativeAcceptanceProductionOperation/u);
   });
@@ -74,6 +79,16 @@ describe("v1.2 acceptance production API parity", () => {
       sha256,
       prepareOperation,
     });
+    await executeV12NativeAcceptanceProductAction({
+      kernel: runtime,
+      request: productRequest,
+      preparedProductCase: prepared,
+      sha256,
+      executeOperation: async ({ contract: operationContract, request: operationRequest }) => ({
+        result: "read",
+        facts: await operationFactsFor(runtime, operationContract, operationRequest),
+      }),
+    });
     const commandCountAfterPrepare = commands.length;
     const readbacks = await readV12NativeAcceptanceReceipt({
       kernel: runtime,
@@ -89,6 +104,72 @@ describe("v1.2 acceptance production API parity", () => {
       command_receipt_id: null,
       command_outcome: null,
       committed_effects: 0,
+      pre: prepared.pre,
+    });
+    expect(commands.slice(commandCountAfterPrepare).every((sql) => /^SELECT |^PRAGMA /u.test(sql))).toBe(true);
+  });
+
+  it("prepares multi-plan authority without executing the case and reads it after a real product observation", async () => {
+    const contract = v12NativeAcceptanceCaseContract("multi-plan", "phase13-map01-activation");
+    const productRequest = requestForContract(contract, "d".repeat(48));
+    const commands: string[] = [];
+    const runtime = kernel({ commands });
+    const prepareOperation = jest.fn(async () => undefined);
+
+    const prepared = await prepareV12NativeAcceptanceProductCase({
+      kernel: runtime,
+      request: productRequest,
+      sha256,
+      prepareOperation,
+    });
+    let wrapperCalls = 0;
+    await executeV12NativeAcceptanceProductAction({
+      kernel: runtime,
+      request: productRequest,
+      preparedProductCase: prepared,
+      sha256,
+      executeOperation: ({ contract: operationContract, request: operationRequest }) =>
+        dispatchV12NativeAcceptanceProductionOperation({
+          kernel: runtime,
+          contract: operationContract,
+          request: operationRequest,
+          runtime: {
+            multiPlan: {
+              runWrapper: async () => {
+                wrapperCalls += 1;
+                return {
+                  schemaVersion: 1 as const,
+                  contractVersion: 1 as const,
+                  status: "passed" as const,
+                  total: MULTI_PLAN_RUNNING_CONTRACT_CASES.length,
+                  passed: MULTI_PLAN_RUNNING_CONTRACT_CASES.length,
+                  failed: 0,
+                  skipped: 0 as const,
+                  cases: MULTI_PLAN_RUNNING_CONTRACT_CASES.map((id) => ({ id, status: "passed" as const, durationMs: 1 })),
+                  startedAt: "2026-10-01T00:00:00.000Z",
+                  finishedAt: "2026-10-01T00:00:01.000Z",
+                };
+              },
+            },
+          },
+        }),
+    });
+    const commandCountAfterPrepare = commands.length;
+    const readbacks = await readV12NativeAcceptanceReceipt({
+      kernel: runtime,
+      request: productRequest,
+      preparedProductCase: prepared,
+      sha256,
+    });
+
+    expect(prepareOperation).toHaveBeenCalledTimes(1);
+    expect(wrapperCalls).toBe(1);
+    expect(readbacks.source_receipt).toMatchObject({
+      case_id: productRequest.caseId,
+      operation_kind: "repository-mutation",
+      operation_result: "committed",
+      command_outcome: "committed",
+      committed_effects: 1,
       pre: prepared.pre,
     });
     expect(commands.slice(commandCountAfterPrepare).every((sql) => /^SELECT |^PRAGMA /u.test(sql))).toBe(true);
@@ -142,8 +223,13 @@ function kernel(options: Readonly<{
 }> = {}): SqliteKernel {
   let snapshot = 0;
   let mutationRevision = options.initialRevision ?? 1;
-  const queryAll = async <Row,>(sql: string): Promise<readonly Row[]> => {
+  const productReceipts = new Map<string, Readonly<{ source_json: string; ui_json: string; receipt_sha256: string }>>();
+  const queryAll = async <Row,>(sql: string, parameters: readonly SqliteParameter[] = []): Promise<readonly Row[]> => {
     options.commands?.push(sql);
+    if (/FROM v12_native_acceptance_product_receipts/u.test(sql)) {
+      const value = productReceipts.get(`${parameters[0]}:${parameters[1]}:${parameters[2]}`);
+      return (value === undefined ? [] : [value]) as Row[];
+    }
     if (sql === "PRAGMA user_version") return (options.version === null ? [] : [{ user_version: options.version ?? 42 }]) as Row[];
     if ((options.empty || options.emptySql?.test(sql)) && /^SELECT /u.test(sql)) return [];
     if (/SELECT COUNT\(\*\) AS row_count/u.test(sql)) return [{ row_count: options.rowCount ?? 2 }] as Row[];
@@ -172,8 +258,15 @@ function kernel(options: Readonly<{
   const reader = (): SqliteReadTransactionExecutor => ({ queryAll });
   const writer = (): SqliteTransactionExecutor => ({
     queryAll,
-    execute: async (sql: string) => {
+    execute: async (sql: string, parameters: readonly SqliteParameter[] = []) => {
       options.commands?.push(sql);
+      if (/INSERT INTO v12_native_acceptance_product_receipts/u.test(sql)) {
+        productReceipts.set(`${parameters[0]}:${parameters[1]}:${parameters[2]}`, {
+          source_json: String(parameters[3]),
+          ui_json: String(parameters[4]),
+          receipt_sha256: String(parameters[5]),
+        });
+      }
       mutationRevision += 1;
       return { changes: options.changes ?? 1, lastInsertRowId: 0 };
     },

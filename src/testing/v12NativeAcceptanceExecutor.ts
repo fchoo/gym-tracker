@@ -3899,7 +3899,10 @@ const productionHandlerEntries = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.reduce(
 const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptanceProductionHandler, "prepare" | "execute">>> = Object.freeze({
   ...Object.fromEntries(MULTI_PLAN_RUNNING_CONTRACT_CASES.map((caseId) => [
     `migration.multi-plan-running-contract.${caseId}`,
-    Object.freeze({ execute: executeMultiPlanRunningWrapper }),
+    Object.freeze({
+      prepare: async (input: V12NativeAcceptanceProductionHandlerInput) => { await prepareScheduleCollisionFixture(input); },
+      execute: executeMultiPlanRunningWrapper,
+    }),
   ])),
   "backup.logical-backup-repository.collect": Object.freeze({
     execute: executeLogicalBackupCollection,
@@ -4279,9 +4282,6 @@ export async function prepareV12NativeAcceptanceProductCase(input: Readonly<{
     input.request,
     input.sha256,
   );
-  if (contract.shard === "multi-plan") {
-    throw new Error("v12_native_acceptance_product_case_unsupported");
-  }
   await input.prepareOperation({ contract, request: input.request });
   const preRead = await readAuthorityState({
     ...input,
@@ -4432,39 +4432,93 @@ export async function readV12NativeAcceptanceReceipt(input: Readonly<{
   preparedProductCase: V12NativeAcceptancePreparedProductCase;
   sha256(value: string): Promise<string>;
 }>): Promise<V12NativeAcceptanceReadbacks> {
-  return executeV12NativeAcceptanceReadAction({
+  const { contract, actionRequestSha256 } = await resolveV12NativeAcceptanceActionContext(input.request, input.sha256);
+  if (input.preparedProductCase.schema_version !== 1
+    || input.preparedProductCase.operation_id !== contract.operation.id
+    || input.preparedProductCase.action_request_sha256 !== actionRequestSha256) {
+    throw new Error("v12_native_acceptance_prepared_case_mismatch");
+  }
+  const [row] = await input.kernel.queryAll<Readonly<{
+    source_json: string;
+    ui_json: string;
+    receipt_sha256: string;
+  }>>(
+    `SELECT source_json, ui_json, receipt_sha256
+       FROM v12_native_acceptance_product_receipts
+      WHERE nonce = ? AND shard = ? AND case_id = ?`,
+    [input.request.nonce, input.request.shard, input.request.caseId],
+  );
+  if (row === undefined || row.receipt_sha256 !== await input.sha256(`${row.source_json}\n${row.ui_json}`)) {
+    throw new Error("v12_native_acceptance_receipt_invalid");
+  }
+  let sourceReceipt: V12NativeAcceptanceSourceReceipt;
+  let uiReadback: V12NativeAcceptanceUiReadback;
+  try {
+    sourceReceipt = JSON.parse(row.source_json) as V12NativeAcceptanceSourceReceipt;
+    uiReadback = JSON.parse(row.ui_json) as V12NativeAcceptanceUiReadback;
+  } catch {
+    throw new Error("v12_native_acceptance_receipt_invalid");
+  }
+  if (sourceReceipt.shard !== input.request.shard || sourceReceipt.case_id !== input.request.caseId
+    || sourceReceipt.nonce !== input.request.nonce || sourceReceipt.action_request_sha256 !== actionRequestSha256
+    || uiReadback.shard !== input.request.shard || uiReadback.case_id !== input.request.caseId
+    || uiReadback.nonce !== input.request.nonce
+    || uiReadback.source_receipt_sha256 !== sourceReceipt.source_receipt_sha256) {
+    throw new Error("v12_native_acceptance_receipt_invalid");
+  }
+  return Object.freeze({ source_receipt: Object.freeze(sourceReceipt), ui_readback: Object.freeze(uiReadback) });
+}
+
+export async function executeV12NativeAcceptanceProductAction(input: Readonly<{
+  kernel: SqliteKernel;
+  request: V12NativeAcceptanceRequest;
+  preparedProductCase: V12NativeAcceptancePreparedProductCase;
+  sha256(value: string): Promise<string>;
+  executeOperation(input: Readonly<{
+    contract: V12NativeAcceptanceCaseContract;
+    request: V12NativeAcceptanceRequest;
+  }>): Promise<Readonly<{ result: "read" | "committed"; facts: unknown }>>;
+}>): Promise<void> {
+  const readbacks = await executeV12NativeAcceptanceReadAction({
     ...input,
-    executeOperation: async ({ contract, request }) => {
-      if (contract.shard === "multi-plan") {
-        throw new Error("v12_native_acceptance_product_case_unsupported");
+    executeOperation: input.executeOperation,
+  });
+  const sourceJson = JSON.stringify(readbacks.source_receipt);
+  const uiJson = JSON.stringify(readbacks.ui_readback);
+  const receiptSha256 = await input.sha256(`${sourceJson}\n${uiJson}`);
+  await input.kernel.write(async (transaction) => {
+    await transaction.execute(
+      `CREATE TABLE IF NOT EXISTS v12_native_acceptance_product_receipts (
+        nonce TEXT NOT NULL,
+        shard TEXT NOT NULL,
+        case_id TEXT NOT NULL,
+        source_json TEXT NOT NULL,
+        ui_json TEXT NOT NULL,
+        receipt_sha256 TEXT NOT NULL,
+        PRIMARY KEY (nonce, shard, case_id)
+      ) STRICT`,
+    );
+    const [existing] = await transaction.queryAll<Readonly<{
+      source_json: string;
+      ui_json: string;
+      receipt_sha256: string;
+    }>>(
+      `SELECT source_json, ui_json, receipt_sha256
+         FROM v12_native_acceptance_product_receipts
+        WHERE nonce = ? AND shard = ? AND case_id = ?`,
+      [input.request.nonce, input.request.shard, input.request.caseId],
+    );
+    if (existing !== undefined) {
+      if (existing.source_json !== sourceJson || existing.ui_json !== uiJson || existing.receipt_sha256 !== receiptSha256) {
+        throw new Error("v12_native_acceptance_receipt_immutable");
       }
-      const postRead = await readAuthorityState({
-        kernel: input.kernel,
-        contract,
-        request,
-        probe: contract.probes.post,
-        sha256: input.sha256,
-      });
-      const proof = postRead.facts as Readonly<{ receiptId?: unknown }>;
-      const receiptId = proof.receiptId;
-      if (contract.operation.kind === "repository-mutation"
-        && (typeof receiptId !== "string" || receiptId.length < 8)) {
-        throw new Error("v12_native_acceptance_receipt_invalid");
-      }
-      return Object.freeze({
-        result: contract.operation.expectedResult,
-        facts: operationFacts({
-          contract,
-          authoritativeReadback: postRead.facts,
-          ...(contract.operation.kind === "repository-mutation"
-            ? {
-                receiptId: receiptId as string,
-                outcome: "committed" as const,
-                committedEffects: 1,
-              }
-            : {}),
-        }),
-      });
-    },
+      return;
+    }
+    await transaction.execute(
+      `INSERT INTO v12_native_acceptance_product_receipts
+        (nonce, shard, case_id, source_json, ui_json, receipt_sha256)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [input.request.nonce, input.request.shard, input.request.caseId, sourceJson, uiJson, receiptSha256],
+    );
   });
 }

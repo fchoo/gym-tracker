@@ -6,8 +6,10 @@ import { parseCalendarRouteOrigin, parseScalarRouteParam } from "../../../src/na
 import { CalendarPlannedStrengthRouteAdapter } from "../../../src/ui/calendar/CalendarRouteAdapters";
 import { PlannedWorkoutDetailScreen } from "../../../src/ui/screens/PlannedWorkoutDetailScreen";
 import { phase20CalendarFixtureRequestFromNativeContract, phase20CalendarPlannedOccurrence } from "../../../src/testing/phase20CalendarFixture";
+import { useV12NativeAcceptanceProductAction } from "../../../src/testing/v12NativeAcceptanceFixture";
 
 export default function CalendarPlannedWorkoutRoute() {
+  const nativeAcceptanceAction = useV12NativeAcceptanceProductAction("multi-plan");
   const { occurrenceId, origin, phase20CalendarFixture, phase20CalendarEvidenceNonce, phase20CalendarRequirementsSha256 } = useLocalSearchParams() as Readonly<{
     occurrenceId?: string | readonly string[];
     origin?: string | readonly string[];
@@ -28,6 +30,7 @@ export default function CalendarPlannedWorkoutRoute() {
   if (fixtureEnabled) return <PlannedWorkoutDetailScreen occurrenceId={exactOccurrenceId} loadOccurrence={async (id) => phase20CalendarPlannedOccurrence(id)} onBack={() => router.back()} />;
   return (
     <CalendarPlannedStrengthRouteAdapter
+      {...(nativeAcceptanceAction === undefined ? {} : { nativeAcceptanceAction })}
       occurrenceId={exactOccurrenceId}
       onBack={() => router.back()}
     />

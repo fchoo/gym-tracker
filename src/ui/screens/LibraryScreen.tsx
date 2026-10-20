@@ -193,6 +193,7 @@ type LibraryScreenProps = Readonly<{
   headingRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionNativeID?: string;
+  nativeAcceptanceAction?: Readonly<{ actionId: string; execute(): Promise<void> }>;
 }>;
 
 type ExerciseBrowseState = Readonly<{
@@ -1248,6 +1249,7 @@ export function LibraryScreen({
   headingRef,
   settingsActionRef,
   settingsActionNativeID,
+  nativeAcceptanceAction,
   onUsefulContent,
 }: LibraryScreenProps) {
   const [snapshot, setSnapshot] = useState<LibraryBrowseSnapshot | null>(null);
@@ -1667,8 +1669,15 @@ export function LibraryScreen({
                   <SecondaryAction
                     label={LIBRARY_ACTION_SHEET_CONFIGURATION.triggerLabel}
                     nativeID="library-actions-trigger"
-                    onPress={() => setActionsVisible(true)}
+                    onPress={() => {
+                      if (nativeAcceptanceAction === undefined) {
+                        setActionsVisible(true);
+                        return;
+                      }
+                      void nativeAcceptanceAction.execute().then(() => setActionsVisible(true));
+                    }}
                     ref={actionsActionRef}
+                    {...(nativeAcceptanceAction === undefined ? {} : { testID: nativeAcceptanceAction.actionId })}
                   />
                 ),
                 (

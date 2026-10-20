@@ -109,15 +109,18 @@ export function CalendarSessionDetailRouteAdapter({
 }
 
 export function CalendarPlannedStrengthRouteAdapter({
+  nativeAcceptanceAction,
   occurrenceId,
   onBack,
 }: Readonly<{
+  nativeAcceptanceAction?: Readonly<{ actionId: string; execute(): Promise<void> }>;
   occurrenceId: string;
   onBack(): void;
 }>) {
   const readOccurrence = useCalendarStrengthOccurrenceReadPort();
   return (
     <PlannedWorkoutDetailScreen
+      {...(nativeAcceptanceAction === undefined ? {} : { nativeAcceptanceAction })}
       occurrenceId={occurrenceId}
       loadOccurrence={readOccurrence.loadPlannedStrengthOccurrence}
       onBack={onBack}

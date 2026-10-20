@@ -403,6 +403,7 @@ import {
 } from "../testing/phase20QualityWorkload";
 import {
   dispatchV12NativeAcceptanceProductionOperation,
+  executeV12NativeAcceptanceProductAction as executeV12NativeAcceptanceProductActionFromKernel,
   executeV12NativeAcceptanceReadAction,
   prepareV12NativeAcceptanceProductCase as prepareV12NativeAcceptanceProductCaseFromKernel,
   prepareV12NativeAcceptanceProductionOperation,
@@ -735,6 +736,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   collectPhase14SourceStateProof(): Promise<Phase14SourceStateProof>;
   collectPhase20QualitySourceProof(): Promise<Phase20QualityWorkloadProof>;
   executeV12NativeAcceptanceCase(request: V12NativeAcceptanceRequest): Promise<V12NativeAcceptanceReadbacks>;
+  executeV12NativeAcceptanceProductAction(request: V12NativeAcceptanceRequest): Promise<void>;
   prepareV12NativeAcceptanceProductCase(request: V12NativeAcceptanceRequest): Promise<void>;
   readV12NativeAcceptanceReceipt(request: V12NativeAcceptanceRequest): Promise<V12NativeAcceptanceReadbacks>;
   triggerPhase20ProgressRebuild(): Promise<void>;
@@ -5065,6 +5067,35 @@ export function WorkoutAppRuntimeProvider({
         `${request.shard}:${request.caseId}:${request.nonce}`,
         prepared,
       );
+    },
+    executeV12NativeAcceptanceProductAction: async (request) => {
+      if (!phase20QualitySourceProofEnabled()) {
+        throw new Error("v12_native_acceptance_executor_unavailable");
+      }
+      const key = `${request.shard}:${request.caseId}:${request.nonce}`;
+      const preparedProductCase = v12NativeAcceptancePreparedProductCases.get(key);
+      if (preparedProductCase === undefined) {
+        throw new Error("v12_native_acceptance_prepared_case_missing");
+      }
+      const services = requireServices();
+      const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+      await executeV12NativeAcceptanceProductActionFromKernel({
+        kernel: services.kernel,
+        request,
+        preparedProductCase,
+        sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+        executeOperation: ({ contract, request: operationRequest }) =>
+          dispatchV12NativeAcceptanceProductionOperation({
+            kernel: services.kernel,
+            contract,
+            request: operationRequest,
+            runtime: {
+              running: services.runningPlans,
+              ownedPlans: services.ownedPlans,
+              customExercises: services.customExerciseRepository,
+            },
+          }),
+      });
     },
     readV12NativeAcceptanceReceipt: async (request) => {
       if (!phase20QualitySourceProofEnabled()) {
