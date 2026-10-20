@@ -939,6 +939,76 @@ describe("v1.2 native acceptance production executor", () => {
     })).rejects.toThrow("v12_native_acceptance_plan_impact_occurrence_missing");
   });
 
+  it("rejects plan-impact previews and command acknowledgements that cannot prove a committed mutation", async () => {
+    const { executor, contracts } = isolateExecutorWithMocks([{
+      moduleName: "../domains/plans/planImpactCommands",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/plans/planImpactCommands")>("../domains/plans/planImpactCommands"),
+        previewDayRemoval: async () => ({
+          restructuringBlocked: true,
+          schedule: null,
+          replacementDays: [],
+          planRevision: 1,
+          previewToken: "unusable-day-preview",
+        }),
+        previewExerciseReplacement: async () => ({
+          candidates: [],
+          occurrences: [],
+          planRevision: 1,
+          previewToken: "unusable-replacement-preview",
+        }),
+      }),
+    }]);
+    try {
+      const dayRemoval = contracts.v12NativeAcceptanceCaseContract("library-running", "library.day-removal-impact");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /owned_plan_schedule_events/u }), contract: dayRemoval, request: requestForContract(dayRemoval),
+      })).rejects.toThrow("v12_native_acceptance_day_removal_precondition_missing");
+
+      const replacement = contracts.v12NativeAcceptanceCaseContract("library-running", "library.replacement-impact");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /owned_plan_schedule_events/u }), contract: replacement, request: requestForContract(replacement),
+      })).rejects.toThrow("v12_native_acceptance_replacement_precondition_missing");
+    } finally {
+      jest.resetModules();
+    }
+
+    const commands = isolateExecutorWithMocks([{
+      moduleName: "../domains/plans/planImpactCommands",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/plans/planImpactCommands")>("../domains/plans/planImpactCommands"),
+        previewDayRemoval: async () => ({
+          restructuringBlocked: false,
+          schedule: { revision: 1 },
+          replacementDays: [{ id: "replacement-day" }],
+          planRevision: 1,
+          previewToken: "valid-day-preview",
+        }),
+        removePlanDayWithImpact: async () => ({ outcome: "already_committed", planRevision: 1, scheduleRevision: 1 }),
+        previewExerciseReplacement: async ({ input }: Readonly<{ input: Readonly<{ occurrenceId: string }> }>) => ({
+          candidates: [{ compatible: true, exerciseId: "replacement-exercise" }],
+          occurrences: [{ occurrenceId: input.occurrenceId }],
+          planRevision: 1,
+          previewToken: "valid-replacement-preview",
+        }),
+        replacePlanExercise: async () => ({ outcome: "already_committed", planRevision: 1, affectedOccurrenceIds: [] }),
+      }),
+    }]);
+    try {
+      const dayRemoval = commands.contracts.v12NativeAcceptanceCaseContract("library-running", "library.day-removal-impact");
+      await expect(commands.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /owned_plan_schedule_events/u }), contract: dayRemoval, request: requestForContract(dayRemoval),
+      })).rejects.toThrow("v12_native_acceptance_day_removal_command_failed");
+
+      const replacement = commands.contracts.v12NativeAcceptanceCaseContract("library-running", "library.replacement-impact");
+      await expect(commands.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /owned_plan_schedule_events/u }), contract: replacement, request: requestForContract(replacement),
+      })).rejects.toThrow("v12_native_acceptance_replacement_command_failed");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("rejects custom-exercise handlers when durable receipts or exercise preconditions are absent", async () => {
     const runtime = { customExercises: {} as never };
     const favorite = v12NativeAcceptanceCaseContract("library-running", "library.exercise-favorites");
