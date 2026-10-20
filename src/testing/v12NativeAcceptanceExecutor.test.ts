@@ -2092,6 +2092,64 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("fails rest commands closed for missing, invalid, or unpersisted contexts", async () => {
+    const assertRestFailure = async (caseId: "workout.rest-controls" | "workout.rest-recovery", contexts: readonly (Readonly<{ state: string; revision: number; remainingMs: number; startedAtMs: number }> | null)[], expected: string) => {
+      let repositoryInstances = 0;
+      const isolated = isolateExecutorWithMocks([
+        {
+          moduleName: "../domains/rest/restCommands",
+          factory: () => ({
+            ...jest.requireActual<typeof import("../domains/rest/restCommands")>("../domains/rest/restCommands"),
+            pauseRest: async () => undefined,
+            adjustRest: async () => undefined,
+            resumeRest: async () => undefined,
+          }),
+        },
+        {
+          moduleName: "../platform/sqlite/repositories/restRepository",
+          factory: () => ({
+            ...jest.requireActual<typeof import("../platform/sqlite/repositories/restRepository")>("../platform/sqlite/repositories/restRepository"),
+            createRestRepository: () => {
+              const instance = repositoryInstances;
+              repositoryInstances += 1;
+              let reads = 0;
+              return {
+                getRestContext: async () => {
+                  const context = instance === 0
+                    ? contexts[Math.min(reads, contexts.length - 1)]!
+                    : { state: "running", revision: 1, remainingMs: 10_000, startedAtMs: 0 };
+                  reads += 1;
+                  return context === null ? null : { state: context };
+                },
+              };
+            },
+          }),
+        },
+      ]);
+      try {
+        const contract = isolated.contracts.v12NativeAcceptanceCaseContract("workout", caseId);
+        await expect(isolated.executor.dispatchV12NativeAcceptanceProductionOperation({
+          kernel: kernel(), contract, request: requestForContract(contract),
+        })).rejects.toThrow(expected);
+      } finally {
+        jest.resetModules();
+      }
+    };
+
+    await assertRestFailure("workout.rest-controls", [null], "v12_native_acceptance_workout_rest_precondition_missing");
+    await assertRestFailure("workout.rest-controls", [{ state: "idle", revision: 1, remainingMs: 0, startedAtMs: 0 }], "v12_native_acceptance_workout_rest_precondition_missing");
+    await assertRestFailure("workout.rest-controls", [
+      { state: "running", revision: 1, remainingMs: 10_000, startedAtMs: 0 },
+      { state: "running", revision: 2, remainingMs: 10_000, startedAtMs: 0 },
+    ], "v12_native_acceptance_workout_rest_pause_missing");
+    await assertRestFailure("workout.rest-recovery", [null], "v12_native_acceptance_workout_rest_precondition_missing");
+    await assertRestFailure("workout.rest-recovery", [{ state: "idle", revision: 1, remainingMs: 0, startedAtMs: 0 }], "v12_native_acceptance_workout_rest_precondition_missing");
+    await assertRestFailure("workout.rest-recovery", [
+      { state: "running", revision: 1, remainingMs: 10_000, startedAtMs: 0 },
+      { state: "running", revision: 2, remainingMs: 10_000, startedAtMs: 0 },
+    ], "v12_native_acceptance_workout_rest_pause_missing");
+  });
+
   it("consumes the full multi-plan wrapper projection through the outer source receipt", async () => {
     const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ shard, caseId }) => (
       shard === "multi-plan" && caseId === "phase13-map01-activation"
