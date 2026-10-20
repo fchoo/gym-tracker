@@ -15,6 +15,7 @@ import {
   executeV12NativeAcceptanceReadAction,
   resolveV12NativeAcceptanceProductionHandler,
   validateV12NativeAcceptanceAuthorityTables,
+  V12_NATIVE_ACCEPTANCE_AUTHORITY_PROJECTION_REGISTRY,
   type V12NativeAcceptanceRequest,
 } from "./v12NativeAcceptanceExecutor";
 
@@ -139,10 +140,17 @@ describe("v1.2 native acceptance production executor", () => {
 
   it("resolves every case-owned handler to an executable production function", () => {
     expect(assertV12NativeAcceptanceProductionHandlerRegistry()).toBe(true);
+    const sourceOwned = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.filter(({ shard }) => shard !== "multi-plan");
+    expect(Object.keys(V12_NATIVE_ACCEPTANCE_AUTHORITY_PROJECTION_REGISTRY)).toHaveLength(88);
     for (const contract of V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS) {
       const handler = resolveV12NativeAcceptanceProductionHandler(contract);
       expect(typeof handler.execute).toBe("function");
       expect(handler.operationIds).toContain(contract.operation.id);
+    }
+    for (const contract of sourceOwned) {
+      const projection = V12_NATIVE_ACCEPTANCE_AUTHORITY_PROJECTION_REGISTRY[contract.operation.id];
+      expect(projection).toMatchObject({ caseId: contract.caseId, tables: contract.probes.post.tables });
+      expect(typeof projection?.read).toBe("function");
     }
     const source = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ shard }) => shard === "workout")!;
     expect(() => resolveV12NativeAcceptanceProductionHandler({
@@ -156,6 +164,15 @@ describe("v1.2 native acceptance production executor", () => {
         post: { ...source.probes.post, tables: ["missing_authority_table"] },
       },
     }])).toThrow("v12_native_acceptance_authority_fact_columns_missing");
+    expect(() => assertV12NativeAcceptanceProductionHandlerRegistry([{
+      ...source,
+      probes: {
+        ...source.probes,
+        post: { ...source.probes.post, tables: [...source.probes.post.tables].reverse() },
+      },
+    }, ...V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.filter((entry) => entry !== source)])).toThrow(
+      "v12_native_acceptance_authority_projection_unimplemented",
+    );
   });
 
   it("audits count, identity, handler, postcondition, receipt, and collapse invariants independently", () => {

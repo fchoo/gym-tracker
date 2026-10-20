@@ -295,27 +295,255 @@ function stableJson(value: unknown): string {
   return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${stableJson(object[key])}`).join(",")}}`;
 }
 
-function quoteIdentifier(value: string): string {
-  return `"${value}"`;
+type V12AuthorityScope = Readonly<{
+  nonceLike: string;
+  workoutPlanId: string;
+  completionWritebackPlanId: string;
+  completionWritebackReceiptId: string | null;
+  runningPlanId: string;
+  workoutPreferenceKey: string;
+}>;
+
+function authorityScope(request: V12NativeAcceptanceRequest, kernel: SqliteKernel): V12AuthorityScope {
+  const workoutPlanId = workoutFixturePlanId(request);
+  const completionWritebackReceiptId = request.caseId === "workout.completion-writeback"
+    ? completionWritebackProofs.get(kernel)?.get(request.nonce)?.receipt.receipt_id ?? null
+    : null;
+  return Object.freeze({
+    nonceLike: `%${request.nonce}%`,
+    workoutPlanId,
+    completionWritebackPlanId: `plan_copy_${1_900_000_000_000 + Number.parseInt(request.nonce.slice(0, 8), 16)}`,
+    completionWritebackReceiptId,
+    runningPlanId: `v12:running:${request.nonce}`,
+    workoutPreferenceKey: `gym_tracker.workout_plan_preferences.v1:${workoutPlanId}`,
+  });
 }
 
-async function readCaseFacts(
+/**
+ * Each authority table is read through a bounded, parameterized source
+ * predicate. This replaces the former unbounded full-table acceptance scan.
+ */
+function authorityPredicate(table: string, scope: V12AuthorityScope): Readonly<{
+  where: string;
+  parameters: readonly (string | number)[];
+}> {
+  switch (table) {
+    case "automatic_backup_state":
+    case "portability_restore_state":
+    case "portable_owner_identity":
+      return Object.freeze({ where: "id = 1", parameters: [] });
+    case "app_settings":
+      return Object.freeze({ where: "key IN ('library.section', ?) OR key LIKE ?", parameters: [scope.workoutPreferenceKey, scope.nonceLike] });
+    case "plans":
+      return Object.freeze({ where: "id = ? OR id = ? OR id = ? OR id LIKE ?", parameters: [scope.workoutPlanId, scope.completionWritebackPlanId, scope.runningPlanId, scope.nonceLike] });
+    case "plan_days":
+    case "owned_plan_aggregate_states":
+    case "owned_plan_schedules":
+      return Object.freeze({
+        where: `plan_id = ? OR plan_id = ? OR plan_id = ? OR plan_id LIKE ?
+          OR plan_id IN (SELECT result_plan_id FROM starter_plan_activation_requests WHERE request_id LIKE ?)`,
+        parameters: [scope.workoutPlanId, scope.completionWritebackPlanId, scope.runningPlanId, scope.nonceLike, scope.nonceLike],
+      });
+    case "owned_plan_schedule_versions":
+    case "owned_plan_schedule_events":
+      return Object.freeze({
+        where: `schedule_id IN (
+          SELECT id FROM owned_plan_schedules WHERE plan_id IN (?, ?, ?)
+          OR plan_id IN (SELECT result_plan_id FROM starter_plan_activation_requests WHERE request_id LIKE ?)
+        )`,
+        parameters: [scope.workoutPlanId, scope.completionWritebackPlanId, scope.runningPlanId, scope.nonceLike],
+      });
+    case "owned_plan_day_exercises":
+      return Object.freeze({
+        where: `id LIKE ? OR plan_day_id IN (
+          SELECT id FROM plan_days WHERE plan_id IN (?, ?, ?)
+          OR plan_id IN (SELECT result_plan_id FROM starter_plan_activation_requests WHERE request_id LIKE ?)
+        )`,
+        parameters: [scope.nonceLike, scope.workoutPlanId, scope.completionWritebackPlanId, scope.runningPlanId, scope.nonceLike],
+      });
+    case "owned_plan_mutation_requests":
+      return scope.completionWritebackReceiptId === null
+        ? Object.freeze({ where: "request_id LIKE ?", parameters: [scope.nonceLike] })
+        : Object.freeze({ where: "request_id = ?", parameters: [scope.completionWritebackReceiptId] });
+    case "running_plan_receipts":
+    case "schedule_collision_receipts":
+    case "logical_backup_receipts":
+    case "bodyweight_command_receipts":
+    case "custom_exercise_mutation_receipts":
+    case "progression_recommendation_decision_receipts":
+    case "starter_plan_activation_requests":
+    case "workout_session_exercise_edit_receipts":
+    case "workout_session_exercise_reorder_receipts":
+      return Object.freeze({ where: "request_id LIKE ?", parameters: [scope.nonceLike] });
+    case "metric_profile_migration_events":
+      return Object.freeze({ where: "idempotency_key LIKE ?", parameters: [scope.nonceLike] });
+    case "workout_receipts":
+      return Object.freeze({ where: "id LIKE ? OR workout_session_id IN (SELECT id FROM workout_sessions WHERE plan_id IN (?, ?))", parameters: [scope.nonceLike, scope.workoutPlanId, scope.completionWritebackPlanId] });
+    case "workout_sessions":
+      return Object.freeze({ where: "plan_id IN (?, ?) OR id LIKE ?", parameters: [scope.workoutPlanId, scope.completionWritebackPlanId, scope.nonceLike] });
+    case "session_exercises":
+      return Object.freeze({ where: "session_id IN (SELECT id FROM workout_sessions WHERE plan_id IN (?, ?)) OR id LIKE ?", parameters: [scope.workoutPlanId, scope.completionWritebackPlanId, scope.nonceLike] });
+    case "session_sets":
+      return Object.freeze({ where: "session_exercise_id IN (SELECT id FROM session_exercises WHERE session_id IN (SELECT id FROM workout_sessions WHERE plan_id IN (?, ?))) OR completion_idempotency_key LIKE ?", parameters: [scope.workoutPlanId, scope.completionWritebackPlanId, scope.nonceLike] });
+    case "session_rest_states":
+    case "session_advanced_timing_states":
+      return Object.freeze({ where: "session_id IN (SELECT id FROM workout_sessions WHERE plan_id = ?)", parameters: [scope.workoutPlanId] });
+    case "session_undo_snapshots":
+      return Object.freeze({ where: "idempotency_key LIKE ?", parameters: [scope.nonceLike] });
+    case "workout_provenance":
+      return Object.freeze({ where: "workout_session_id IN (SELECT id FROM workout_sessions WHERE plan_id IN (?, ?))", parameters: [scope.workoutPlanId, scope.completionWritebackPlanId] });
+    case "pending_effects":
+      return Object.freeze({ where: "idempotency_key LIKE ? OR subject_id IN (SELECT id FROM workout_sessions WHERE plan_id = ?)", parameters: [scope.nonceLike, scope.workoutPlanId] });
+    case "running_plans":
+    case "running_plan_events":
+    case "running_session_revisions":
+    case "running_session_slots":
+      return Object.freeze({ where: "plan_id = ? OR plan_id LIKE ?", parameters: [scope.runningPlanId, scope.nonceLike] });
+    case "running_session_slot_revisions":
+      return Object.freeze({ where: "slot_root_id LIKE ? OR session_revision_id LIKE ?", parameters: [scope.nonceLike, scope.nonceLike] });
+    case "schedule_collision_projections":
+      return Object.freeze({ where: "outcome_id LIKE ?", parameters: [scope.nonceLike] });
+    case "exercises":
+      return Object.freeze({ where: "id LIKE ?", parameters: [scope.nonceLike] });
+    case "exercise_library_entries":
+    case "exercise_owner_preferences":
+    case "exercise_search_terms":
+      return Object.freeze({ where: "exercise_id LIKE ?", parameters: [scope.nonceLike] });
+    case "taxonomy_terms":
+      return Object.freeze({ where: "kind IN ('exercise_type', 'muscle', 'equipment')", parameters: [] });
+    case "history_subject_revisions":
+    case "history_projection_freshness":
+      return Object.freeze({ where: "subject_id LIKE ?", parameters: [scope.nonceLike] });
+    case "history_projection_metric_aggregates":
+      return Object.freeze({ where: "subject_id LIKE ? OR exercise_id LIKE ?", parameters: [scope.nonceLike, scope.nonceLike] });
+    case "progression_recommendations":
+      return Object.freeze({ where: "exercise_id LIKE ? OR id LIKE ?", parameters: [scope.nonceLike, scope.nonceLike] });
+    case "bodyweight_entries":
+    case "bodyweight_entry_events":
+      return Object.freeze({ where: "id LIKE ? OR entry_id LIKE ?", parameters: [scope.nonceLike, scope.nonceLike] });
+    case "imported_activities":
+      return Object.freeze({ where: "id LIKE ?", parameters: [scope.nonceLike] });
+    case "imported_activity_receipts":
+    case "imported_activity_removal_events":
+      return Object.freeze({ where: "id LIKE ? OR activity_id LIKE ?", parameters: [scope.nonceLike, scope.nonceLike] });
+    case "imported_activity_identities":
+      return Object.freeze({ where: "activity_id LIKE ?", parameters: [scope.nonceLike] });
+    case "running_activity_current_matches":
+      return Object.freeze({ where: "activity_id LIKE ? OR opportunity_id LIKE ?", parameters: [scope.nonceLike, scope.nonceLike] });
+    case "running_activity_match_events":
+      return Object.freeze({ where: "id LIKE ? OR activity_id LIKE ? OR opportunity_id LIKE ?", parameters: [scope.nonceLike, scope.nonceLike, scope.nonceLike] });
+    case "running_activity_match_receipts":
+      return Object.freeze({ where: "request_id LIKE ? OR activity_id LIKE ? OR opportunity_id LIKE ?", parameters: [scope.nonceLike, scope.nonceLike, scope.nonceLike] });
+    default:
+      throw new Error("v12_native_acceptance_authority_projection_unimplemented");
+  }
+}
+
+async function readScopedAuthorityFacts(
   query: SqliteReadTransactionExecutor,
-  contract: V12NativeAcceptanceCaseContract,
+  scope: V12AuthorityScope,
+  tables: readonly string[],
 ): Promise<Readonly<{ tables: readonly Readonly<{ table: string; columns: readonly string[]; rows: readonly unknown[] }>[]; rowCount: number }>> {
   const facts = [] as Readonly<{ table: string; columns: readonly string[]; rows: readonly unknown[] }>[];
   let rowCount = 0;
-  for (const table of contract.probes.post.tables) {
+  for (const table of tables) {
     const columns = TABLE_FACT_COLUMNS[table]!;
-    const selection = columns.map(quoteIdentifier).join(", ");
+    const predicate = authorityPredicate(table, scope);
     const rows = await query.queryAll<Record<string, unknown>>(
-      `SELECT ${selection} FROM ${quoteIdentifier(table)} ORDER BY ${quoteIdentifier(columns[0]!)}`,
+      `SELECT ${columns.join(", ")} FROM ${table}
+       WHERE ${predicate.where}
+       ORDER BY ${columns[0]!}`,
+      predicate.parameters,
     );
     const ordered = [...rows].sort((left, right) => stableJson(left).localeCompare(stableJson(right), "en"));
     facts.push(Object.freeze({ table, columns, rows: Object.freeze(ordered) }));
     rowCount += rows.length;
   }
   return Object.freeze({ tables: Object.freeze(facts), rowCount });
+}
+
+type V12AuthorityProjection = Readonly<{
+  caseId: string;
+  tables: readonly string[];
+  read(
+    query: SqliteReadTransactionExecutor,
+    scope: V12AuthorityScope,
+  ): Promise<Readonly<{ tables: readonly Readonly<{ table: string; columns: readonly string[]; rows: readonly unknown[] }>[]; rowCount: number }>>;
+}>;
+
+function authorityProjection(caseId: string, tables: readonly string[]): V12AuthorityProjection {
+  return Object.freeze({
+    caseId,
+    tables: Object.freeze([...tables]),
+    read: (query, scope) => readScopedAuthorityFacts(query, scope, tables),
+  });
+}
+
+function authorityProjectionEntries(
+  shard: V12NativeAcceptanceShard,
+  caseIds: readonly string[],
+  tables: readonly string[],
+): readonly (readonly [string, V12AuthorityProjection])[] {
+  return caseIds.map((caseId) => {
+    const contract = v12NativeAcceptanceCaseContract(shard, caseId);
+    return [contract.operation.id, authorityProjection(caseId, tables)] as const;
+  });
+}
+
+/**
+ * A case obtains facts only through its own registered operation projection.
+ * This intentionally does not accept arbitrary probe tables at dispatch time.
+ */
+export const V12_NATIVE_ACCEPTANCE_AUTHORITY_PROJECTION_REGISTRY: Readonly<Record<string, V12AuthorityProjection>> = Object.freeze(Object.fromEntries([
+  ...authorityProjectionEntries("workout", ["workout.root-identity", "workout.day-switch", "workout.scheduled-rest-empty", "workout.start-alternate", "workout.start-resume", "workout.context-running"], ["plans", "owned_plan_schedules", "workout_sessions"]),
+  ...authorityProjectionEntries("workout", ["workout.active-layout", "workout.active-back", "workout.exercise-disclosure", "workout.active-indicator", "workout.exercise-menu", "workout.timing-flat"], ["workout_sessions", "session_exercises", "session_sets"]),
+  ...authorityProjectionEntries("workout", ["workout.set-states", "workout.row-edit", "workout.load-reps-editor", "workout.duration-editor", "workout.all-metrics", "workout.warmup-order", "workout.add-set", "workout.complete-commit", "workout.complete-failure", "workout.completion-collapse"], ["session_sets", "workout_receipts"]),
+  ...authorityProjectionEntries("workout", ["workout.rest-dock", "workout.rest-controls", "workout.rest-recovery"], ["session_rest_states", "pending_effects"]),
+  ...authorityProjectionEntries("workout", ["workout.trend"], ["history_subject_revisions", "history_projection_metric_aggregates"]),
+  ...authorityProjectionEntries("workout", ["workout.plan-increment", "workout.plan-after-workout"], ["plans", "owned_plan_aggregate_states", "progression_recommendations", "progression_recommendation_decision_receipts"]),
+  ...authorityProjectionEntries("workout", ["workout.add-exercise", "workout.replace-exercise", "workout.delete-exercise"], ["session_exercises", "session_sets", "workout_session_exercise_edit_receipts"]),
+  ...authorityProjectionEntries("workout", ["workout.reorder"], ["session_exercises", "session_sets", "workout_session_exercise_edit_receipts", "workout_session_exercise_reorder_receipts"]),
+  ...authorityProjectionEntries("workout", ["workout.undo"], ["session_exercises", "session_sets", "workout_session_exercise_edit_receipts", "session_undo_snapshots"]),
+  ...authorityProjectionEntries("workout", ["workout.outcomes", "workout.completion-review"], ["workout_sessions", "workout_receipts", "workout_provenance"]),
+  ...authorityProjectionEntries("workout", ["workout.completion-writeback"], ["workout_sessions", "workout_receipts", "workout_provenance", "owned_plan_mutation_requests"]),
+  ...authorityProjectionEntries("workout", ["workout.readonly-presentation", "workout.timing-policy", "workout.accessibility", "workout.appearance", "workout.performance"], ["app_settings", "session_advanced_timing_states"]),
+  ...authorityProjectionEntries("workout", ["workout.offline-recovery"], ["logical_backup_receipts", "portable_owner_identity"]),
+  ...authorityProjectionEntries("library-running", ["library.remembered-state"], ["app_settings"]),
+  ...authorityProjectionEntries("library-running", ["library.plan-groups", "library.neutral-plan-chooser", "library.owned-summary", "library.load-error-recovery"], ["plans"]),
+  ...authorityProjectionEntries("library-running", ["library.exercise-search"], ["exercise_search_terms"]),
+  ...authorityProjectionEntries("library-running", ["library.exercise-favorites", "library.custom-exercise-hide", "library.custom-exercise-unhide", "library.custom-exercise-archive", "library.custom-exercise-reactivate"], ["exercise_owner_preferences", "custom_exercise_mutation_receipts"]),
+  ...authorityProjectionEntries("library-running", ["library.actions-sheet"], ["plans", "taxonomy_terms"]),
+  ...authorityProjectionEntries("library-running", ["library.true-no-plans", "library.create-strength"], ["plans", "owned_plan_mutation_requests"]),
+  ...authorityProjectionEntries("library-running", ["library.owned-lifecycle", "library.starter-detail", "library.template-update", "library.plan-editor", "library.editor-draft-guards"], ["owned_plan_mutation_requests", "plans"]),
+  ...authorityProjectionEntries("library-running", ["library.starter-activation"], ["starter_plan_activation_requests", "owned_plan_schedules"]),
+  ...authorityProjectionEntries("library-running", ["library.schedule-editor"], ["owned_plan_schedules", "owned_plan_schedule_versions", "owned_plan_schedule_events"]),
+  ...authorityProjectionEntries("library-running", ["library.replacement-impact"], ["owned_plan_day_exercises", "owned_plan_mutation_requests", "owned_plan_schedule_events"]),
+  ...authorityProjectionEntries("library-running", ["library.day-removal-impact"], ["plan_days", "owned_plan_mutation_requests", "owned_plan_schedule_events"]),
+  ...authorityProjectionEntries("library-running", ["library.builtin-exercise"], ["exercise_library_entries"]),
+  ...authorityProjectionEntries("library-running", ["library.custom-exercise", "library.create-exercise", "library.custom-exercise-edit", "library.custom-exercise-copy-bundled"], ["exercises", "exercise_owner_preferences", "custom_exercise_mutation_receipts"]),
+  ...authorityProjectionEntries("library-running", ["library.copy-metric-migration", "library.metric-profile-migration"], ["metric_profile_migration_events", "exercises"]),
+  ...authorityProjectionEntries("library-running", ["library.running-detail"], ["plans", "running_plans"]),
+  ...authorityProjectionEntries("library-running", ["library.running-create-zero-sessions"], ["plans", "running_plans", "running_plan_receipts"]),
+  ...authorityProjectionEntries("library-running", ["library.running-goal-edit"], ["plans", "running_plans", "running_plan_events", "running_plan_receipts"]),
+  ...authorityProjectionEntries("library-running", ["library.running-session-common", "library.running-recovery", "library.running-long", "library.running-progression", "library.running-tempo", "library.running-intervals", "library.running-hills", "library.running-fartlek", "library.running-create-typed-sessions"], ["plans", "running_session_revisions", "running_plan_receipts"]),
+  ...authorityProjectionEntries("library-running", ["library.running-session-lifecycle"], ["plans", "running_session_slots", "running_session_slot_revisions", "running_plan_receipts"]),
+  ...authorityProjectionEntries("library-running", ["library.running-conflict"], ["plans", "schedule_collision_projections", "schedule_collision_receipts"]),
+  ...authorityProjectionEntries("library-running", ["library.running-two-same-day-slots"], ["plans", "running_session_slots", "running_session_slot_revisions", "running_plan_receipts"]),
+  ...authorityProjectionEntries("library-running", ["library.accessibility-recovery"], ["plans", "exercise_library_entries", "taxonomy_terms"]),
+]));
+
+async function readCaseAuthorityFacts(
+  query: SqliteReadTransactionExecutor,
+  contract: V12NativeAcceptanceCaseContract,
+  request: V12NativeAcceptanceRequest,
+  kernel: SqliteKernel,
+): Promise<Readonly<{ tables: readonly Readonly<{ table: string; columns: readonly string[]; rows: readonly unknown[] }>[]; rowCount: number }>> {
+  const projection = V12_NATIVE_ACCEPTANCE_AUTHORITY_PROJECTION_REGISTRY[contract.operation.id];
+  if (projection === undefined || projection.caseId !== contract.caseId
+    || stableJson(projection.tables) !== stableJson(contract.probes.post.tables)) {
+    throw new Error("v12_native_acceptance_authority_projection_unimplemented");
+  }
+  return projection.read(query, authorityScope(request, kernel));
 }
 
 function operationFacts(input: Readonly<{
@@ -493,7 +721,8 @@ async function workoutAlternateLibraryExercise(kernel: SqliteKernel, request: V1
 
 async function workoutAuthorityReadback(input: V12NativeAcceptanceProductionHandlerInput): Promise<unknown> {
   if (input.kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
-  return input.kernel.readSnapshot((query) => readCaseFacts(query, input.contract));
+  const request = requireRequest(input);
+  return input.kernel.readSnapshot((query) => readCaseAuthorityFacts(query, input.contract, request, input.kernel));
 }
 
 async function executeWorkoutRepositoryRead(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "read"; facts: unknown }>> {
@@ -2890,7 +3119,7 @@ async function runningMutationFacts(input: Readonly<{
   }
   input.verify(plan);
   if (input.handler.kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
-  const authoritativeReadback = await input.handler.kernel.readSnapshot((query) => readCaseFacts(query, input.handler.contract));
+  const authoritativeReadback = await input.handler.kernel.readSnapshot((query) => readCaseAuthorityFacts(query, input.handler.contract, request, input.handler.kernel));
   return Object.freeze({
     result: "committed" as const,
     facts: operationFacts({
@@ -2910,7 +3139,7 @@ async function executeRunningAggregateRead(input: V12NativeAcceptanceProductionH
     throw new Error("v12_native_acceptance_running_precondition_missing");
   }
   if (input.kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
-  const authoritativeReadback = await input.kernel.readSnapshot((query) => readCaseFacts(query, input.contract));
+  const authoritativeReadback = await input.kernel.readSnapshot((query) => readCaseAuthorityFacts(query, input.contract, request, input.kernel));
   return Object.freeze({ result: "read" as const, facts: operationFacts({ contract: input.contract, authoritativeReadback }) });
 }
 
@@ -3077,7 +3306,7 @@ async function executeRunningGoalEdit(input: V12NativeAcceptanceProductionHandle
     throw new Error("v12_native_acceptance_running_receipt_invalid");
   }
   if (input.kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
-  const authoritativeReadback = await input.kernel.readSnapshot((query) => readCaseFacts(query, input.contract));
+  const authoritativeReadback = await input.kernel.readSnapshot((query) => readCaseAuthorityFacts(query, input.contract, request, input.kernel));
   return Object.freeze({
     result: "committed" as const,
     facts: operationFacts({
@@ -3199,7 +3428,7 @@ async function executeCustomFavorite(input: V12NativeAcceptanceProductionHandler
     throw new Error("v12_native_acceptance_custom_exercise_receipt_invalid");
   }
   if (input.kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
-  const authoritativeReadback = await input.kernel.readSnapshot((query) => readCaseFacts(query, input.contract));
+  const authoritativeReadback = await input.kernel.readSnapshot((query) => readCaseAuthorityFacts(query, input.contract, request, input.kernel));
   return Object.freeze({
     result: "committed" as const,
     facts: operationFacts({
@@ -3264,7 +3493,7 @@ async function customMutationFacts(input: Readonly<{
   }
   await input.verify();
   if (input.handler.kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
-  const authoritativeReadback = await input.handler.kernel.readSnapshot((query) => readCaseFacts(query, input.handler.contract));
+  const authoritativeReadback = await input.handler.kernel.readSnapshot((query) => readCaseAuthorityFacts(query, input.handler.contract, request, input.handler.kernel));
   return Object.freeze({
     result: "committed" as const,
     facts: operationFacts({
@@ -3667,7 +3896,7 @@ async function executeMetricMigration(input: V12NativeAcceptanceProductionHandle
     throw new Error("v12_native_acceptance_metric_postcondition_failed");
   }
   if (input.kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
-  const authoritativeReadback = await input.kernel.readSnapshot((query) => readCaseFacts(query, input.contract));
+  const authoritativeReadback = await input.kernel.readSnapshot((query) => readCaseAuthorityFacts(query, input.contract, request, input.kernel));
   return Object.freeze({
     result: "committed" as const,
     facts: operationFacts({
@@ -4052,12 +4281,23 @@ export function resolveV12NativeAcceptanceProductionHandler(
 export function assertV12NativeAcceptanceProductionHandlerRegistry(
   contracts: readonly V12NativeAcceptanceCaseContract[] = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS,
 ): true {
+  if (Object.keys(V12_NATIVE_ACCEPTANCE_AUTHORITY_PROJECTION_REGISTRY).length !== 88) {
+    throw new Error("v12_native_acceptance_authority_projection_count_invalid");
+  }
   for (const contract of contracts) {
     if (contract.probes.post.tables.some((table) => TABLE_FACT_COLUMNS[table] === undefined)) {
       throw new Error("v12_native_acceptance_authority_fact_columns_missing");
     }
     if (typeof resolveV12NativeAcceptanceProductionHandler(contract).execute !== "function") {
       throw new Error("v12_native_acceptance_handler_unresolved");
+    }
+    if (contract.shard !== "multi-plan") {
+      const projection = V12_NATIVE_ACCEPTANCE_AUTHORITY_PROJECTION_REGISTRY[contract.operation.id];
+      if (projection === undefined || projection.caseId !== contract.caseId
+        || stableJson(projection.tables) !== stableJson(contract.probes.post.tables)
+        || typeof projection.read !== "function") {
+        throw new Error("v12_native_acceptance_authority_projection_unimplemented");
+      }
     }
   }
   return true;
@@ -4083,6 +4323,7 @@ export async function dispatchV12NativeAcceptanceProductionOperation(input: Read
 async function readAuthorityState(input: Readonly<{
   kernel: SqliteKernel;
   contract: V12NativeAcceptanceCaseContract;
+  request: V12NativeAcceptanceRequest;
   probe: V12NativeAcceptanceCaseContract["probes"]["pre"];
   sha256(value: string): Promise<string>;
   operationResultSha256?: string;
@@ -4090,7 +4331,7 @@ async function readAuthorityState(input: Readonly<{
   if (input.kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
   const snapshot = await input.kernel.readSnapshot(async (transaction: SqliteReadTransactionExecutor) => {
     const [version] = await transaction.queryAll<{ user_version: number }>("PRAGMA user_version");
-    const facts = await readCaseFacts(transaction, input.contract);
+    const facts = await readCaseAuthorityFacts(transaction, input.contract, input.request, input.kernel);
     return Object.freeze({ schemaVersion: version?.user_version ?? -1, facts, rowCount: facts.rowCount });
   });
   const factsSha256 = await input.sha256(stableJson({ schema_version: snapshot.schemaVersion, facts: snapshot.facts }));
