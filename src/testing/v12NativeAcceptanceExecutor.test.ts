@@ -1290,6 +1290,86 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects workout commands whose durable effects disappear after a committed command", async () => {
+    const commands = isolateExecutorWithMocks([
+      {
+        moduleName: "../domains/workout/setCommands",
+        factory: () => ({
+          ...jest.requireActual<typeof import("../domains/workout/setCommands")>("../domains/workout/setCommands"),
+          updateActiveSetDraft: async () => undefined,
+          addWorkingSet: async () => undefined,
+          completeSet: async ({ haptics, invalidate, drainEffects }: Readonly<{
+            haptics: Readonly<{ committed(): Promise<void>; cue(): Promise<void> }>;
+            invalidate(): Promise<void>;
+            drainEffects(): Promise<void>;
+          }>) => {
+            await haptics.committed();
+            await haptics.cue();
+            await invalidate();
+            await drainEffects();
+            return { outcome: "committed" };
+          },
+        }),
+      },
+      {
+        moduleName: "../domains/workout/undoCompletedSet",
+        factory: () => ({
+          ...jest.requireActual<typeof import("../domains/workout/undoCompletedSet")>("../domains/workout/undoCompletedSet"),
+          undoCompletedSet: async () => ({ outcome: "undone" }),
+        }),
+      },
+    ]);
+    const activeSetKernel = () => {
+      const base = kernel({ values: { metric_profile: "load_reps" } });
+      const queryAll = base.queryAll.bind(base);
+      base.queryAll = async <Row extends Record<string, unknown>,>(sql: string, params?: readonly SqliteParameter[]) => {
+        if (sql.includes("SELECT id FROM session_sets WHERE id = ?")) return [] as readonly Row[];
+        if (sql.includes("SELECT id FROM session_sets WHERE id = ? AND session_exercise_id = ?")) return [] as readonly Row[];
+        return queryAll(sql, params);
+      };
+      return base;
+    };
+    const undoneSetKernel = () => {
+      const base = kernel({ values: { metric_profile: "load_reps" } });
+      const queryAll = base.queryAll.bind(base);
+      let snapshotReads = 0;
+      base.queryAll = async <Row extends Record<string, unknown>,>(sql: string, params?: readonly SqliteParameter[]) => {
+        if (sql.includes("FROM session_undo_snapshots")) {
+          snapshotReads += 1;
+          if (snapshotReads === 1) return [] as readonly Row[];
+          if (snapshotReads === 2) return [{ completed_set_id: "completed-set", consumed_at_ms: null }] as unknown as readonly Row[];
+          return [{ consumed_at_ms: 0 }] as unknown as readonly Row[];
+        }
+        if (sql === "SELECT status FROM session_sets WHERE id = ?") return [{ status: "planned" }] as unknown as readonly Row[];
+        return queryAll(sql, params);
+      };
+      return base;
+    };
+    try {
+      const rowEdit = commands.contracts.v12NativeAcceptanceCaseContract("workout", "workout.row-edit");
+      await expect(commands.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: activeSetKernel(), contract: rowEdit, request: requestForContract(rowEdit),
+      })).rejects.toThrow("v12_native_acceptance_workout_set_postcondition_failed");
+
+      const addSet = commands.contracts.v12NativeAcceptanceCaseContract("workout", "workout.add-set");
+      await expect(commands.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: activeSetKernel(), contract: addSet, request: requestForContract(addSet),
+      })).rejects.toThrow("v12_native_acceptance_workout_add_set_postcondition_failed");
+
+      const undo = commands.contracts.v12NativeAcceptanceCaseContract("workout", "workout.undo");
+      await expect(commands.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: undoneSetKernel(), contract: undo, request: requestForContract(undo),
+      })).rejects.toThrow("v12_native_acceptance_workout_undo_postcondition_failed");
+    } finally {
+      jest.resetModules();
+    }
+
+    const start = v12NativeAcceptanceCaseContract("workout", "workout.start-alternate");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel(), contract: start, request: requestForContract(start),
+    })).rejects.toThrow("v12_native_acceptance_workout_start_postcondition_failed");
+  });
+
   it("rejects undo flows without a load-reps completion or durable undo snapshot", async () => {
     const undo = v12NativeAcceptanceCaseContract("workout", "workout.undo");
     await expect(dispatchV12NativeAcceptanceProductionOperation({
