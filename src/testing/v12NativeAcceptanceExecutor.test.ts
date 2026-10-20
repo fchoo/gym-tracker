@@ -2326,7 +2326,7 @@ describe("v1.2 native acceptance production executor", () => {
       lifecycle: "inactive",
       goal: { goalDistanceMeters: 3_000 },
       sessions: [],
-    } as never;
+    };
     const aggregate = v12NativeAcceptanceCaseContract("workout", "workout.context-running");
     const queryKernel = kernel();
     await expect(dispatchV12NativeAcceptanceProductionOperation({
