@@ -625,6 +625,112 @@ async function executeOwnedPlanRead(input: V12NativeAcceptanceProductionHandlerI
   }) });
 }
 
+function ownedPlanMutationFixtureId(request: V12NativeAcceptanceRequest): string {
+  return `v12:owned-plan-mutation:${request.nonce}`;
+}
+
+async function ownedPlanMutationReceipt(kernel: SqliteKernel, requestId: string) {
+  const [receipt] = await kernel.queryAll<Readonly<{
+    request_id: string;
+    operation: string;
+    result_plan_id: string;
+    result_revision: number;
+  }>>(
+    `SELECT request_id, operation, result_plan_id, result_revision
+     FROM owned_plan_mutation_requests
+     WHERE request_id = ?`,
+    [requestId],
+  );
+  return receipt;
+}
+
+async function ensureOwnedPlanMutationFixture(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ planId: string; revision: number }>> {
+  const request = requireRequest(input);
+  const repository = createOwnedPlanRepository(input.kernel);
+  const planId = ownedPlanMutationFixtureId(request);
+  const existing = await repository.read(planId);
+  if (existing !== null) return Object.freeze({ planId, revision: existing.revision });
+  const requestId = `v12:owned-plan-mutation:${request.nonce}:seed`;
+  const created = await repository.createDraft({
+    requestId,
+    requestSha256: await runtimeSha256(requestId),
+    planId,
+    name: "V12 owned-plan mutation fixture",
+    dayId: `${planId}:day`,
+    dayName: "V12 mutation day",
+    createdAtMs: workoutFixtureActivatedAt(request),
+  });
+  if (created.outcome !== "committed") throw new Error("v12_native_acceptance_owned_plan_mutation_seed_invalid");
+  return Object.freeze({ planId, revision: created.plan.revision });
+}
+
+async function executeOwnedPlanCreateDraft(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const repository = createOwnedPlanRepository(input.kernel);
+  const requestId = `v12:owned-plan-create:${request.caseId}:${request.nonce}`;
+  const planId = `v12:owned-plan-create:${request.nonce}`;
+  const before = await ownedPlanMutationReceipt(input.kernel, requestId);
+  if (before === undefined) {
+    const created = await repository.createDraft({
+      requestId,
+      requestSha256: await runtimeSha256(requestId),
+      planId,
+      name: "V12 created owned plan",
+      dayId: `${planId}:day`,
+      dayName: "V12 created day",
+      createdAtMs: workoutFixtureActivatedAt(request),
+    });
+    if (created.outcome !== "committed" || created.operation !== "create" || created.plan.id !== planId) {
+      throw new Error("v12_native_acceptance_owned_plan_create_failed");
+    }
+  }
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ request_id: requestId }),
+    outcome: before === undefined ? "committed" : "already_committed",
+    verify: async () => {
+      const receipt = await ownedPlanMutationReceipt(input.kernel, requestId);
+      const plan = await repository.read(planId);
+      if (receipt?.operation !== "create" || receipt.result_plan_id !== planId || plan?.revision !== receipt.result_revision || plan.days.length !== 1) {
+        throw new Error("v12_native_acceptance_owned_plan_create_postcondition_failed");
+      }
+    },
+  });
+}
+
+async function executeOwnedPlanArchive(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const repository = createOwnedPlanRepository(input.kernel);
+  const requestId = `v12:owned-plan-archive:${request.nonce}`;
+  const before = await ownedPlanMutationReceipt(input.kernel, requestId);
+  if (before === undefined) {
+    const fixture = await ensureOwnedPlanMutationFixture(input);
+    const archived = await repository.archive({
+      requestId,
+      requestSha256: await runtimeSha256(requestId),
+      planId: fixture.planId,
+      expectedRevision: fixture.revision,
+      archived: true,
+      updatedAtMs: workoutFixtureActivatedAt(request) + 2_000,
+    });
+    if (archived.outcome !== "committed" || archived.operation !== "archive") {
+      throw new Error("v12_native_acceptance_owned_plan_archive_failed");
+    }
+  }
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ request_id: requestId }),
+    outcome: before === undefined ? "committed" : "already_committed",
+    verify: async () => {
+      const receipt = await ownedPlanMutationReceipt(input.kernel, requestId);
+      const plan = receipt === undefined ? null : await repository.read(receipt.result_plan_id);
+      if (receipt?.operation !== "archive" || plan?.lifecycle !== "archived" || plan.revision !== receipt.result_revision) {
+        throw new Error("v12_native_acceptance_owned_plan_archive_postcondition_failed");
+      }
+    },
+  });
+}
+
 function prettyJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
@@ -2364,6 +2470,12 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   "owned-plan.owned-plan-repository.read": Object.freeze({
     prepare: prepareOwnedPlanReadFixture,
     execute: executeOwnedPlanRead,
+  }),
+  "owned-plan.owned-plan-repository.create-draft": Object.freeze({
+    execute: executeOwnedPlanCreateDraft,
+  }),
+  "owned-plan.owned-plan-repository.archive": Object.freeze({
+    execute: executeOwnedPlanArchive,
   }),
   "starter-plan.starter-plan-repository.activate-accepted-starter-plan": Object.freeze({
     execute: executeAcceptedStarterActivation,
