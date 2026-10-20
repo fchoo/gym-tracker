@@ -1479,6 +1479,35 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects rest controls when a production rest command cannot establish a running context", async () => {
+    const { executor, contracts } = isolateExecutorWithMocks([
+      {
+        moduleName: "../platform/sqlite/repositories/restRepository",
+        factory: () => ({
+          ...jest.requireActual<typeof import("../platform/sqlite/repositories/restRepository")>("../platform/sqlite/repositories/restRepository"),
+          createRestRepository: () => ({
+            getRestContext: async () => ({ state: { state: "idle", revision: 1, remainingMs: 0 } }),
+          }),
+        }),
+      },
+      {
+        moduleName: "../domains/rest/restCommands",
+        factory: () => ({
+          ...jest.requireActual<typeof import("../domains/rest/restCommands")>("../domains/rest/restCommands"),
+          startManualRest: async () => undefined,
+        }),
+      },
+    ]);
+    try {
+      const contract = contracts.v12NativeAcceptanceCaseContract("workout", "workout.rest-controls");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_rest_start_failed");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("consumes the full multi-plan wrapper projection through the outer source receipt", async () => {
     const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ shard, caseId }) => (
       shard === "multi-plan" && caseId === "phase13-map01-activation"
