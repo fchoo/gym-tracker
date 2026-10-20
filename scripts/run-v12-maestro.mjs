@@ -1,6 +1,6 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { accessSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { validateV12RunManifest as validateGenericV12RunManifest } from "./create-v12-run-manifest.mjs";
@@ -74,7 +74,17 @@ const V12_PACKAGE = "com.fchoo.gymtracker.devtest";
 const FUNCTIONAL_NONCE = /^[a-f0-9]{48}$/u;
 const FUNCTIONAL_RECEIPT_PHASES = Object.freeze(["pre", "action", "post"]);
 const V12_PRODUCT_FIXTURE_ID = "v12-synthetic-fixtures-r18";
-const PRODUCT_ENVIRONMENT_KEYS = Object.freeze(["schema_version", "producer", "shard", "case_id", "fixture_id", "nonce", "mode", "product_url", "ready_id", "action_id", "result_id", "binding_sha256"]);
+const V12_PRODUCT_PREREQUISITE_LIMIT = 8;
+const PRODUCT_PREREQUISITE_ENVIRONMENT_KEYS = Object.freeze(Array.from(
+  { length: V12_PRODUCT_PREREQUISITE_LIMIT },
+  (_, index) => ["interaction", "kind", "value", "input_value"].map((field) => `prerequisite_${index + 1}_${field}`),
+).flat());
+const PRODUCT_ENVIRONMENT_KEYS = Object.freeze([
+  "schema_version", "producer", "shard", "case_id", "fixture_id", "nonce", "mode",
+  "interaction", "product_url", "ready_kind", "ready_value", "action_kind", "action_value",
+  "input_value", "prerequisite_count", ...PRODUCT_PREREQUISITE_ENVIRONMENT_KEYS,
+  "result_kind", "result_value", "callback_group", "contract_operation", "canonical_operation", "binding_sha256",
+]);
 export const V12_MAESTRO_COMMAND_BUDGETS = Object.freeze({
   version_ms: 10_000,
   adb_ms: 30_000,
@@ -514,14 +524,23 @@ export function validateV12FunctionalExecutionReceipt(receipt, { runId, shard, c
 }
 
 export function validateV12FunctionalMaestroFlow(flow) {
-  const productAction = typeof flow === "string" ? flow.indexOf('tapOn: { id: "${V12_PRODUCT_ACTION_ID}" }') : -1;
+  const domainOnly = typeof flow === "string" && flow.includes("/native-acceptance/multi-plan");
+  const productAction = typeof flow === "string" ? flow.indexOf("V12_PRODUCT_INTERACTION == 'tap'") : -1;
+  const productInput = typeof flow === "string" ? flow.indexOf("V12_PRODUCT_INTERACTION == 'input'") : -1;
   const receiptRoute = typeof flow === "string" ? flow.indexOf("/native-acceptance/") : -1;
   if (typeof flow !== "string" || !flow.includes("V12_EVIDENCE_NONCE")
-    || !["V12_PRODUCT_URL", "V12_PRODUCT_READY_ID", "V12_PRODUCT_ACTION_ID", "V12_PRODUCT_RESULT_ID"]
-      .every((name) => flow.includes(`${name} != null`))
-    || !flow.includes("V12_PRODUCT_READY_ID != V12_PRODUCT_ACTION_ID")
+    || !["V12_PRODUCT_URL", "V12_PRODUCT_INTERACTION", "V12_PRODUCT_READY_KIND", "V12_PRODUCT_READY_VALUE", "V12_PRODUCT_ACTION_KIND", "V12_PRODUCT_ACTION_VALUE", "V12_PRODUCT_INPUT_VALUE", "V12_PRODUCT_RESULT_KIND", "V12_PRODUCT_RESULT_VALUE",
+      ...Array.from({ length: V12_PRODUCT_PREREQUISITE_LIMIT }, (_, index) => `V12_PRODUCT_PREREQ_${index + 1}_INTERACTION`)]
+      .every((name) => flow.includes(`${name} != null`) || flow.includes(`${name} == 'none'`)
+        || name === "V12_PRODUCT_INTERACTION" && flow.includes(`${name} == 'domain-observation'`))
     || !flow.includes('openLink: "${V12_PRODUCT_URL}"')
-    || productAction < 0 || receiptRoute <= productAction || !flow.includes("mode=receipt")
+    || !flow.includes("mode=receipt")
+    || (domainOnly
+      ? !flow.includes("V12_PRODUCT_INTERACTION == 'domain-observation'") || /\btapOn:/u.test(flow)
+      : productAction < 0 || productInput < 0 || receiptRoute <= Math.max(productAction, productInput)
+        || !flow.includes('tapOn: { id: "${V12_PRODUCT_ACTION_VALUE}" }')
+        || !flow.includes('tapOn: "${V12_PRODUCT_ACTION_VALUE}"')
+        || !flow.includes('inputText: "${V12_PRODUCT_INPUT_VALUE}"'))
     || /native-acceptance-execute|Native acceptance fixture/u.test(flow)
     || !/assertVisible:\s*\{\s*id:\s*["']native-acceptance-source-receipt["']\s*\}/u.test(flow)
     || !/assertVisible:\s*\{\s*id:\s*["']native-acceptance-readback["']\s*\}/u.test(flow)) genericFail("functional_flow_not_executable");
@@ -534,7 +553,8 @@ export function createV12ProductCaseEnvironment({ shard, caseId, nonce } = {}) {
   try { definition = v12NativeAcceptanceProductDefinition(shard, caseId); }
   catch { genericFail("product_environment_invalid"); }
   const productUrl = new URL(`gymtracker-devtest://${definition.productPath(nonce)}`);
-  for (const [key, value] of Object.entries(definition.routeParams)) productUrl.searchParams.append(key, value);
+  const routeParams = definition.routeParams(nonce);
+  for (const [key, value] of Object.entries(routeParams)) productUrl.searchParams.append(key, value);
   for (const [key, value] of [["shard", shard], ["case", caseId], ["fixture", V12_PRODUCT_FIXTURE_ID], ["nonce", nonce], ["mode", "product"]]) {
     productUrl.searchParams.append(key, value);
   }
@@ -547,9 +567,28 @@ export function createV12ProductCaseEnvironment({ shard, caseId, nonce } = {}) {
     nonce,
     mode: "product",
     product_url: productUrl.href,
-    ready_id: definition.readyId,
-    action_id: definition.actionId,
-    result_id: definition.resultId,
+    interaction: definition.interaction,
+    ready_kind: definition.readySelector.kind,
+    ready_value: definition.readySelector.value,
+    action_kind: definition.actionSelector?.kind ?? "none",
+    action_value: definition.actionSelector?.value ?? "none",
+    input_value: definition.inputValue ?? "none",
+    prerequisite_count: definition.prerequisites.length,
+    ...Object.fromEntries(Array.from({ length: V12_PRODUCT_PREREQUISITE_LIMIT }, (_, index) => {
+      const item = definition.prerequisites[index];
+      const prefix = `prerequisite_${index + 1}`;
+      return [
+        [`${prefix}_interaction`, item?.interaction ?? "none"],
+        [`${prefix}_kind`, item?.selector.kind ?? "none"],
+        [`${prefix}_value`, item?.selector.value ?? "none"],
+        [`${prefix}_input_value`, item?.inputValue ?? "none"],
+      ];
+    }).flat()),
+    result_kind: definition.resultSelector.kind,
+    result_value: definition.resultSelector.value,
+    callback_group: definition.callbackGroup,
+    contract_operation: definition.contractOperation,
+    canonical_operation: definition.canonicalOperation,
   };
   return Object.freeze({ ...unsigned, binding_sha256: sha256(JSON.stringify(unsigned)) });
 }
@@ -563,7 +602,7 @@ export function validateV12ProductCaseEnvironment(environment, expected) {
   let definition;
   try { definition = v12NativeAcceptanceProductDefinition(expected.shard, expected.caseId); }
   catch { genericFail("product_environment_invalid"); }
-  const expectedKeys = [...Object.keys(definition.routeParams), "shard", "case", "fixture", "nonce", "mode"];
+  const expectedKeys = [...Object.keys(definition.routeParams(expected.nonce)), "shard", "case", "fixture", "nonce", "mode"];
   if (productUrl.protocol !== "gymtracker-devtest:" || productUrl.hostname !== ""
     || decodeURIComponent(productUrl.pathname) !== decodeURIComponent(definition.productPath(expected.nonce))
     || JSON.stringify([...productUrl.searchParams.keys()]) !== JSON.stringify(expectedKeys)) genericFail("product_environment_invalid");
@@ -573,31 +612,92 @@ export function validateV12ProductCaseEnvironment(environment, expected) {
 export function assertV12ProductCaseEnvironmentRegistry({ root = ROOT } = {}) {
   if (V12_NATIVE_ACCEPTANCE_PRODUCT_REGISTRY.length !== 101) genericFail("product_registry_invalid");
   const visualStates = new Map(PHASE20_VISUAL_STATE_REGISTRY.map((state) => [state.id, state]));
+  const productionSources = [];
+  const collectSources = (directory) => {
+    for (const entry of readdirSync(path.join(root, directory), { withFileTypes: true })) {
+      const relative = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== "__tests__" && entry.name !== "testing") collectSources(relative);
+      } else if (/\.(?:ts|tsx)$/u.test(entry.name) && !/\.test\./u.test(entry.name)) {
+        productionSources.push(readFileSync(path.join(root, relative), "utf8"));
+      }
+    }
+  };
+  collectSources("app");
+  collectSources("src");
+  const liveProductionSource = productionSources.join("\n");
+  if (/nativeAcceptanceAction|useV12NativeAcceptanceProductAction|executeV12NativeAcceptanceProductAction|executeMultiPlanRunningWrapper/u.test(liveProductionSource)) {
+    genericFail("product_registry_testing_dispatcher_live");
+  }
+  const physicalOwners = new Map();
+  const semanticOwners = new Map();
+  const recordSemanticOwner = ({ callbackGroup, canonicalOperation, callbackSource, callbackOwnerToken }) => {
+    const ownership = stableJson({ canonicalOperation, callbackSource, callbackOwnerToken });
+    const existing = semanticOwners.get(callbackGroup);
+    if (existing !== undefined && existing !== ownership) genericFail("product_registry_semantic_group_collapsed");
+    semanticOwners.set(callbackGroup, ownership);
+  };
   for (const definition of V12_NATIVE_ACCEPTANCE_PRODUCT_REGISTRY) {
-    if ([definition.routeSource, definition.controlSource, definition.readySource, definition.resultSource]
+    if (!Array.isArray(definition.prerequisites) || definition.prerequisites.length > V12_PRODUCT_PREREQUISITE_LIMIT) {
+      genericFail("product_registry_prerequisite_invalid");
+    }
+    const productionFiles = [definition.routeSource, definition.selectorSource, definition.readySource, definition.resultSource,
+      ...(definition.callbackSource === null ? [] : [definition.callbackSource]),
+      ...definition.prerequisites.flatMap((item) => [item.selectorSource, item.callbackSource])];
+    if (productionFiles
       .some((file) => !/^(?:app|src)\//u.test(file) || /(?:^|\/)(?:__tests__|testing)(?:\/|$)|\.test\./u.test(file))) {
       genericFail("product_registry_non_production_source");
     }
-    let routeSource; let controlSource; let readySource; let resultSource; let phaseFlowSource;
+    let routeSource; let selectorSource; let callbackSource; let readySource; let resultSource; let phaseFlowSource;
     try {
       routeSource = readFileSync(path.join(root, definition.routeSource), "utf8");
-      controlSource = readFileSync(path.join(root, definition.controlSource), "utf8");
+      selectorSource = readFileSync(path.join(root, definition.selectorSource), "utf8");
+      callbackSource = definition.callbackSource === null ? null : readFileSync(path.join(root, definition.callbackSource), "utf8");
       readySource = readFileSync(path.join(root, definition.readySource), "utf8");
       resultSource = readFileSync(path.join(root, definition.resultSource), "utf8");
       phaseFlowSource = readFileSync(path.join(root, definition.phaseFlowSource), "utf8");
     } catch { genericFail("product_registry_source_missing"); }
     const visualState = visualStates.get(definition.visualStateId);
-    if (!routeSource.includes("nativeAcceptanceAction")
-      || (!controlSource.includes("nativeAcceptanceAction.actionId") && !controlSource.includes("nativeAcceptanceAction?.actionId"))
-      || !controlSource.includes("nativeAcceptanceAction.execute")
-      || !controlSource.includes(definition.normalCallbackToken)
-      || !readySource.includes(definition.readyId)
-      || !resultSource.includes(definition.resultId)
-      || !phaseFlowSource.includes(definition.caseId)
+    const selectorPresent = (source, selector) => source.includes(selector.value);
+    if (!selectorPresent(readySource, definition.readySelector)
+      || !selectorPresent(resultSource, definition.resultSelector)
       || visualState === undefined || visualState.route.startsWith("/__")
-      || !visualState.readiness.test_ids.includes(definition.readyId)
-      || definition.actionId.includes("synthetic") || definition.actionId.includes("generic")) {
+      || routeSource.includes("nativeAcceptanceAction")
+      || definition.callbackGroup.includes("generic") || definition.canonicalOperation.includes("generic")) {
       genericFail("product_registry_binding_invalid");
+    }
+    const contract = v12NativeAcceptanceCaseContract(definition.shard, definition.caseId);
+    if (definition.contractOperation !== contract.operation.handlerId) genericFail("product_registry_contract_owner_invalid");
+    for (const item of definition.prerequisites) {
+      let prerequisiteSelectorSource; let prerequisiteCallbackSource;
+      try {
+        prerequisiteSelectorSource = readFileSync(path.join(root, item.selectorSource), "utf8");
+        prerequisiteCallbackSource = readFileSync(path.join(root, item.callbackSource), "utf8");
+      } catch { genericFail("product_registry_source_missing"); }
+      if (!selectorPresent(prerequisiteSelectorSource, item.selector)
+        || !prerequisiteCallbackSource.includes(item.callbackOwnerToken)
+        || (item.interaction === "input") !== (item.inputValue !== null)
+        || item.callbackGroup.includes("generic") || item.canonicalOperation.includes("generic")) {
+        genericFail("product_registry_prerequisite_invalid");
+      }
+      recordSemanticOwner(item);
+    }
+    if (definition.interaction === "tap" || definition.interaction === "input") {
+      if (definition.actionSelector === null || definition.callbackSource === null || definition.callbackOwnerToken === null
+        || !selectorPresent(selectorSource, definition.actionSelector)
+        || !callbackSource?.includes(definition.callbackOwnerToken)) genericFail("product_registry_binding_invalid");
+      if ((definition.interaction === "input") !== (definition.inputValue !== null)) genericFail("product_registry_input_invalid");
+      const physicalKey = stableJson({ selector: definition.actionSelector, source: definition.selectorSource });
+      const existing = physicalOwners.get(physicalKey);
+      const ownership = `${definition.callbackGroup}:${definition.canonicalOperation}`;
+      if (existing !== undefined && existing !== ownership) genericFail("product_registry_semantic_owner_collapsed");
+      physicalOwners.set(physicalKey, ownership);
+      recordSemanticOwner(definition);
+    } else if (definition.actionSelector !== null || definition.interaction === "domain-observation"
+      && (definition.callbackSource !== null || definition.callbackOwnerToken !== null)) {
+      genericFail("product_registry_observation_action_invalid");
+    } else if (definition.interaction === "ui-observation") {
+      recordSemanticOwner(definition);
     }
   }
   return true;
@@ -1102,11 +1202,20 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
       assertDirectMaestroMeasurement(manifest, sourceIdentity, apkSha256, before.measurement);
       const nonce = randomBytes(24).toString("hex");
       const productEnvironment = createV12ProductCaseEnvironment({ shard, caseId, nonce });
+      const prerequisiteEnvironmentArguments = Array.from({ length: V12_PRODUCT_PREREQUISITE_LIMIT }, (_, prerequisiteIndex) => {
+        const number = prerequisiteIndex + 1;
+        return [
+          "-e", `V12_PRODUCT_PREREQ_${number}_INTERACTION=${productEnvironment[`prerequisite_${number}_interaction`]}`,
+          "-e", `V12_PRODUCT_PREREQ_${number}_KIND=${productEnvironment[`prerequisite_${number}_kind`]}`,
+          "-e", `V12_PRODUCT_PREREQ_${number}_VALUE=${productEnvironment[`prerequisite_${number}_value`]}`,
+          "-e", `V12_PRODUCT_PREREQ_${number}_INPUT_VALUE=${productEnvironment[`prerequisite_${number}_input_value`]}`,
+        ];
+      }).flat();
       const captureUiReadback = dependencies.captureUiReadback ?? ((input) => directMaestroUiReadback(input.adb, input.nonce));
       let after;
       let flowError;
       try {
-        await run(tools.maestro, ["test", "--device", serial, "-e", `V12_CASE_ID=${caseId}`, "-e", `V12_EVIDENCE_NONCE=${nonce}`, "-e", "V12_CONFIG_ID=AP-L-C390-P-F100", "-e", `V12_FIXTURE_ID=${V12_PRODUCT_FIXTURE_ID}`, "-e", `V12_PRODUCT_URL=${productEnvironment.product_url}`, "-e", `V12_PRODUCT_READY_ID=${productEnvironment.ready_id}`, "-e", `V12_PRODUCT_ACTION_ID=${productEnvironment.action_id}`, "-e", `V12_PRODUCT_RESULT_ID=${productEnvironment.result_id}`, "--format", "junit", "--output", temporary, flowPath], { timeoutMs: V12_MAESTRO_COMMAND_BUDGETS.maestro_case_ms, maxBuffer: 16 * 1024 * 1024 });
+        await run(tools.maestro, ["test", "--device", serial, "-e", `V12_CASE_ID=${caseId}`, "-e", `V12_EVIDENCE_NONCE=${nonce}`, "-e", "V12_CONFIG_ID=AP-L-C390-P-F100", "-e", `V12_FIXTURE_ID=${V12_PRODUCT_FIXTURE_ID}`, "-e", `V12_PRODUCT_URL=${productEnvironment.product_url}`, "-e", `V12_PRODUCT_INTERACTION=${productEnvironment.interaction}`, "-e", `V12_PRODUCT_READY_KIND=${productEnvironment.ready_kind}`, "-e", `V12_PRODUCT_READY_VALUE=${productEnvironment.ready_value}`, ...prerequisiteEnvironmentArguments, "-e", `V12_PRODUCT_ACTION_KIND=${productEnvironment.action_kind}`, "-e", `V12_PRODUCT_ACTION_VALUE=${productEnvironment.action_value}`, "-e", `V12_PRODUCT_INPUT_VALUE=${productEnvironment.input_value}`, "-e", `V12_PRODUCT_RESULT_KIND=${productEnvironment.result_kind}`, "-e", `V12_PRODUCT_RESULT_VALUE=${productEnvironment.result_value}`, "--format", "junit", "--output", temporary, flowPath], { timeoutMs: V12_MAESTRO_COMMAND_BUDGETS.maestro_case_ms, maxBuffer: 16 * 1024 * 1024 });
       } catch (error) {
         flowError = new Error(error?.message === "v12_maestro_process_timeout" ? "v12_maestro_native_command_timeout"
           : error?.message === "v12_maestro_process_cancelled" ? "v12_maestro_native_command_cancelled" : "v12_maestro_native_command_failed");

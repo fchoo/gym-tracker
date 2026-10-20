@@ -6,15 +6,64 @@ tags: [v1.2, phase-20, source-owned, production-ui, case-registry]
 - assertTrue: ${V12_EVIDENCE_NONCE != null}
 - assertTrue: ${V12_FIXTURE_ID == 'v12-synthetic-fixtures-r18'}
 - assertTrue: ${V12_PRODUCT_URL != null}
-- assertTrue: ${V12_PRODUCT_READY_ID != null}
-- assertTrue: ${V12_PRODUCT_ACTION_ID != null}
-- assertTrue: ${V12_PRODUCT_RESULT_ID != null}
-- assertTrue: ${V12_PRODUCT_READY_ID != V12_PRODUCT_ACTION_ID && V12_PRODUCT_ACTION_ID != V12_PRODUCT_RESULT_ID}
+- assertTrue: ${V12_PRODUCT_INTERACTION == 'domain-observation'}
+- assertTrue: ${V12_PRODUCT_READY_KIND != null}
+- assertTrue: ${V12_PRODUCT_READY_VALUE != null}
+- assertTrue: ${V12_PRODUCT_ACTION_KIND == 'none'}
+- assertTrue: ${V12_PRODUCT_ACTION_VALUE == 'none'}
+- assertTrue: ${V12_PRODUCT_INPUT_VALUE == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_1_INTERACTION == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_1_KIND == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_1_VALUE == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_1_INPUT_VALUE == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_2_INTERACTION == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_2_KIND == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_2_VALUE == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_2_INPUT_VALUE == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_3_INTERACTION == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_3_KIND == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_3_VALUE == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_3_INPUT_VALUE == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_4_INTERACTION == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_4_KIND == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_4_VALUE == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_4_INPUT_VALUE == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_5_INTERACTION == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_5_KIND == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_5_VALUE == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_5_INPUT_VALUE == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_6_INTERACTION == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_6_KIND == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_6_VALUE == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_6_INPUT_VALUE == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_7_INTERACTION == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_7_KIND == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_7_VALUE == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_7_INPUT_VALUE == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_8_INTERACTION == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_8_KIND == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_8_VALUE == 'none'}
+- assertTrue: ${V12_PRODUCT_PREREQ_8_INPUT_VALUE == 'none'}
+- assertTrue: ${V12_PRODUCT_RESULT_KIND != null}
+- assertTrue: ${V12_PRODUCT_RESULT_VALUE != null}
 - launchApp: { clearState: false, stopApp: true, permissions: { notifications: deny } }
 - openLink: "${V12_PRODUCT_URL}"
-- extendedWaitUntil: { visible: { id: "${V12_PRODUCT_READY_ID}" }, timeout: 30000 }
-- tapOn: { id: "${V12_PRODUCT_ACTION_ID}" }
-- extendedWaitUntil: { visible: { id: "${V12_PRODUCT_RESULT_ID}" }, timeout: 30000 }
+- runFlow:
+    when: { true: "${V12_PRODUCT_READY_KIND == 'id'}" }
+    commands:
+      - extendedWaitUntil: { visible: { id: "${V12_PRODUCT_READY_VALUE}" }, timeout: 30000 }
+- runFlow:
+    when: { true: "${V12_PRODUCT_READY_KIND == 'text'}" }
+    commands:
+      - extendedWaitUntil: { visible: "${V12_PRODUCT_READY_VALUE}", timeout: 30000 }
+- runFlow:
+    when: { true: "${V12_PRODUCT_RESULT_KIND == 'id'}" }
+    commands:
+      - extendedWaitUntil: { visible: { id: "${V12_PRODUCT_RESULT_VALUE}" }, timeout: 30000 }
+- runFlow:
+    when: { true: "${V12_PRODUCT_RESULT_KIND == 'text'}" }
+    commands:
+      - extendedWaitUntil: { visible: "${V12_PRODUCT_RESULT_VALUE}", timeout: 30000 }
 - openLink: "gymtracker-devtest:///native-acceptance/multi-plan?case=${V12_CASE_ID}&fixture=${V12_FIXTURE_ID}&nonce=${V12_EVIDENCE_NONCE}&mode=receipt"
 - extendedWaitUntil: { visible: "Case verified", timeout: 30000 }
 - assertVisible: { id: "native-acceptance-source-receipt" }

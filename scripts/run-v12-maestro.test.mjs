@@ -76,9 +76,9 @@ function productFlowSource(shard) {
   return source
     .replace("- launchApp: { clearState: false, stopApp: true, permissions: { notifications: deny } }", [
       "- assertTrue: ${V12_PRODUCT_URL != null}",
-      "- assertTrue: ${V12_PRODUCT_READY_ID != null}",
-      "- assertTrue: ${V12_PRODUCT_ACTION_ID != null}",
-      "- assertTrue: ${V12_PRODUCT_RESULT_ID != null}",
+      "- assertTrue: ${V12_PRODUCT_READY_VALUE != null}",
+      "- assertTrue: ${V12_PRODUCT_ACTION_VALUE != null}",
+      "- assertTrue: ${V12_PRODUCT_RESULT_VALUE != null}",
       "- launchApp: { clearState: false, stopApp: true, permissions: { notifications: deny } }",
     ].join("\n"))
     .replace([
@@ -89,9 +89,9 @@ function productFlowSource(shard) {
       "- tapOn: { id: \"native-acceptance-execute\" }",
     ].join("\n"), [
       "- openLink: \"${V12_PRODUCT_URL}\"",
-      "- extendedWaitUntil: { visible: { id: \"${V12_PRODUCT_READY_ID}\" }, timeout: 30000 }",
-      "- tapOn: { id: \"${V12_PRODUCT_ACTION_ID}\" }",
-      "- extendedWaitUntil: { visible: { id: \"${V12_PRODUCT_RESULT_ID}\" }, timeout: 30000 }",
+      "- extendedWaitUntil: { visible: { id: \"${V12_PRODUCT_READY_VALUE}\" }, timeout: 30000 }",
+      "- tapOn: { id: \"${V12_PRODUCT_ACTION_VALUE}\" }",
+      "- extendedWaitUntil: { visible: { id: \"${V12_PRODUCT_RESULT_VALUE}\" }, timeout: 30000 }",
       `- openLink: "gymtracker-devtest:///native-acceptance/${shard}?case=\${V12_CASE_ID}&fixture=\${V12_FIXTURE_ID}&nonce=\${V12_EVIDENCE_NONCE}&mode=receipt"`,
     ].join("\n"));
 }
@@ -132,8 +132,17 @@ function fixture(t, shard) {
   writeFileSync(path.join(root, flow), productFlowSource(shard));
   cpSync(path.join(process.cwd(), source), path.join(root, source));
   for (const file of new Set(V12_NATIVE_ACCEPTANCE_PRODUCT_REGISTRY.flatMap((entry) => [
-    entry.routeSource, entry.controlSource, entry.readySource, entry.resultSource, entry.phaseFlowSource,
-  ]))) {
+    entry.routeSource,
+    entry.selectorSource,
+    entry.callbackSource,
+    entry.readySource,
+    entry.resultSource,
+    entry.phaseFlowSource,
+    ...entry.prerequisites.flatMap((prerequisite) => [
+      prerequisite.selectorSource,
+      prerequisite.callbackSource,
+    ]),
+  ].filter((value) => value !== null)))) {
     mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
     cpSync(path.join(process.cwd(), file), path.join(root, file));
   }
@@ -168,9 +177,13 @@ function fixture(t, shard) {
       const environmentValue = (name) => args.find((value) => value.startsWith(`${name}=`)).slice(name.length + 1);
       maestroProductEnvironments.push({
         product_url: environmentValue("V12_PRODUCT_URL"),
-        ready_id: environmentValue("V12_PRODUCT_READY_ID"),
-        action_id: environmentValue("V12_PRODUCT_ACTION_ID"),
-        result_id: environmentValue("V12_PRODUCT_RESULT_ID"),
+        interaction: environmentValue("V12_PRODUCT_INTERACTION"),
+        ready_kind: environmentValue("V12_PRODUCT_READY_KIND"),
+        ready_value: environmentValue("V12_PRODUCT_READY_VALUE"),
+        action_kind: environmentValue("V12_PRODUCT_ACTION_KIND"),
+        action_value: environmentValue("V12_PRODUCT_ACTION_VALUE"),
+        result_kind: environmentValue("V12_PRODUCT_RESULT_KIND"),
+        result_value: environmentValue("V12_PRODUCT_RESULT_VALUE"),
       });
       writeFileSync(output, `<testsuite><testcase name="${caseId}"/></testsuite>\n`);
       return "";
@@ -373,7 +386,13 @@ test("v1.2 functional flows require a real per-case action and post-action readb
     const source = productFlowSource(shard);
     assert.match(source, /V12_EVIDENCE_NONCE/u);
     assert.match(source, /openLink: "\$\{V12_PRODUCT_URL\}"/u);
-    assert.match(source, /tapOn:\s*\{ id: "\$\{V12_PRODUCT_ACTION_ID\}" \}/u);
+    if (shard === "multi-plan") {
+      assert.match(source, /V12_PRODUCT_INTERACTION == 'domain-observation'/u);
+      assert.doesNotMatch(source, /\btapOn:/u);
+    } else {
+      assert.match(source, /tapOn:\s*\{ id: "\$\{V12_PRODUCT_ACTION_VALUE\}" \}/u);
+      assert.match(source, /tapOn: "\$\{V12_PRODUCT_ACTION_VALUE\}"/u);
+    }
     assert.match(source, /mode=receipt/u);
     assert.doesNotMatch(source, /native-acceptance-execute/u);
     assert.match(source, /assertVisible:\s*\{ id: "native-acceptance-readback" \}/u);
@@ -389,7 +408,7 @@ test("product environments bind exact case identity and case-owned selectors", (
     shard: "workout", case: "workout.complete-commit", fixture: "v12-synthetic-fixtures-r18", nonce, mode: "product",
   });
   assert.equal(validateV12ProductCaseEnvironment(environment, { shard: "workout", caseId: "workout.complete-commit", nonce }), true);
-  const substituted = structuredClone(environment); substituted.action_id = "generic-button";
+  const substituted = structuredClone(environment); substituted.action_value = "generic-button";
   assert.throws(() => validateV12ProductCaseEnvironment(substituted, {
     shard: "workout", caseId: "workout.complete-commit", nonce,
   }), /v12_maestro_product_environment_invalid/u);
@@ -403,10 +422,24 @@ test("all 101 product environments resolve through production UI selectors and c
 
   assert.equal(environments.length, 101);
   assert.equal(new Set(environments.map(({ case_id: caseId }) => caseId)).size, 101);
-  assert.equal(new Set(environments.map(({ action_id: actionId }) => actionId)).size, 101);
+  const domainObservations = environments.filter(({ interaction }) => interaction === "domain-observation");
+  const productCases = environments.filter(({ interaction }) => interaction !== "domain-observation");
+  assert.equal(domainObservations.length, 13);
+  assert.equal(productCases.length, 88);
   for (const environment of environments) {
     assert.notEqual(new URL(environment.product_url).pathname, "/", environment.case_id);
-    assert.doesNotMatch(environment.action_id, /synthetic|generic/u, environment.case_id);
+    assert.doesNotMatch(environment.action_value, /synthetic|generic/u, environment.case_id);
+    if (environment.interaction === "domain-observation") {
+      assert.equal(environment.action_kind, "none", environment.case_id);
+      assert.equal(environment.action_value, "none", environment.case_id);
+      assert.equal(environment.prerequisite_count, 0, environment.case_id);
+    } else if (environment.interaction === "ui-observation") {
+      assert.equal(environment.action_kind, "none", environment.case_id);
+      assert.equal(environment.action_value, "none", environment.case_id);
+    } else {
+      assert.notEqual(environment.action_kind, "none", environment.case_id);
+      assert.notEqual(environment.action_value, "none", environment.case_id);
+    }
   }
 });
 
@@ -870,12 +903,14 @@ test("real source registries drive exact ordered mappings and executions", { tim
         validateV12ProductCaseEnvironment(environment, { shard, caseId, nonce: receipt.nonce })));
       assert.deepEqual(value.maestroCaseIds, REAL_CASE_IDS[shard]);
       assert.deepEqual(value.maestroProductEnvironments, mapping.observations.map(({ product_environment: environment }) => ({
-        product_url: environment.product_url, ready_id: environment.ready_id,
-        action_id: environment.action_id, result_id: environment.result_id,
+        product_url: environment.product_url, interaction: environment.interaction,
+        ready_kind: environment.ready_kind, ready_value: environment.ready_value,
+        action_kind: environment.action_kind, action_value: environment.action_value,
+        result_kind: environment.result_kind, result_value: environment.result_value,
       })));
       assert.equal(mapping.observations.length, { "multi-plan": 13, workout: 42, "library-running": 46 }[shard]);
       const substituted = structuredClone(mapping);
-      substituted.observations[0].product_environment.ready_id = "generic-ready";
+      substituted.observations[0].product_environment.ready_value = "generic-ready";
       assert.throws(() => validateV12DirectMaestroMapping(substituted, {
         root: value.root, manifest: value.build, shard, allowTest: true,
       }), /v12_maestro_product_environment_invalid/u);
