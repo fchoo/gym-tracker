@@ -4180,7 +4180,12 @@ export async function dispatchV12NativeAcceptanceProductionOperation(input: Read
   request?: V12NativeAcceptanceRequest;
   runtime?: V12NativeAcceptanceProductionRuntime;
 }>): Promise<Readonly<{ result: "read" | "committed"; facts: unknown }>> {
-  return resolveV12NativeAcceptanceProductionHandler(input.contract).execute(input);
+  try {
+    return await resolveV12NativeAcceptanceProductionHandler(input.contract).execute(input);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("v12_native_acceptance_")) throw error;
+    throw new Error("v12_native_acceptance_handler_execution_failed");
+  }
 }
 
 async function readAuthorityState(input: Readonly<{

@@ -2055,4 +2055,14 @@ describe("v1.2 native acceptance production executor", () => {
     await expect(invalidProof("already_committed", 1))
       .rejects.toThrow("v12_native_acceptance_operation_result_invalid");
   });
+
+  it("rejects every canonical production handler against an empty authority database", async () => {
+    for (const contract of V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS) {
+      await expect(dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ empty: true }),
+        contract,
+        request: requestForContract(contract),
+      })).rejects.toThrow(/^v12_native_acceptance_[a-z0-9_]+$/u);
+    }
+  });
 });
