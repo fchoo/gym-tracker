@@ -57,6 +57,11 @@ import {
   createStrictIsolatedWorkoutRuntimeDependencies,
   resolveV12RecoveryIsolatedRuntime,
 } from "../src/testing/isolatedWorkoutRuntime";
+import {
+  resolveV12NativeAcceptanceProductRequest,
+  V12NativeAcceptanceProductGate,
+  type V12NativeAcceptanceProductPreparer,
+} from "../src/testing/v12NativeAcceptanceFixture";
 
 const attendedPreviewAppearanceStore = createMemoryAppearanceStore();
 const phase6GestureSmokeAppearanceStore = createMemoryAppearanceStore();
@@ -290,6 +295,28 @@ function V12NativeAcceptanceNavigator() {
   );
 }
 
+function V12NativeAcceptanceProductNavigator({
+  request,
+}: Readonly<{
+  request: NonNullable<ReturnType<typeof resolveV12NativeAcceptanceProductRequest>>;
+}>) {
+  const runtime = useWorkoutAppRuntime();
+  const prepareProductCase = (runtime as typeof runtime & Readonly<{
+    prepareV12NativeAcceptanceProductCase?: V12NativeAcceptanceProductPreparer;
+  }>).prepareV12NativeAcceptanceProductCase;
+  if (prepareProductCase === undefined) return <Redirect href="/" />;
+  return (
+    <V12NativeAcceptanceProductGate
+      prepareProductCase={prepareProductCase}
+      request={request}
+    >
+      <ProductionToastBoundary>
+        <RootNavigator />
+      </ProductionToastBoundary>
+    </V12NativeAcceptanceProductGate>
+  );
+}
+
 function Phase20VisualNavigator() {
   return (
     <Stack
@@ -397,6 +424,20 @@ function RootLayoutAttempt({
     nativeContractsEnabled,
     suite: nativeContractSuite,
   } as const;
+  const v12NativeAcceptanceProductRequest = React.useMemo(
+    () => resolveV12NativeAcceptanceProductRequest(nativeIdentity, searchParams),
+    [
+      nativeIdentity.buildProfile,
+      nativeIdentity.nativeContractsEnabled,
+      nativeIdentity.packageName,
+      nativeIdentity.suite,
+      searchParams.case,
+      searchParams.fixture,
+      searchParams.mode,
+      searchParams.nonce,
+      searchParams.shard,
+    ],
+  );
   const phase20CalendarRuntime = resolvePhase20CalendarIsolatedRuntime(
     nativeIdentity,
     searchParams,
@@ -425,7 +466,7 @@ function RootLayoutAttempt({
     ? searchParams.nonce
     : null;
   const v12NativeAcceptanceDependencies = React.useMemo(
-    () => !v12NativeAcceptancePath || v12NativeAcceptanceNonce === null
+    () => (!v12NativeAcceptancePath && v12NativeAcceptanceProductRequest === null) || v12NativeAcceptanceNonce === null
       || nativeIdentity.packageName !== "com.fchoo.gymtracker.devtest"
       || nativeIdentity.buildProfile !== "development-test"
       || nativeIdentity.nativeContractsEnabled !== true
@@ -434,7 +475,7 @@ function RootLayoutAttempt({
       : createStrictIsolatedWorkoutRuntimeDependencies({
         databaseName: `gym-tracker-v12-native-acceptance-${v12NativeAcceptanceNonce}.db`,
       }),
-    [v12NativeAcceptanceNonce, v12NativeAcceptancePath],
+    [v12NativeAcceptanceNonce, v12NativeAcceptancePath, v12NativeAcceptanceProductRequest],
   );
   const phase20VisualRequest = phase20VisualGate({
     buildProfile: Constants.expoConfig?.extra?.buildProfile,
@@ -623,6 +664,24 @@ function RootLayoutAttempt({
             ) : (
               <WorkoutAppRuntimeProvider dependencies={v12NativeAcceptanceDependencies}>
                 <V12NativeAcceptanceNavigator />
+              </WorkoutAppRuntimeProvider>
+            )}
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (v12NativeAcceptanceProductRequest !== null) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
+            {v12NativeAcceptanceDependencies === null ? (
+              <Redirect href="/" />
+            ) : (
+              <WorkoutAppRuntimeProvider dependencies={v12NativeAcceptanceDependencies}>
+                <V12NativeAcceptanceProductNavigator request={v12NativeAcceptanceProductRequest} />
               </WorkoutAppRuntimeProvider>
             )}
           </AppearanceProvider>

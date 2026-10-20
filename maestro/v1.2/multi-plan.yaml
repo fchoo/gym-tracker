@@ -5,12 +5,16 @@ tags: [v1.2, phase-20, source-owned, synthetic-fixture]
 - assertTrue: ${V12_CASE_ID != null}
 - assertTrue: ${V12_EVIDENCE_NONCE != null}
 - assertTrue: ${V12_FIXTURE_ID == 'v12-synthetic-fixtures-r18'}
+- assertTrue: ${V12_PRODUCT_URL != null}
+- assertTrue: ${V12_PRODUCT_READY_ID != null}
+- assertTrue: ${V12_PRODUCT_ACTION_ID != null}
+- assertTrue: ${V12_PRODUCT_RESULT_ID != null}
 - launchApp: { clearState: false, stopApp: true, permissions: { notifications: deny } }
-- openLink: "gymtracker-devtest:///native-acceptance/multi-plan?case=${V12_CASE_ID}&fixture=${V12_FIXTURE_ID}&nonce=${V12_EVIDENCE_NONCE}"
-- extendedWaitUntil: { visible: "Native acceptance fixture", timeout: 30000 }
-- assertVisible: { id: "native-acceptance-stage" }
-- assertVisible: "${V12_CASE_ID}"
-- tapOn: { id: "native-acceptance-execute" }
+- openLink: "${V12_PRODUCT_URL}"
+- extendedWaitUntil: { visible: { id: "${V12_PRODUCT_READY_ID}" }, timeout: 30000 }
+- tapOn: { id: "${V12_PRODUCT_ACTION_ID}" }
+- extendedWaitUntil: { visible: { id: "${V12_PRODUCT_RESULT_ID}" }, timeout: 30000 }
+- openLink: "gymtracker-devtest:///native-acceptance/multi-plan?case=${V12_CASE_ID}&fixture=${V12_FIXTURE_ID}&nonce=${V12_EVIDENCE_NONCE}&mode=receipt"
 - extendedWaitUntil: { visible: "Case verified", timeout: 30000 }
 - assertVisible: { id: "native-acceptance-source-receipt" }
 - assertVisible: { id: "native-acceptance-readback" }

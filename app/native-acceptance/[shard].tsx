@@ -3,9 +3,11 @@ import { useLocalSearchParams } from "expo-router";
 import React from "react";
 import { Text, View } from "react-native";
 
+import { useWorkoutAppRuntime } from "../../src/bootstrap/workoutAppRuntime";
 import {
   resolveV12NativeAcceptanceRequest,
-  V12NativeAcceptanceFixture,
+  V12NativeAcceptanceReceipt,
+  type V12NativeAcceptanceReceiptReader,
 } from "../../src/testing/v12NativeAcceptanceFixture";
 
 export default function NativeAcceptanceRoute() {
@@ -14,7 +16,9 @@ export default function NativeAcceptanceRoute() {
     case?: string | string[];
     fixture?: string | string[];
     nonce?: string | string[];
+    mode?: string | string[];
   }>();
+  const runtime = useWorkoutAppRuntime();
   const extra = Constants.expoConfig?.extra;
   const request = resolveV12NativeAcceptanceRequest({
     packageName: Constants.expoConfig?.android?.package,
@@ -22,11 +26,14 @@ export default function NativeAcceptanceRoute() {
     nativeContractsEnabled: extra?.nativeContractsEnabled,
     suite: extra?.nativeContractSuite,
   }, params);
-  return request === null ? (
+  const readReceipt = (runtime as typeof runtime & Readonly<{
+    readV12NativeAcceptanceReceipt?: V12NativeAcceptanceReceiptReader;
+  }>).readV12NativeAcceptanceReceipt;
+  return request === null || readReceipt === undefined ? (
     <View testID="native-acceptance-disabled">
       <Text accessibilityRole="header">Native acceptance unavailable</Text>
     </View>
   ) : (
-    <V12NativeAcceptanceFixture request={request} />
+    <V12NativeAcceptanceReceipt readReceipt={readReceipt} request={request} />
   );
 }

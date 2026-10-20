@@ -1,21 +1,29 @@
-import { act, fireEvent, render } from "@testing-library/react-native";
+import { readFileSync } from "node:fs";
+
+import { act, render, waitFor } from "@testing-library/react-native";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
+import { Text } from "react-native";
 
 import type {
   V12NativeAcceptanceReadbacks,
   V12NativeAcceptanceRequest,
 } from "../../../src/testing/v12NativeAcceptanceExecutor";
 import { v12NativeAcceptanceCaseContract } from "../../../src/testing/contracts/phase15Workout.contract";
+import {
+  resolveV12NativeAcceptanceProductRequest,
+  V12NativeAcceptanceProductGate,
+} from "../../../src/testing/v12NativeAcceptanceFixture";
 
 let mockBuildProfile = "development-test";
 let mockNativeContractsEnabled = true;
 let mockNativeContractSuite = "v1.2-acceptance";
 let mockPackageName = "com.fchoo.gymtracker.devtest";
 let mockParams: Record<string, string> = {};
-const mockExecuteV12NativeAcceptanceCase = jest.fn<(
+const mockReadV12NativeAcceptanceReceipt = jest.fn<(
   request: V12NativeAcceptanceRequest,
 ) => Promise<V12NativeAcceptanceReadbacks>>();
+const mockExecuteV12NativeAcceptanceCase = jest.fn();
 
 jest.mock("expo-constants", () => ({
   __esModule: true,
@@ -42,6 +50,7 @@ jest.mock("expo-router", () => {
 jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
   useWorkoutAppRuntime: () => ({
     launchState: "trusted",
+    readV12NativeAcceptanceReceipt: mockReadV12NativeAcceptanceReceipt,
     executeV12NativeAcceptanceCase: mockExecuteV12NativeAcceptanceCase,
   }),
 }));
@@ -59,9 +68,11 @@ describe("v1.2 native acceptance route", () => {
       case: "phase13-migration-failure-cuts",
       fixture: "v12-synthetic-fixtures-r18",
       nonce: "a".repeat(48),
+      mode: "receipt",
     };
+    mockReadV12NativeAcceptanceReceipt.mockReset();
     mockExecuteV12NativeAcceptanceCase.mockReset();
-    mockExecuteV12NativeAcceptanceCase.mockImplementation(async (request) => {
+    mockReadV12NativeAcceptanceReceipt.mockImplementation(async (request) => {
       const contract = v12NativeAcceptanceCaseContract(request.shard, request.caseId);
       const state = (phase: "pre" | "action" | "post", digest: string) => ({
         probe_id: contract.probes[phase].id,
@@ -119,23 +130,24 @@ describe("v1.2 native acceptance route", () => {
     ["library-running", "library.metric-profile-migration", "Library and running"],
   ];
 
-  it.each(validRequests)("renders the source-owned %s fixture and native marker", async (shard, caseId, title) => {
-    mockParams = { shard, case: caseId, fixture: "v12-synthetic-fixtures-r18", nonce: "a".repeat(48) };
+  it.each(validRequests)("renders the source-owned %s receipt after the product action", async (shard, caseId, title) => {
+    mockParams = { shard, case: caseId, fixture: "v12-synthetic-fixtures-r18", nonce: "a".repeat(48), mode: "receipt" };
 
     const view = await render(<NativeAcceptanceRoute />);
 
-    expect(view.getByRole("header", { name: "Native acceptance fixture" }))
+    expect(view.getByRole("header", { name: "Native acceptance receipt" }))
       .toBeOnTheScreen();
     expect(view.getByTestId("native-acceptance-stage")).toBeOnTheScreen();
     expect(view.getByText(caseId)).toBeOnTheScreen();
     expect(view.getByText(title)).toBeOnTheScreen();
-    expect(view.queryByTestId("native-acceptance-readback")).not.toBeOnTheScreen();
-    await act(async () => { fireEvent.press(view.getByTestId("native-acceptance-execute")); });
+    expect(view.queryByTestId("native-acceptance-execute")).not.toBeOnTheScreen();
+    await waitFor(() => expect(view.getByTestId("native-acceptance-readback")).toHaveTextContent("Case verified"));
     expect(view.getByTestId("native-acceptance-readback")).toHaveTextContent("Case verified");
     expect(view.getByTestId("native-acceptance-readback")).toHaveProp(
       "accessibilityLabel", expect.stringContaining(`V12_UI_READBACK:`),
     );
-    expect(mockExecuteV12NativeAcceptanceCase).toHaveBeenCalledWith(expect.objectContaining({ shard, caseId, nonce: "a".repeat(48) }));
+    expect(mockReadV12NativeAcceptanceReceipt).toHaveBeenCalledWith(expect.objectContaining({ shard, caseId, nonce: "a".repeat(48) }));
+    expect(mockExecuteV12NativeAcceptanceCase).not.toHaveBeenCalled();
     expect(view.getByTestId("native-acceptance-source-receipt")).toHaveProp(
       "accessibilityLabel", expect.stringContaining("V12_SOURCE_RECEIPT:"),
     );
@@ -143,13 +155,69 @@ describe("v1.2 native acceptance route", () => {
   });
 
   it("does not expose a success label when the runtime rejects or substitutes the case receipt", async () => {
-    mockExecuteV12NativeAcceptanceCase.mockRejectedValueOnce(new Error("v12_native_acceptance_receipt_invalid"));
+    mockReadV12NativeAcceptanceReceipt.mockRejectedValueOnce(new Error("v12_native_acceptance_receipt_invalid"));
     const view = await render(<NativeAcceptanceRoute />);
 
-    await act(async () => { fireEvent.press(view.getByTestId("native-acceptance-execute")); });
-
+    await waitFor(() => expect(view.getByTestId("native-acceptance-error")).toHaveTextContent("Receipt read failed"));
     expect(view.queryByTestId("native-acceptance-readback")).not.toBeOnTheScreen();
-    expect(view.getByTestId("native-acceptance-error")).toHaveTextContent("Case execution failed");
+    expect(mockExecuteV12NativeAcceptanceCase).not.toHaveBeenCalled();
+  });
+
+  it("keeps every Maestro shard on product controls and opens this route only for read-only receipts", () => {
+    for (const sourcePath of [
+      "maestro/v1.2/multi-plan.yaml",
+      "maestro/v1.2/workout.yaml",
+      "maestro/v1.2/library-running.yaml",
+    ]) {
+      const source = readFileSync(sourcePath, "utf8");
+      const productAction = source.indexOf('tapOn: { id: "${V12_PRODUCT_ACTION_ID}" }');
+      const receiptRoute = source.indexOf("/native-acceptance/");
+      expect(source).toContain('openLink: "${V12_PRODUCT_URL}"');
+      expect(source).toContain('id: "${V12_PRODUCT_READY_ID}"');
+      expect(source).toContain('id: "${V12_PRODUCT_RESULT_ID}"');
+      expect(source).toContain("mode=receipt");
+      expect(productAction).toBeGreaterThan(-1);
+      expect(receiptRoute).toBeGreaterThan(productAction);
+      expect(source).not.toContain("native-acceptance-execute");
+      expect(source).not.toContain("Native acceptance fixture");
+    }
+    const layout = readFileSync("app/_layout.tsx", "utf8");
+    expect(layout).toContain("V12NativeAcceptanceProductGate");
+    expect(layout).toContain("createStrictIsolatedWorkoutRuntimeDependencies");
+  });
+
+  it("prepares isolated state before rendering the real product route without executing the action", async () => {
+    const request = resolveV12NativeAcceptanceProductRequest({
+      packageName: "com.fchoo.gymtracker.devtest",
+      buildProfile: "development-test",
+      nativeContractsEnabled: true,
+      suite: "v1.2-acceptance",
+    }, {
+      shard: "workout",
+      case: "workout.complete-commit",
+      fixture: "v12-synthetic-fixtures-r18",
+      nonce: "b".repeat(48),
+      mode: "product",
+    });
+    expect(request).not.toBeNull();
+    let finishPreparation: (() => void) | undefined;
+    const prepareProductCase = jest.fn(() => new Promise<void>((resolve) => {
+      finishPreparation = resolve;
+    }));
+    const view = await render(
+      <V12NativeAcceptanceProductGate
+        prepareProductCase={prepareProductCase}
+        request={request!}
+      >
+        <Text testID="real-product-route">Workout</Text>
+      </V12NativeAcceptanceProductGate>,
+    );
+
+    expect(view.getByTestId("native-acceptance-product-preparing")).toBeOnTheScreen();
+    await act(async () => { finishPreparation?.(); });
+    await waitFor(() => expect(view.getByTestId("real-product-route")).toBeOnTheScreen());
+    expect(prepareProductCase).toHaveBeenCalledWith(request);
+    expect(mockExecuteV12NativeAcceptanceCase).not.toHaveBeenCalled();
   });
 
   const invalidRequests: readonly (readonly [string, Readonly<Partial<{
@@ -161,6 +229,7 @@ describe("v1.2 native acceptance route", () => {
     caseId: string;
     fixture: string;
     nonce: string;
+    mode: string;
   }>>])[] = [
     ["disabled", { enabled: false }],
     ["production build", { buildProfile: "production" }],
@@ -170,6 +239,7 @@ describe("v1.2 native acceptance route", () => {
     ["unknown case", { caseId: "workout.not-real" }],
     ["wrong fixture", { fixture: "production" }],
     ["missing nonce", { nonce: "" }],
+    ["missing receipt mode", { mode: "" }],
   ];
 
   it.each(invalidRequests)("fails closed for %s", async (_label, overrides) => {
@@ -181,6 +251,7 @@ describe("v1.2 native acceptance route", () => {
       case: overrides.caseId ?? "workout.root-identity",
       fixture: overrides.fixture ?? "v12-synthetic-fixtures-r18",
       nonce: overrides.nonce ?? "a".repeat(48),
+      mode: overrides.mode ?? "receipt",
     };
     mockPackageName = overrides.packageName ?? "com.fchoo.gymtracker.devtest";
 

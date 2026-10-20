@@ -1,7 +1,5 @@
 import React from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-
-import { useWorkoutAppRuntime } from "../bootstrap/workoutAppRuntime";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
   V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS,
@@ -28,6 +26,7 @@ type NativeAcceptanceParams = Readonly<{
   case?: unknown;
   fixture?: unknown;
   nonce?: unknown;
+  mode?: unknown;
 }>;
 
 type NativeAcceptanceCase = Readonly<{
@@ -76,15 +75,17 @@ function exactString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-export function resolveV12NativeAcceptanceRequest(
+function resolveV12NativeAcceptanceRequestForMode(
   identity: NativeAcceptanceIdentity,
   params: NativeAcceptanceParams,
+  mode: "product" | "receipt",
 ): V12NativeAcceptanceRequest | null {
   if (identity.packageName !== "com.fchoo.gymtracker.devtest"
     || identity.buildProfile !== "development-test"
     || identity.nativeContractsEnabled !== true
     || identity.suite !== "v1.2-acceptance"
-    || exactString(params.fixture) !== V12_NATIVE_ACCEPTANCE_FIXTURE_ID) return null;
+    || exactString(params.fixture) !== V12_NATIVE_ACCEPTANCE_FIXTURE_ID
+    || exactString(params.mode) !== mode) return null;
   const shard = exactString(params.shard);
   if (shard !== "multi-plan" && shard !== "workout" && shard !== "library-running") return null;
   const source = SHARDS[shard];
@@ -105,6 +106,20 @@ export function resolveV12NativeAcceptanceRequest(
     authorityTables: authorityTablesForV12NativeAcceptance(shard, fixtureCase.id, fixtureCase.sourceProbe),
     nonce,
   });
+}
+
+export function resolveV12NativeAcceptanceRequest(
+  identity: NativeAcceptanceIdentity,
+  params: NativeAcceptanceParams,
+): V12NativeAcceptanceRequest | null {
+  return resolveV12NativeAcceptanceRequestForMode(identity, params, "receipt");
+}
+
+export function resolveV12NativeAcceptanceProductRequest(
+  identity: NativeAcceptanceIdentity,
+  params: NativeAcceptanceParams,
+): V12NativeAcceptanceRequest | null {
+  return resolveV12NativeAcceptanceRequestForMode(identity, params, "product");
 }
 
 function receiptLabel(prefix: string, value: object): string {
@@ -138,13 +153,52 @@ function readbacksMatchRequest(
     && ui.source_receipt_sha256 === source.source_receipt_sha256;
 }
 
-export function V12NativeAcceptanceFixture({
+export type V12NativeAcceptanceReceiptReader = (
+  request: V12NativeAcceptanceRequest,
+) => Promise<V12NativeAcceptanceReadbacks>;
+
+export type V12NativeAcceptanceProductPreparer = (
+  request: V12NativeAcceptanceRequest,
+) => Promise<void>;
+
+export function V12NativeAcceptanceProductGate({
+  children,
+  prepareProductCase,
   request,
-}: Readonly<{ request: V12NativeAcceptanceRequest }>) {
-  const runtime = useWorkoutAppRuntime();
-  const [readbacks, setReadbacks] = React.useState<V12NativeAcceptanceReadbacks | null>(null);
-  const [status, setStatus] = React.useState<"idle" | "running" | "failed">("idle");
+}: Readonly<{
+  children: React.ReactNode;
+  prepareProductCase: V12NativeAcceptanceProductPreparer;
+  request: V12NativeAcceptanceRequest;
+}>) {
+  const [status, setStatus] = React.useState<"preparing" | "ready" | "failed">("preparing");
   React.useEffect(() => {
+    let active = true;
+    setStatus("preparing");
+    void prepareProductCase(request).then(() => {
+      if (active) setStatus("ready");
+    }).catch(() => {
+      if (active) setStatus("failed");
+    });
+    return () => { active = false; };
+  }, [prepareProductCase, request]);
+  if (status === "preparing") return <Text testID="native-acceptance-product-preparing">Preparing product state</Text>;
+  if (status === "failed") return <Text testID="native-acceptance-product-error">Product state unavailable</Text>;
+  return <>{children}</>;
+}
+
+/** Read-only post-action bridge. Product UI owns every action; this component
+ * can only validate and expose receipts after Maestro uses the real control. */
+export function V12NativeAcceptanceReceipt({
+  readReceipt,
+  request,
+}: Readonly<{
+  readReceipt: V12NativeAcceptanceReceiptReader;
+  request: V12NativeAcceptanceRequest;
+}>) {
+  const [readbacks, setReadbacks] = React.useState<V12NativeAcceptanceReadbacks | null>(null);
+  const [status, setStatus] = React.useState<"running" | "failed">("running");
+  React.useEffect(() => {
+    let active = true;
     console.info(`GYM_TRACKER_V12_NATIVE_ACCEPTANCE_STAGE:${JSON.stringify({
       schema_version: 1,
       fixture_id: request.fixtureId,
@@ -152,10 +206,22 @@ export function V12NativeAcceptanceFixture({
       case_id: request.caseId,
       source: request.source,
     })}`);
-  }, [request]);
+    setReadbacks(null);
+    setStatus("running");
+    void readReceipt(request).then((result) => {
+      if (!active) return;
+      if (!readbacksMatchRequest(request, result)) throw new Error("v12_native_acceptance_receipt_invalid");
+      setReadbacks(result);
+    }).catch(() => {
+      if (!active) return;
+      setReadbacks(null);
+      setStatus("failed");
+    });
+    return () => { active = false; };
+  }, [readReceipt, request]);
   return (
     <ScrollView contentContainerStyle={styles.content}>
-      <Text accessibilityRole="header" style={styles.heading}>Native acceptance fixture</Text>
+      <Text accessibilityRole="header" style={styles.heading}>Native acceptance receipt</Text>
       <Text style={styles.eyebrow}>{request.title}</Text>
       <View
         accessibilityLabel="native-acceptance-stage"
@@ -167,27 +233,8 @@ export function V12NativeAcceptanceFixture({
         <Text>Requirement: {request.requirement}</Text>
         <Text>Action: {request.action}</Text>
         <Text>Expected readback: {request.readback}</Text>
-        <Pressable
-          accessibilityLabel={`Execute ${request.caseId}`}
-          accessibilityRole="button"
-          disabled={status === "running" || readbacks !== null}
-          onPress={() => {
-            setStatus("running");
-            void runtime.executeV12NativeAcceptanceCase(request).then((result) => {
-              if (!readbacksMatchRequest(request, result)) throw new Error("v12_native_acceptance_receipt_invalid");
-              setReadbacks(result);
-              setStatus("idle");
-            }).catch(() => {
-              setReadbacks(null);
-              setStatus("failed");
-            });
-          }}
-          testID="native-acceptance-execute"
-        >
-          <Text>Execute case</Text>
-        </Pressable>
-        {status === "running" ? <Text testID="native-acceptance-running">Executing authoritative read</Text> : null}
-        {status === "failed" ? <Text testID="native-acceptance-error">Case execution failed</Text> : null}
+        {status === "running" && readbacks === null ? <Text testID="native-acceptance-running">Reading authoritative receipt</Text> : null}
+        {status === "failed" ? <Text testID="native-acceptance-error">Receipt read failed</Text> : null}
         {readbacks === null ? null : (
           <>
             <Text
