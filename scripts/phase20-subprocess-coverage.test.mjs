@@ -7,7 +7,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSy
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { syncBuiltinESMExports } from "node:module";
 
 import {
@@ -1553,6 +1553,27 @@ test("production-shaped retained evidence completes preseal and final readiness"
   skip: process.env.V12_PHASE20_COVERAGE_FIXTURE === undefined,
   timeout: 25 * 60_000,
 }, () => {
+  if (process.env.V12_PHASE20_RETAINED_PRODUCTION_CHILD !== "1") {
+    const environment = {
+      ...process.env,
+      V12_PHASE20_RETAINED_PRODUCTION_CHILD: "1",
+    };
+    delete environment.NODE_TEST_CONTEXT;
+    const isolated = spawnSync(process.execPath, [
+      "--test",
+      "--test-concurrency=1",
+      "--test-name-pattern=^production-shaped retained evidence completes preseal and final readiness$",
+      fileURLToPath(import.meta.url),
+    ], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: environment,
+      maxBuffer: 64 * 1024 * 1024,
+      timeout: 25 * 60_000,
+    });
+    assert.equal(isolated.status, 0, isolated.stderr || isolated.stdout);
+    return;
+  }
   const root = process.env.V12_PHASE20_COVERAGE_FIXTURE;
   const runId = readdirSync(path.join(root, "artifacts/native/v1.2"))
     .find((entry) => entry.startsWith("phase20-"));
