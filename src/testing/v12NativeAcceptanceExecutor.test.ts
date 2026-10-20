@@ -1240,6 +1240,42 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects undo flows without a load-reps completion or durable undo snapshot", async () => {
+    const undo = v12NativeAcceptanceCaseContract("workout", "workout.undo");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ emptySql: /session_undo_snapshots/u }), contract: undo, request: requestForContract(undo),
+    })).rejects.toThrow("v12_native_acceptance_workout_metric_precondition_missing");
+
+    const completion = isolateExecutorWithMocks([{
+      moduleName: "../domains/workout/setCommands",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/workout/setCommands")>("../domains/workout/setCommands"),
+        completeSet: async () => ({ outcome: "already_committed" }),
+      }),
+    }]);
+    try {
+      const contract = completion.contracts.v12NativeAcceptanceCaseContract("workout", "workout.undo");
+      const undoKernel = kernel({ emptySql: /session_undo_snapshots/u });
+      const queryAll = undoKernel.queryAll.bind(undoKernel);
+      undoKernel.queryAll = async <Row extends Record<string, unknown>,>(sql: string, params?: readonly SqliteParameter[]) => {
+        if (sql.includes("set_row.metric_profile")) {
+          return [{
+            session_id: "session-owned-1", session_revision: 1,
+            exercise_id: "exercise-owned-1", exercise_revision: 1,
+            set_id: "set-owned-1", set_revision: 1,
+            metric_profile: "load_reps", metric_contract_version: 1, exercise_metric_generation: 1,
+          }] as unknown as readonly Row[];
+        }
+        return queryAll(sql, params);
+      };
+      await expect(completion.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: undoKernel, contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_undo_completion_failed");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("rejects missing Workout set, exercise, alternate-library, and snapshot facts", async () => {
     const rowEdit = v12NativeAcceptanceCaseContract("workout", "workout.row-edit");
     await expect(dispatchV12NativeAcceptanceProductionOperation({
