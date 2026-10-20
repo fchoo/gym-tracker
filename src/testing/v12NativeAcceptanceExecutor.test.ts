@@ -1398,6 +1398,32 @@ describe("v1.2 native acceptance production executor", () => {
     })).rejects.toThrow("v12_native_acceptance_snapshot_unavailable");
   });
 
+  it("rejects custom-exercise receipts whose postcondition rows disappeared", async () => {
+    const cases = [
+      ["library.create-exercise", "create", /FROM exercises WHERE id = \? AND origin = 'custom'/u],
+      ["library.custom-exercise-edit", "edit", /FROM exercises WHERE id = \? AND origin = 'custom'/u],
+      ["library.custom-exercise-hide", "hidden", /SELECT hidden FROM exercise_owner_preferences/u],
+      ["library.custom-exercise-archive", "archive", /SELECT archived FROM exercise_owner_preferences/u],
+      ["library.custom-exercise-copy-bundled", "copy", /SELECT id, origin, revision FROM exercises/u],
+    ] as const;
+    for (const [caseId, mutationKind, emptySql] of cases) {
+      const contract = v12NativeAcceptanceCaseContract("library-running", caseId);
+      const value = requestForContract(contract, `f${"a".repeat(47)}`);
+      await expect(dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({
+          emptySql,
+          values: {
+            mutation_kind: mutationKind,
+            request_json: `v12:custom-exercise:${contract.caseId}:${value.nonce}:action`,
+          },
+        }),
+        contract,
+        request: value,
+        runtime: { customExercises: {} as never },
+      })).rejects.toThrow("v12_native_acceptance_custom_exercise_postcondition_failed");
+    }
+  });
+
   it("rejects Running handlers whose nonce-bound aggregate is absent", async () => {
     const runtime = { running: { loadPlan: async () => null } as never };
     const cases = [
