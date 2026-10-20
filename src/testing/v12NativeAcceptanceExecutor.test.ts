@@ -1069,6 +1069,70 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects workout preference writes and partial-finish paths without durable committed outcomes", async () => {
+    const preferenceWrite = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/workoutPreferenceRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/workoutPreferenceRepository")>("../platform/sqlite/repositories/workoutPreferenceRepository"),
+        createWorkoutPreferenceRepository: () => ({
+          read: async () => ({ revision: 1, defaultRestSeconds: 30, weightIncrementGrams: 0 }),
+          write: async () => ({ revision: 1, defaultRestSeconds: 30, weightIncrementGrams: 2_500 }),
+        }),
+      }),
+    }]);
+    try {
+      const contract = preferenceWrite.contracts.v12NativeAcceptanceCaseContract("workout", "workout.appearance");
+      await expect(preferenceWrite.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_preference_postcondition_failed");
+    } finally {
+      jest.resetModules();
+    }
+
+    const preferenceReadback = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/workoutPreferenceRepository",
+      factory: () => {
+        let reads = 0;
+        return {
+          ...jest.requireActual<typeof import("../platform/sqlite/repositories/workoutPreferenceRepository")>("../platform/sqlite/repositories/workoutPreferenceRepository"),
+          createWorkoutPreferenceRepository: () => ({
+            read: async () => {
+              reads += 1;
+              return reads === 1
+                ? { revision: 1, defaultRestSeconds: 30, weightIncrementGrams: 0 }
+                : { revision: 2, defaultRestSeconds: 30, weightIncrementGrams: 0 };
+            },
+            write: async () => ({ revision: 2, defaultRestSeconds: 75, weightIncrementGrams: 2_500 }),
+          }),
+        };
+      },
+    }]);
+    try {
+      const contract = preferenceReadback.contracts.v12NativeAcceptanceCaseContract("workout", "workout.appearance");
+      await expect(preferenceReadback.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_preference_postcondition_failed");
+    } finally {
+      jest.resetModules();
+    }
+
+    const outcome = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/workoutOutcomeRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/workoutOutcomeRepository")>("../platform/sqlite/repositories/workoutOutcomeRepository"),
+        createWorkoutOutcomeRepository: () => ({}),
+      }),
+    }]);
+    try {
+      const contract = outcome.contracts.v12NativeAcceptanceCaseContract("workout", "workout.outcomes");
+      await expect(outcome.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_finish_partial_handler_missing");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("rejects custom-exercise handlers when durable receipts or exercise preconditions are absent", async () => {
     const runtime = { customExercises: {} as never };
     const favorite = v12NativeAcceptanceCaseContract("library-running", "library.exercise-favorites");
