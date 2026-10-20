@@ -25,7 +25,7 @@ import {
   validateV12ProductCaseEnvironment,
 } from "./run-v12-maestro.mjs";
 import { digestV12CanonicalRestorationSnapshot } from "./v12-device-settings-contract.mjs";
-import { V12_POSIX_OWNERSHIP_ENV } from "./v12-posix-process-tree.mjs";
+import { createV12PosixProcessTreeTracker, V12_POSIX_OWNERSHIP_ENV } from "./v12-posix-process-tree.mjs";
 import { validateV12ProductionPublicationOrigins } from "./verify-v12-native-evidence.mjs";
 
 const TEST_TIMEOUT_MS = 30_000;
@@ -33,6 +33,8 @@ const runId = "phase20-20261017T000000Z-aaaaaaaaaaaa";
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const DEVICE_FACTS = Object.freeze({ serial: "physical-device-20", abi: "arm64-v8a", apiLevel: "36", model: "Samsung N4" });
 const DEVICE_SETTINGS = Object.freeze({ font_scale: "1", ui_night_mode: "1", animator_duration_scale: "1" });
+const deviceLeasePath = (root) => path.join(root,
+  `artifacts/native/v1.2/${runId}/.leases/device-${hash(DEVICE_FACTS.serial)}.lease`);
 const REAL_CASE_IDS = Object.freeze({
   "multi-plan": Object.freeze([
     "phase13-migration-failure-cuts", "phase13-map01-activation", "phase13-running-two-slots",
@@ -445,7 +447,10 @@ test("all 101 product environments resolve through production UI selectors and c
   }
 });
 
-test("bounded supervisor kills a TERM-resistant process tree", { timeout: 10_000 }, async (t) => {
+test("bounded Linux supervisor kills a TERM-resistant process tree through pidfds", {
+  skip: process.platform !== "linux",
+  timeout: 10_000,
+}, async (t) => {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "v12-maestro-supervisor-")));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const childPid = path.join(root, "child.pid");
@@ -467,7 +472,10 @@ test("bounded supervisor kills a TERM-resistant process tree", { timeout: 10_000
   assert.throws(() => process.kill(descendant, 0), /ESRCH/u);
 });
 
-test("bounded supervisor drains a TERM-resistant descendant after a successful POSIX leader", { timeout: 10_000 }, async (t) => {
+test("bounded Linux supervisor drains a TERM-resistant descendant after a successful leader", {
+  skip: process.platform !== "linux",
+  timeout: 10_000,
+}, async (t) => {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "v12-maestro-success-tree-")));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const childPid = path.join(root, "child.pid");
@@ -517,7 +525,7 @@ test("bounded supervisor finds a detached POSIX child after its leader exits bef
   let descendant;
   let probeCount = 0;
   try {
-    assert.equal(await runV12BoundedProcess(process.execPath, [script], {
+    const running = runV12BoundedProcess(process.execPath, [script], {
       cwd: root, timeoutMs: 2_000, termGraceMs: 100, killGraceMs: 1_000,
       spawnImplementation: (program, args, options) => {
         const leader = spawn(program, args, options);
@@ -533,11 +541,17 @@ test("bounded supervisor finds a detached POSIX child after its leader exits bef
         probeCount += 1;
         return outcome;
       },
-    }), "");
+    });
+    if (process.platform === "linux") assert.equal(await running, "");
+    else await assert.rejects(running, /v12_maestro_process_tree_enumeration_failed/u);
     descendant = Number(readFileSync(childPid, "utf8"));
-    assert.throws(() => process.kill(descendant, 0), /ESRCH/u);
-    assert.equal(probeCount >= 4, true, "terminal ownership was not re-probed through TERM and KILL");
-    descendant = undefined;
+    if (process.platform === "linux") {
+      assert.throws(() => process.kill(descendant, 0), /ESRCH/u);
+      descendant = undefined;
+    } else {
+      assert.doesNotThrow(() => process.kill(descendant, 0));
+    }
+    assert.equal(probeCount >= 3, true, "terminal token ownership was not re-probed");
   } finally {
     if (descendant !== undefined) { try { process.kill(descendant, "SIGKILL"); } catch { /* already gone */ } }
   }
@@ -551,74 +565,83 @@ function successfulProcessProbe(stdout) {
   return { status: 0, signal: null, error: undefined, stdout };
 }
 
-test("bounded supervisor rejects a same-second reused PID with a mismatched ownership token", async () => {
+function successfulPidfdHelper() {
+  return { status: 0, signal: null, error: undefined, stdout: "ok\n", stderr: "" };
+}
+
+function failedPidfdHelper(stderr = "") {
+  return { status: 1, signal: null, error: undefined, stdout: "", stderr };
+}
+
+test("mocked Linux pidfd helper rejects same-second PID reuse after discovery", async () => {
   const child = simulatedWindowsChild();
   child.pid = 500;
   let ownershipToken;
-  let probeCount = 0;
-  const signals = [];
+  const pidfdSignals = [];
   const running = runV12BoundedProcess(process.execPath, ["-e", ""], {
+    platform: "linux",
     spawnImplementation: (_program, _args, options) => {
       ownershipToken = options.env[V12_POSIX_OWNERSHIP_ENV];
       queueMicrotask(() => child.emit("close", 0, null));
       return child;
     },
-    killImplementation: (target, signal) => {
-      signals.push([target, signal]);
-      throw new Error("PID reuse must not be signalled");
+    posixProcessProbeImplementation: () => successfulProcessProbe(ownedProcessRow(500, "Ss", ownershipToken)),
+    posixPidfdSignalImplementation: (_program, args, options) => {
+      assert.deepEqual(args.slice(3), ["500"]);
+      assert.equal(options.input, `${ownershipToken}\n`);
+      const pinnedIdentity = "original-token-owner";
+      const currentIdentity = "same-second-replacement";
+      assert.notEqual(pinnedIdentity, currentIdentity);
+      return failedPidfdHelper();
     },
-    posixProcessProbeImplementation: () => successfulProcessProbe(probeCount++ === 0
-      ? ownedProcessRow(500, "Ss", ownershipToken)
-      : ownedProcessRow(500, "Ss", "0".repeat(64), "node reused-same-second.mjs")),
-    timeoutMs: 1_000,
-    termGraceMs: 5,
-    killGraceMs: 20,
-  });
-  assert.equal(await running, "");
-  assert.deepEqual(signals, []);
-});
-
-test("bounded supervisor does not signal a PID after its ownership token is removed", async () => {
-  const child = simulatedWindowsChild();
-  child.pid = 501;
-  let ownershipToken;
-  let probeCount = 0;
-  const signals = [];
-  const running = runV12BoundedProcess(process.execPath, ["-e", ""], {
-    spawnImplementation: (_program, _args, options) => {
-      ownershipToken = options.env[V12_POSIX_OWNERSHIP_ENV];
-      queueMicrotask(() => child.emit("close", 0, null));
-      return child;
-    },
-    killImplementation: (target, signal) => { signals.push([target, signal]); },
-    posixProcessProbeImplementation: () => successfulProcessProbe(probeCount++ < 3
-      ? ownedProcessRow(501, "Ss", ownershipToken)
-      : "501 Ss node token-removed.mjs\n"),
-    timeoutMs: 1_000,
-    termGraceMs: 5,
-    killGraceMs: 20,
-  });
-  assert.equal(await running, "");
-  assert.deepEqual(signals, []);
-});
-
-test("bounded supervisor fails closed when initial POSIX ownership enumeration is unavailable", async () => {
-  const child = simulatedWindowsChild();
-  child.pid = 500;
-  const signals = [];
-  const running = runV12BoundedProcess(process.execPath, ["-e", ""], {
-    spawnImplementation: () => {
-      queueMicrotask(() => child.emit("close", 0, null));
-      return child;
-    },
-    killImplementation: (target, signal) => { signals.push([target, signal]); },
-    posixProcessProbeImplementation: () => { throw new Error("ps unavailable"); },
     timeoutMs: 1_000,
     termGraceMs: 5,
     killGraceMs: 20,
   });
   await assert.rejects(running, /v12_maestro_process_tree_enumeration_failed/u);
-  assert.deepEqual(signals, []);
+  assert.deepEqual(pidfdSignals, []);
+});
+
+test("mocked Linux pidfd helper rejects token removal after discovery", async () => {
+  const child = simulatedWindowsChild();
+  child.pid = 501;
+  let ownershipToken;
+  const pidfdSignals = [];
+  const running = runV12BoundedProcess(process.execPath, ["-e", ""], {
+    platform: "linux",
+    spawnImplementation: (_program, _args, options) => {
+      ownershipToken = options.env[V12_POSIX_OWNERSHIP_ENV];
+      queueMicrotask(() => child.emit("close", 0, null));
+      return child;
+    },
+    posixProcessProbeImplementation: () => successfulProcessProbe(ownedProcessRow(501, "Ss", ownershipToken)),
+    posixPidfdSignalImplementation: () => failedPidfdHelper(),
+    timeoutMs: 1_000,
+    termGraceMs: 5,
+    killGraceMs: 20,
+  });
+  await assert.rejects(running, /v12_maestro_process_tree_enumeration_failed/u);
+  assert.deepEqual(pidfdSignals, []);
+});
+
+test("bounded supervisor fails closed when initial POSIX ownership enumeration is unavailable", async () => {
+  const child = simulatedWindowsChild();
+  child.pid = 500;
+  let helperCalls = 0;
+  const running = runV12BoundedProcess(process.execPath, ["-e", ""], {
+    platform: "linux",
+    spawnImplementation: () => {
+      queueMicrotask(() => child.emit("close", 0, null));
+      return child;
+    },
+    posixProcessProbeImplementation: () => { throw new Error("ps unavailable"); },
+    posixPidfdSignalImplementation: () => { helperCalls += 1; return successfulPidfdHelper(); },
+    timeoutMs: 1_000,
+    termGraceMs: 5,
+    killGraceMs: 20,
+  });
+  await assert.rejects(running, /v12_maestro_process_tree_enumeration_failed/u);
+  assert.equal(helperCalls, 0);
 });
 
 test("bounded supervisor sends zero later signals when POSIX ownership re-enumeration fails", async () => {
@@ -626,24 +649,173 @@ test("bounded supervisor sends zero later signals when POSIX ownership re-enumer
   child.pid = 502;
   let ownershipToken;
   let probeCount = 0;
-  const signals = [];
+  let helperCalls = 0;
   const running = runV12BoundedProcess(process.execPath, ["-e", ""], {
+    platform: "linux",
     spawnImplementation: (_program, _args, options) => {
       ownershipToken = options.env[V12_POSIX_OWNERSHIP_ENV];
       queueMicrotask(() => child.emit("close", 0, null));
       return child;
     },
-    killImplementation: (target, signal) => { signals.push([target, signal]); },
     posixProcessProbeImplementation: () => {
       if (probeCount++ === 0) return successfulProcessProbe(ownedProcessRow(502, "Ss", ownershipToken));
       throw new Error("ps became unavailable");
     },
+    posixPidfdSignalImplementation: () => { helperCalls += 1; return successfulPidfdHelper(); },
     timeoutMs: 1_000,
     termGraceMs: 5,
     killGraceMs: 20,
   });
   await assert.rejects(running, /v12_maestro_process_tree_enumeration_failed/u);
-  assert.deepEqual(signals, []);
+  assert.equal(helperCalls, 0);
+});
+
+test("mocked Linux pidfd transaction validates every candidate before its first signal", async () => {
+  const token = "a".repeat(64);
+  const acquiredHandles = [];
+  const pidfdSignals = [];
+  const tracker = createV12PosixProcessTreeTracker({
+    ownershipToken: token,
+    platform: "linux",
+    probeImplementation: () => successfulProcessProbe(
+      ownedProcessRow(601, "Ss", token) + ownedProcessRow(602, "Ss", token),
+    ),
+    pidfdSignalImplementation: (_program, args, options) => {
+      const pids = args.slice(3).map(Number);
+      acquiredHandles.push(...pids.map((pid) => Object.freeze({ pid })));
+      assert.equal(options.input, `${token}\n`);
+      assert.deepEqual(pids, [601, 602]);
+      assert.equal(acquiredHandles.length, 2);
+      assert.equal(pids[0], 601);
+      assert.equal(pids[1], 602);
+      return failedPidfdHelper();
+    },
+    probeTimeoutMs: 100,
+  });
+  assert.throws(() => tracker.signal("SIGTERM"), /v12_posix_process_tree_stable_signal_failed/u);
+  assert.deepEqual(pidfdSignals, []);
+  assert.throws(() => tracker.signal("SIGKILL"), /v12_posix_process_tree_failed/u);
+});
+
+test("mocked Linux pidfd signal stays bound to the validated process after PID replacement", async () => {
+  const token = "b".repeat(64);
+  let live = true;
+  const currentByPid = new Map([[603, { identity: "owned-original", token }]]);
+  const pidfdSignals = [];
+  const tracker = createV12PosixProcessTreeTracker({
+    ownershipToken: token,
+    platform: "linux",
+    probeImplementation: () => successfulProcessProbe(live ? ownedProcessRow(603, "Ss", token) : ""),
+    pidfdSignalImplementation: (_program, args, options) => {
+      assert.deepEqual(args.slice(3), ["603"]);
+      assert.equal(options.input, `${token}\n`);
+      const pinnedHandle = currentByPid.get(603);
+      assert.equal(pinnedHandle.token, token);
+      currentByPid.set(603, { identity: "unrelated-replacement", token: "0".repeat(64) });
+      pidfdSignals.push(pinnedHandle.identity);
+      live = false;
+      return successfulPidfdHelper();
+    },
+    probeTimeoutMs: 100,
+  });
+  assert.equal(tracker.signal("SIGTERM"), true);
+  assert.deepEqual(pidfdSignals, ["owned-original"]);
+  assert.equal(currentByPid.get(603).identity, "unrelated-replacement");
+  assert.equal(tracker.treeState(), "empty");
+  tracker.stop();
+});
+
+test("Python pidfd helper acquires and validates the complete set before signalling stable handles", () => {
+  const harness = String.raw`
+import contextlib
+import importlib.util
+import io
+import sys
+
+spec = importlib.util.spec_from_file_location("pidfd_helper", sys.argv[1])
+helper = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(helper)
+
+events = []
+handles = {}
+current = {701: "owned-701", 702: "owned-702"}
+signals = []
+
+class FakeOS:
+    def pidfd_open(self, pid, flags):
+        fd = pid + 1000
+        handles[fd] = current[pid]
+        events.append(("open", pid))
+        return fd
+
+    def close(self, fd):
+        events.append(("close", fd))
+
+class FakeSignal:
+    SIGTERM = 15
+    SIGKILL = 9
+
+    def pidfd_send_signal(self, fd, selected_signal, info, flags):
+        signals.append(handles[fd])
+
+helper.os = FakeOS()
+helper.signal = FakeSignal()
+helper._parse = lambda arguments: (15, 1000, [701, 702], b"a" * 64)
+
+def reject_second(pid, pidfd, token, deadline):
+    events.append(("validate", pid))
+    return pid == 701
+
+helper._has_exact_token = reject_second
+assert helper.main(["helper", "SIGTERM", "1000", "701", "702"]) == 1
+assert events[:4] == [("open", 701), ("open", 702), ("validate", 701), ("validate", 702)]
+assert signals == []
+assert events[-2:] == [("close", 1701), ("close", 1702)]
+
+events.clear()
+handles.clear()
+signals.clear()
+current = {701: "owned-701", 702: "owned-702"}
+
+def validate_then_replace(pid, pidfd, token, deadline):
+    events.append(("validate", pid))
+    if pid == 702:
+        current[701] = "replacement-701"
+        current[702] = "replacement-702"
+    return True
+
+helper._has_exact_token = validate_then_replace
+captured = io.StringIO()
+with contextlib.redirect_stdout(captured):
+    assert helper.main(["helper", "SIGTERM", "1000", "701", "702"]) == 0
+assert captured.getvalue() == "ok\n"
+assert events[:4] == [("open", 701), ("open", 702), ("validate", 701), ("validate", 702)]
+assert signals == ["owned-701", "owned-702"]
+`;
+  const outcome = spawnSync("python3", ["-c", harness, path.resolve("scripts/v12-linux-pidfd-signal.py")], {
+    encoding: "utf8",
+    maxBuffer: 64 * 1024,
+    timeout: 1_000,
+  });
+  assert.equal(outcome.status, 0, outcome.stderr);
+  assert.equal(outcome.stdout, "");
+});
+
+test("unsupported POSIX platform fails closed before invoking a numeric or pidfd signal", () => {
+  const token = "c".repeat(64);
+  let helperCalls = 0;
+  let numericSignals = 0;
+  const tracker = createV12PosixProcessTreeTracker({
+    ownershipToken: token,
+    platform: "darwin",
+    probeImplementation: () => successfulProcessProbe(ownedProcessRow(604, "Ss", token)),
+    pidfdSignalImplementation: () => { helperCalls += 1; return successfulPidfdHelper(); },
+    killImplementation: () => { numericSignals += 1; },
+    probeTimeoutMs: 100,
+  });
+  assert.throws(() => tracker.signal("SIGTERM"), /v12_posix_process_tree_stable_signal_unavailable/u);
+  assert.equal(helperCalls, 0);
+  assert.equal(numericSignals, 0);
 });
 
 test("POSIX ownership failures never expose the token or raw process environment", async () => {
@@ -652,15 +824,16 @@ test("POSIX ownership failures never expose the token or raw process environment
   let ownershipToken;
   const privateEnvironment = "PRIVATE_PROCESS_VALUE=must-not-escape";
   const running = runV12BoundedProcess(process.execPath, ["-e", ""], {
+    platform: "linux",
     spawnImplementation: (_program, _args, options) => {
       ownershipToken = options.env[V12_POSIX_OWNERSHIP_ENV];
       queueMicrotask(() => child.emit("close", 0, null));
       return child;
     },
-    killImplementation: () => { throw new Error("unverified process must not be signalled"); },
-    posixProcessProbeImplementation: () => successfulProcessProbe(
-      `malformed ${privateEnvironment} ${V12_POSIX_OWNERSHIP_ENV}=${ownershipToken}\n`,
-    ),
+    posixProcessProbeImplementation: () => successfulProcessProbe(ownedProcessRow(
+      503, "Ss", ownershipToken, `node private-worker.mjs ${privateEnvironment}`,
+    )),
+    posixPidfdSignalImplementation: () => failedPidfdHelper(`${privateEnvironment}:${ownershipToken}`),
     timeoutMs: 1_000,
     termGraceMs: 5,
     killGraceMs: 20,
@@ -814,7 +987,24 @@ test("hung Maestro restores settings and removes the lease before returning", { 
     currentIdentity: value.currentIdentity, executionTools: value.tools, runProcess,
   }), /v12_maestro_native_command_timeout/u);
   assert.ok(restoreCalls >= 3);
-  assert.equal(existsSync(path.join(value.root, `artifacts/native/v1.2/${runId}/.leases/multi-plan-${DEVICE_FACTS.serial}.lease`)), false);
+  assert.equal(existsSync(deviceLeasePath(value.root)), false);
+});
+
+test("unresolved POSIX cleanup retains the device lease", { timeout: TEST_TIMEOUT_MS }, async (t) => {
+  const value = fixture(t, "multi-plan");
+  const leasePath = deviceLeasePath(value.root);
+  const runProcess = async (program, args, options) => {
+    if (program === value.tools.maestro && args[0] === "test") {
+      throw new Error("v12_maestro_process_tree_enumeration_failed");
+    }
+    return value.execute(program, args, options);
+  };
+  await assert.rejects(() => executeLiveV12GenericMaestro(["--run", runId, "--shard", "multi-plan"], {
+    root: value.root, serial: DEVICE_FACTS.serial, currentHead: value.build.source.head,
+    sourceDigest: value.build.source.tree_sha256, isAncestor: () => true,
+    currentIdentity: value.currentIdentity, executionTools: value.tools, runProcess,
+  }), /v12_maestro_native_command_failed/u);
+  assert.equal(existsSync(leasePath), true);
 });
 
 test("external cancellation terminates Maestro before cleanup restores settings and removes the lease", { timeout: TEST_TIMEOUT_MS }, async (t) => {
@@ -837,7 +1027,7 @@ test("external cancellation terminates Maestro before cleanup restores settings 
   setTimeout(() => controller.abort(), 20);
   await assert.rejects(running, /v12_maestro_native_command_cancelled/u);
   assert.ok(restoreCalls >= 3);
-  assert.equal(existsSync(path.join(value.root, `artifacts/native/v1.2/${runId}/.leases/multi-plan-${DEVICE_FACTS.serial}.lease`)), false);
+  assert.equal(existsSync(deviceLeasePath(value.root)), false);
 });
 for (const shard of ["multi-plan", "workout", "library-running"]) {
   test(`${shard} publishes action-scoped provenance after absolute-tool execution`, { timeout: TEST_TIMEOUT_MS }, async (t) => {

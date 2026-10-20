@@ -1,5 +1,5 @@
 import childProcess, { spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 import { syncBuiltinESMExports } from "node:module";
 import {
@@ -99,10 +99,11 @@ function runTestProject(project, {
   onProjectSignal,
   platform,
   spawnImplementation,
-  killImplementation,
   taskkillImplementation,
   windowsTreeProbeImplementation,
   posixProcessProbeImplementation,
+  posixPidfdSignalImplementation,
+  posixPidfdPythonExecutable,
 }) {
   return new Promise((resolve, reject) => {
     const { name, tests, concurrency = 1 } = project;
@@ -116,7 +117,12 @@ function runTestProject(project, {
       environment.PHASE20_CHILD_COVERAGE_PROJECT_ROOT = projectRoot;
     }
     const posixOwnershipToken = platform === "win32" ? undefined : randomBytes(32).toString("hex");
-    if (platform !== "win32") environment[V12_POSIX_OWNERSHIP_ENV] = posixOwnershipToken;
+    const ownershipMarkerPath = platform === "win32" ? undefined
+      : path.join(path.dirname(testReportPath), ".process-ownership");
+    if (platform !== "win32") {
+      environment[V12_POSIX_OWNERSHIP_ENV] = posixOwnershipToken;
+      writeFileSync(ownershipMarkerPath, `${createHash("sha256").update(posixOwnershipToken).digest("hex")}\n`, { flag: "wx" });
+    }
     let settled = false;
     let stopReason = null;
     let cleanupVerified = true;
@@ -124,7 +130,7 @@ function runTestProject(project, {
     let terminateTimer;
     let killTimer;
     let termSent = false; let killSent = false;
-    const processDependencies = { platform, killImplementation, taskkillImplementation,
+    const processDependencies = { platform, taskkillImplementation,
       windowsTreeProbeImplementation, timeoutMs: terminateGraceMs };
     const child = spawnImplementation(process.execPath, [PROCESS_BOOTSTRAP, process.execPath,
       "--test",
@@ -149,7 +155,10 @@ function runTestProject(project, {
     if (platform !== "win32") {
       try {
         posixTree = createV12PosixProcessTreeTracker({ ownershipToken: posixOwnershipToken, platform,
-          probeImplementation: posixProcessProbeImplementation, killImplementation, probeTimeoutMs: terminateGraceMs });
+          probeImplementation: posixProcessProbeImplementation,
+          pidfdSignalImplementation: posixPidfdSignalImplementation,
+          pidfdPythonExecutable: posixPidfdPythonExecutable,
+          probeTimeoutMs: terminateGraceMs });
       } catch {
         posixEnumerationFailed = true;
       }
@@ -159,7 +168,7 @@ function runTestProject(project, {
       if (treeSignal === "SIGTERM") termSent = true;
       if (treeSignal === "SIGKILL") killSent = true;
       if (platform === "win32") signalProcessGroup(child, treeSignal, processDependencies);
-      else if (posixTree !== undefined) {
+      else if (!posixEnumerationFailed && posixTree !== undefined) {
         try { posixTree.signal(treeSignal); }
         catch { posixEnumerationFailed = true; }
       }
@@ -195,6 +204,7 @@ function runTestProject(project, {
         try { posixTree.stop(); }
         catch { cleanupVerified = false; }
       }
+      if (cleanupVerified && ownershipMarkerPath !== undefined) rmSync(ownershipMarkerPath, { force: true });
       if (!cleanupVerified) {
         reject(new Error(`phase20_coverage_project_cleanup_failed:${name}:${stopReason ?? "exit"}`));
       } else if (terminalError !== undefined) {
@@ -246,6 +256,7 @@ function assertNoSkippedTests(testReportPath, projectName) {
 async function runBoundedProjects(projects, options, maxParallel) {
   let next = 0;
   let firstFailure;
+  let cleanupFailure;
   const cancellation = new AbortController();
   const results = new Array(projects.length);
   async function worker() {
@@ -256,6 +267,9 @@ async function runBoundedProjects(projects, options, maxParallel) {
       try {
         results[index] = await options.run(project, { signal: cancellation.signal });
       } catch (error) {
+        if (/^phase20_coverage_project_cleanup_failed:/u.test(error?.message ?? "") && cleanupFailure === undefined) {
+          cleanupFailure = error;
+        }
         if (firstFailure === undefined) {
           firstFailure = error;
           cancellation.abort();
@@ -268,6 +282,7 @@ async function runBoundedProjects(projects, options, maxParallel) {
     () => worker(),
   );
   await Promise.allSettled(workers);
+  if (cleanupFailure !== undefined) throw cleanupFailure;
   if (firstFailure !== undefined) throw firstFailure;
   return results;
 }
@@ -422,14 +437,30 @@ export async function runPhase20SubprocessCoverage({
   onProjectSignal,
   platform = process.platform,
   spawnImplementation = spawn,
-  killImplementation = process.kill.bind(process),
   taskkillImplementation = childProcess.spawnSync,
   windowsTreeProbeImplementation = childProcess.spawnSync,
   posixProcessProbeImplementation = childProcess.spawnSync,
+  posixPidfdSignalImplementation = childProcess.spawnSync,
+  posixPidfdPythonExecutable = "python3",
 }) {
   const { registeredModules, registeredTests } = validateCoverageProjects(projects, projectRoot);
-  rmSync(outputDirectory, { force: true, recursive: true });
+  const priorProjectsDirectory = path.join(outputDirectory, "projects");
+  if (existsSync(priorProjectsDirectory) && readdirSync(priorProjectsDirectory, { withFileTypes: true })
+    .some((entry) => entry.isDirectory()
+      && existsSync(path.join(priorProjectsDirectory, entry.name, ".process-ownership")))) {
+    throw new Error("phase20_coverage_process_ownership_retained");
+  }
   mkdirSync(outputDirectory, { recursive: true });
+  const runOwnershipMarker = path.join(outputDirectory, ".process-ownership");
+  try {
+    writeFileSync(runOwnershipMarker, `${createHash("sha256").update(randomBytes(32)).digest("hex")}\n`, { flag: "wx" });
+  } catch {
+    throw new Error("phase20_coverage_process_ownership_retained");
+  }
+  for (const entry of readdirSync(outputDirectory)) {
+    if (entry !== ".process-ownership") rmSync(path.join(outputDirectory, entry), { force: true, recursive: true });
+  }
+  let retainRunOwnership = false;
   try {
     const projectReports = await runBoundedProjects(projects, {
       run: async (project, { signal }) => {
@@ -448,10 +479,11 @@ export async function runPhase20SubprocessCoverage({
             onProjectSignal,
             platform,
             spawnImplementation,
-            killImplementation,
             taskkillImplementation,
             windowsTreeProbeImplementation,
             posixProcessProbeImplementation,
+            posixPidfdSignalImplementation,
+            posixPidfdPythonExecutable,
           });
           assertNoSkippedTests(testReportPath, project.name);
           if (project.coverage === false) return {
@@ -502,7 +534,11 @@ export async function runPhase20SubprocessCoverage({
       metrics: COVERAGE_METRICS,
       required_percent: 100,
     }));
+  } catch (error) {
+    if (/^phase20_coverage_project_cleanup_failed:/u.test(error?.message ?? "")) retainRunOwnership = true;
+    throw error;
   } finally {
     rmSync(path.join(outputDirectory, "blackbox-fixture"), { recursive: true, force: true });
+    if (!retainRunOwnership) rmSync(runOwnershipMarker, { force: true });
   }
 }

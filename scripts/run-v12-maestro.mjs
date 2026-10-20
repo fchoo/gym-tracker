@@ -131,16 +131,19 @@ export function runV12BoundedProcess(program, args, {
   maxBuffer = 16 * 1024 * 1024,
   platform = process.platform,
   spawnImplementation = spawn,
-  killImplementation = process.kill.bind(process),
   taskkillImplementation = spawnSync,
   windowsTreeProbeImplementation = spawnSync,
   posixProcessProbeImplementation = spawnSync,
+  posixPidfdSignalImplementation = spawnSync,
+  posixPidfdPythonExecutable = "python3",
 } = {}) {
   if (typeof program !== "string" || !path.isAbsolute(program) || !Array.isArray(args)
     || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || !Number.isSafeInteger(termGraceMs) || termGraceMs < 1
     || !Number.isSafeInteger(killGraceMs) || killGraceMs < 1 || !["win32", "darwin", "linux", "freebsd", "openbsd", "aix", "sunos"].includes(platform)
-    || typeof spawnImplementation !== "function" || typeof killImplementation !== "function" || typeof taskkillImplementation !== "function"
+    || typeof spawnImplementation !== "function" || typeof taskkillImplementation !== "function"
     || typeof windowsTreeProbeImplementation !== "function" || typeof posixProcessProbeImplementation !== "function"
+    || typeof posixPidfdSignalImplementation !== "function" || typeof posixPidfdPythonExecutable !== "string"
+    || posixPidfdPythonExecutable === ""
     || signal?.aborted) {
     return Promise.reject(new Error(signal?.aborted ? "v12_maestro_process_cancelled" : "v12_maestro_process_arguments_invalid"));
   }
@@ -157,7 +160,10 @@ export function runV12BoundedProcess(program, args, {
     if (platform !== "win32") {
       try {
         posixTree = createV12PosixProcessTreeTracker({ ownershipToken: posixOwnershipToken, platform,
-          probeImplementation: posixProcessProbeImplementation, killImplementation, probeTimeoutMs: killGraceMs });
+          probeImplementation: posixProcessProbeImplementation,
+          pidfdSignalImplementation: posixPidfdSignalImplementation,
+          pidfdPythonExecutable: posixPidfdPythonExecutable,
+          probeTimeoutMs: killGraceMs });
       } catch {
         cleanupCode = "process_tree_enumeration_failed";
       }
@@ -1212,16 +1218,25 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
   const outputRoot = `artifacts/native/v1.2/${runId}`;
   const reportPath = `${outputRoot}/maestro/${shard}.xml`;
   const mappingPath = `${outputRoot}/mapping/${shard}.json`;
-  const leasePath = path.join(root, `${outputRoot}/.leases/${shard}-${serial}.lease`);
-  if ([reportPath, mappingPath].some((file) => existsSync(path.join(root, file))) || existsSync(leasePath)) genericFail("immutable_output_invalid");
-  mkdirSync(path.dirname(leasePath), { recursive: true });
-  writeFileSync(leasePath, `${sha256(serial)}\n`, { flag: "wx" });
+  const leaseDirectory = path.join(root, `${outputRoot}/.leases`);
+  const serialSha256 = sha256(serial);
+  const leasePath = path.join(leaseDirectory, `device-${serialSha256}.lease`);
+  const legacyDeviceLeaseExists = existsSync(leaseDirectory) && readdirSync(leaseDirectory).some((name) => {
+    const candidate = path.join(leaseDirectory, name);
+    try { return readFileSync(candidate, "utf8") === `${serialSha256}\n`; }
+    catch { return true; }
+  });
+  if ([reportPath, mappingPath].some((file) => existsSync(path.join(root, file))) || legacyDeviceLeaseExists) genericFail("immutable_output_invalid");
+  mkdirSync(leaseDirectory, { recursive: true });
+  try { writeFileSync(leasePath, `${sha256(shard)}\n`, { flag: "wx" }); }
+  catch { genericFail("immutable_output_invalid"); }
   const adb = dependencies.adb ?? directMaestroAdb(run, tools.adb, serial);
   const cleanupRun = commandRunner(runnerDependencies, undefined);
   const cleanupAdb = dependencies.adb ?? directMaestroAdb(cleanupRun, tools.adb, serial);
   const reports = [];
   const observations = [];
   let restored = false;
+  let retainLease = false;
   let outcome;
   try {
     for (const [index, caseId] of caseIds.entries()) {
@@ -1246,6 +1261,9 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
       try {
         await run(tools.maestro, ["test", "--device", serial, "-e", `V12_CASE_ID=${caseId}`, "-e", `V12_EVIDENCE_NONCE=${nonce}`, "-e", "V12_CONFIG_ID=AP-L-C390-P-F100", "-e", `V12_FIXTURE_ID=${V12_PRODUCT_FIXTURE_ID}`, "-e", `V12_PRODUCT_URL=${productEnvironment.product_url}`, "-e", `V12_PRODUCT_INTERACTION=${productEnvironment.interaction}`, "-e", `V12_PRODUCT_READY_KIND=${productEnvironment.ready_kind}`, "-e", `V12_PRODUCT_READY_VALUE=${productEnvironment.ready_value}`, ...prerequisiteEnvironmentArguments, "-e", `V12_PRODUCT_ACTION_KIND=${productEnvironment.action_kind}`, "-e", `V12_PRODUCT_ACTION_VALUE=${productEnvironment.action_value}`, "-e", `V12_PRODUCT_INPUT_VALUE=${productEnvironment.input_value}`, "-e", `V12_PRODUCT_RESULT_KIND=${productEnvironment.result_kind}`, "-e", `V12_PRODUCT_RESULT_VALUE=${productEnvironment.result_value}`, "--format", "junit", "--output", temporary, flowPath], { timeoutMs: V12_MAESTRO_COMMAND_BUDGETS.maestro_case_ms, maxBuffer: 16 * 1024 * 1024 });
       } catch (error) {
+        if (/^v12_maestro_process_tree_(?:enumeration|termination)_failed$/u.test(error?.message ?? "")) {
+          retainLease = true;
+        }
         flowError = new Error(error?.message === "v12_maestro_process_timeout" ? "v12_maestro_native_command_timeout"
           : error?.message === "v12_maestro_process_cancelled" ? "v12_maestro_native_command_cancelled" : "v12_maestro_native_command_failed");
       }
@@ -1314,7 +1332,14 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
     immutableWrite(root, mappingPath, mapping, dependencies.writeImmutableJson);
     outcome = Object.freeze({ run_id: runId, shard, report: reportPath, mapping: mappingPath, cases: caseIds.length, execution_origin: provenance });
     restored = true;
-  } finally { unlinkSync(leasePath); }
+  } catch (error) {
+    if (/^v12_maestro_process_tree_(?:enumeration|termination)_failed$/u.test(error?.message ?? "")) {
+      retainLease = true;
+    }
+    throw error;
+  } finally {
+    if (!retainLease) unlinkSync(leasePath);
+  }
   if (!restored) genericFail("settings_restore_failed");
   return outcome;
 }

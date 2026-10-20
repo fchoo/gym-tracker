@@ -2337,6 +2337,7 @@ test("retained Phase 20 fixture executes the exact coverage CLI entrypoints", {
 });
 
 test("a timed-out coverage project kills its TERM-resistant grandchild", {
+  skip: process.platform !== "linux",
   timeout: 10_000,
 }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), "phase20-project-timeout-"));
@@ -2418,15 +2419,18 @@ test("a successful coverage leader drains its TERM-resistant token-owned descend
         queueMicrotask(() => { leaderAlive = false; child.exitCode = 0; child.emit("close", 0, null); });
         return child;
       },
-      killImplementation: (target, signal) => {
-        signals.push([target, signal]);
-        if (signal === "SIGKILL") descendantAlive = false;
+      posixPidfdSignalImplementation: (_program, args, options) => {
+        assert.equal(options.input, `${ownershipToken}\n`);
+        signals.push([args.slice(3).map(Number), args[1]]);
+        if (args[1] === "SIGKILL") descendantAlive = false;
+        return { status: 0, signal: null, error: undefined, stdout: "ok\n", stderr: "" };
       },
       posixProcessProbeImplementation: () => ({ status: 0, signal: null, error: undefined,
         stdout: `${leaderAlive ? ownedCoverageProcessRow(5151, "Ss", ownershipToken) : ""}${descendantAlive ? ownedCoverageProcessRow(5152, "Ss", ownershipToken) : ""}` }),
     });
-    assert.deepEqual(signals, [[5152, "SIGTERM"], [5152, "SIGKILL"]]);
+    assert.deepEqual(signals, [[[5152], "SIGTERM"], [[5152], "SIGKILL"]]);
     assert.equal(descendantAlive, false);
+    assert.equal(existsSync(path.join(root, "coverage/projects/success/.process-ownership")), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -2437,7 +2441,7 @@ test("coverage cleanup sends zero signals when initial POSIX ownership enumerati
   const child = new EventEmitter();
   child.pid = 5153; child.exitCode = null; child.signalCode = null;
   child.stdio = [null, null, null, new PassThrough()];
-  const signals = [];
+  let helperCalls = 0;
   try {
     writeFileSync(path.join(root, "success.test.mjs"), "import test from 'node:test'; test('ok', () => {});\n");
     await assert.rejects(runPhase20SubprocessCoverage({
@@ -2454,10 +2458,11 @@ test("coverage cleanup sends zero signals when initial POSIX ownership enumerati
         queueMicrotask(() => { child.exitCode = 0; child.emit("close", 0, null); });
         return child;
       },
-      killImplementation: (target, signal) => { signals.push([target, signal]); },
       posixProcessProbeImplementation: () => { throw new Error("ps unavailable"); },
+      posixPidfdSignalImplementation: () => { helperCalls += 1; throw new Error("must not run"); },
     }), /phase20_coverage_project_cleanup_failed:initial-enumeration/u);
-    assert.deepEqual(signals, []);
+    assert.equal(helperCalls, 0);
+    assert.equal(existsSync(path.join(root, "coverage/projects/initial-enumeration/.process-ownership")), true);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -2470,7 +2475,7 @@ test("coverage cleanup sends zero later signals when POSIX ownership re-enumerat
   child.stdio = [null, null, null, new PassThrough()];
   let ownershipToken;
   let probeCount = 0;
-  const signals = [];
+  let helperCalls = 0;
   try {
     writeFileSync(path.join(root, "success.test.mjs"), "import test from 'node:test'; test('ok', () => {});\n");
     await assert.rejects(runPhase20SubprocessCoverage({
@@ -2488,7 +2493,6 @@ test("coverage cleanup sends zero later signals when POSIX ownership re-enumerat
         queueMicrotask(() => { child.exitCode = 0; child.emit("close", 0, null); });
         return child;
       },
-      killImplementation: (target, signal) => { signals.push([target, signal]); },
       posixProcessProbeImplementation: () => {
         if (probeCount++ === 0) {
           return { status: 0, signal: null, error: undefined,
@@ -2496,8 +2500,49 @@ test("coverage cleanup sends zero later signals when POSIX ownership re-enumerat
         }
         throw new Error("ps became unavailable");
       },
+      posixPidfdSignalImplementation: () => { helperCalls += 1; throw new Error("must not run"); },
     }), /phase20_coverage_project_cleanup_failed:later-enumeration/u);
-    assert.deepEqual(signals, []);
+    assert.equal(helperCalls, 0);
+    assert.equal(existsSync(path.join(root, "coverage/projects/later-enumeration/.process-ownership")), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("unsupported POSIX coverage cleanup retains its ownership marker and blocks a rerun", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "phase20-project-unsupported-posix-"));
+  const outputDirectory = path.join(root, "coverage");
+  const child = new EventEmitter();
+  child.pid = 5155; child.exitCode = null; child.signalCode = null;
+  child.stdio = [null, null, null, new PassThrough()];
+  let ownershipToken;
+  let helperCalls = 0;
+  try {
+    writeFileSync(path.join(root, "success.test.mjs"), "import test from 'node:test'; test('ok', () => {});\n");
+    const options = {
+      projectRoot: root,
+      projects: [{ name: "unsupported", coverage: false, tests: ["success.test.mjs"] }],
+      outputDirectory,
+      maxParallel: 1,
+      projectTimeoutMs: 1_000,
+      terminateGraceMs: 5,
+      platform: "darwin",
+      spawnImplementation: (_program, _args, spawnOptions) => {
+        ownershipToken = spawnOptions.env[V12_POSIX_OWNERSHIP_ENV];
+        const report = path.join(outputDirectory, "projects/unsupported/test-results.tap");
+        mkdirSync(path.dirname(report), { recursive: true }); writeFileSync(report, "# skipped 0\n");
+        queueMicrotask(() => { child.exitCode = 0; child.emit("close", 0, null); });
+        return child;
+      },
+      posixProcessProbeImplementation: () => ({ status: 0, signal: null, error: undefined,
+        stdout: ownedCoverageProcessRow(5155, "Ss", ownershipToken) }),
+      posixPidfdSignalImplementation: () => { helperCalls += 1; throw new Error("must not run"); },
+    };
+    await assert.rejects(runPhase20SubprocessCoverage(options), /phase20_coverage_project_cleanup_failed:unsupported/u);
+    assert.equal(helperCalls, 0);
+    assert.equal(existsSync(path.join(outputDirectory, "projects/unsupported/.process-ownership")), true);
+    assert.equal(existsSync(path.join(outputDirectory, ".process-ownership")), true);
+    await assert.rejects(runPhase20SubprocessCoverage(options), /phase20_coverage_process_ownership_retained/u);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -2522,7 +2567,7 @@ test("a successful coverage leader drains a detached POSIX descendant before res
       "});",
       "",
     ].join("\n"));
-    await runPhase20SubprocessCoverage({
+    const running = runPhase20SubprocessCoverage({
       projectRoot: root,
       projects: [{ name: "detached", coverage: false, tests: ["detached.test.mjs"] }],
       outputDirectory: path.join(root, "coverage"),
@@ -2530,9 +2575,16 @@ test("a successful coverage leader drains a detached POSIX descendant before res
       projectTimeoutMs: 2_000,
       terminateGraceMs: 100,
     });
+    if (process.platform === "linux") await running;
+    else await assert.rejects(running, /phase20_coverage_project_cleanup_failed:detached/u);
     detachedPid = Number(readFileSync(pidFile, "utf8"));
-    assert.throws(() => process.kill(detachedPid, 0), /ESRCH/u);
-    detachedPid = undefined;
+    if (process.platform === "linux") {
+      assert.throws(() => process.kill(detachedPid, 0), /ESRCH/u);
+      detachedPid = undefined;
+    } else {
+      assert.doesNotThrow(() => process.kill(detachedPid, 0));
+      assert.equal(existsSync(path.join(root, "coverage/projects/detached/.process-ownership")), true);
+    }
   } finally {
     if (detachedPid !== undefined) { try { process.kill(detachedPid, "SIGKILL"); } catch { /* already gone */ } }
     rmSync(root, { recursive: true, force: true });
@@ -2576,6 +2628,7 @@ test("a successful mocked Windows coverage leader verifies and drains its task t
 });
 
 test("first project failure stops dequeuing and awaits cleanup of every active project tree", {
+  skip: process.platform !== "linux",
   timeout: 15_000,
 }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), "phase20-project-fail-fast-"));
@@ -2643,7 +2696,10 @@ test("first project failure stops dequeuing and awaits cleanup of every active p
   }
 });
 
-test("a leader that exits after TERM cannot receive a delayed KILL", { timeout: 10_000 }, async () => {
+test("a leader that exits after TERM cannot receive a delayed KILL", {
+  skip: process.platform !== "linux",
+  timeout: 10_000,
+}, async () => {
   const root = mkdtempSync(path.join(tmpdir(), "phase20-project-no-late-kill-"));
   const signals = [];
   try {
