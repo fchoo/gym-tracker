@@ -2,6 +2,9 @@ import {
   OWNED_PLAN_MISSING_VALID_TARGET_CODE,
   OWNED_PLAN_MISSING_VALID_TARGET_REASON,
 } from "../migrations/0009_owned_plans";
+import {
+  PLAN_EXERCISE_REPLACEMENT_RECEIPTS_TABLE,
+} from "../migrations/0047_plan_exercise_replacement_receipts";
 import type {
   MetricIdentity,
   MetricTarget,
@@ -1048,7 +1051,7 @@ async function updateGraphState(
   );
 }
 
-async function readReceipt(
+async function readScheduleEventReceipt(
   executor: QueryExecutor,
   requestId: string,
 ): Promise<Readonly<{
@@ -1089,7 +1092,7 @@ async function replayReceipt(
     requestSha256: string;
   }>,
 ): Promise<PlanImpactCommittedResult | null> {
-  const receipt = await readReceipt(executor, input.requestId);
+  const receipt = await readScheduleEventReceipt(executor, input.requestId);
   if (receipt === null) {
     return null;
   }
@@ -1111,7 +1114,23 @@ async function replayExerciseReplacementReceipt(
   executor: QueryExecutor,
   input: Readonly<{ requestId: string; requestSha256: string }>,
 ): Promise<ExerciseReplacementCommittedResult | null> {
-  const receipt = await readReceipt(executor, input.requestId);
+  const [durableReceipt] = await executor.queryAll<Readonly<{
+    request_sha256: string;
+    result_json: string;
+  }>>(
+    `SELECT request_sha256, result_json
+     FROM ${PLAN_EXERCISE_REPLACEMENT_RECEIPTS_TABLE}
+     WHERE request_id = ?`,
+    [input.requestId],
+  );
+  const receipt = durableReceipt === undefined
+    ? await readScheduleEventReceipt(executor, input.requestId)
+    : {
+        requestSha256: durableReceipt.request_sha256,
+        result: JSON.parse(
+          durableReceipt.result_json,
+        ) as ExerciseReplacementCommittedResult,
+      };
   if (receipt === null) return null;
   if (receipt.requestSha256 !== input.requestSha256) {
     throw new PlanImpactRepositoryError("plan_impact_idempotency_conflict");
@@ -1237,6 +1256,24 @@ async function applyExerciseReplacementTransaction(
       input.replacementExerciseId,
     ),
   });
+  await transaction.execute(
+    `INSERT INTO ${PLAN_EXERCISE_REPLACEMENT_RECEIPTS_TABLE}
+      (request_id, request_sha256, plan_id, source_occurrence_id,
+       replacement_exercise_id, expected_plan_revision,
+       result_plan_revision, result_json, committed_at_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      input.requestId,
+      input.requestSha256,
+      input.planId,
+      input.sourceOccurrenceId,
+      input.replacementExerciseId,
+      input.expectedPlanRevision,
+      result.planRevision,
+      JSON.stringify(result),
+      input.committedAtMs,
+    ],
+  );
   const [schedule] = await transaction.queryAll<Readonly<{
     id: string;
     revision: number;

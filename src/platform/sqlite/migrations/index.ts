@@ -43,6 +43,7 @@ import { importedActivityRevisionReviewsMigration } from "./0043_imported_activi
 import { garminSyncSummaryMigration } from "./0044_garmin_sync_summary";
 import { recommendationDecisionReceiptsMigration } from "./0045_recommendation_decision_receipts";
 import { logicalBackupReceiptsMigration } from "./0046_logical_backup_receipts";
+import { planExerciseReplacementReceiptsMigration } from "./0047_plan_exercise_replacement_receipts";
 
 export const migrations = Object.freeze([
   initialMigration,
@@ -90,6 +91,7 @@ export const migrations = Object.freeze([
   garminSyncSummaryMigration,
   recommendationDecisionReceiptsMigration,
   logicalBackupReceiptsMigration,
+  planExerciseReplacementReceiptsMigration,
 ]);
 
 export const CURRENT_SCHEMA_VERSION = migrations.reduce(
@@ -141,6 +143,7 @@ export {
   garminSyncSummaryMigration,
   recommendationDecisionReceiptsMigration,
   logicalBackupReceiptsMigration,
+  planExerciseReplacementReceiptsMigration,
   outcomeEffortMigration,
   scheduleActivationMigration,
 };
