@@ -889,6 +889,31 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects an accepted starter activation when its nonce-bound durable receipt is absent", async () => {
+    const { executor, contracts } = isolateExecutorWithMocks([{
+      moduleName: "../domains/plans",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/plans")>("../domains/plans"),
+        activateStarterPlan: async () => ({
+          outcome: "committed",
+          plan: { sourceTemplateId: "full-body-foundation" },
+          schedule: { lifecycle: "active" },
+          days: [{}],
+        }),
+      }),
+    }]);
+    try {
+      const contract = contracts.v12NativeAcceptanceCaseContract("library-running", "library.starter-activation");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /starter_plan_activation_requests/u }),
+        contract,
+        request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_starter_activation_postcondition_failed");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("rejects missing schedule and collision repository preconditions", async () => {
     const schedule = isolateExecutorWithMocks([{
       moduleName: "../platform/sqlite/repositories/scheduleRepository",
