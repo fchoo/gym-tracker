@@ -11,7 +11,10 @@ import { configureSqliteConnection } from "../../src/platform/sqlite/connection"
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
-import { V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS } from "../../src/testing/contracts/phase15Workout.contract";
+import {
+  V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS,
+  type V12NativeAcceptanceCaseContract,
+} from "../../src/testing/contracts/phase15Workout.contract";
 import { MULTI_PLAN_RUNNING_CONTRACT_CASES } from "../../src/testing/contracts/multiPlanRunning.contract";
 import { createRunningPlanRuntimePort } from "../../src/bootstrap/runningPlanRuntime";
 import { createOwnedPlanRuntimePort } from "../../src/bootstrap/ownedPlanRuntime";
@@ -97,7 +100,110 @@ async function open(): Promise<SqliteKernel> {
   return kernel;
 }
 
+function requestFor(
+  contract: V12NativeAcceptanceCaseContract,
+  index: number,
+): V12NativeAcceptanceRequest {
+  return {
+    shard: contract.shard,
+    caseId: contract.caseId,
+    fixtureId: "v12-synthetic-fixtures-r18",
+    title: "V12 source operation audit",
+    source: "V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS",
+    requirement: contract.requirement,
+    action: contract.actionId,
+    readback: contract.uiReadback.label,
+    sourceProbe: contract.sourceProbe,
+    authorityTables: contract.probes.post.tables,
+    nonce: `${index.toString(16).padStart(2, "0")}${"d".repeat(46)}`,
+  };
+}
+
+async function executeSourceContractAudit(
+  contract: V12NativeAcceptanceCaseContract,
+  index: number,
+) {
+  const kernel = await open();
+  let generated = 0;
+  const handlerId = contract.operation.handlerId;
+  const runtime = {
+    ...(handlerId.startsWith("running-plan.") ? {
+      running: createRunningPlanRuntimePort(kernel, {
+        nowMs: () => 1_800_000_000_000,
+        randomUUID: () => `v12-full-audit-running-${index}-${++generated}`,
+        sha256: async (value: string) => createHash("sha256").update(value).digest("hex"),
+      }),
+    } : {}),
+    ...(/^(?:custom-exercise|metric-profile)\./u.test(handlerId) ? {
+      customExercises: createCustomExerciseRepository(kernel),
+    } : {}),
+    ...(handlerId.startsWith("metric-profile.") ? {
+      ownedPlans: createOwnedPlanRuntimePort(kernel, {
+        nowMs: () => 1_800_000_000_000,
+        randomUUID: () => `v12-full-audit-owned-${index}-${++generated}`,
+        sha256: async (value: string) => createHash("sha256").update(value).digest("hex"),
+      }),
+    } : {}),
+  };
+  const request = requestFor(contract, index);
+  const execute = () => executeV12NativeAcceptanceReadAction({
+    kernel,
+    request,
+    sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+    prepareOperation: ({ contract: operationContract, request: operationRequest }) => prepareV12NativeAcceptanceProductionOperation({
+      kernel, contract: operationContract, request: operationRequest, runtime,
+    }),
+    executeOperation: ({ contract: operationContract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
+      kernel, contract: operationContract, request: operationRequest, runtime,
+    }),
+  });
+  try {
+    const first = await execute();
+    const replay = contract.operation.kind === "repository-mutation"
+      ? await execute()
+      : undefined;
+    return Object.freeze({ first, replay });
+  } finally {
+    kernels.delete(kernel);
+    await kernel.close();
+  }
+}
+
 describe("v1.2 Workout and Library production operation registry", () => {
+  it("audits all 55 fresh mutations/replays and all 33 case-specific reads on fresh migrated SQLite", async () => {
+    const sourceOwned = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.filter(({ shard }) => shard !== "multi-plan");
+    const mutations = sourceOwned.filter(({ operation }) => operation.kind === "repository-mutation");
+    const reads = sourceOwned.filter(({ operation }) => operation.kind === "repository-read");
+    expect(sourceOwned).toHaveLength(88);
+    expect(mutations).toHaveLength(55);
+    expect(reads).toHaveLength(33);
+
+    const receiptIds = new Set<string>();
+    for (const [index, contract] of sourceOwned.entries()) {
+      const { first, replay } = await executeSourceContractAudit(contract, index + 128);
+      if (contract.operation.kind === "repository-read") {
+        expect(first.source_receipt).toMatchObject({
+          operation_result: "read",
+          command_receipt_id: null,
+          command_outcome: null,
+          committed_effects: 0,
+        });
+        expect(first.source_receipt.pre.facts_sha256).toBe(first.source_receipt.post.facts_sha256);
+        continue;
+      }
+      expect(first.source_receipt).toMatchObject({ command_outcome: "committed" });
+      expect(first.source_receipt.committed_effects).toBeGreaterThanOrEqual(1);
+      expect(replay?.source_receipt).toMatchObject({
+        command_outcome: "already_committed",
+        committed_effects: 0,
+        command_receipt_id: first.source_receipt.command_receipt_id,
+      });
+      expect(receiptIds.has(first.source_receipt.command_receipt_id!)).toBe(false);
+      receiptIds.add(first.source_receipt.command_receipt_id!);
+    }
+    expect(receiptIds.size).toBe(55);
+  }, 180_000);
+
   it("delegates each Phase 13 case through the full source-owned wrapper", async () => {
     const kernel = await open();
     const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ shard, caseId }) => (

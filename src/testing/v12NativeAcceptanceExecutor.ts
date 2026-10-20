@@ -2981,13 +2981,6 @@ const RUNNING_CREATE_HANDLER = "running-plan.running-plan-repository.create-inac
 const RUNNING_SOURCE_GRAPH_HANDLER = "running-plan.running-plan-repository.save-source-graph";
 const RUNNING_LIFECYCLE_HANDLER = "running-plan.running-plan-repository.confirm-lifecycle";
 const V12_RUNNING_SEED_AT_MS = 1_800_000_000_000;
-const RUNNING_FAMILY_B_CASE_IDS = new Set([
-  "library.running-detail", "library.running-create-zero-sessions", "library.running-goal-edit",
-  "library.running-session-common", "library.running-recovery", "library.running-long",
-  "library.running-progression", "library.running-tempo", "library.running-intervals",
-  "library.running-hills", "library.running-fartlek", "library.running-session-lifecycle",
-  "library.running-create-typed-sessions", "library.running-two-same-day-slots",
-]);
 type RunningWeekday = "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday" | "Sunday";
 
 function requireRequest(input: V12NativeAcceptanceProductionHandlerInput): V12NativeAcceptanceRequest {
@@ -3099,7 +3092,6 @@ async function prepareRunningGoalEdit(input: V12NativeAcceptanceProductionHandle
 }
 
 async function prepareRunningFamilyB(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
-  if (!RUNNING_FAMILY_B_CASE_IDS.has(input.contract.caseId)) return;
   if (input.contract.caseId === "library.running-create-zero-sessions") return;
   await prepareRunningGoalEdit(input);
 }
