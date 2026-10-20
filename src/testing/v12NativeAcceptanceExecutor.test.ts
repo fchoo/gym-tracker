@@ -1595,8 +1595,8 @@ describe("v1.2 native acceptance production executor", () => {
       moduleName: "../domains/plans/planImpactCommands",
       factory: () => ({
         ...jest.requireActual<typeof import("../domains/plans/planImpactCommands")>("../domains/plans/planImpactCommands"),
-        removePlanDayWithImpact: async () => { throw new Error("v12_native_acceptance_day_replay_reached"); },
-        replacePlanExercise: async () => { throw new Error("v12_native_acceptance_replacement_replay_reached"); },
+        removePlanDayWithImpact: async ({ nowMs }: Readonly<{ nowMs(): number }>) => { nowMs(); throw new Error("v12_native_acceptance_day_replay_reached"); },
+        replacePlanExercise: async ({ nowMs }: Readonly<{ nowMs(): number }>) => { nowMs(); throw new Error("v12_native_acceptance_replacement_replay_reached"); },
       }),
     }]);
     try {
@@ -1621,8 +1621,8 @@ describe("v1.2 native acceptance production executor", () => {
         moduleName: "../domains/plans/planImpactCommands",
         factory: () => ({
           ...jest.requireActual<typeof import("../domains/plans/planImpactCommands")>("../domains/plans/planImpactCommands"),
-          removePlanDayWithImpact: async () => undefined,
-          replacePlanExercise: async () => undefined,
+          removePlanDayWithImpact: async ({ nowMs }: Readonly<{ nowMs(): number }>) => { nowMs(); },
+          replacePlanExercise: async ({ nowMs }: Readonly<{ nowMs(): number }>) => { nowMs(); },
         }),
       },
     ]);
