@@ -122,7 +122,6 @@ describe("v1.2 Workout and Library production operation registry", () => {
           }
           const unresolvedProductionCommands = new Set([
             "workout.completion-writeback", "workout.offline-recovery",
-            "library.replacement-impact", "library.day-removal-impact",
             "library.running-conflict",
           ]);
           const expectedFailure = unresolvedProductionCommands.has(contract.caseId)
@@ -219,6 +218,8 @@ describe("v1.2 Workout and Library production operation registry", () => {
       "library.owned-lifecycle",
       "library.plan-editor",
       "library.schedule-editor",
+      "library.replacement-impact",
+      "library.day-removal-impact",
     ];
     for (const [index, caseId] of cases.entries()) {
       const kernel = await open();

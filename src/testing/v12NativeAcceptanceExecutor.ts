@@ -48,6 +48,7 @@ import { createWorkoutPreferenceRepository } from "../platform/sqlite/repositori
 import { createOwnedPlanRepository } from "../platform/sqlite/repositories/ownedPlanRepository";
 import { createStarterPlanRepository } from "../platform/sqlite/repositories/starterPlanRepository";
 import { createScheduleRepository } from "../platform/sqlite/repositories/scheduleRepository";
+import { createPlanImpactRepository } from "../platform/sqlite/repositories/planImpactRepository";
 import { createHistoryRepository } from "../platform/sqlite/repositories/historyRepository";
 import { createHistoryProjectionRepository } from "../platform/sqlite/repositories/historyProjectionRepository";
 import { runtimeSha256 } from "../platform/crypto/runtimeSha256";
@@ -67,6 +68,7 @@ import { finishPartial, PARTIAL_CONFIRMATION } from "../domains/workout/finishWo
 import { adjustRest, pauseRest, resumeRest, startManualRest } from "../domains/rest/restCommands";
 import { acceptRecommendation } from "../domains/progression";
 import { createScheduleVersionPreviewToken, saveScheduleVersion } from "../domains/scheduling/scheduleCommands";
+import { previewDayRemoval, previewExerciseReplacement, removePlanDayWithImpact, replacePlanExercise } from "../domains/plans/planImpactCommands";
 
 export type { V12NativeAcceptanceShard } from "./contracts/phase15Workout.contract";
 
@@ -1339,6 +1341,227 @@ async function executeScheduleVersionSave(input: V12NativeAcceptanceProductionHa
         || post?.scheduleRevision !== replay.scheduleRevision || post.planRevision !== replay.planRevision
         || post.version.versionNumber !== replayVersionNumber) {
         throw new Error("v12_native_acceptance_schedule_postcondition_failed");
+      }
+    },
+  });
+}
+
+async function planImpactReceipt(kernel: SqliteKernel, requestId: string) {
+  const [receipt] = await kernel.queryAll<Readonly<{
+    id: string;
+    schedule_id: string;
+    event_type: string;
+    schedule_revision: number;
+    payload_json: string;
+  }>>(
+    `SELECT id, schedule_id, event_type, schedule_revision, payload_json
+     FROM owned_plan_schedule_events
+     WHERE id = ?`,
+    [`plan-impact-command:${requestId}`],
+  );
+  return receipt;
+}
+
+function planImpactReceiptPayload(receipt: Readonly<{ payload_json: string }> | undefined) {
+  if (receipt === undefined) throw new Error("v12_native_acceptance_plan_impact_receipt_missing");
+  const parsed = JSON.parse(receipt.payload_json) as Readonly<{
+    requestSha256?: unknown;
+    command?: unknown;
+    result?: unknown;
+  }>;
+  if (typeof parsed.requestSha256 !== "string" || typeof parsed.command !== "object" || parsed.command === null
+    || typeof parsed.result !== "object" || parsed.result === null) {
+    throw new Error("v12_native_acceptance_plan_impact_receipt_invalid");
+  }
+  return parsed as Readonly<{
+    requestSha256: string;
+    command: Readonly<Record<string, unknown>>;
+    result: Readonly<Record<string, unknown>>;
+  }>;
+}
+
+async function planImpactFixtureDayId(kernel: SqliteKernel, planId: string): Promise<string> {
+  const [day] = await kernel.queryAll<Readonly<{ id: string }>>(
+    `SELECT id FROM plan_days WHERE plan_id = ? ORDER BY ordinal, id LIMIT 1`,
+    [planId],
+  );
+  if (day === undefined) throw new Error("v12_native_acceptance_plan_impact_day_missing");
+  return day.id;
+}
+
+async function planImpactFixtureOccurrenceId(kernel: SqliteKernel, planId: string): Promise<string> {
+  const [occurrence] = await kernel.queryAll<Readonly<{ id: string }>>(
+    `SELECT occurrence.id
+     FROM owned_plan_day_exercises occurrence
+     JOIN plan_days day ON day.id = occurrence.plan_day_id
+     WHERE day.plan_id = ?
+     ORDER BY day.ordinal, occurrence.ordinal, occurrence.id
+     LIMIT 1`,
+    [planId],
+  );
+  if (occurrence === undefined) throw new Error("v12_native_acceptance_plan_impact_occurrence_missing");
+  return occurrence.id;
+}
+
+const PLAN_IMPACT_REVIEW = Object.freeze({
+  targets: true,
+  warmups: true,
+  rest: true,
+  progression: true,
+  historyImmutable: true,
+});
+
+async function executePlanDayRemoval(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const fixture = await prepareScheduleEditorFixture(input);
+  const repository = createPlanImpactRepository(input.kernel, {});
+  const requestId = `v12:day-removal-impact:${request.nonce}`;
+  const before = await planImpactReceipt(input.kernel, requestId);
+  if (before === undefined) {
+    const dayId = await planImpactFixtureDayId(input.kernel, fixture.planId);
+    const preview = await previewDayRemoval({
+      repository,
+      sha256: runtimeSha256,
+      nowMs: () => workoutFixtureActivatedAt(request),
+      input: { planId: fixture.planId, dayId },
+    });
+    const replacement = preview.replacementDays[0];
+    if (preview.restructuringBlocked || preview.schedule === null || replacement === undefined) {
+      throw new Error("v12_native_acceptance_day_removal_precondition_missing");
+    }
+    const result = await removePlanDayWithImpact({
+      repository,
+      sha256: runtimeSha256,
+      nowMs: () => workoutFixtureActivatedAt(request) + 1_000,
+      invalidate: async () => undefined,
+      input: {
+        requestId,
+        planId: fixture.planId,
+        dayId,
+        expectedPlanRevision: preview.planRevision,
+        expectedScheduleRevision: preview.schedule.revision,
+        previewToken: preview.previewToken,
+        choice: { kind: "replacement_day", replacementDayId: replacement.id },
+      },
+    });
+    if (result.outcome !== "committed" || result.planRevision !== preview.planRevision + 1
+      || result.scheduleRevision !== preview.schedule.revision + 1) {
+      throw new Error("v12_native_acceptance_day_removal_command_failed");
+    }
+  } else {
+    const command = planImpactReceiptPayload(before).command;
+    await removePlanDayWithImpact({
+      repository,
+      sha256: runtimeSha256,
+      nowMs: () => workoutFixtureActivatedAt(request) + 1_000,
+      invalidate: async () => undefined,
+      input: command as Parameters<typeof removePlanDayWithImpact>[0]["input"],
+    });
+  }
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ request_id: requestId }),
+    outcome: before === undefined ? "committed" : "already_committed",
+    verify: async () => {
+      const receipt = await planImpactReceipt(input.kernel, requestId);
+      const payload = planImpactReceiptPayload(receipt);
+      const replay = await repository.readCommandResult({ requestId, requestSha256: payload.requestSha256 });
+      const [day, plan, schedule] = await input.kernel.queryAll<Readonly<{
+        active_day_id: string | null;
+        plan_revision: number;
+        schedule_revision: number;
+      }>>(
+        `SELECT (SELECT id FROM plan_days current_day
+                  WHERE current_day.id = ? AND current_day.ordinal < plan.days_per_week) AS active_day_id,
+                plan.revision AS plan_revision, schedule.revision AS schedule_revision
+         FROM plans plan
+         JOIN owned_plan_schedules schedule ON schedule.plan_id = plan.id
+         WHERE plan.id = ? AND schedule.id = ?`,
+        [payload.command.dayId as string, fixture.planId, fixture.scheduleId],
+      );
+      if (receipt?.id !== `plan-impact-command:${requestId}` || receipt.event_type !== "plan_day_removed"
+        || replay?.outcome !== "already_committed" || day?.active_day_id !== null
+        || day.plan_revision !== replay.planRevision || day.schedule_revision !== replay.scheduleRevision) {
+        throw new Error("v12_native_acceptance_day_removal_postcondition_failed");
+      }
+    },
+  });
+}
+
+async function executePlanExerciseReplacement(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const fixture = await prepareScheduleEditorFixture(input);
+  const repository = createPlanImpactRepository(input.kernel, {});
+  const requestId = `v12:replacement-impact:${request.nonce}`;
+  const before = await planImpactReceipt(input.kernel, requestId);
+  if (before === undefined) {
+    const sourceOccurrenceId = await planImpactFixtureOccurrenceId(input.kernel, fixture.planId);
+    const preview = await previewExerciseReplacement({
+      repository,
+      sha256: runtimeSha256,
+      input: { planId: fixture.planId, occurrenceId: sourceOccurrenceId },
+    });
+    const replacement = preview.candidates.find(({ compatible }) => compatible);
+    const occurrences = preview.occurrences.filter(({ occurrenceId }) => occurrenceId === sourceOccurrenceId);
+    if (replacement === undefined || occurrences.length !== 1) {
+      throw new Error("v12_native_acceptance_replacement_precondition_missing");
+    }
+    const result = await replacePlanExercise({
+      repository,
+      sha256: runtimeSha256,
+      nowMs: () => workoutFixtureActivatedAt(request) + 1_000,
+      invalidate: async () => undefined,
+      input: {
+        requestId,
+        planId: fixture.planId,
+        sourceOccurrenceId,
+        expectedPlanRevision: preview.planRevision,
+        previewToken: preview.previewToken,
+        scope: "this_occurrence",
+        replacementExerciseId: replacement.exerciseId,
+        review: PLAN_IMPACT_REVIEW,
+        occurrences,
+      },
+    });
+    if (result.outcome !== "committed" || result.planRevision !== preview.planRevision + 1
+      || result.affectedOccurrenceIds.length !== 1 || result.affectedOccurrenceIds[0] !== sourceOccurrenceId) {
+      throw new Error("v12_native_acceptance_replacement_command_failed");
+    }
+  } else {
+    const command = planImpactReceiptPayload(before).command;
+    await replacePlanExercise({
+      repository,
+      sha256: runtimeSha256,
+      nowMs: () => workoutFixtureActivatedAt(request) + 1_000,
+      invalidate: async () => undefined,
+      input: Object.freeze({ ...command, review: PLAN_IMPACT_REVIEW }) as Parameters<typeof replacePlanExercise>[0]["input"],
+    });
+  }
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ request_id: requestId }),
+    outcome: before === undefined ? "committed" : "already_committed",
+    verify: async () => {
+      const receipt = await planImpactReceipt(input.kernel, requestId);
+      const payload = planImpactReceiptPayload(receipt);
+      const replay = await repository.readExerciseReplacementCommandResult?.({ requestId, requestSha256: payload.requestSha256 });
+      const [row] = await input.kernel.queryAll<Readonly<{
+        exercise_id: string;
+        occurrence_revision: number;
+        plan_revision: number;
+      }>>(
+        `SELECT occurrence.exercise_id, occurrence.revision AS occurrence_revision, plan.revision AS plan_revision
+         FROM owned_plan_day_exercises occurrence
+         JOIN plan_days day ON day.id = occurrence.plan_day_id
+         JOIN plans plan ON plan.id = day.plan_id
+         WHERE occurrence.id = ? AND plan.id = ?`,
+        [payload.command.sourceOccurrenceId as string, fixture.planId],
+      );
+      if (receipt?.id !== `plan-impact-command:${requestId}` || receipt.event_type !== "plan_exercise_replaced"
+        || replay?.outcome !== "already_committed" || row === undefined
+        || row.exercise_id !== replay.replacementExerciseId || row.plan_revision !== replay.planRevision
+        || row.occurrence_revision < 2) {
+        throw new Error("v12_native_acceptance_replacement_postcondition_failed");
       }
     },
   });
@@ -3251,8 +3474,16 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
     execute: executeOwnedPlanSave,
   }),
   "owned-plan.schedule-repository.save-version": Object.freeze({
-    prepare: async (input) => { await prepareScheduleEditorFixture(input); },
+    prepare: async (input: V12NativeAcceptanceProductionHandlerInput) => { await prepareScheduleEditorFixture(input); },
     execute: executeScheduleVersionSave,
+  }),
+  "plan-impact.plan-impact-repository.apply-day-removal": Object.freeze({
+    prepare: async (input: V12NativeAcceptanceProductionHandlerInput) => { await prepareScheduleEditorFixture(input); },
+    execute: executePlanDayRemoval,
+  }),
+  "plan-impact.plan-impact-repository.apply-exercise-replacement": Object.freeze({
+    prepare: async (input: V12NativeAcceptanceProductionHandlerInput) => { await prepareScheduleEditorFixture(input); },
+    execute: executePlanExerciseReplacement,
   }),
   "starter-plan.starter-plan-repository.activate-accepted-starter-plan": Object.freeze({
     execute: executeAcceptedStarterActivation,
