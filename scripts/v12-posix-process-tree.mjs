@@ -1,128 +1,135 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 
-const PROCESS_TABLE_ARGUMENTS = Object.freeze(["-axo", "pid=,ppid=,pgid=,sess=,stat=,lstart="]);
+export const V12_POSIX_OWNERSHIP_ENV = "V12_POSIX_PROCESS_OWNERSHIP";
+
 const MAX_PROCESS_ROWS = 4_096;
+const OWNERSHIP_TOKEN = /^[a-f0-9]{64}$/u;
+const POSIX_PLATFORMS = Object.freeze(["aix", "darwin", "freebsd", "linux", "openbsd", "sunos"]);
 
 function processTreeError(code) {
   return new Error(`v12_posix_process_tree_${code}`);
 }
 
-function parseProcessTable(stdout) {
+function processTableArguments(platform, targetPid) {
+  const environmentFlag = platform === "darwin" ? "-Eww" : "eww";
+  return targetPid === undefined
+    ? [environmentFlag, "-axo", "pid=,stat=,args="]
+    : [environmentFlag, "-p", String(targetPid), "-o", "pid=,stat=,args="];
+}
+
+function containsExactOwnershipToken(rawCommandAndEnvironment, ownershipToken) {
+  const marker = `${V12_POSIX_OWNERSHIP_ENV}=${ownershipToken}`;
+  let offset = rawCommandAndEnvironment.indexOf(marker);
+  while (offset !== -1) {
+    const end = offset + marker.length;
+    const startsAtBoundary = offset === 0 || /\s/u.test(rawCommandAndEnvironment[offset - 1]);
+    const endsAtBoundary = end === rawCommandAndEnvironment.length || /\s/u.test(rawCommandAndEnvironment[end]);
+    if (startsAtBoundary && endsAtBoundary) return true;
+    offset = rawCommandAndEnvironment.indexOf(marker, offset + 1);
+  }
+  return false;
+}
+
+function parseOwnedProcesses(stdout, ownershipToken, ownershipIdentity) {
   if (typeof stdout !== "string") throw processTreeError("enumeration_failed");
   const rows = stdout.trim() === "" ? [] : stdout.trim().split(/\r?\n/u);
   if (rows.length > MAX_PROCESS_ROWS) throw processTreeError("enumeration_failed");
-  const processes = [];
+  const owned = [];
   for (const row of rows) {
-    const match = /^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.+)$/u.exec(row.trim());
+    const match = /^(\d+)\s+(\S+)\s+(.+)$/u.exec(row.trim());
     if (match === null) throw processTreeError("enumeration_failed");
-    const [pid, ppid, pgid, session] = match.slice(1, 5).map(Number);
-    const state = match[5];
-    const bornAt = match[6].trim();
-    if (![pid, ppid, pgid, session].every(Number.isSafeInteger) || pid < 1 || ppid < 0 || pgid < 1 || session < 0 || bornAt === "") {
+    const pid = Number(match[1]);
+    const state = match[2];
+    const rawCommandAndEnvironment = match[3];
+    if (!Number.isSafeInteger(pid) || pid < 1 || state === "") {
       throw processTreeError("enumeration_failed");
     }
-    processes.push({ pid, ppid, pgid, session, state, bornAt, identity: `${String(pid)}:${bornAt}` });
+    if (containsExactOwnershipToken(rawCommandAndEnvironment, ownershipToken)) {
+      owned.push(Object.freeze({ pid, state, identity: ownershipIdentity }));
+    }
   }
-  return processes;
+  return owned;
 }
 
-function processTable(probeImplementation, timeoutMs) {
+function ownedProcessTable({ probeImplementation, timeoutMs, platform, ownershipToken, ownershipIdentity, targetPid }) {
   let outcome;
   try {
-    outcome = probeImplementation("ps", PROCESS_TABLE_ARGUMENTS, {
-      encoding: "utf8", maxBuffer: 1024 * 1024, timeout: timeoutMs,
+    outcome = probeImplementation("ps", processTableArguments(platform, targetPid), {
+      encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: timeoutMs,
     });
   } catch {
     throw processTreeError("enumeration_failed");
   }
-  if (outcome?.status !== 0 || outcome.signal !== null || outcome.error !== undefined) throw processTreeError("enumeration_failed");
-  return parseProcessTable(outcome.stdout);
+  if (targetPid !== undefined && outcome?.status === 1 && outcome.signal === null
+    && outcome.error === undefined && typeof outcome.stdout === "string" && outcome.stdout.trim() === "") return [];
+  if (outcome?.status !== 0 || outcome.signal !== null || outcome.error !== undefined) {
+    throw processTreeError("enumeration_failed");
+  }
+  return parseOwnedProcesses(outcome.stdout, ownershipToken, ownershipIdentity);
 }
 
 /**
- * Tracks only descendants observed while the supervised leader still has a
- * verified birth identity. A descendant remains owned after it calls setsid or
- * is reparented, but a reused PID is never signalled.
+ * Discovers a launch's live POSIX processes by an opaque token inherited in
+ * their environment. Every state check and signal performs a fresh bounded
+ * probe, so detached/reparented descendants remain owned and a reused PID
+ * without the exact token is never signalled.
  */
 export function createV12PosixProcessTreeTracker({
-  leaderPid,
+  ownershipToken,
+  platform = process.platform,
   probeImplementation = spawnSync,
   killImplementation = process.kill.bind(process),
   probeTimeoutMs = 1_000,
-  pollMs = 10,
 } = {}) {
-  if (!Number.isSafeInteger(leaderPid) || leaderPid < 1 || typeof probeImplementation !== "function"
-    || typeof killImplementation !== "function" || !Number.isSafeInteger(probeTimeoutMs) || probeTimeoutMs < 1
-    || !Number.isSafeInteger(pollMs) || pollMs < 1) {
+  if (!OWNERSHIP_TOKEN.test(ownershipToken) || !POSIX_PLATFORMS.includes(platform)
+    || typeof probeImplementation !== "function" || typeof killImplementation !== "function"
+    || !Number.isSafeInteger(probeTimeoutMs) || probeTimeoutMs < 1) {
     throw processTreeError("arguments_invalid");
   }
 
-  const tracked = new Map();
-  const ownedGroups = new Set();
-  let polling;
+  const ownershipIdentity = createHash("sha256").update(ownershipToken).digest("hex");
   let stopped = false;
-  let trackingFailed = false;
+  let verifiedEmpty = false;
 
-  const capture = () => {
-    const processes = processTable(probeImplementation, probeTimeoutMs);
-    const byPid = new Map(processes.map((entry) => [entry.pid, entry]));
-    if (tracked.size === 0) {
-      const leader = byPid.get(leaderPid);
-      if (leader === undefined) throw processTreeError("leader_unavailable");
-      tracked.set(leader.pid, leader);
-      ownedGroups.add(leader.pgid);
-    }
-    const connected = new Set();
-    for (const entry of tracked.values()) {
-      const current = byPid.get(entry.pid);
-      if (current?.identity === entry.identity) connected.add(entry.pid);
-    }
-    let expanded = true;
-    while (expanded) {
-      expanded = false;
-      for (const entry of processes) {
-        if (!connected.has(entry.ppid) || tracked.has(entry.pid)) continue;
-        tracked.set(entry.pid, entry);
-        ownedGroups.add(entry.pgid);
-        connected.add(entry.pid);
-        expanded = true;
-      }
-    }
-    for (const entry of tracked.values()) {
-      const current = byPid.get(entry.pid);
-      if (current?.identity === entry.identity) ownedGroups.add(current.pgid);
-    }
-    return { byPid, processes };
+  const capture = (timeoutMs = probeTimeoutMs) => {
+    if (stopped) throw processTreeError("stopped");
+    verifiedEmpty = false;
+    return ownedProcessTable({
+      probeImplementation,
+      timeoutMs,
+      platform,
+      ownershipToken,
+      ownershipIdentity,
+    }).filter(({ state }) => !state.startsWith("Z"));
   };
 
-  const liveTracked = (byPid) => [...tracked.values()].flatMap((entry) => {
-    const current = byPid.get(entry.pid);
-    return current?.identity === entry.identity && !current.state.startsWith("Z") ? [current] : [];
-  });
   const treeState = () => {
-    if (trackingFailed) throw processTreeError("enumeration_failed");
-    const { byPid, processes } = capture();
-    if (liveTracked(byPid).length > 0) return "alive";
-    for (const pgid of ownedGroups) {
-      if (processes.some((entry) => entry.pgid === pgid && !entry.state.startsWith("Z"))) return "alive";
-    }
-    return "empty";
+    const live = capture();
+    verifiedEmpty = live.length === 0;
+    return verifiedEmpty ? "empty" : "alive";
   };
+
   const signal = (signalName) => {
-    if (trackingFailed) return false;
-    let byPid;
-    try { ({ byPid } = capture()); }
-    catch { return false; }
-    const live = liveTracked(byPid);
-    const groups = new Set(live.map(({ pgid }) => pgid));
+    if (signalName !== "SIGTERM" && signalName !== "SIGKILL") throw processTreeError("signal_invalid");
+    const deadline = Date.now() + probeTimeoutMs;
+    const remainingProbeMs = () => {
+      const remaining = deadline - Date.now();
+      if (remaining < 1) throw processTreeError("enumeration_failed");
+      return remaining;
+    };
+    const candidates = capture(remainingProbeMs());
     let signalled = true;
-    for (const pgid of groups) {
-      try { killImplementation(-pgid, signalName); }
-      catch (error) { if (error?.code !== "ESRCH") signalled = false; }
-    }
-    for (const { pid, identity } of live) {
-      const current = byPid.get(pid);
-      if (current?.identity !== identity) continue;
+    for (const { pid, identity } of candidates) {
+      const verified = ownedProcessTable({
+        probeImplementation,
+        timeoutMs: remainingProbeMs(),
+        platform,
+        ownershipToken,
+        ownershipIdentity,
+        targetPid: pid,
+      }).some((entry) => entry.pid === pid && entry.identity === identity && !entry.state.startsWith("Z"));
+      if (!verified) continue;
       try { killImplementation(pid, signalName); }
       catch (error) { if (error?.code !== "ESRCH") signalled = false; }
     }
@@ -130,18 +137,13 @@ export function createV12PosixProcessTreeTracker({
   };
 
   capture();
-  polling = setInterval(() => {
-    if (stopped) return;
-    try { capture(); }
-    catch { trackingFailed = true; stopped = true; clearInterval(polling); }
-  }, pollMs);
 
   return Object.freeze({
     signal,
     treeState,
     stop() {
+      if (!verifiedEmpty) throw processTreeError("not_empty");
       stopped = true;
-      clearInterval(polling);
     },
   });
 }

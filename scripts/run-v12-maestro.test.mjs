@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -24,6 +25,7 @@ import {
   validateV12ProductCaseEnvironment,
 } from "./run-v12-maestro.mjs";
 import { digestV12CanonicalRestorationSnapshot } from "./v12-device-settings-contract.mjs";
+import { V12_POSIX_OWNERSHIP_ENV } from "./v12-posix-process-tree.mjs";
 import { validateV12ProductionPublicationOrigins } from "./verify-v12-native-evidence.mjs";
 
 const TEST_TIMEOUT_MS = 30_000;
@@ -491,55 +493,83 @@ test("bounded supervisor drains a TERM-resistant descendant after a successful P
   }
 });
 
-test("bounded supervisor drains a detached POSIX descendant before successful resolution", {
+test("bounded supervisor finds a detached POSIX child after its leader exits before the first ancestry poll", {
   skip: process.platform === "win32",
   timeout: 10_000,
 }, async (t) => {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "v12-maestro-detached-tree-")));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const childPid = path.join(root, "detached-child.pid");
+  const leaderReady = path.join(root, "leader.ready");
+  const releaseLeader = path.join(root, "release.leader");
   const script = path.join(root, "detached-leader.mjs");
   writeFileSync(script, [
     'import { spawn } from "node:child_process";',
-    'import { writeFileSync } from "node:fs";',
+    'import { existsSync, writeFileSync } from "node:fs";',
     'import { setTimeout as delay } from "node:timers/promises";',
+    `writeFileSync(${JSON.stringify(leaderReady)}, "ready");`,
+    `while (!existsSync(${JSON.stringify(releaseLeader)})) await delay(1);`,
     `const child = spawn(process.execPath, ["-e", ${JSON.stringify('process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);')}], { detached: true, stdio: "ignore" });`,
     `writeFileSync(${JSON.stringify(childPid)}, String(child.pid));`,
     "child.unref();",
-    "await delay(125);",
     "",
   ].join("\n"));
   let descendant;
+  let probeCount = 0;
   try {
     assert.equal(await runV12BoundedProcess(process.execPath, [script], {
       cwd: root, timeoutMs: 2_000, termGraceMs: 100, killGraceMs: 1_000,
+      spawnImplementation: (program, args, options) => {
+        const leader = spawn(program, args, options);
+        const waitArray = new Int32Array(new SharedArrayBuffer(4));
+        const deadline = Date.now() + 1_000;
+        while (!existsSync(leaderReady) && Date.now() < deadline) Atomics.wait(waitArray, 0, 0, 1);
+        assert.equal(existsSync(leaderReady), true, "leader did not reach the pre-fork gate");
+        return leader;
+      },
+      posixProcessProbeImplementation: (program, args, options) => {
+        const outcome = spawnSync(program, args, options);
+        if (probeCount === 0) writeFileSync(releaseLeader, "release");
+        probeCount += 1;
+        return outcome;
+      },
     }), "");
     descendant = Number(readFileSync(childPid, "utf8"));
     assert.throws(() => process.kill(descendant, 0), /ESRCH/u);
+    assert.equal(probeCount >= 4, true, "terminal ownership was not re-probed through TERM and KILL");
     descendant = undefined;
   } finally {
     if (descendant !== undefined) { try { process.kill(descendant, "SIGKILL"); } catch { /* already gone */ } }
   }
 });
 
-test("bounded supervisor rejects reused detached PIDs without signalling the new owner", async () => {
+function ownedProcessRow(pid, state, token, command = "node worker.mjs") {
+  return `${String(pid)} ${state} ${command} ${V12_POSIX_OWNERSHIP_ENV}=${token}\n`;
+}
+
+function successfulProcessProbe(stdout) {
+  return { status: 0, signal: null, error: undefined, stdout };
+}
+
+test("bounded supervisor rejects a same-second reused PID with a mismatched ownership token", async () => {
   const child = simulatedWindowsChild();
   child.pid = 500;
-  let leaderAlive = true;
+  let ownershipToken;
+  let probeCount = 0;
   const signals = [];
-  const processTable = () => ({ status: 0, signal: null, error: undefined, stdout: leaderAlive
-    ? "500 1 500 500 Ss Mon Oct 20 12:00:00 2026\n600 500 600 600 Ss Mon Oct 20 12:00:01 2026\n"
-    : "600 1 888 888 Ss Mon Oct 20 12:00:02 2026\n" });
   const running = runV12BoundedProcess(process.execPath, ["-e", ""], {
-    spawnImplementation: () => {
-      queueMicrotask(() => { leaderAlive = false; child.emit("close", 0, null); });
+    spawnImplementation: (_program, _args, options) => {
+      ownershipToken = options.env[V12_POSIX_OWNERSHIP_ENV];
+      queueMicrotask(() => child.emit("close", 0, null));
       return child;
     },
     killImplementation: (target, signal) => {
       signals.push([target, signal]);
       throw new Error("PID reuse must not be signalled");
     },
-    posixProcessProbeImplementation: processTable,
+    posixProcessProbeImplementation: () => successfulProcessProbe(probeCount++ === 0
+      ? ownedProcessRow(500, "Ss", ownershipToken)
+      : ownedProcessRow(500, "Ss", "0".repeat(64), "node reused-same-second.mjs")),
     timeoutMs: 1_000,
     termGraceMs: 5,
     killGraceMs: 20,
@@ -548,7 +578,31 @@ test("bounded supervisor rejects reused detached PIDs without signalling the new
   assert.deepEqual(signals, []);
 });
 
-test("bounded supervisor fails closed when POSIX descendant enumeration is unavailable", async () => {
+test("bounded supervisor does not signal a PID after its ownership token is removed", async () => {
+  const child = simulatedWindowsChild();
+  child.pid = 501;
+  let ownershipToken;
+  let probeCount = 0;
+  const signals = [];
+  const running = runV12BoundedProcess(process.execPath, ["-e", ""], {
+    spawnImplementation: (_program, _args, options) => {
+      ownershipToken = options.env[V12_POSIX_OWNERSHIP_ENV];
+      queueMicrotask(() => child.emit("close", 0, null));
+      return child;
+    },
+    killImplementation: (target, signal) => { signals.push([target, signal]); },
+    posixProcessProbeImplementation: () => successfulProcessProbe(probeCount++ < 3
+      ? ownedProcessRow(501, "Ss", ownershipToken)
+      : "501 Ss node token-removed.mjs\n"),
+    timeoutMs: 1_000,
+    termGraceMs: 5,
+    killGraceMs: 20,
+  });
+  assert.equal(await running, "");
+  assert.deepEqual(signals, []);
+});
+
+test("bounded supervisor fails closed when initial POSIX ownership enumeration is unavailable", async () => {
   const child = simulatedWindowsChild();
   child.pid = 500;
   const signals = [];
@@ -564,7 +618,57 @@ test("bounded supervisor fails closed when POSIX descendant enumeration is unava
     killGraceMs: 20,
   });
   await assert.rejects(running, /v12_maestro_process_tree_enumeration_failed/u);
-  assert.deepEqual(signals, [[-500, "SIGTERM"], [-500, "SIGKILL"]]);
+  assert.deepEqual(signals, []);
+});
+
+test("bounded supervisor sends zero later signals when POSIX ownership re-enumeration fails", async () => {
+  const child = simulatedWindowsChild();
+  child.pid = 502;
+  let ownershipToken;
+  let probeCount = 0;
+  const signals = [];
+  const running = runV12BoundedProcess(process.execPath, ["-e", ""], {
+    spawnImplementation: (_program, _args, options) => {
+      ownershipToken = options.env[V12_POSIX_OWNERSHIP_ENV];
+      queueMicrotask(() => child.emit("close", 0, null));
+      return child;
+    },
+    killImplementation: (target, signal) => { signals.push([target, signal]); },
+    posixProcessProbeImplementation: () => {
+      if (probeCount++ === 0) return successfulProcessProbe(ownedProcessRow(502, "Ss", ownershipToken));
+      throw new Error("ps became unavailable");
+    },
+    timeoutMs: 1_000,
+    termGraceMs: 5,
+    killGraceMs: 20,
+  });
+  await assert.rejects(running, /v12_maestro_process_tree_enumeration_failed/u);
+  assert.deepEqual(signals, []);
+});
+
+test("POSIX ownership failures never expose the token or raw process environment", async () => {
+  const child = simulatedWindowsChild();
+  child.pid = 503;
+  let ownershipToken;
+  const privateEnvironment = "PRIVATE_PROCESS_VALUE=must-not-escape";
+  const running = runV12BoundedProcess(process.execPath, ["-e", ""], {
+    spawnImplementation: (_program, _args, options) => {
+      ownershipToken = options.env[V12_POSIX_OWNERSHIP_ENV];
+      queueMicrotask(() => child.emit("close", 0, null));
+      return child;
+    },
+    killImplementation: () => { throw new Error("unverified process must not be signalled"); },
+    posixProcessProbeImplementation: () => successfulProcessProbe(
+      `malformed ${privateEnvironment} ${V12_POSIX_OWNERSHIP_ENV}=${ownershipToken}\n`,
+    ),
+    timeoutMs: 1_000,
+    termGraceMs: 5,
+    killGraceMs: 20,
+  });
+  const error = await running.then(() => null, (failure) => failure);
+  assert.match(error.message, /v12_maestro_process_tree_enumeration_failed/u);
+  assert.equal(JSON.stringify(error).includes(ownershipToken), false);
+  assert.equal(JSON.stringify(error).includes(privateEnvironment), false);
 });
 
 function simulatedWindowsChild() {

@@ -1,4 +1,5 @@
 import childProcess, { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 import { syncBuiltinESMExports } from "node:module";
 import {
@@ -12,7 +13,10 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createV12PosixProcessTreeTracker } from "./v12-posix-process-tree.mjs";
+import {
+  createV12PosixProcessTreeTracker,
+  V12_POSIX_OWNERSHIP_ENV,
+} from "./v12-posix-process-tree.mjs";
 
 const require = createRequire(import.meta.url);
 const v8ToIstanbul = require("v8-to-istanbul");
@@ -58,37 +62,31 @@ function windowsTreePids(processGroupId, windowsTreeProbeImplementation, timeout
   return [...new Set(values)];
 }
 
-function signalProcessGroup(child, signal, { platform, killImplementation, taskkillImplementation,
+function signalProcessGroup(child, signal, { platform, taskkillImplementation,
   windowsTreeProbeImplementation, timeoutMs }) {
   if (!Number.isSafeInteger(child.pid) || child.pid < 1) return true;
-  if (platform === "win32") {
-    const observed = windowsTreePids(child.pid, windowsTreeProbeImplementation, timeoutMs);
-    if (Array.isArray(observed) && observed.length === 0) return true;
-    const targets = observed === null || observed.includes(child.pid) ? [child.pid] : observed;
-    const signalled = targets.every((pid) => {
-      let result;
-      try {
-        result = taskkillImplementation("taskkill", ["/PID", String(pid), "/T", ...(signal === "SIGKILL" ? ["/F"] : [])], {
-          encoding: "utf8", timeout: timeoutMs, windowsHide: true,
-        });
-      } catch { return false; }
-      return !result.error && !result.signal && result.status === 0;
-    });
-    if (signalled) return true;
-    const after = windowsTreePids(child.pid, windowsTreeProbeImplementation, timeoutMs);
-    return Array.isArray(after) && after.length === 0;
-  }
-  try { killImplementation(-child.pid, signal); return true; }
-  catch (error) { return error?.code === "ESRCH"; }
+  if (platform !== "win32") return false;
+  const observed = windowsTreePids(child.pid, windowsTreeProbeImplementation, timeoutMs);
+  if (Array.isArray(observed) && observed.length === 0) return true;
+  const targets = observed === null || observed.includes(child.pid) ? [child.pid] : observed;
+  const signalled = targets.every((pid) => {
+    let result;
+    try {
+      result = taskkillImplementation("taskkill", ["/PID", String(pid), "/T", ...(signal === "SIGKILL" ? ["/F"] : [])], {
+        encoding: "utf8", timeout: timeoutMs, windowsHide: true,
+      });
+    } catch { return false; }
+    return !result.error && !result.signal && result.status === 0;
+  });
+  if (signalled) return true;
+  const after = windowsTreePids(child.pid, windowsTreeProbeImplementation, timeoutMs);
+  return Array.isArray(after) && after.length === 0;
 }
 
-function processGroupIsEmpty(processGroupId, { platform, killImplementation, windowsTreeProbeImplementation, timeoutMs }) {
-  if (platform === "win32") {
-    const observed = windowsTreePids(processGroupId, windowsTreeProbeImplementation, timeoutMs);
-    return Array.isArray(observed) && observed.length === 0;
-  }
-  try { killImplementation(-processGroupId, 0); return false; }
-  catch (error) { return error?.code === "ESRCH"; }
+function processGroupIsEmpty(processGroupId, { platform, windowsTreeProbeImplementation, timeoutMs }) {
+  if (platform !== "win32") return false;
+  const observed = windowsTreePids(processGroupId, windowsTreeProbeImplementation, timeoutMs);
+  return Array.isArray(observed) && observed.length === 0;
 }
 
 function runTestProject(project, {
@@ -117,6 +115,8 @@ function runTestProject(project, {
       environment.PHASE20_CHILD_COVERAGE_DIRECTORY = rawDirectory;
       environment.PHASE20_CHILD_COVERAGE_PROJECT_ROOT = projectRoot;
     }
+    const posixOwnershipToken = platform === "win32" ? undefined : randomBytes(32).toString("hex");
+    if (platform !== "win32") environment[V12_POSIX_OWNERSHIP_ENV] = posixOwnershipToken;
     let settled = false;
     let stopReason = null;
     let cleanupVerified = true;
@@ -148,8 +148,8 @@ function runTestProject(project, {
     let posixEnumerationFailed = false;
     if (platform !== "win32") {
       try {
-        posixTree = createV12PosixProcessTreeTracker({ leaderPid: child.pid, probeImplementation: posixProcessProbeImplementation,
-          killImplementation, probeTimeoutMs: terminateGraceMs });
+        posixTree = createV12PosixProcessTreeTracker({ ownershipToken: posixOwnershipToken, platform,
+          probeImplementation: posixProcessProbeImplementation, killImplementation, probeTimeoutMs: terminateGraceMs });
       } catch {
         posixEnumerationFailed = true;
       }
@@ -158,14 +158,20 @@ function runTestProject(project, {
       onProjectSignal?.({ project: name, signal: treeSignal });
       if (treeSignal === "SIGTERM") termSent = true;
       if (treeSignal === "SIGKILL") killSent = true;
-      if (posixTree !== undefined) posixTree.signal(treeSignal);
-      else signalProcessGroup(child, treeSignal, processDependencies);
+      if (platform === "win32") signalProcessGroup(child, treeSignal, processDependencies);
+      else if (posixTree !== undefined) {
+        try { posixTree.signal(treeSignal); }
+        catch { posixEnumerationFailed = true; }
+      }
     };
     const treeIsEmpty = () => {
       if (platform === "win32") return processGroupIsEmpty(processGroupId, processDependencies);
       if (posixTree === undefined) return false;
       try { return posixTree.treeState() === "empty"; }
-      catch { return false; }
+      catch {
+        posixEnumerationFailed = true;
+        return false;
+      }
     };
     const verifyTreeEmpty = async (timeoutMs) => {
       const deadline = Date.now() + timeoutMs;
@@ -184,8 +190,11 @@ function runTestProject(project, {
           cleanupVerified = await verifyTreeEmpty(terminateGraceMs);
         }
       }
-      posixTree?.stop();
       if (posixEnumerationFailed) cleanupVerified = false;
+      if (cleanupVerified && posixTree !== undefined) {
+        try { posixTree.stop(); }
+        catch { cleanupVerified = false; }
+      }
       if (!cleanupVerified) {
         reject(new Error(`phase20_coverage_project_cleanup_failed:${name}:${stopReason ?? "exit"}`));
       } else if (terminalError !== undefined) {
