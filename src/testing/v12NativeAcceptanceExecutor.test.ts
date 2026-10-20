@@ -923,6 +923,22 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects plan-impact handlers without their nonce-bound plan day or occurrence", async () => {
+    const dayRemoval = v12NativeAcceptanceCaseContract("library-running", "library.day-removal-impact");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ emptySql: /(?:owned_plan_schedule_events|FROM plan_days)/u }),
+      contract: dayRemoval,
+      request: requestForContract(dayRemoval),
+    })).rejects.toThrow("v12_native_acceptance_plan_impact_day_missing");
+
+    const replacement = v12NativeAcceptanceCaseContract("library-running", "library.replacement-impact");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ emptySql: /(?:owned_plan_schedule_events|FROM owned_plan_day_exercises)/u }),
+      contract: replacement,
+      request: requestForContract(replacement),
+    })).rejects.toThrow("v12_native_acceptance_plan_impact_occurrence_missing");
+  });
+
   it("rejects custom-exercise handlers when durable receipts or exercise preconditions are absent", async () => {
     const runtime = { customExercises: {} as never };
     const favorite = v12NativeAcceptanceCaseContract("library-running", "library.exercise-favorites");
