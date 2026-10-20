@@ -155,6 +155,25 @@ async function operationFactsFor(
   };
 }
 
+function isolateExecutorWithMocks(
+  mocks: readonly Readonly<{ moduleName: string; factory(): unknown }>[],
+): Readonly<{
+  executor: typeof import("./v12NativeAcceptanceExecutor");
+  contracts: typeof import("./contracts/phase15Workout.contract");
+}> {
+  let executor: typeof import("./v12NativeAcceptanceExecutor") | undefined;
+  let contracts: typeof import("./contracts/phase15Workout.contract") | undefined;
+  jest.isolateModules(() => {
+    for (const mock of mocks) jest.doMock(mock.moduleName, mock.factory);
+    executor = require("./v12NativeAcceptanceExecutor") as typeof import("./v12NativeAcceptanceExecutor");
+    contracts = require("./contracts/phase15Workout.contract") as typeof import("./contracts/phase15Workout.contract");
+  });
+  if (executor === undefined || contracts === undefined) {
+    throw new Error("v12_native_acceptance_isolated_module_missing");
+  }
+  return { executor, contracts };
+}
+
 describe("v1.2 native acceptance production executor", () => {
   it("owns one exact action/operation/probe/table/readback contract for all 101 source cases", () => {
     expect(V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS).toHaveLength(101);
@@ -524,6 +543,93 @@ describe("v1.2 native acceptance production executor", () => {
       await expect(isolatedExecutor.dispatchV12NativeAcceptanceProductionOperation({
         kernel: kernel(), contract: active, request: requestForContract(active),
       })).rejects.toThrow("v12_native_acceptance_workout_read_precondition_missing");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
+  it("rejects Library search and instruction projections that omit case-owned content", async () => {
+    const { executor, contracts } = isolateExecutorWithMocks([
+      {
+        moduleName: "../platform/sqlite/repositories/contentRepository",
+        factory: () => ({
+          ...jest.requireActual<typeof import("../platform/sqlite/repositories/contentRepository")>("../platform/sqlite/repositories/contentRepository"),
+          createContentRepository: () => ({
+            importAcceptedCatalog: async () => undefined,
+            readBundledExerciseInstructions: async () => null,
+          }),
+        }),
+      },
+      {
+        moduleName: "../platform/sqlite/repositories/librarySearchRepository",
+        factory: () => ({
+          ...jest.requireActual<typeof import("../platform/sqlite/repositories/librarySearchRepository")>("../platform/sqlite/repositories/librarySearchRepository"),
+          createLibrarySearchRepository: () => ({ searchExercises: async () => ({ state: "empty", items: [] }) }),
+        }),
+      },
+    ]);
+    try {
+      const search = contracts.v12NativeAcceptanceCaseContract("library-running", "library.exercise-search");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract: search, request: requestForContract(search),
+      })).rejects.toThrow("v12_native_acceptance_library_search_postcondition_failed");
+
+      const instructions = contracts.v12NativeAcceptanceCaseContract("library-running", "library.builtin-exercise");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract: instructions, request: requestForContract(instructions),
+      })).rejects.toThrow("v12_native_acceptance_instruction_postcondition_failed");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
+  it("rejects Library section and runtime projections that no longer meet their owned contracts", async () => {
+    const { executor, contracts } = isolateExecutorWithMocks([
+      {
+        moduleName: "../bootstrap/librarySectionPreferencePort",
+        factory: () => ({
+          ...jest.requireActual<typeof import("../bootstrap/librarySectionPreferencePort")>("../bootstrap/librarySectionPreferencePort"),
+          createLibrarySectionPreferencePort: () => ({
+            read: async () => ({ section: "plans", revision: 0 }),
+            write: async () => ({ section: "plans", revision: 0 }),
+          }),
+        }),
+      },
+    ]);
+    try {
+      const remembered = contracts.v12NativeAcceptanceCaseContract("library-running", "library.remembered-state");
+      await expect(executor.prepareV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract: remembered, request: requestForContract(remembered),
+      })).rejects.toThrow("v12_native_acceptance_library_section_precondition_failed");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract: remembered, request: requestForContract(remembered),
+      })).rejects.toThrow("v12_native_acceptance_library_section_postcondition_failed");
+    } finally {
+      jest.resetModules();
+    }
+
+    const runtime = isolateExecutorWithMocks([
+      {
+        moduleName: "../bootstrap/libraryRuntimeReadPort",
+        factory: () => ({
+          ...jest.requireActual<typeof import("../bootstrap/libraryRuntimeReadPort")>("../bootstrap/libraryRuntimeReadPort"),
+          readLibraryRuntimeSnapshot: async () => ({
+            sectionPreference: { section: "plans", revision: 0 },
+            plans: { owned: [] },
+            exerciseFilterOptions: { exerciseTypes: [] },
+          }),
+        }),
+      },
+    ]);
+    try {
+      const actions = runtime.contracts.v12NativeAcceptanceCaseContract("library-running", "library.actions-sheet");
+      await expect(runtime.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract: actions, request: requestForContract(actions),
+      })).rejects.toThrow("v12_native_acceptance_library_actions_postcondition_failed");
+      const accessibility = runtime.contracts.v12NativeAcceptanceCaseContract("library-running", "library.accessibility-recovery");
+      await expect(runtime.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract: accessibility, request: requestForContract(accessibility),
+      })).rejects.toThrow("v12_native_acceptance_library_accessibility_postcondition_failed");
     } finally {
       jest.resetModules();
     }
