@@ -270,4 +270,53 @@ describe("v1.2 aggregate SQLite acceptance contract", () => {
       jest.restoreAllMocks();
     }
   });
+
+  it("rejects source definitions that leave a registered source case uncovered", () => {
+    const definitions = V12_ACCEPTANCE_SQLITE_CASES.map((definition) => ({
+      ...definition,
+      sources: definition.sources.map((source) => source.sourceRegistry === "migrations"
+        ? { ...source, sourceCaseIds: source.sourceCaseIds.filter((id) => id !== "migration-empty-v0") }
+        : source),
+    }));
+
+    expect(() => assertV12AcceptanceSourceDefinitions(definitions))
+      .toThrow("v12_acceptance_source_registry_uncovered");
+  });
+
+  it("fails the definition when a structurally complete source aggregate retains a failed case", async () => {
+    const additional = mockAdditionalSourceRegistries();
+    const migrationAdapter = jest.spyOn(migrationsContracts, "createExpoMigrationsEffectsContractAdapter").mockResolvedValue({} as never);
+    const migration = passedRegistryResult(migrationsContracts.MIGRATIONS_EFFECTS_CONTRACT_CASES);
+    const migrationRun = jest.spyOn(migrationsContracts, "runMigrationsEffectsContract").mockResolvedValue({
+      ...migration,
+      cases: migration.cases.map((item) => item.id === "migration-fresh-v27-schema23-registry"
+        ? { ...item, status: "failed" as const }
+        : item),
+    } as never);
+    const mergeAdapter = jest.spyOn(portableMergeContracts, "createExpoPortableMergeContractAdapter").mockResolvedValue({} as never);
+    const mergeRun = jest.spyOn(portableMergeContracts, "runPortableMergeContract").mockResolvedValue(
+      passedRegistryResult(portableMergeContracts.PORTABLE_MERGE_CONTRACT_CASES) as never,
+    );
+    const running = jest.spyOn(multiPlanContracts, "runMultiPlanRunningContract").mockResolvedValue(
+      passedRegistryResult(multiPlanContracts.MULTI_PLAN_RUNNING_CONTRACT_CASES) as never,
+    );
+    try {
+      const adapter = await createExpoV12AcceptanceSqliteContractAdapter("phase20-direct-failed-case");
+      await expect(adapter.runMixedUpgrade(V12_ACCEPTANCE_SQLITE_CASES[0]!)).resolves.toMatchObject({
+        status: "failed",
+        errorCode: "v12_acceptance_source_case_failed",
+        sourceFacts: expect.arrayContaining([
+          expect.objectContaining({ cases: expect.arrayContaining([expect.objectContaining({ status: "failed" })]) }),
+        ]),
+      });
+      expect(migrationAdapter).toHaveBeenCalledTimes(1);
+      expect(migrationRun).toHaveBeenCalledTimes(1);
+      expect(mergeAdapter).toHaveBeenCalledTimes(1);
+      expect(mergeRun).toHaveBeenCalledTimes(1);
+      expect(running).toHaveBeenCalledTimes(1);
+      expect(additional.kernelRun).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
 });
