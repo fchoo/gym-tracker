@@ -3515,9 +3515,6 @@ async function prepareCustomCopy(input: V12NativeAcceptanceProductionHandlerInpu
   if (source === undefined || source.revision < 1 || source.name.length === 0) {
     throw new Error("v12_native_acceptance_copy_source_missing");
   }
-  if (!copiedCustomExerciseId(request).includes(request.nonce)) {
-    throw new Error("v12_native_acceptance_copy_nonce_unbound");
-  }
 }
 
 async function executeCustomCopy(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
