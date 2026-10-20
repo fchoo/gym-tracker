@@ -821,6 +821,40 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects malformed Owned Plan mutation command acknowledgements", async () => {
+    const { executor, contracts } = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/ownedPlanRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/ownedPlanRepository")>("../platform/sqlite/repositories/ownedPlanRepository"),
+        createOwnedPlanRepository: () => ({
+          read: async () => ({ revision: 1 }),
+          createDraft: async () => ({ outcome: "already_committed", operation: "create", plan: { id: "wrong-plan" } }),
+          archive: async () => ({ outcome: "already_committed", operation: "archive" }),
+          save: async () => ({ outcome: "already_committed", operation: "save", plan: { name: "wrong-name" } }),
+        }),
+      }),
+    }]);
+    try {
+      const emptyReceipts = kernel({ emptySql: /owned_plan_mutation_requests/u });
+      const create = contracts.v12NativeAcceptanceCaseContract("library-running", "library.create-strength");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: emptyReceipts, contract: create, request: requestForContract(create),
+      })).rejects.toThrow("v12_native_acceptance_owned_plan_create_failed");
+
+      const archive = contracts.v12NativeAcceptanceCaseContract("library-running", "library.owned-lifecycle");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /owned_plan_mutation_requests/u }), contract: archive, request: requestForContract(archive),
+      })).rejects.toThrow("v12_native_acceptance_owned_plan_archive_failed");
+
+      const save = contracts.v12NativeAcceptanceCaseContract("library-running", "library.plan-editor");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /owned_plan_mutation_requests/u }), contract: save, request: requestForContract(save),
+      })).rejects.toThrow("v12_native_acceptance_owned_plan_save_failed");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("rejects custom-exercise handlers when durable receipts or exercise preconditions are absent", async () => {
     const runtime = { customExercises: {} as never };
     const favorite = v12NativeAcceptanceCaseContract("library-running", "library.exercise-favorites");
