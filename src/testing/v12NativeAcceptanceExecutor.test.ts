@@ -1208,6 +1208,38 @@ describe("v1.2 native acceptance production executor", () => {
     })).rejects.toThrow("v12_native_acceptance_workout_metric_precondition_missing");
   });
 
+  it("rejects complete-set and partial-finish readbacks that lack their persisted outcome", async () => {
+    const complete = v12NativeAcceptanceCaseContract("workout", "workout.complete-commit");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ emptySql: /completion_idempotency_key/u }),
+      contract: complete,
+      request: requestForContract(complete),
+    })).rejects.toThrow("v12_native_acceptance_workout_metric_precondition_missing");
+
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel(), contract: complete, request: requestForContract(complete),
+    })).rejects.toThrow("v12_native_acceptance_workout_complete_postcondition_failed");
+
+    const outcome = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/workoutOutcomeRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/workoutOutcomeRepository")>("../platform/sqlite/repositories/workoutOutcomeRepository"),
+        createWorkoutOutcomeRepository: () => ({
+          finishPartialWithReceipt: async () => ({ outcome: "committed" }),
+          getSessionDetail: async () => ({ status: "in_progress" }),
+        }),
+      }),
+    }]);
+    try {
+      const contract = outcome.contracts.v12NativeAcceptanceCaseContract("workout", "workout.outcomes");
+      await expect(outcome.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_finish_partial_postcondition_failed");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("rejects missing Workout set, exercise, alternate-library, and snapshot facts", async () => {
     const rowEdit = v12NativeAcceptanceCaseContract("workout", "workout.row-edit");
     await expect(dispatchV12NativeAcceptanceProductionOperation({
