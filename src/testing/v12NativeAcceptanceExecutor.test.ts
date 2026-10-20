@@ -861,6 +861,34 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects malformed starter activation results before schedule or starter receipts are accepted", async () => {
+    const { executor, contracts } = isolateExecutorWithMocks([{
+      moduleName: "../domains/plans",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/plans")>("../domains/plans"),
+        activateStarterPlan: async () => ({
+          outcome: "already_committed",
+          plan: { id: "wrong-plan", sourceTemplateId: "wrong-template" },
+          schedule: { id: "wrong-schedule", lifecycle: "draft" },
+          days: [],
+        }),
+      }),
+    }]);
+    try {
+      const schedule = contracts.v12NativeAcceptanceCaseContract("library-running", "library.schedule-editor");
+      await expect(executor.prepareV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /starter_plan_activation_requests/u }), contract: schedule, request: requestForContract(schedule),
+      })).rejects.toThrow("v12_native_acceptance_schedule_fixture_seed_invalid");
+
+      const activation = contracts.v12NativeAcceptanceCaseContract("library-running", "library.starter-activation");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /starter_plan_activation_requests/u }), contract: activation, request: requestForContract(activation),
+      })).rejects.toThrow("v12_native_acceptance_starter_activation_failed");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("rejects custom-exercise handlers when durable receipts or exercise preconditions are absent", async () => {
     const runtime = { customExercises: {} as never };
     const favorite = v12NativeAcceptanceCaseContract("library-running", "library.exercise-favorites");
