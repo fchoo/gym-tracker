@@ -3,6 +3,7 @@ import { describe, expect, it, jest } from "@jest/globals";
 
 
 import type { SqliteKernel, SqliteReadTransactionExecutor, SqliteTransactionExecutor } from "../platform/sqlite/sqliteKernel";
+import type { SqliteParameter } from "../platform/sqlite/connection";
 import {
   assertV12NativeAcceptanceOperationRegistry,
   V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS,
@@ -574,6 +575,56 @@ describe("v1.2 native acceptance production executor", () => {
       await expect(isolatedExecutor.dispatchV12NativeAcceptanceProductionOperation({
         kernel: kernel(), contract: active, request: requestForContract(active),
       })).rejects.toThrow("v12_native_acceptance_workout_read_precondition_missing");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
+  it("rejects missing rest, invalid presentation, and an unexpected complete-set conflict", async () => {
+    const { executor, contracts } = isolateExecutorWithMocks([
+      {
+        moduleName: "../platform/sqlite/repositories/restRepository",
+        factory: () => ({
+          ...jest.requireActual<typeof import("../platform/sqlite/repositories/restRepository")>("../platform/sqlite/repositories/restRepository"),
+          createRestRepository: () => ({ getRestContext: async () => null }),
+        }),
+      },
+      {
+        moduleName: "../domains/workout/workoutPresentation",
+        factory: () => ({
+          ...jest.requireActual<typeof import("../domains/workout/workoutPresentation")>("../domains/workout/workoutPresentation"),
+          presentWorkoutSession: () => ({ sessionId: "wrong-session", revision: 0, exercises: [] }),
+        }),
+      },
+    ]);
+    try {
+      const rest = contracts.v12NativeAcceptanceCaseContract("workout", "workout.rest-controls");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract: rest, request: requestForContract(rest),
+      })).rejects.toThrow("v12_native_acceptance_workout_rest_precondition_missing");
+
+      const presentation = contracts.v12NativeAcceptanceCaseContract("workout", "workout.readonly-presentation");
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract: presentation, request: requestForContract(presentation),
+      })).rejects.toThrow("v12_native_acceptance_workout_presentation_postcondition_failed");
+
+      const conflict = contracts.v12NativeAcceptanceCaseContract("workout", "workout.complete-failure");
+      const conflictKernel = kernel();
+      const normalQuery = conflictKernel.queryAll.bind(conflictKernel);
+      conflictKernel.queryAll = async <Row extends Record<string, unknown>,>(sql: string, params?: readonly SqliteParameter[]): Promise<readonly Row[]> => {
+        if (sql.includes("session.id AS session_id, session.revision AS session_revision")) {
+          return [{
+            session_id: "session-owned-1", session_revision: 1,
+            exercise_id: "exercise-owned-1", exercise_revision: 1,
+            set_id: "set-owned-1", set_revision: 1,
+            metric_profile: "load_reps", metric_contract_version: 1, exercise_metric_generation: 1,
+          }] as unknown as Row[];
+        }
+        return normalQuery(sql, params);
+      };
+      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: conflictKernel, contract: conflict, request: requestForContract(conflict),
+      })).rejects.toThrow("v12_native_acceptance_workout_complete_conflict_missing");
     } finally {
       jest.resetModules();
     }
