@@ -864,6 +864,53 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects owned-plan receipts whose durable projections drift after a committed command", async () => {
+    const { executor, contracts } = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/ownedPlanRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/ownedPlanRepository")>("../platform/sqlite/repositories/ownedPlanRepository"),
+        createOwnedPlanRepository: () => ({
+          read: async () => ({ revision: 1, days: [], lifecycle: "ready", name: "stale plan" }),
+          createDraft: async (input: Readonly<{ planId: string }>) => ({
+            outcome: "committed", operation: "create", plan: { id: input.planId, revision: 1 },
+          }),
+          archive: async () => ({ outcome: "committed", operation: "archive" }),
+          save: async () => ({ outcome: "committed", operation: "save", plan: { name: "V12 saved owned plan" } }),
+        }),
+      }),
+    }]);
+    const receiptKernel = (operation: "create" | "archive" | "save") => {
+      const base = kernel();
+      const queryAll = base.queryAll.bind(base);
+      let receiptReads = 0;
+      base.queryAll = async <Row extends Record<string, unknown>,>(sql: string, params?: readonly SqliteParameter[]) => {
+        if (sql.includes("FROM owned_plan_mutation_requests")) {
+          receiptReads += 1;
+          if (receiptReads === 1) return [] as readonly Row[];
+          return [{
+            request_id: params?.[0], operation, result_plan_id: "owned-plan", result_revision: 1,
+          }] as unknown as readonly Row[];
+        }
+        return queryAll(sql, params);
+      };
+      return base;
+    };
+    try {
+      for (const [caseId, operation, error] of [
+        ["library.create-strength", "create", "v12_native_acceptance_owned_plan_create_postcondition_failed"],
+        ["library.owned-lifecycle", "archive", "v12_native_acceptance_owned_plan_archive_postcondition_failed"],
+        ["library.plan-editor", "save", "v12_native_acceptance_owned_plan_save_postcondition_failed"],
+      ] as const) {
+        const contract = contracts.v12NativeAcceptanceCaseContract("library-running", caseId);
+        await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+          kernel: receiptKernel(operation), contract, request: requestForContract(contract),
+        })).rejects.toThrow(error);
+      }
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("rejects malformed starter activation results before schedule or starter receipts are accepted", async () => {
     const { executor, contracts } = isolateExecutorWithMocks([{
       moduleName: "../domains/plans",
