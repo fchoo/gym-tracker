@@ -1534,6 +1534,44 @@ describe("v1.2 native acceptance production executor", () => {
     })).rejects.toThrow("v12_native_acceptance_workout_metric_precondition_missing");
   });
 
+  it("rejects metric-draft fixture commands that fail to create their case-specific exercise or set", async () => {
+    const invalidExercise = isolateExecutorWithMocks([{
+      moduleName: "../domains/library/customExerciseCommands",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/library/customExerciseCommands")>("../domains/library/customExerciseCommands"),
+        createCustomExercise: async () => ({ outcome: "already_committed", exercise: { exerciseId: "wrong-exercise" } }),
+      }),
+    }]);
+    try {
+      const contract = invalidExercise.contracts.v12NativeAcceptanceCaseContract("workout", "workout.duration-editor");
+      await expect(invalidExercise.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /SELECT id FROM exercises WHERE id = \?/u }),
+        contract,
+        request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_metric_draft_exercise_seed_invalid");
+    } finally {
+      jest.resetModules();
+    }
+
+    const invalidSet = isolateExecutorWithMocks([{
+      moduleName: "../domains/workout/sessionExerciseCommands",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/workout/sessionExerciseCommands")>("../domains/workout/sessionExerciseCommands"),
+        addExercise: async () => ({ outcome: "already_committed", sessionExerciseId: "wrong-exercise", setId: "wrong-set" }),
+      }),
+    }]);
+    try {
+      const contract = invalidSet.contracts.v12NativeAcceptanceCaseContract("workout", "workout.all-metrics");
+      await expect(invalidSet.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /SELECT id FROM session_exercises WHERE id = \?/u }),
+        contract,
+        request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_metric_draft_set_seed_invalid");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("rejects complete-set and partial-finish readbacks that lack their persisted outcome", async () => {
     const complete = v12NativeAcceptanceCaseContract("workout", "workout.complete-commit");
     await expect(dispatchV12NativeAcceptanceProductionOperation({
