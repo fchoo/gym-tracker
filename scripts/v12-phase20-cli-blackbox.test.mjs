@@ -105,6 +105,7 @@ function fixtureRoot({ performanceOverBudget = false } = {}) {
   mkdirSync(path.join(root, "artifacts/native/phase14/maestro"), { recursive: true });
   writeFileSync(path.join(root, "artifacts/native/phase14/build.json"), `${JSON.stringify(phase14.phase14Manifest)}\n`);
   writeFileSync(path.join(root, "artifacts/native/phase14/maestro/phase14-evidence.json"), `${JSON.stringify(phase14.evidence)}\n`);
+  writeFileSync(path.join(root, phase14.phase14Manifest.apk.path), FAKE_APK_BYTES);
   mkdirSync(path.join(root, "artifacts/native/v1.2-acceptance"), { recursive: true });
   writeFileSync(path.join(root, build.build.apk.path), FAKE_APK_BYTES);
   symlinkSync(path.join(project, "node_modules"), path.join(root, "node_modules"), "dir");

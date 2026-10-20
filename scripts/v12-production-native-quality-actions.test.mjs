@@ -201,7 +201,7 @@ test("production subprocess returns measured F200/accessibility with restored se
     phase14ValidationOptions: SYNTHETIC_PHASE14_VALIDATION_OPTIONS,
     observe: () => result, write: (file, value) => writes.push([file, value]) });
   assert.deepEqual(shard.semantic.excludes, ["live-talkback", "switch-scanning", "final-verdict"]);
-  assert.equal(writes.length, 4); assert.deepEqual(runner.readState().settings, before); released(runner);
+  assert.equal(writes.length, 5); assert.deepEqual(runner.readState().settings, before); released(runner);
   assert.equal(independentQualityCommands(runner).length,
     V12_QUALITY_COMMAND_GRAPH.accessibility.length);
 });

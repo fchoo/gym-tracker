@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
-import { executeLiveV12AccessibilityShard, executeV12AccessibilityShard, validateV12AccessibilityShard, verifyV12AccessibilityShard } from "./v12-accessibility-shard.mjs";
+import { executeLiveV12AccessibilityShard, executeV12AccessibilityShard, validateV12AccessibilityPublicationMembers, validateV12AccessibilityShard, verifyV12AccessibilityShard } from "./v12-accessibility-shard.mjs";
 import { accessibilityEvidence, qualityIdentity } from "./testing/v12-quality-evidence-fixture.mjs";
 import { PHASE14_SHELL_EVIDENCE_CASES } from "../src/testing/contracts/phase14Shell.contract.ts";
 import { createV12ShellRequirementEvidence, validateV12ShellRequirementEvidence, V12_SHELL_REQUIREMENT_REGISTRY } from "./v12-shell-requirement-evidence.mjs";
@@ -57,11 +60,80 @@ test("writes exact semantic and geometry observations while keeping attended ass
   assert.deepEqual(result.semantic.excludes, ["live-talkback", "switch-scanning", "final-verdict"]);
   assert.equal(result.semantic.shell_receipts.length, 13);
   written.set(`artifacts/native/v1.2/${runId}/build.json`, manifest);
-  assert.equal(verifyV12AccessibilityShard({ runId, readJson: (file) => written.get(file), phase14ValidationOptions: SYNTHETIC_PHASE14_VALIDATION_OPTIONS }), true);
-  const substituted = structuredClone(written.get(`artifacts/native/v1.2/${runId}/shell/phase14-evidence.json`));
+  const readArtifact = (file) => written.get(`artifacts/native/v1.2/${runId}/${file}`);
+  assert.equal(verifyV12AccessibilityShard({ runId, readJson: (file) => written.get(file), readArtifact,
+    phase14ValidationOptions: SYNTHETIC_PHASE14_VALIDATION_OPTIONS }), true);
+  const retainedEvidencePath = `artifacts/native/v1.2/${runId}/shell/phase14/maestro/phase14-evidence.json`;
+  const substituted = JSON.parse(written.get(retainedEvidencePath).toString("utf8"));
   substituted.verdict = "FAIL";
-  written.set(`artifacts/native/v1.2/${runId}/shell/phase14-evidence.json`, substituted);
-  assert.throws(() => verifyV12AccessibilityShard({ runId, readJson: (file) => written.get(file) }), /shell_retained_source_invalid/u);
+  written.set(retainedEvidencePath, Buffer.from(`${JSON.stringify(substituted)}\n`));
+  assert.throws(() => verifyV12AccessibilityShard({ runId, readJson: (file) => written.get(file), readArtifact }), /member_invalid/u);
+});
+
+test("retains and revalidates the complete Phase 14 closure after the source tree is removed", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-phase14-retained-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const runId = "phase20-20261014T000000Z-aaaaaaaaaaaa";
+  const identity = qualityIdentity();
+  const observations = accessibilityEvidence(identity);
+  const manifest = { run_id: runId, evidence_origin: "native", source: { head: "a".repeat(40), tree_sha256: identity.source_tree_sha256 },
+    configuration: { id: "AP-L-C390-P-F100" }, fixtures: { registry_sha256: identity.fixture_sha256 },
+    build: { package: "com.fchoo.gymtracker.devtest", apk: { sha256: identity.apk_sha256 } },
+    device: { installed_apk_sha256: identity.apk_sha256, identity_sha256: identity.device_identity_sha256 } };
+  const phase14 = phase14ShellEvidenceFixture(manifest);
+  const extraPath = "artifacts/native/phase14/components/retained-report.json";
+  const apkBytes = Buffer.from("phase14-retained-apk");
+  phase14.phase14Manifest.apk.sha256 = createHash("sha256").update(apkBytes).digest("hex");
+  phase14.phase14Manifest.apk.size_bytes = apkBytes.length;
+  phase14.phase14Manifest.installed_apk.sha256 = phase14.phase14Manifest.apk.sha256;
+  phase14.evidence.apk.sha256 = phase14.phase14Manifest.apk.sha256;
+  phase14.evidence.apk.installed_sha256 = phase14.phase14Manifest.apk.sha256;
+  manifest.build.apk.sha256 = phase14.phase14Manifest.apk.sha256;
+  manifest.device.installed_apk_sha256 = phase14.phase14Manifest.apk.sha256;
+  const source = new Map([
+    ["artifacts/native/phase14/build.json", Buffer.from(`${JSON.stringify(phase14.phase14Manifest)}\n`)],
+    ["artifacts/native/phase14/maestro/phase14-evidence.json", Buffer.from(`${JSON.stringify(phase14.evidence)}\n`)],
+    [phase14.phase14Manifest.apk.path, apkBytes],
+    [extraPath, Buffer.from('{"producer":"phase14-component-report/v1"}\n')],
+  ]);
+  for (const [relative, bytes] of source) {
+    const file = path.join(root, relative); mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, bytes);
+  }
+  const validatePhase14Evidence = (_evidence, _phase14Manifest, _ids, options) => {
+    assert.deepEqual(options.readArtifact(extraPath), source.get(extraPath));
+    return true;
+  };
+  const written = new Map();
+  executeLiveV12AccessibilityShard({ runId, root, manifest, phase14Manifest: phase14.phase14Manifest,
+    phase14Evidence: phase14.evidence, phase14ValidationOptions: { root, validatePhase14Evidence },
+    observe: () => observations, write: (file, value) => written.set(file, value) });
+  written.set(`artifacts/native/v1.2/${runId}/build.json`, manifest);
+  const registryPath = `artifacts/native/v1.2/${runId}/shell/phase14/artifact-registry.json`;
+  const registry = written.get(registryPath);
+  assert.deepEqual(registry.members.map(({ source_path: sourcePath }) => sourcePath).sort(), [...source.keys()].sort());
+  assert.ok(registry.members.every(({ path: retainedPath }) => retainedPath.startsWith("shell/phase14/")));
+  const stage = path.join(root, "stage");
+  const stagedRegistry = path.join(stage, "shell/phase14/artifact-registry.json");
+  mkdirSync(path.dirname(stagedRegistry), { recursive: true }); writeFileSync(stagedRegistry, `${JSON.stringify(registry)}\n`);
+  const publicationMembers = [...written.keys()]
+    .filter((file) => file !== `artifacts/native/v1.2/${runId}/build.json`)
+    .map((file) => ({ artifact: file.replace(`artifacts/native/v1.2/${runId}/`, "") }));
+  assert.equal(validateV12AccessibilityPublicationMembers(publicationMembers, stage), true);
+  assert.throws(() => validateV12AccessibilityPublicationMembers(publicationMembers.slice(1), stage), /publication_invalid/u);
+  const linkedPath = "artifacts/native/phase14/components/linked-report.json";
+  symlinkSync(path.join(root, extraPath), path.join(root, linkedPath));
+  assert.throws(() => executeLiveV12AccessibilityShard({ runId, root, manifest,
+    phase14Manifest: phase14.phase14Manifest, phase14Evidence: phase14.evidence,
+    phase14ValidationOptions: { root, validatePhase14Evidence: (_evidence, _phase14Manifest, _ids, options) => options.readArtifact(linkedPath) },
+    observe: () => observations, write: () => {} }), /symlink_forbidden/u);
+  rmSync(path.join(root, "artifacts/native/phase14"), { recursive: true, force: true });
+  assert.equal(verifyV12AccessibilityShard({ runId,
+    readJson: (file) => written.get(file),
+    readArtifact: (file) => {
+      const value = written.get(`artifacts/native/v1.2/${runId}/${file}`);
+      return Buffer.isBuffer(value) ? value : Buffer.from(`${JSON.stringify(value)}\n`);
+    },
+    phase14ValidationOptions: { root, validatePhase14Evidence } }), true);
 });
 
 test("shell requirement receipts are keyed, permutation-safe, and fail closed on missing or forged members", () => {

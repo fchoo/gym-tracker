@@ -21,6 +21,7 @@ import {
 import { validateV12AccessibilityProducer, validateV12PerformanceProducer } from './v12-quality-evidence-contract.mjs';
 import { deriveV12MaestroCaseIds } from './v12-maestro-source-registry.mjs';
 import { validateV12ShellRequirementEvidence, V12_SHELL_REQUIREMENT_REGISTRY } from './v12-shell-requirement-evidence.mjs';
+import { expectedV12AccessibilityMembers, V12_PHASE14_CLOSURE_REGISTRY } from './v12-phase14-retention.mjs';
 
 const HASH = /^[a-f0-9]{64}$/u;
 const RESULTS = ['FAIL', 'REVIEW_REQUIRED', 'NOT_RUN', 'PASS'];
@@ -233,10 +234,10 @@ export function resolveV12ShellRequirement(selector, receipts, expectedIdentity)
       && entry.domain === 'phase14-shell-postcondition' && entry.requirement_id === selector.requirement_id
       && entry.case_id === selector.id && entry.result === 'PASS' && HASH.test(entry.receipt_sha256 ?? ''))
     && receipt.retained_source?.manifest?.artifact_class === 'phase14-build-manifest'
-    && receipt.retained_source.manifest.path === 'shell/phase14-build.json'
+    && receipt.retained_source.manifest.path === 'shell/phase14/build.json'
     && receipt.retained_source.manifest.sha256 === receipt.phase14_manifest_sha256
     && receipt.retained_source?.evidence?.artifact_class === 'phase14-native-evidence'
-    && receipt.retained_source.evidence.path === 'shell/phase14-evidence.json'
+    && receipt.retained_source.evidence.path === 'shell/phase14/maestro/phase14-evidence.json'
     && receipt.retained_source.evidence.sha256 === receipt.phase14_evidence_sha256, 'shell_receipt_invalid');
   ensure(Object.entries(expectedIdentity).every(([key, value]) => receipt[key] === value), 'shell_receipt_identity_invalid');
   const { receipt_sha256: receiptSha256, ...unsigned } = receipt;
@@ -876,6 +877,7 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
       for (const [gate, passed] of Object.entries({ targets: targetPass, 'input-focus': inputPass, motion: motionPass })) gates[gate].push({ ordinal, configuration_sha256: configKey, result: base === 'PASS' ? passed ? 'PASS' : 'FAIL' : base });
     });
     ensure(same(geometry.targets, targetGeometry), 'accessibility_geometry_binding_invalid');
+    const accessibilityArtifacts = expectedV12AccessibilityMembers(json(V12_PHASE14_CLOSURE_REGISTRY));
     for (const [id, observations] of Object.entries(gates)) leaf(`accessibility:${id}`, 'accessibility-gate', id, combineV12SourceResults(observations.map(o => o.result)), ['semantics/accessibility.json', 'geometry/hit-targets.json'], { observations });
     const shellIdentity = {
       run_id: manifest.run_id, source_tree_sha256: manifest.source.tree_sha256,
@@ -885,7 +887,7 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     for (const entry of table.filter(({ selector }) => selector.type === 'shell-requirement')) {
       const resolved = resolveV12ShellRequirement(entry.selector, semantics.shell_receipts, shellIdentity);
       leaf(`shell:${entry.selector.id}`, 'shell-requirement', entry.selector.id, resolved.result,
-        ['semantics/accessibility.json', 'geometry/hit-targets.json', 'shell/phase14-build.json', 'shell/phase14-evidence.json'], {
+        accessibilityArtifacts, {
           requirement_id: entry.row_id, members: resolved.members, receipt_sha256: resolved.receipt_sha256,
         });
     }

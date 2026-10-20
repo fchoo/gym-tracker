@@ -16,8 +16,8 @@ const exact = (value, keys) => value !== null && typeof value === "object" && !A
   && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
-const PHASE14_MANIFEST_PATH = "shell/phase14-build.json";
-const PHASE14_EVIDENCE_PATH = "shell/phase14-evidence.json";
+const PHASE14_MANIFEST_PATH = "shell/phase14/build.json";
+const PHASE14_EVIDENCE_PATH = "shell/phase14/maestro/phase14-evidence.json";
 const phase14Contract = (caseId) => PHASE14_SHELL_EVIDENCE_CASES.find(({ id }) => id === caseId);
 
 function validateRetainedPhase14(evidence, phase14Manifest, options) {

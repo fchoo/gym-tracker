@@ -16,6 +16,7 @@ import {
   verifyV12RollbackEvidence,
   V12_ROLLBACK_PUBLICATION_MEMBERS,
 } from "./v12-rollback-evidence.mjs";
+import { V12_PHASE14_CLOSURE_REGISTRY } from "./v12-phase14-retention.mjs";
 
 const digest = character => character.repeat(64);
 const sha256 = value => createHash("sha256").update(value).digest("hex");
@@ -196,6 +197,16 @@ test("native artifact and provenance coverage includes every declared Maestro sh
   assert.deepEqual(Object.keys(V12_ARTIFACT_REGISTRY), [
     "sqlite", "recovery", "garmin", "calendar", "multi-plan", "workout", "library-running", "visual", "accessibility", "performance",
   ]);
+});
+
+test("preseal and final expand and revalidate every retained Phase 14 accessibility member", () => {
+  assert.deepEqual(V12_ARTIFACT_REGISTRY.accessibility, [
+    "semantics/accessibility.json", "geometry/hit-targets.json", V12_PHASE14_CLOSURE_REGISTRY,
+  ]);
+  const source = readFileSync(new URL("./verify-v12-native-evidence.mjs", import.meta.url), "utf8");
+  assert.match(source, /id === "accessibility" \? expectedPublicationMembers\(root, runId, id\)/u);
+  assert.match(source, /verifyV12AccessibilityShard\(\{ root, runId \}\)/u);
+  assert.match(source, /if \(shard === "accessibility"\)[\s\S]*expectedV12AccessibilityMembers\(registry\)/u);
 });
 
 test("preseal and final verification share the retained absolute Git attestation", () => {

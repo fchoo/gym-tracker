@@ -1854,8 +1854,8 @@ test("production-shaped retained evidence completes preseal and final readiness"
         if (member.artifact === "semantics/accessibility.json") {
           value.shell_receipts = createV12ShellRequirementEvidence(reboundPhase14.evidence, reboundPhase14.phase14Manifest, build, SYNTHETIC_PHASE14_VALIDATION_OPTIONS);
         }
-        if (member.artifact === "shell/phase14-build.json") value = reboundPhase14.phase14Manifest;
-        if (member.artifact === "shell/phase14-evidence.json") value = reboundPhase14.evidence;
+        if (member.artifact === "shell/phase14/build.json") value = reboundPhase14.phase14Manifest;
+        if (member.artifact === "shell/phase14/maestro/phase14-evidence.json") value = reboundPhase14.evidence;
         if (member.artifact === "screenshots/index.json") {
           for (const record of value.records) {
             record.settings.state_receipt.observation_sha256 = createHash("sha256")
@@ -1879,6 +1879,23 @@ test("production-shaped retained evidence completes preseal and final readiness"
           member.sha256 = createHash("sha256").update(bytes).digest("hex");
           member.size_bytes = bytes.length;
         }
+      }
+      if (shard === "accessibility") {
+        const registryMember = publication.members.find(({ artifact }) => artifact === "shell/phase14/artifact-registry.json");
+        assert.ok(registryMember);
+        const registryRelative = `artifacts/native/v1.2/${runId}/${registryMember.artifact}`;
+        const registry = JSON.parse(readFileSync(save(registryRelative), "utf8"));
+        registry.total_size_bytes = 0;
+        for (const retained of registry.members) {
+          const bytes = readFileSync(path.join(runRoot, retained.path));
+          retained.sha256 = createHash("sha256").update(bytes).digest("hex");
+          retained.size_bytes = bytes.length;
+          registry.total_size_bytes += bytes.length;
+        }
+        writeJson(registryRelative, registry);
+        const bytes = readFileSync(path.join(root, registryRelative));
+        registryMember.sha256 = createHash("sha256").update(bytes).digest("hex");
+        registryMember.size_bytes = bytes.length;
       }
       writeJson(publicationRelative, publication);
     }

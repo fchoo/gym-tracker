@@ -52,6 +52,8 @@ import {
 } from "./v12-device-settings-contract.mjs";
 import { readV12RetainedGitExecution, resolveV12GitExecution, resolveV12NativeExecutionTools } from "./v12-native-execution-origin.mjs";
 import { verifyV12RollbackEvidence, V12_ROLLBACK_PUBLICATION_MEMBERS } from "./v12-rollback-evidence.mjs";
+import { verifyV12AccessibilityShard } from "./v12-accessibility-shard.mjs";
+import { expectedV12AccessibilityMembers, V12_PHASE14_CLOSURE_REGISTRY } from "./v12-phase14-retention.mjs";
 
 const ROOT = process.cwd();
 const HASH = /^[a-f0-9]{64}$/u;
@@ -699,7 +701,7 @@ export const V12_ARTIFACT_REGISTRY = Object.freeze({
   workout: Object.freeze(["maestro/workout.xml", "mapping/workout.json"]),
   "library-running": Object.freeze(["maestro/library-running.xml", "mapping/library-running.json"]),
   visual: Object.freeze(["screenshots/index.json", "comparison/index.json"]),
-  accessibility: Object.freeze(["semantics/accessibility.json", "geometry/hit-targets.json", "shell/phase14-build.json", "shell/phase14-evidence.json"]),
+  accessibility: Object.freeze(["semantics/accessibility.json", "geometry/hit-targets.json", V12_PHASE14_CLOSURE_REGISTRY]),
   performance: Object.freeze(["performance.json"]),
 });
 const V12_PREFLIGHT_SHARDS = V12_ARTIFACT_REGISTRY;
@@ -1043,20 +1045,14 @@ function preflightVerifyArtifact(root, runId, relative, manifest, allowTestCalen
   const full = `artifacts/native/v1.2/${runId}/${relative}`;
   const file = preflightSafeFile(root, full); const bytes = readFileSync(file);
   try { assertV12ArtifactPrivacySafe(relative, bytes); } catch { preflightFail("privacy_invalid"); }
+  if (relative.startsWith("shell/phase14/")) return { path: full, sha256: sha256(bytes) };
   if (relative.endsWith(".xml")) {
     const text = bytes.toString("utf8");
     if (!/<testsuite[ >]/u.test(text) || !/<testcase[ >]/u.test(text)) preflightFail("xml_schema_invalid");
   } else {
     let value; try { value = JSON.parse(bytes.toString("utf8")); } catch { preflightFail("json_schema_invalid"); }
-    const retainedPhase14Manifest = relative === "shell/phase14-build.json";
     if (!finalPlainObject(value) || (value.run_id !== undefined && value.run_id !== runId)
-      || (retainedPhase14Manifest
-        ? value.schema_version !== 1 || value.suite !== "phase14" || value.profile !== "development-test"
-          || value.package !== manifest.build.package || value.base_head !== manifest.source.head
-          || value.source_tree_sha256 !== manifest.source.tree_sha256 || value.apk?.sha256 !== manifest.build.apk.sha256
-          || value.installed_apk?.sha256 !== manifest.device.installed_apk_sha256
-          || value.device?.identity_sha256 !== manifest.device.identity_sha256
-        : typeof value.producer !== "string")) preflightFail("json_schema_invalid");
+      || typeof value.producer !== "string") preflightFail("json_schema_invalid");
     if (relative === "calendar-transitions.json") {
       try { validateV12CalendarExecutionOrigin(value.execution_origin, root, allowTestCalendarFixture); } catch { preflightFail("calendar_origin_invalid"); }
     }
@@ -1225,7 +1221,7 @@ export function validateV12FinalProductionIdentity(manifest, {
 }
 
 function preflightValidateArtifacts(root, runId, shardIds, allowTestCalendarFixture = false, allowFinalResidue = false) {
-  const required = shardIds.flatMap((id) => V12_PREFLIGHT_SHARDS[id]);
+  const required = shardIds.flatMap((id) => id === "accessibility" ? expectedPublicationMembers(root, runId, id) : V12_PREFLIGHT_SHARDS[id]);
   const manifest = preflightManifest(root, runId).manifest;
   const publicationShards = shardIds.flatMap((id) => id === "visual" ? ["visual", "comparison"] : [id]);
   const publishedFiles = [];
@@ -1234,6 +1230,9 @@ function preflightValidateArtifacts(root, runId, shardIds, allowTestCalendarFixt
     publishedFiles.push(...validatedPublicationFiles(root, runId, shard));
   }
   const hashes = required.map((relative) => preflightVerifyArtifact(root, runId, relative, manifest, allowTestCalendarFixture));
+  if (shardIds.includes("accessibility")) {
+    try { verifyV12AccessibilityShard({ root, runId }); } catch { preflightFail("accessibility_retained_closure_invalid"); }
+  }
   return { required, hashes, publishedFiles };
 }
 
@@ -1255,6 +1254,13 @@ function publicationPathToMember(value, runId) {
 }
 
 function expectedPublicationMembers(root, runId, shard) {
+  if (shard === "accessibility") {
+    let registry;
+    try { registry = JSON.parse(readFileSync(preflightSafeFile(root, `artifacts/native/v1.2/${runId}/${V12_PHASE14_CLOSURE_REGISTRY}`), "utf8")); }
+    catch { preflightFail("artifact_set_invalid"); }
+    try { return [...expectedV12AccessibilityMembers(registry)]; }
+    catch { preflightFail("artifact_set_invalid"); }
+  }
   if (shard === "calendar") {
     let registry;
     try { registry = JSON.parse(readFileSync(preflightSafeFile(root, `artifacts/native/v1.2/${runId}/calendar/artifact-registry.json`), "utf8")); }
