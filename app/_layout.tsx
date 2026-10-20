@@ -59,8 +59,8 @@ import {
 } from "../src/testing/isolatedWorkoutRuntime";
 import {
   resolveV12NativeAcceptanceProductRequest,
+  createV12NativeAcceptanceAppearanceStore,
   V12NativeAcceptanceProductGate,
-  type V12NativeAcceptanceProductActionExecutor,
   type V12NativeAcceptanceProductPreparer,
 } from "../src/testing/v12NativeAcceptanceFixture";
 
@@ -305,13 +305,9 @@ function V12NativeAcceptanceProductNavigator({
   const prepareProductCase = (runtime as typeof runtime & Readonly<{
     prepareV12NativeAcceptanceProductCase?: V12NativeAcceptanceProductPreparer;
   }>).prepareV12NativeAcceptanceProductCase;
-  const executeProductAction = (runtime as typeof runtime & Readonly<{
-    executeV12NativeAcceptanceProductAction?: V12NativeAcceptanceProductActionExecutor;
-  }>).executeV12NativeAcceptanceProductAction;
-  if (prepareProductCase === undefined || executeProductAction === undefined) return <Redirect href="/" />;
+  if (prepareProductCase === undefined) return <Redirect href="/" />;
   return (
     <V12NativeAcceptanceProductGate
-      executeProductAction={executeProductAction}
       prepareProductCase={prepareProductCase}
       request={request}
     >
@@ -477,10 +473,26 @@ function RootLayoutAttempt({
       || nativeIdentity.nativeContractsEnabled !== true
       || nativeIdentity.suite !== "v1.2-acceptance"
       ? null
-      : createStrictIsolatedWorkoutRuntimeDependencies({
-        databaseName: `gym-tracker-v12-native-acceptance-${v12NativeAcceptanceNonce}.db`,
-      }),
+      : (() => {
+        const baseMs = 2_000_000_000_000
+          + Number.parseInt(v12NativeAcceptanceNonce.slice(0, 8), 16);
+        let identitySequence = 0;
+        return createStrictIsolatedWorkoutRuntimeDependencies({
+          databaseName: `gym-tracker-v12-native-acceptance-${v12NativeAcceptanceNonce}.db`,
+          now: () => new Date(baseMs),
+          nowMs: () => baseMs,
+          randomUUID: () => `v12-${v12NativeAcceptanceNonce.slice(0, 16)}-${identitySequence += 1}`,
+        });
+      })(),
     [v12NativeAcceptanceNonce, v12NativeAcceptancePath, v12NativeAcceptanceProductRequest],
+  );
+  const v12NativeAcceptanceAppearanceStore = React.useMemo(
+    () => v12NativeAcceptanceNonce === null
+      ? isolatedNativeAppearanceStore
+      : createV12NativeAcceptanceAppearanceStore(
+        `gym-tracker-v12-native-acceptance-${v12NativeAcceptanceNonce}.db`,
+      ),
+    [v12NativeAcceptanceNonce],
   );
   const phase20VisualRequest = phase20VisualGate({
     buildProfile: Constants.expoConfig?.extra?.buildProfile,
@@ -663,7 +675,7 @@ function RootLayoutAttempt({
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
-          <AppearanceProvider store={isolatedNativeAppearanceStore}>
+          <AppearanceProvider store={v12NativeAcceptanceAppearanceStore}>
             {v12NativeAcceptanceDependencies === null ? (
               <V12NativeAcceptanceNavigator />
             ) : (
@@ -681,7 +693,7 @@ function RootLayoutAttempt({
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
-          <AppearanceProvider store={isolatedNativeAppearanceStore}>
+          <AppearanceProvider store={v12NativeAcceptanceAppearanceStore}>
             {v12NativeAcceptanceDependencies === null ? (
               <Redirect href="/" />
             ) : (

@@ -21,9 +21,6 @@ import {
   useWorkoutAppRuntime,
 } from "../../src/bootstrap/workoutAppRuntime";
 import {
-  createWorkoutMutationTestCommandAdapters,
-} from "../../src/bootstrap/workoutMutationTestControls";
-import {
   useRestCountdownCue,
 } from "../../src/bootstrap/restCountdownCue";
 import {
@@ -112,13 +109,6 @@ export default function ActiveWorkoutRoute() {
   const [deferredPlanId, setDeferredPlanId] = useState<string | null>(null);
   const [planSettingsVisible, setPlanSettingsVisible] = useState(false);
   const [planPreference, setPlanPreference] = useState<WorkoutPreference | null>(null);
-  const mutationCommands = createWorkoutMutationTestCommandAdapters({
-    addWarmup: runtime.addWarmup,
-    addWorkingSet: runtime.addWorkingSet,
-    reviseCompletedSet: runtime.reviseCompletedSet,
-    replaceExercise: runtime.replaceExercise,
-    removeExercise: runtime.removeExercise,
-  });
   useEffect(() => {
     setDeferredPlanId(null);
     setPlanSettingsVisible(false);
@@ -150,7 +140,7 @@ export default function ActiveWorkoutRoute() {
       weightIncrementGrams: field === "weightIncrementGrams"
         ? value
         : source.weightIncrementGrams,
-      updatedAtMs: Date.now(),
+      updatedAtMs: runtime.nowMs(),
     });
     try {
       await write(await runtime.readWorkoutPreferences(activePlanId));
@@ -165,7 +155,7 @@ export default function ActiveWorkoutRoute() {
     const source = await runtime.readWorkoutPreferences(activePlanId);
     setPlanPreference(source);
     setPlanSettingsVisible(false);
-  }, [activePlanId, runtime.readWorkoutPreferences, runtime.setWorkoutPreferences]);
+  }, [activePlanId, runtime.nowMs, runtime.readWorkoutPreferences, runtime.setWorkoutPreferences]);
   useEffect(() => {
     let active = true;
     setFailed(false);
@@ -269,19 +259,19 @@ export default function ActiveWorkoutRoute() {
     <ActiveWorkoutScreen
       commands={{
         addExercise: runtime.addExercise,
-        replaceExercise: mutationCommands.replaceExercise ?? runtime.replaceExercise,
-        removeExercise: mutationCommands.removeExercise ?? runtime.removeExercise,
+        replaceExercise: runtime.replaceExercise,
+        removeExercise: runtime.removeExercise,
         reorderExercises: runtime.reorderExercises,
         updateActiveSetDraft: runtime.updateActiveSetDraft,
         updateWarmupDraft: runtime.updateWarmupDraft,
-        addWarmup: mutationCommands.addWarmup,
-        addWorkingSet: mutationCommands.addWorkingSet,
+        addWarmup: runtime.addWarmup,
+        addWorkingSet: runtime.addWorkingSet,
         completeWarmup: runtime.completeWarmup,
         removeWarmup: runtime.removeWarmup,
         removeWorkingSet: runtime.removeWorkingSet,
         completeSet: runtime.completeSet,
         undoCompletedSet: runtime.undoCompletedSet,
-        reviseCompletedSet: mutationCommands.reviseCompletedSet,
+        reviseCompletedSet: runtime.reviseCompletedSet,
         startManualRest: runtime.startManualRest,
         pauseRest: runtime.pauseRest,
         resumeRest: runtime.resumeRest,
@@ -297,7 +287,7 @@ export default function ActiveWorkoutRoute() {
       }}
       availableExercises={availableExercises}
       availableExercisesState={availableExercisesState}
-      nowMs={() => Date.now()}
+      nowMs={runtime.nowMs}
       notificationPermission={runtime.notificationPermission}
       restSoundEnabled={runtime.readRestAlertPreferences().soundEnabled}
       countdownCue={countdownCue}

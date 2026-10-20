@@ -101,20 +101,6 @@ const selectedOccurrence: SelectedStrengthOccurrence = {
 };
 
 describe("Plan 01-07 TodayScreen", () => {
-  it("runs the case-owned production operation before the normal Settings callback", async () => {
-    const execute = jest.fn(async () => undefined);
-    const onOpenSettings = jest.fn();
-    await renderToday(scheduledView, {
-      nativeAcceptanceAction: { actionId: "v12-product-action-workout-case", execute },
-      onOpenSettings,
-    });
-
-    await fireEvent.press(screen.getByTestId("v12-product-action-workout-case"));
-    await waitFor(() => expect(onOpenSettings).toHaveBeenCalledTimes(1));
-    expect(execute).toHaveBeenCalledTimes(1);
-    expect(execute.mock.invocationCallOrder[0]).toBeLessThan(onOpenSettings.mock.invocationCallOrder[0]!);
-  });
-
   it("keeps rest and start-failure states truthful while alternatives remain explicit", async () => {
     await renderToday({
       state: "rest_day",

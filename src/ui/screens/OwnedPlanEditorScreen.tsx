@@ -1022,6 +1022,7 @@ export function OwnedPlanEditorScreen({
                 : undefined}
               label="Plan name"
               onChangeText={setCreateName}
+              testID="owned-plan-create-name"
               value={createName}
             />
             <PlanEditorTextField
@@ -1030,6 +1031,7 @@ export function OwnedPlanEditorScreen({
                 : undefined}
               label="First day name"
               onChangeText={setFirstDayName}
+              testID="owned-plan-create-first-day"
               value={firstDayName}
             />
             {createError
@@ -1117,7 +1119,7 @@ export function OwnedPlanEditorScreen({
       )}
       primary={(
         <>
-          <ScreenHeader title={draft.name} backAction={requestBack} />
+          <ScreenHeader title={draft.name} backAction={requestBack} backActionTestID="owned-plan-editor-back" />
           {snapshot.lifecycle === "draft" ? (
             <InlineNotice
               body={missingRequirement}
@@ -1153,6 +1155,7 @@ export function OwnedPlanEditorScreen({
             label="Plan name"
             onChangeText={(name) =>
               updateDraft((current) => ({ ...current, name }))}
+            testID="owned-plan-editor-name"
             value={draft.name}
           />
           <View style={styles.scheduleActions}>

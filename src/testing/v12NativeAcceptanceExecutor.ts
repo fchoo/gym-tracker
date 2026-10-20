@@ -12,9 +12,8 @@ import {
 import {
   createExpoMultiPlanRunningContractAdapter,
   MULTI_PLAN_RUNNING_CONTRACT_CASES,
-  runMultiPlanRunningContract,
+  type MultiPlanRunningContractAdapter,
   type MultiPlanRunningContractCaseId,
-  type MultiPlanRunningContractResult,
 } from "./contracts/multiPlanRunning.contract";
 import type { RunningPlanRuntimePort } from "../bootstrap/runningPlanRuntime";
 import type { OwnedPlanRuntimePort } from "../bootstrap/ownedPlanRuntime";
@@ -77,8 +76,7 @@ import { addWorkingSet, completeSet, updateActiveSetDraft } from "../domains/wor
 import { addExercise, removeExercise, reorderExercises, replaceExercise } from "../domains/workout/sessionExerciseCommands";
 import { undoCompletedSet } from "../domains/workout/undoCompletedSet";
 import { presentWorkoutSession } from "../domains/workout/workoutPresentation";
-import { WorkoutCommandConflictError } from "../domains/workout/activeWorkout";
-import { finishPartial, PARTIAL_CONFIRMATION } from "../domains/workout/finishWorkout";
+import { finishPartial, PARTIAL_CONFIRMATION, skipExercise, SKIP_EXERCISE_CONFIRMATION } from "../domains/workout/finishWorkout";
 import { adjustRest, pauseRest, resumeRest, startManualRest } from "../domains/rest/restCommands";
 import { acceptRecommendation } from "../domains/progression";
 import {
@@ -89,6 +87,7 @@ import {
 } from "../domains/scheduling/scheduleCommands";
 import { previewDayRemoval, previewExerciseReplacement, removePlanDayWithImpact, replacePlanExercise } from "../domains/plans/planImpactCommands";
 import {
+  prepareV12NativeAcceptanceCompletionWriteback,
   runV12NativeAcceptanceCompletionWriteback,
 } from "./v12NativeAcceptanceCompletionWriteback";
 import {
@@ -111,6 +110,70 @@ export type V12NativeAcceptanceRequest = Readonly<{
   authorityTables: readonly string[];
   nonce: string;
 }>;
+
+/** Deterministic identity consumed by the ordinary production callback for a
+ * prepared product case. The callback still owns the mutation; this only
+ * replaces its random idempotency token inside the nonce-isolated runtime. */
+export function v12NativeAcceptanceProductRequestId(
+  request: V12NativeAcceptanceRequest,
+  label: string,
+): string {
+  const expectedLabel = (Object.freeze({
+    "workout.plan-increment": "recommendation-use",
+    "library.exercise-favorites": "exercise-favorite",
+    "library.true-no-plans": "owned-plan-create",
+    "library.owned-lifecycle": "owned-plan-lifecycle",
+    "library.starter-detail": "starter-editable-copy",
+    "library.starter-activation": "starter-plan-activation",
+    "library.template-update": "starter-template-update-copy",
+    "library.create-strength": "owned-plan-create",
+    "library.plan-editor": "owned-plan-save",
+    "library.schedule-editor": "schedule-save",
+    "library.replacement-impact": "plan-impact-replace",
+    "library.day-removal-impact": "plan-impact-remove",
+    "library.custom-exercise": "custom-exercise-archive",
+    "library.create-exercise": "custom-exercise-create",
+    "library.copy-metric-migration": "custom-exercise-metric-migration",
+    "library.custom-exercise-edit": "custom-exercise-edit",
+    "library.custom-exercise-hide": "custom-exercise-hide",
+    "library.custom-exercise-unhide": "custom-exercise-hide",
+    "library.custom-exercise-copy-bundled": "custom-exercise-copy",
+    "library.custom-exercise-archive": "custom-exercise-archive",
+    "library.custom-exercise-reactivate": "custom-exercise-reactivate",
+    "library.metric-profile-migration": "custom-exercise-metric-migration",
+    "library.running-create-zero-sessions": "running-plan-create",
+    "library.running-goal-edit": "running-plan-save",
+    "library.running-session-common": "running-session-save",
+    "library.running-recovery": "running-session-save",
+    "library.running-long": "running-session-save",
+    "library.running-progression": "running-session-save",
+    "library.running-tempo": "running-session-save",
+    "library.running-intervals": "running-session-save",
+    "library.running-hills": "running-session-save",
+    "library.running-fartlek": "running-session-save",
+    "library.running-session-lifecycle": "running-lifecycle",
+    "library.running-conflict": "schedule-collision",
+    "library.running-create-typed-sessions": "running-session-save",
+    "library.running-two-same-day-slots": "running-plan-save",
+  }) as Readonly<Record<string, string>>)[request.caseId];
+  if (expectedLabel === undefined || expectedLabel !== label) {
+    throw new Error("v12_native_acceptance_callback_owner_mismatch");
+  }
+  if (request.caseId === "workout.plan-increment") return `v12:workout-plan-increment:${request.nonce}`;
+  if (request.caseId === "library.owned-lifecycle") return `v12:owned-plan-archive:${request.nonce}`;
+  if (request.caseId === "library.plan-editor") return `v12:owned-plan-save:${request.nonce}`;
+  if (request.caseId === "library.starter-detail") return `v12:starter-editable-copy:${request.nonce}`;
+  if (request.caseId === "library.starter-activation") return `v12:starter-activation:${request.nonce}`;
+  if (request.caseId === "library.template-update") return `v12:starter-template-update-copy:${request.nonce}`;
+  if (request.caseId === "library.true-no-plans" || request.caseId === "library.create-strength") {
+    return `v12:owned-plan-create:${request.caseId}:${request.nonce}`;
+  }
+  if (request.caseId === "library.schedule-editor") return `v12:schedule-editor:${request.nonce}`;
+  if (request.caseId === "library.replacement-impact") return `v12:replacement-impact:${request.nonce}`;
+  if (request.caseId === "library.day-removal-impact") return `v12:day-removal-impact:${request.nonce}`;
+  if (request.caseId.startsWith("library.running-")) return `v12:running:${request.caseId}:${request.nonce}:action`;
+  return `v12:custom-exercise:${request.caseId}:${request.nonce}:action`;
+}
 
 export type V12NativeAcceptanceSourceState = Readonly<{
   probe_id: string;
@@ -170,6 +233,9 @@ export type V12NativeAcceptancePreparedProductCase = Readonly<{
   operation_id: string;
   action_request_sha256: string;
   pre: V12NativeAcceptanceSourceState;
+  /** A production route discovered from the durable fixture. The gate may
+   * redirect to it, but preparation never executes the case action. */
+  prepared_product_path: string | null;
 }>;
 
 const HASH = /^[a-f0-9]{64}$/u;
@@ -192,7 +258,7 @@ type V12NativeAcceptanceProductionHandlerInput = Readonly<{
   runtime?: V12NativeAcceptanceProductionRuntime;
 }>;
 
-const multiPlanWrapperProjections = new WeakMap<SqliteKernel, Map<string, unknown>>();
+const V12_DOMAIN_OBSERVATION_SETTING_PREFIX = "development-test.v12.phase13-domain-observation.v1";
 
 /**
  * Production command ports deliberately live at the acceptance boundary.  The
@@ -203,10 +269,9 @@ export type V12NativeAcceptanceProductionRuntime = Readonly<{
   running?: RunningPlanRuntimePort;
   ownedPlans?: OwnedPlanRuntimePort;
   customExercises?: CustomExerciseRepository;
-  /** Host SQLite tests inject the canonical fresh-runtime wrapper here. */
-  multiPlan?: Readonly<{
-    runWrapper(): Promise<MultiPlanRunningContractResult>;
-  }>;
+  /** Host-only port for exercising the same canonical Phase 13 case on a
+   * caller-owned real SQLite shard. Product preparation uses the Expo adapter. */
+  domainObservationAdapter?: MultiPlanRunningContractAdapter;
 }>;
 
 export type V12NativeAcceptanceProductionHandler = Readonly<{
@@ -368,10 +433,86 @@ async function prepareActiveWorkoutFixture(input: V12NativeAcceptanceProductionH
   }
 }
 
+/**
+ * An unscored `completed: false` observation is a valid persisted draft but is
+ * deliberately not a valid completed observation. Preparing that state via
+ * production exercise-add and draft commands gives WRK-19 a deterministic,
+ * user-reachable failure at the ordinary Complete Set callback without
+ * injecting a storage failure or dispatching an acceptance-only command.
+ */
+async function prepareWorkoutCompleteFailureFixture(
+  input: V12NativeAcceptanceProductionHandlerInput,
+): Promise<void> {
+  const request = requireRequest(input);
+  const set = await workoutMetricDraftSet(input);
+  if (set.metric_profile !== "unscored") {
+    throw new Error("v12_native_acceptance_workout_metric_precondition_missing");
+  }
+  const observation = Object.freeze({
+    version: 1 as const,
+    profile: "unscored" as const,
+    completed: false,
+    source: "manual" as const,
+  });
+  const [current] = await input.kernel.queryAll<Readonly<{
+    observed_json: string | null;
+    status: string;
+  }>>(
+    "SELECT observed_json, status FROM session_sets WHERE id = ?",
+    [set.set_id],
+  );
+  if (current?.status === "draft" && current.observed_json === JSON.stringify(observation)) {
+    return;
+  }
+  await updateActiveSetDraft({
+    repository: createWorkoutRepository(input.kernel),
+    input: {
+      sessionId: set.session_id,
+      setId: set.set_id,
+      expectedSetRevision: set.set_revision,
+      metricIdentity: {
+        profile: "unscored",
+        contractVersion: set.metric_contract_version,
+        exerciseMetricGeneration: set.exercise_metric_generation,
+      },
+      observation,
+      updatedAtMs: workoutFixtureActivatedAt(request) + 2_000,
+    },
+  });
+}
+
 async function prepareWorkoutRestFixture(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
   await prepareActiveWorkoutFixture(input);
   const rest = await ensureWorkoutRest(input);
   if (rest.restRevision < 1) throw new Error("v12_native_acceptance_workout_rest_fixture_invalid");
+}
+
+async function preparePausedWorkoutRestFixture(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
+  await prepareWorkoutRestFixture(input);
+  const request = requireRequest(input);
+  const repository = createRestRepository(input.kernel);
+  const session = await workoutFixtureSessionRevision(input.kernel, request);
+  const current = await repository.getRestContext(session.id);
+  if (current === null) throw new Error("v12_native_acceptance_workout_rest_precondition_missing");
+  if (current.state.state === "running"
+    && current.state.startedAtMs === workoutFixtureActivatedAt(request) + 5_000) {
+    return;
+  }
+  if (current.state.state === "running") {
+    await pauseRest({
+      repository,
+      input: {
+        sessionId: session.id,
+        expectedSessionRevision: session.revision,
+        expectedRestRevision: current.state.revision,
+        nowMs: workoutFixtureActivatedAt(request) + 4_500,
+      },
+    });
+  }
+  const paused = await repository.getRestContext(session.id);
+  if (paused?.state.state !== "paused") {
+    throw new Error("v12_native_acceptance_workout_rest_pause_missing");
+  }
 }
 
 async function workoutFixtureActiveSet(kernel: SqliteKernel, request: V12NativeAcceptanceRequest) {
@@ -513,7 +654,7 @@ async function executeWorkoutRepositoryRead(input: V12NativeAcceptanceProduction
     case "workout.workout-outcome-repository.get-session-detail": {
       if (sessionId === null) throw new Error("v12_native_acceptance_workout_read_precondition_missing");
       const detail = await createWorkoutOutcomeRepository(input.kernel).getSessionDetail(sessionId);
-      if (detail.id !== sessionId || detail.status !== "in_progress" || detail.exercises.length === 0) {
+      if (detail.id !== sessionId || detail.status !== "partial" || detail.exercises.length === 0) {
         throw new Error("v12_native_acceptance_workout_read_precondition_missing");
       }
       break;
@@ -545,42 +686,23 @@ async function executeWorkoutPresentationRead(input: V12NativeAcceptanceProducti
 }
 
 async function executeWorkoutCompleteSetConflict(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "read"; facts: unknown }>> {
-  await prepareActiveWorkoutFixture(input);
+  await prepareWorkoutCompleteFailureFixture(input);
   const request = requireRequest(input);
-  const set = await workoutFixtureActiveSet(input.kernel, request);
-  if (set.metric_profile !== "load_reps") throw new Error("v12_native_acceptance_workout_metric_precondition_missing");
-  let conflict = false;
-  try {
-    await completeSet({
-      repository: createWorkoutRepository(input.kernel),
-      haptics: { committed: async () => undefined, cue: async () => undefined },
-      invalidate: async () => undefined,
-      drainEffects: async () => undefined,
-      input: {
-        sessionId: set.session_id,
-        setId: set.set_id,
-        expectedSessionRevision: set.session_revision,
-        expectedSetRevision: set.set_revision + 1,
-        completionIdempotencyKey: `v12:workout:${request.caseId}:${request.nonce}:conflict`,
-        metricIdentity: {
-          profile: "load_reps",
-          contractVersion: set.metric_contract_version,
-          exerciseMetricGeneration: set.exercise_metric_generation,
-        },
-        observation: { version: 1, profile: "load_reps", loadGrams: 12_500, reps: 5, source: "manual" },
-        completedAtMs: workoutFixtureActivatedAt(request) + 3_000,
-      },
-    });
-  } catch (error) {
-    conflict = error instanceof WorkoutCommandConflictError && error.code === "complete_set_conflict";
-  }
-  if (!conflict) throw new Error("v12_native_acceptance_workout_complete_conflict_missing");
-  const [row] = await input.kernel.queryAll<Readonly<{ status: string; revision: number }>>(
-    "SELECT status, revision FROM session_sets WHERE id = ?",
+  const set = await workoutMetricDraftSet(input);
+  const [row] = await input.kernel.queryAll<Readonly<{
+    status: string;
+    observed_json: string | null;
+    completion_idempotency_key: string | null;
+  }>>(
+    "SELECT status, observed_json, completion_idempotency_key FROM session_sets WHERE id = ?",
     [set.set_id],
   );
-  if (row?.status !== "planned" || row.revision !== set.set_revision) {
-    throw new Error("v12_native_acceptance_workout_complete_conflict_postcondition_failed");
+  const observation = row?.observed_json === null || row?.observed_json === undefined
+    ? null
+    : JSON.parse(row.observed_json) as Partial<{ profile: string; completed: boolean }>;
+  if (row?.status !== "draft" || observation?.profile !== "unscored"
+    || observation.completed !== false || row.completion_idempotency_key !== null) {
+    throw new Error("v12_native_acceptance_workout_complete_failure_fixture_invalid");
   }
   return Object.freeze({ result: "read" as const, facts: operationFacts({
     contract: input.contract,
@@ -880,10 +1002,15 @@ async function prepareOwnedPlanReadFixture(input: V12NativeAcceptanceProductionH
 }
 
 async function executeOwnedPlanRead(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "read"; facts: unknown }>> {
-  await prepareOwnedPlanReadFixture(input);
   const request = requireRequest(input);
-  const plan = await createOwnedPlanRepository(input.kernel).read(ownedPlanReadFixtureId(request));
-  if (plan === null || plan.name !== "V12 owned-plan read fixture" || plan.days.length !== 1 || plan.days[0]?.name !== "V12 owned-plan day") {
+  const draftGuard = input.contract.caseId === "library.editor-draft-guards";
+  if (draftGuard) await ensureOwnedPlanMutationFixture(input);
+  else await prepareOwnedPlanReadFixture(input);
+  const plan = await createOwnedPlanRepository(input.kernel).read(
+    draftGuard ? ownedPlanMutationFixtureId(request) : ownedPlanReadFixtureId(request),
+  );
+  if (plan === null || plan.days.length !== 1
+    || (!draftGuard && (plan.name !== "V12 owned-plan read fixture" || plan.days[0]?.name !== "V12 owned-plan day"))) {
     throw new Error("v12_native_acceptance_owned_plan_read_postcondition_failed");
   }
   return Object.freeze({ result: "read" as const, facts: operationFacts({
@@ -2101,6 +2228,7 @@ async function workoutMetricDraftSet(
   await prepareActiveWorkoutFixture(input);
   const request = requireRequest(input);
   const durationEditor = input.contract.caseId === "workout.duration-editor";
+  const completionFailure = input.contract.caseId === "workout.complete-failure";
   const exerciseId = `v12:workout:${request.caseId}:${request.nonce}:metric-exercise`;
   const sessionExerciseId = `v12:workout:${request.caseId}:${request.nonce}:metric-session-exercise`;
   const setId = `v12:workout:${request.caseId}:${request.nonce}:metric-set`;
@@ -2128,7 +2256,23 @@ async function workoutMetricDraftSet(
           progression: { kind: "manual_hold", version: 1 },
           createdAtMs: workoutFixtureActivatedAt(request) + 1_250,
         }
-        : {
+        : completionFailure
+          ? {
+            requestId: `v12:workout:${request.caseId}:${request.nonce}:metric-exercise-seed`,
+            exerciseId,
+            name: "V12 completion validation exercise",
+            aliases: ["V12 completion validation"],
+            exerciseType: "strength",
+            movementClass: "isolation",
+            primaryMuscles: ["abdominals"],
+            secondaryMuscles: [],
+            equipment: ["body_only"],
+            metricIdentity: { profile: "unscored", contractVersion: 1, exerciseMetricGeneration: 1 },
+            defaultRestSeconds: 45,
+            progression: { kind: "manual_hold", version: 1 },
+            createdAtMs: workoutFixtureActivatedAt(request) + 1_250,
+          }
+          : {
           requestId: `v12:workout:${request.caseId}:${request.nonce}:metric-exercise-seed`,
           exerciseId,
           name: "V12 all metrics fixed time",
@@ -2175,7 +2319,7 @@ async function workoutMetricDraftSet(
     session_id: string;
     set_id: string;
     set_revision: number;
-    metric_profile: "timed_hold" | "fixed_time";
+    metric_profile: "timed_hold" | "fixed_time" | "unscored";
     metric_contract_version: number;
     exercise_metric_generation: number;
   }>>(
@@ -2191,11 +2335,60 @@ async function workoutMetricDraftSet(
      LIMIT 1`,
     [sessionExerciseId, setId],
   );
-  const expectedProfile = durationEditor ? "timed_hold" : "fixed_time";
+  const expectedProfile = durationEditor ? "timed_hold" : completionFailure ? "unscored" : "fixed_time";
   if (set === undefined || set.metric_profile !== expectedProfile) {
     throw new Error("v12_native_acceptance_workout_metric_draft_precondition_missing");
   }
+  const [active] = await input.kernel.queryAll<Readonly<{
+    active_session_exercise_id: string | null;
+    active_set_id: string | null;
+  }>>(
+    "SELECT active_session_exercise_id, active_set_id FROM workout_sessions WHERE id = ?",
+    [set.session_id],
+  );
+  if (active?.active_session_exercise_id !== sessionExerciseId || active.active_set_id !== setId) {
+    const outcomeRepository = createWorkoutOutcomeRepository(input.kernel);
+    for (;;) {
+      const [current] = await input.kernel.queryAll<Readonly<{
+        session_revision: number;
+        exercise_id: string | null;
+        exercise_revision: number | null;
+      }>>(
+        `SELECT session.revision AS session_revision,
+                session.active_session_exercise_id AS exercise_id,
+                exercise.revision AS exercise_revision
+         FROM workout_sessions session
+         LEFT JOIN session_exercises exercise
+           ON exercise.id = session.active_session_exercise_id
+         WHERE session.id = ? AND session.status = 'in_progress'`,
+        [set.session_id],
+      );
+      if (current?.exercise_id === sessionExerciseId) break;
+      if (
+        current === undefined
+        || current.exercise_id === null
+        || current.exercise_revision === null
+      ) {
+        throw new Error("v12_native_acceptance_workout_metric_draft_activation_failed");
+      }
+      await skipExercise({
+        repository: outcomeRepository,
+        input: {
+          sessionId: set.session_id,
+          sessionExerciseId: current.exercise_id,
+          expectedSessionRevision: current.session_revision,
+          expectedExerciseRevision: current.exercise_revision,
+          confirmation: SKIP_EXERCISE_CONFIRMATION,
+          nowMs: workoutFixtureActivatedAt(request) + 1_600,
+        },
+      });
+    }
+  }
   return set;
+}
+
+async function prepareWorkoutMetricDraftFixture(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
+  await workoutMetricDraftSet(input);
 }
 
 async function executeWorkoutSetDraft(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
@@ -2248,7 +2441,8 @@ async function executeWorkoutAddSet(input: V12NativeAcceptanceProductionHandlerI
   await prepareActiveWorkoutFixture(input);
   const request = requireRequest(input);
   const set = await workoutFixtureActiveSet(input.kernel, request);
-  const newSetId = `v12:workout:${request.caseId}:${request.nonce}:set`;
+  const callbackNowMs = 2_000_000_000_000 + Number.parseInt(request.nonce.slice(0, 8), 16);
+  const newSetId = `working_${set.session_id}_${callbackNowMs}`;
   const [existing] = await input.kernel.queryAll<Readonly<{ id: string }>>("SELECT id FROM session_sets WHERE id = ?", [newSetId]);
   if (existing === undefined) {
     await addWorkingSet({
@@ -2449,7 +2643,7 @@ async function executeWorkoutPreferenceWrite(input: V12NativeAcceptanceProductio
   const repository = createWorkoutPreferenceRepository(input.kernel);
   const planId = workoutFixturePlanId(request);
   const current = await repository.read(planId);
-  const defaultRestSeconds = input.contract.caseId === "workout.appearance" ? 75 : 105;
+  const defaultRestSeconds = 105;
   const replay = current.defaultRestSeconds === defaultRestSeconds && current.weightIncrementGrams === 2500;
   if (!replay) {
     const saved = await repository.write({
@@ -2472,6 +2666,39 @@ async function executeWorkoutPreferenceWrite(input: V12NativeAcceptanceProductio
       const persisted = await repository.read(planId);
       if (persisted.defaultRestSeconds !== defaultRestSeconds || persisted.weightIncrementGrams !== 2500) {
         throw new Error("v12_native_acceptance_workout_preference_postcondition_failed");
+      }
+    },
+  });
+}
+
+async function executeAppearancePreferenceWrite(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const key = "gym_tracker.appearance_preference.v1";
+  const [before] = await input.kernel.queryAll<Readonly<{ value_json: string; revision: number }>>(
+    "SELECT value_json, revision FROM app_settings WHERE key = ? LIMIT 1",
+    [key],
+  );
+  const replay = before?.value_json === JSON.stringify("Dark");
+  if (!replay) {
+    await input.kernel.write((transaction) => transaction.execute(
+      `INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms)
+       VALUES (?, 1, ?, 1, ?)
+       ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json,
+         revision = app_settings.revision + 1, updated_at_ms = excluded.updated_at_ms`,
+      [key, JSON.stringify("Dark"), workoutFixtureActivatedAt(request) + 6_000],
+    ));
+  }
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ key }),
+    outcome: replay ? "already_committed" : "committed",
+    verify: async () => {
+      const [persisted] = await input.kernel.queryAll<Readonly<{ value_json: string }>>(
+        "SELECT value_json FROM app_settings WHERE key = ? LIMIT 1",
+        [key],
+      );
+      if (persisted?.value_json !== JSON.stringify("Dark")) {
+        throw new Error("v12_native_acceptance_appearance_preference_postcondition_failed");
       }
     },
   });
@@ -2563,15 +2790,26 @@ async function executeWorkoutUndoCompletedSet(input: V12NativeAcceptanceProducti
 async function executeWorkoutCompleteSet(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
   await prepareActiveWorkoutFixture(input);
   const request = requireRequest(input);
-  const key = `v12:workout:${request.caseId}:${request.nonce}:completion`;
-  const [replayed] = await input.kernel.queryAll<Readonly<{ id: string; session_id: string }>>(
-    `SELECT set_row.id, exercise.session_id
+  const candidate = await workoutFixtureActiveSet(input.kernel, request);
+  const [replayed] = await input.kernel.queryAll<Readonly<{
+    id: string;
+    session_id: string;
+    completion_idempotency_key: string;
+  }>>(
+    `SELECT set_row.id, exercise.session_id,
+            set_row.completion_idempotency_key
      FROM session_sets set_row
      JOIN session_exercises exercise ON exercise.id = set_row.session_exercise_id
-     WHERE set_row.completion_idempotency_key = ?`,
-    [key],
+     JOIN workout_sessions session ON session.id = exercise.session_id
+     WHERE session.plan_id = ? AND set_row.status = 'completed'
+       AND set_row.completion_idempotency_key IS NOT NULL
+     ORDER BY exercise.ordinal, set_row.ordinal LIMIT 1`,
+    [workoutFixturePlanId(request)],
   );
-  const set = replayed === undefined ? await workoutFixtureActiveSet(input.kernel, request) : null;
+  const key = replayed !== undefined
+    ? replayed.completion_idempotency_key
+    : `complete_${candidate.session_id}_${candidate.set_id}_${candidate.set_revision}`;
+  const set = replayed === undefined ? candidate : null;
   if (set !== null && set.metric_profile !== "load_reps") throw new Error("v12_native_acceptance_workout_metric_precondition_missing");
   if (set !== null) {
     await completeSet({
@@ -2774,26 +3012,19 @@ async function executeCompletionWriteback(input: V12NativeAcceptanceProductionHa
 }
 
 async function executeWorkoutRestAdjust(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
-  await prepareActiveWorkoutFixture(input);
+  await prepareWorkoutRestFixture(input);
   const request = requireRequest(input);
   const repository = createRestRepository(input.kernel);
   const started = await ensureWorkoutRest(input);
   const session = await workoutFixtureSessionRevision(input.kernel, request);
   const current = await repository.getRestContext(started.sessionId);
   if (current === null) throw new Error("v12_native_acceptance_workout_rest_precondition_missing");
-  const replay = current.state.state === "paused" && current.state.remainingMs > 0;
+  const replay = current.state.revision > 1;
   if (!replay) {
-    if (current.state.state !== "running") throw new Error("v12_native_acceptance_workout_rest_precondition_missing");
-    await pauseRest({
-      repository,
-      input: { sessionId: started.sessionId, expectedSessionRevision: session.revision, expectedRestRevision: current.state.revision, nowMs: workoutFixtureActivatedAt(request) + 4_500 },
-    });
-    const paused = await repository.getRestContext(started.sessionId);
-    const freshSession = await workoutFixtureSessionRevision(input.kernel, request);
-    if (paused?.state.state !== "paused") throw new Error("v12_native_acceptance_workout_rest_pause_missing");
+    if (current.state.state !== "running" && current.state.state !== "paused") throw new Error("v12_native_acceptance_workout_rest_precondition_missing");
     await adjustRest({
       repository,
-      input: { sessionId: started.sessionId, expectedSessionRevision: freshSession.revision, expectedRestRevision: paused.state.revision, nowMs: workoutFixtureActivatedAt(request) + 4_500, deltaMs: 15_000 },
+      input: { sessionId: started.sessionId, expectedSessionRevision: session.revision, expectedRestRevision: current.state.revision, nowMs: workoutFixtureActivatedAt(request) + 4_500, deltaMs: 15_000 },
     });
   }
   return workoutMutationFacts({
@@ -2802,7 +3033,10 @@ async function executeWorkoutRestAdjust(input: V12NativeAcceptanceProductionHand
     outcome: replay ? "already_committed" : "committed",
     verify: async () => {
       const context = await repository.getRestContext(started.sessionId);
-      if (context?.state.state !== "paused" || context.state.remainingMs < 15_000) {
+      const remainingMs = context?.state.state === "running"
+        ? context.state.endsAtMs - context.state.startedAtMs
+        : context?.state.state === "paused" ? context.state.remainingMs : 0;
+      if ((context?.state.state !== "running" && context?.state.state !== "paused") || remainingMs <= 60_000) {
         throw new Error("v12_native_acceptance_workout_rest_adjust_postcondition_failed");
       }
     },
@@ -2810,7 +3044,7 @@ async function executeWorkoutRestAdjust(input: V12NativeAcceptanceProductionHand
 }
 
 async function executeWorkoutRestResume(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
-  await prepareActiveWorkoutFixture(input);
+  await preparePausedWorkoutRestFixture(input);
   const request = requireRequest(input);
   const repository = createRestRepository(input.kernel);
   const started = await ensureWorkoutRest(input);
@@ -3840,50 +4074,119 @@ async function executeLogicalBackupCollection(input: V12NativeAcceptanceProducti
   });
 }
 
-async function executeMultiPlanRunningWrapper(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+function multiPlanDomainObservationKey(
+  request: V12NativeAcceptanceRequest,
+): string {
+  return `${V12_DOMAIN_OBSERVATION_SETTING_PREFIX}:${request.caseId}:${request.nonce}`;
+}
+
+type MultiPlanDomainObservationProof = Readonly<{
+  schemaVersion: 1;
+  contractVersion: 1;
+  status: "passed";
+  operationId: string;
+  operationKind: V12NativeAcceptanceOperationKind;
+  handlerId: string;
+  caseId: string;
+  case: Readonly<{ id: MultiPlanRunningContractCaseId; status: "passed" }>;
+  receiptId: string;
+}>;
+
+async function readMultiPlanDomainObservation(
+  query: Pick<SqliteReadTransactionExecutor, "queryAll">,
+  contract: V12NativeAcceptanceCaseContract,
+  request: V12NativeAcceptanceRequest,
+): Promise<MultiPlanDomainObservationProof> {
+  const key = multiPlanDomainObservationKey(request);
+  const [row] = await query.queryAll<Readonly<{ value_json: string }>>(
+    "SELECT value_json FROM app_settings WHERE key = ? LIMIT 1",
+    [key],
+  );
+  if (row === undefined) throw new Error("v12_native_acceptance_domain_observation_missing");
+  let proof: unknown;
+  try {
+    proof = JSON.parse(row.value_json);
+  } catch {
+    throw new Error("v12_native_acceptance_domain_observation_invalid");
+  }
+  const value = proof as Partial<{
+    schemaVersion: number;
+    contractVersion: number;
+    status: string;
+    operationId: string;
+    operationKind: string;
+    handlerId: string;
+    caseId: string;
+    case: Readonly<{ id: string; status: string }>;
+    receiptId: string;
+  }>;
+  if (value.schemaVersion !== 1 || value.contractVersion !== 1 || value.status !== "passed"
+    || value.operationId !== contract.operation.id || value.operationKind !== contract.operation.kind
+    || value.handlerId !== contract.operation.handlerId || value.caseId !== contract.caseId
+    || value.case?.id !== contract.caseId || value.case.status !== "passed"
+    || value.receiptId !== key) {
+    throw new Error("v12_native_acceptance_domain_observation_invalid");
+  }
+  return proof as MultiPlanDomainObservationProof;
+}
+
+/**
+ * Phase 13 has no product mutation control. Preparation therefore runs only
+ * the requested canonical native-contract case against its own real SQLite
+ * runtime and records a durable, nonce-bound observation receipt in the
+ * product runtime. Maestro subsequently observes product UI; it never taps a
+ * fake action or invokes this code from a control.
+ */
+async function prepareMultiPlanDomainObservation(
+  input: V12NativeAcceptanceProductionHandlerInput,
+): Promise<void> {
   const request = requireRequest(input);
   const caseId = input.contract.caseId as MultiPlanRunningContractCaseId;
-  const adapter = input.runtime?.multiPlan;
-  const ownedAdapter = adapter === undefined
-    ? await createExpoMultiPlanRunningContractAdapter(`v12-native-acceptance-${request.nonce}`)
-    : undefined;
+  const callerOwnedAdapter = input.runtime?.domainObservationAdapter;
+  const adapter = callerOwnedAdapter ?? await createExpoMultiPlanRunningContractAdapter(
+    `v12-native-acceptance-${caseId}-${request.nonce}`,
+  );
   try {
-    const result = await (adapter?.runWrapper() ?? runMultiPlanRunningContract(ownedAdapter!));
-    const caseResult = result.cases.find(({ id }) => id === caseId);
-    if (result.status !== "passed" || result.total !== MULTI_PLAN_RUNNING_CONTRACT_CASES.length
-      || result.passed !== MULTI_PLAN_RUNNING_CONTRACT_CASES.length || result.failed !== 0
-      || result.skipped !== 0 || caseResult?.status !== "passed") {
-      throw new Error("v12_native_acceptance_multi_plan_wrapper_failed");
-    }
-    const projection = Object.freeze({
-      schemaVersion: result.schemaVersion,
-      contractVersion: result.contractVersion,
-      status: result.status,
-      total: result.total,
-      passed: result.passed,
-      failed: result.failed,
-      skipped: result.skipped,
-      case: Object.freeze({ id: caseResult.id, status: caseResult.status }),
-    });
-    let projections = multiPlanWrapperProjections.get(input.kernel);
-    if (projections === undefined) {
-      projections = new Map();
-      multiPlanWrapperProjections.set(input.kernel, projections);
-    }
-    projections.set(request.nonce, projection);
-    return Object.freeze({
-      result: "committed" as const,
-      facts: operationFacts({
-        contract: input.contract,
-        authoritativeReadback: projection,
-        receiptId: stableJson(Object.freeze({ nonce: request.nonce, case_id: caseId, wrapper: "multi-plan-running" })),
-        outcome: "committed",
-        committedEffects: 1,
-      }),
-    });
+    await adapter.runCase(caseId);
   } finally {
-    await ownedAdapter?.cleanup?.();
+    if (callerOwnedAdapter === undefined) await adapter.cleanup?.();
   }
+  const receiptId = multiPlanDomainObservationKey(request);
+  const proof = Object.freeze({
+    schemaVersion: 1 as const,
+    contractVersion: 1 as const,
+    status: "passed" as const,
+    operationId: input.contract.operation.id,
+    operationKind: input.contract.operation.kind,
+    handlerId: input.contract.operation.handlerId,
+    caseId: input.contract.caseId,
+    case: Object.freeze({ id: caseId, status: "passed" as const }),
+    receiptId,
+  });
+  await input.kernel.write((transaction) => transaction.execute(
+    `INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms)
+     VALUES (?, 1, ?, 1, 0)
+     ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json,
+       revision = app_settings.revision + 1, updated_at_ms = excluded.updated_at_ms`,
+    [receiptId, JSON.stringify(proof)],
+  ));
+}
+
+async function observePreparedMultiPlanDomainCase(
+  input: V12NativeAcceptanceProductionHandlerInput,
+): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const proof = await readMultiPlanDomainObservation(input.kernel, input.contract, request);
+  return Object.freeze({
+    result: "committed" as const,
+    facts: operationFacts({
+      contract: input.contract,
+      authoritativeReadback: proof,
+      receiptId: proof.receiptId,
+      outcome: "already_committed",
+      committedEffects: 0,
+    }),
+  });
 }
 
 const productionHandlerEntries = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.reduce(
@@ -3900,8 +4203,8 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   ...Object.fromEntries(MULTI_PLAN_RUNNING_CONTRACT_CASES.map((caseId) => [
     `migration.multi-plan-running-contract.${caseId}`,
     Object.freeze({
-      prepare: async (input: V12NativeAcceptanceProductionHandlerInput) => { await prepareScheduleCollisionFixture(input); },
-      execute: executeMultiPlanRunningWrapper,
+      prepare: prepareMultiPlanDomainObservation,
+      execute: observePreparedMultiPlanDomainCase,
     }),
   ])),
   "backup.logical-backup-repository.collect": Object.freeze({
@@ -3912,7 +4215,13 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
     execute: executeWorkoutStart,
   }),
   [WORKOUT_SET_DRAFT_HANDLER]: Object.freeze({
-    prepare: prepareActiveWorkoutFixture,
+    prepare: async (input: V12NativeAcceptanceProductionHandlerInput) => {
+      if (input.contract.caseId === "workout.duration-editor" || input.contract.caseId === "workout.all-metrics") {
+        await prepareWorkoutMetricDraftFixture(input);
+      } else {
+        await prepareActiveWorkoutFixture(input);
+      }
+    },
     execute: executeWorkoutSetDraft,
   }),
   [WORKOUT_ADD_SET_HANDLER]: Object.freeze({
@@ -3928,14 +4237,22 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
     execute: executeWorkoutFinishPartial,
   }),
   "owned-plan.owned-plan-repository.apply-session-exercise-edits-to-plan": Object.freeze({
+    prepare: async (input: V12NativeAcceptanceProductionHandlerInput) => {
+      const request = requireRequest(input);
+      await prepareV12NativeAcceptanceCompletionWriteback({
+        kernel: input.kernel,
+        nonce: request.nonce,
+        sha256: runtimeSha256,
+      });
+    },
     execute: executeCompletionWriteback,
   }),
   [WORKOUT_REST_ADJUST_HANDLER]: Object.freeze({
-    prepare: prepareActiveWorkoutFixture,
+    prepare: prepareWorkoutRestFixture,
     execute: executeWorkoutRestAdjust,
   }),
   [WORKOUT_REST_RESUME_HANDLER]: Object.freeze({
-    prepare: prepareActiveWorkoutFixture,
+    prepare: preparePausedWorkoutRestFixture,
     execute: executeWorkoutRestResume,
   }),
   [WORKOUT_ADD_EXERCISE_HANDLER]: Object.freeze({
@@ -3962,8 +4279,11 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
     prepare: prepareWorkoutFixture,
     execute: executeWorkoutPreferenceWrite,
   }),
+  "appearance.preference.write": Object.freeze({
+    execute: executeAppearancePreferenceWrite,
+  }),
   [WORKOUT_PLAN_INCREMENT_HANDLER]: Object.freeze({
-    prepare: prepareWorkoutHistoryFixture,
+    prepare: async (input: V12NativeAcceptanceProductionHandlerInput) => { await workoutPlanIncrementRecommendation(input); },
     execute: executeWorkoutPlanIncrement,
   }),
   "workout.plans-workout-repository.get-today-view": Object.freeze({
@@ -3987,11 +4307,11 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
     execute: executeWorkoutRepositoryRead,
   }),
   "workout.workout-outcome-repository.get-session-detail": Object.freeze({
-    prepare: prepareActiveWorkoutFixture,
+    prepare: prepareWorkoutHistoryFixture,
     execute: executeWorkoutRepositoryRead,
   }),
   "active-workout.workout-repository.complete-set-conflict": Object.freeze({
-    prepare: prepareActiveWorkoutFixture,
+    prepare: prepareWorkoutCompleteFailureFixture,
     execute: executeWorkoutCompleteSetConflict,
   }),
   "workout.workout-presentation.project-workout": Object.freeze({
@@ -4027,7 +4347,13 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
     execute: executeLibraryAccessibilityRecoveryRead,
   }),
   "owned-plan.owned-plan-repository.read": Object.freeze({
-    prepare: prepareOwnedPlanReadFixture,
+    prepare: async (input: V12NativeAcceptanceProductionHandlerInput) => {
+      if (input.contract.caseId === "library.editor-draft-guards") {
+        await ensureOwnedPlanMutationFixture(input);
+      } else {
+        await prepareOwnedPlanReadFixture(input);
+      }
+    },
     execute: executeOwnedPlanRead,
   }),
   "owned-plan.plan-create-intent.read": Object.freeze({
@@ -4037,9 +4363,11 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
     execute: executeOwnedPlanCreateDraft,
   }),
   "owned-plan.owned-plan-repository.archive": Object.freeze({
+    prepare: async (input: V12NativeAcceptanceProductionHandlerInput) => { await ensureOwnedPlanMutationFixture(input); },
     execute: executeOwnedPlanArchive,
   }),
   "owned-plan.owned-plan-repository.save": Object.freeze({
+    prepare: async (input: V12NativeAcceptanceProductionHandlerInput) => { await ensureOwnedPlanMutationFixture(input); },
     execute: executeOwnedPlanSave,
   }),
   "owned-plan.schedule-repository.save-version": Object.freeze({
@@ -4066,7 +4394,10 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
     execute: executeStarterEditableCopy,
   }),
   "starter-plan.starter-plan-repository.create-template-update-copy": Object.freeze({
-    prepare: prepareStarterPlanCopyFixture,
+    prepare: async (input: V12NativeAcceptanceProductionHandlerInput) => {
+      await prepareStarterPlanCopyFixture(input);
+      await prepareLegacyStarterTemplateUpdateSource(input);
+    },
     execute: executeStarterTemplateUpdateCopy,
   }),
   [RUNNING_AGGREGATE_READ_HANDLER]: Object.freeze({
@@ -4182,7 +4513,7 @@ export async function dispatchV12NativeAcceptanceProductionOperation(input: Read
     return await resolveV12NativeAcceptanceProductionHandler(input.contract).execute(input);
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("v12_native_acceptance_")) throw error;
-    throw new Error("v12_native_acceptance_handler_execution_failed");
+    throw new Error("v12_native_acceptance_handler_execution_failed", { cause: error });
   }
 }
 
@@ -4198,8 +4529,7 @@ async function readAuthorityState(input: Readonly<{
   const snapshot = await input.kernel.readSnapshot(async (transaction: SqliteReadTransactionExecutor) => {
     const [version] = await transaction.queryAll<{ user_version: number }>("PRAGMA user_version");
     const multiPlanFacts = input.contract.shard === "multi-plan"
-      ? multiPlanWrapperProjections.get(input.kernel)?.get(input.request.nonce)
-        ?? Object.freeze({ status: "not-run", case: Object.freeze({ id: input.contract.caseId, status: "not-run" }) })
+      ? await readMultiPlanDomainObservation(transaction, input.contract, input.request)
       : undefined;
     const scopedFacts = multiPlanFacts === undefined
       ? await readCaseAuthorityFacts(
@@ -4269,6 +4599,59 @@ async function resolveV12NativeAcceptanceActionContext(
   return Object.freeze({ contract, actionRequestSha256 });
 }
 
+async function resolvePreparedProductPath(
+  kernel: SqliteKernel,
+  request: V12NativeAcceptanceRequest,
+): Promise<string | null> {
+  const encoded = (value: string) => encodeURIComponent(value);
+  if (request.caseId === "workout.plan-increment") {
+    const sessionId = await workoutFixtureSessionId(kernel, request);
+    if (sessionId === null) throw new Error("v12_native_acceptance_plan_increment_session_missing");
+    return `/completion/${encoded(sessionId)}`;
+  }
+  if (request.caseId === "workout.completion-writeback") {
+    const [row] = await kernel.queryAll<Readonly<{ id: string }>>(
+      `SELECT session.id
+       FROM workout_sessions session
+       JOIN starter_plan_activation_requests activation
+         ON activation.result_plan_id = session.plan_id
+       WHERE activation.request_id = ? AND session.status = 'completed'
+       ORDER BY session.completed_at_ms DESC LIMIT 1`,
+      [`v12:completion-writeback:${request.nonce}:starter`],
+    );
+    if (row === undefined) throw new Error("v12_native_acceptance_completion_writeback_session_missing");
+    return `/completion/${encoded(row.id)}`;
+  }
+  if (["library.schedule-editor", "library.replacement-impact", "library.day-removal-impact"].includes(request.caseId)) {
+    const [activation] = await kernel.queryAll<Readonly<{ result_plan_id: string }>>(
+      "SELECT result_plan_id FROM starter_plan_activation_requests WHERE request_id = ?",
+      [`v12:schedule-editor:fixture:${request.nonce}`],
+    );
+    if (activation === undefined) throw new Error("v12_native_acceptance_schedule_fixture_missing");
+    if (request.caseId === "library.schedule-editor") {
+      return `/library/plan/${encoded(activation.result_plan_id)}/schedule`;
+    }
+    if (request.caseId === "library.replacement-impact") {
+      const [occurrence] = await kernel.queryAll<Readonly<{ id: string }>>(
+        `SELECT occurrence.id
+         FROM owned_plan_day_exercises occurrence
+         JOIN plan_days day ON day.id = occurrence.plan_day_id
+         WHERE day.plan_id = ? ORDER BY day.ordinal, occurrence.ordinal LIMIT 1`,
+        [activation.result_plan_id],
+      );
+      if (occurrence === undefined) throw new Error("v12_native_acceptance_replacement_fixture_missing");
+      return `/library/plan/${encoded(activation.result_plan_id)}/replace/${encoded(occurrence.id)}`;
+    }
+    const [day] = await kernel.queryAll<Readonly<{ id: string }>>(
+      "SELECT id FROM plan_days WHERE plan_id = ? ORDER BY ordinal LIMIT 1",
+      [activation.result_plan_id],
+    );
+    if (day === undefined) throw new Error("v12_native_acceptance_day_removal_fixture_missing");
+    return `/library/plan/${encoded(activation.result_plan_id)}/day/${encoded(day.id)}/remove`;
+  }
+  return null;
+}
+
 export async function prepareV12NativeAcceptanceProductCase(input: Readonly<{
   kernel: SqliteKernel;
   request: V12NativeAcceptanceRequest;
@@ -4283,6 +4666,7 @@ export async function prepareV12NativeAcceptanceProductCase(input: Readonly<{
     input.sha256,
   );
   await input.prepareOperation({ contract, request: input.request });
+  const preparedProductPath = await resolvePreparedProductPath(input.kernel, input.request);
   const preRead = await readAuthorityState({
     ...input,
     contract,
@@ -4293,6 +4677,7 @@ export async function prepareV12NativeAcceptanceProductCase(input: Readonly<{
     operation_id: contract.operation.id,
     action_request_sha256: actionRequestSha256,
     pre: preRead.state,
+    prepared_product_path: preparedProductPath,
   });
 }
 
@@ -4438,87 +4823,94 @@ export async function readV12NativeAcceptanceReceipt(input: Readonly<{
     || input.preparedProductCase.action_request_sha256 !== actionRequestSha256) {
     throw new Error("v12_native_acceptance_prepared_case_mismatch");
   }
-  const [row] = await input.kernel.queryAll<Readonly<{
-    source_json: string;
-    ui_json: string;
-    receipt_sha256: string;
-  }>>(
-    `SELECT source_json, ui_json, receipt_sha256
-       FROM v12_native_acceptance_product_receipts
-      WHERE nonce = ? AND shard = ? AND case_id = ?`,
-    [input.request.nonce, input.request.shard, input.request.caseId],
-  );
-  if (row === undefined || row.receipt_sha256 !== await input.sha256(`${row.source_json}\n${row.ui_json}`)) {
-    throw new Error("v12_native_acceptance_receipt_invalid");
-  }
-  let sourceReceipt: V12NativeAcceptanceSourceReceipt;
-  let uiReadback: V12NativeAcceptanceUiReadback;
-  try {
-    sourceReceipt = JSON.parse(row.source_json) as V12NativeAcceptanceSourceReceipt;
-    uiReadback = JSON.parse(row.ui_json) as V12NativeAcceptanceUiReadback;
-  } catch {
-    throw new Error("v12_native_acceptance_receipt_invalid");
-  }
-  if (sourceReceipt.shard !== input.request.shard || sourceReceipt.case_id !== input.request.caseId
-    || sourceReceipt.nonce !== input.request.nonce || sourceReceipt.action_request_sha256 !== actionRequestSha256
-    || uiReadback.shard !== input.request.shard || uiReadback.case_id !== input.request.caseId
-    || uiReadback.nonce !== input.request.nonce
-    || uiReadback.source_receipt_sha256 !== sourceReceipt.source_receipt_sha256) {
-    throw new Error("v12_native_acceptance_receipt_invalid");
-  }
-  return Object.freeze({ source_receipt: Object.freeze(sourceReceipt), ui_readback: Object.freeze(uiReadback) });
-}
-
-export async function executeV12NativeAcceptanceProductAction(input: Readonly<{
-  kernel: SqliteKernel;
-  request: V12NativeAcceptanceRequest;
-  preparedProductCase: V12NativeAcceptancePreparedProductCase;
-  sha256(value: string): Promise<string>;
-  executeOperation(input: Readonly<{
-    contract: V12NativeAcceptanceCaseContract;
-    request: V12NativeAcceptanceRequest;
-  }>): Promise<Readonly<{ result: "read" | "committed"; facts: unknown }>>;
-}>): Promise<void> {
-  const readbacks = await executeV12NativeAcceptanceReadAction({
+  const postProofRead = await readAuthorityState({
     ...input,
-    executeOperation: input.executeOperation,
+    contract,
+    probe: contract.probes.post,
   });
-  const sourceJson = JSON.stringify(readbacks.source_receipt);
-  const uiJson = JSON.stringify(readbacks.ui_readback);
-  const receiptSha256 = await input.sha256(`${sourceJson}\n${uiJson}`);
-  await input.kernel.write(async (transaction) => {
-    await transaction.execute(
-      `CREATE TABLE IF NOT EXISTS v12_native_acceptance_product_receipts (
-        nonce TEXT NOT NULL,
-        shard TEXT NOT NULL,
-        case_id TEXT NOT NULL,
-        source_json TEXT NOT NULL,
-        ui_json TEXT NOT NULL,
-        receipt_sha256 TEXT NOT NULL,
-        PRIMARY KEY (nonce, shard, case_id)
-      ) STRICT`,
-    );
-    const [existing] = await transaction.queryAll<Readonly<{
-      source_json: string;
-      ui_json: string;
-      receipt_sha256: string;
-    }>>(
-      `SELECT source_json, ui_json, receipt_sha256
-         FROM v12_native_acceptance_product_receipts
-        WHERE nonce = ? AND shard = ? AND case_id = ?`,
-      [input.request.nonce, input.request.shard, input.request.caseId],
-    );
-    if (existing !== undefined) {
-      if (existing.source_json !== sourceJson || existing.ui_json !== uiJson || existing.receipt_sha256 !== receiptSha256) {
-        throw new Error("v12_native_acceptance_receipt_immutable");
-      }
-      return;
-    }
-    await transaction.execute(
-      `INSERT INTO v12_native_acceptance_product_receipts
-        (nonce, shard, case_id, source_json, ui_json, receipt_sha256)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [input.request.nonce, input.request.shard, input.request.caseId, sourceJson, uiJson, receiptSha256],
-    );
+  const proof = postProofRead.facts as Partial<{
+    operationId: string;
+    caseId: string;
+    operationKind: V12NativeAcceptanceOperationKind;
+    receiptId: string | null;
+  }>;
+  if (proof.operationId !== contract.operation.id || proof.caseId !== contract.caseId
+    || proof.operationKind !== contract.operation.kind) {
+    throw new Error("v12_native_acceptance_product_postcondition_invalid");
+  }
+  const mutation = contract.operation.kind === "repository-mutation";
+  const domainObservation = contract.shard === "multi-plan";
+  if (mutation && (typeof proof.receiptId !== "string" || proof.receiptId.length < 2
+    || (!domainObservation
+      && input.preparedProductCase.pre.facts_sha256 === postProofRead.state.facts_sha256))) {
+    throw new Error("v12_native_acceptance_product_action_not_observed");
+  }
+  if (!mutation && input.preparedProductCase.pre.facts_sha256 !== postProofRead.state.facts_sha256) {
+    throw new Error("v12_native_acceptance_read_action_drift");
+  }
+  const durableProof = Object.freeze({
+    operation_id: contract.operation.id,
+    result: contract.operation.expectedResult,
+    handler_id: contract.operation.handlerId,
+    postcondition_id: contract.operation.postcondition.id,
+    receipt_id: mutation ? proof.receiptId : null,
+    outcome: mutation ? domainObservation ? "already_committed" as const : "committed" as const : null,
+    committed_effects: mutation && !domainObservation ? 1 : 0,
+    authoritative_facts_sha256: postProofRead.state.facts_sha256,
   });
+  const operationResultSha256 = await input.sha256(stableJson(durableProof));
+  const actionRead = await readAuthorityState({
+    ...input,
+    contract,
+    probe: contract.probes.action,
+    operationResultSha256,
+  });
+  const postRead = await readAuthorityState({ ...input, contract, probe: contract.probes.post });
+  if (postRead.state.facts_sha256 !== postProofRead.state.facts_sha256) {
+    throw new Error("v12_native_acceptance_postcondition_drift");
+  }
+  const sourceUnsigned = Object.freeze({
+    schema_version: 2 as const,
+    producer: "v12-native-acceptance-source/v2" as const,
+    authority: "sqlite-production-operation" as const,
+    shard: input.request.shard,
+    case_id: input.request.caseId,
+    nonce: input.request.nonce,
+    action_id: input.request.action,
+    operation_id: contract.operation.id,
+    operation_kind: contract.operation.kind,
+    operation_result: contract.operation.expectedResult,
+    operation_result_sha256: operationResultSha256,
+    operation_handler_id: contract.operation.handlerId,
+    operation_postcondition_id: contract.operation.postcondition.id,
+    command_receipt_id: mutation ? proof.receiptId! : null,
+    command_outcome: mutation ? domainObservation ? "already_committed" as const : "committed" as const : null,
+    committed_effects: mutation && !domainObservation ? 1 : 0,
+    source_probe: input.request.sourceProbe,
+    authority_tables: input.request.authorityTables,
+    pre: input.preparedProductCase.pre,
+    action: actionRead.state,
+    post: postRead.state,
+    action_request_sha256: actionRequestSha256,
+  });
+  const sourceReceipt = Object.freeze({
+    ...sourceUnsigned,
+    source_receipt_sha256: await input.sha256(JSON.stringify(sourceUnsigned)),
+  });
+  const uiUnsigned = Object.freeze({
+    schema_version: 2 as const,
+    producer: "v12-native-acceptance-ui-readback/v2" as const,
+    shard: input.request.shard,
+    case_id: input.request.caseId,
+    nonce: input.request.nonce,
+    declared_action: input.request.action,
+    declared_readback: input.request.readback,
+    readback_id: contract.uiReadback.id,
+    source_receipt_sha256: sourceReceipt.source_receipt_sha256,
+  });
+  const uiReadback = Object.freeze({
+    ...uiUnsigned,
+    ui_receipt_sha256: await input.sha256(JSON.stringify(uiUnsigned)),
+  });
+  return Object.freeze({ source_receipt: sourceReceipt, ui_readback: uiReadback });
 }

@@ -6,6 +6,7 @@ import React from "react";
 import { Text } from "react-native";
 
 import type {
+  V12NativeAcceptancePreparedProductCase,
   V12NativeAcceptanceReadbacks,
   V12NativeAcceptanceRequest,
 } from "../../../src/testing/v12NativeAcceptanceExecutor";
@@ -20,10 +21,10 @@ let mockNativeContractsEnabled = true;
 let mockNativeContractSuite = "v1.2-acceptance";
 let mockPackageName = "com.fchoo.gymtracker.devtest";
 let mockParams: Record<string, string> = {};
+let mockPathname = "/";
 const mockReadV12NativeAcceptanceReceipt = jest.fn<(
   request: V12NativeAcceptanceRequest,
 ) => Promise<V12NativeAcceptanceReadbacks>>();
-const mockExecuteV12NativeAcceptanceCase = jest.fn();
 
 jest.mock("expo-constants", () => ({
   __esModule: true,
@@ -43,7 +44,9 @@ jest.mock("expo-constants", () => ({
 
 jest.mock("expo-router", () => {
   return {
+    Redirect: () => null,
     useLocalSearchParams: () => mockParams,
+    usePathname: () => mockPathname,
   };
 });
 
@@ -51,7 +54,6 @@ jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
   useWorkoutAppRuntime: () => ({
     launchState: "trusted",
     readV12NativeAcceptanceReceipt: mockReadV12NativeAcceptanceReceipt,
-    executeV12NativeAcceptanceCase: mockExecuteV12NativeAcceptanceCase,
   }),
 }));
 
@@ -63,6 +65,7 @@ describe("v1.2 native acceptance route", () => {
     mockNativeContractsEnabled = true;
     mockNativeContractSuite = "v1.2-acceptance";
     mockPackageName = "com.fchoo.gymtracker.devtest";
+    mockPathname = "/";
     mockParams = {
       shard: "multi-plan",
       case: "phase13-migration-failure-cuts",
@@ -71,9 +74,9 @@ describe("v1.2 native acceptance route", () => {
       mode: "receipt",
     };
     mockReadV12NativeAcceptanceReceipt.mockReset();
-    mockExecuteV12NativeAcceptanceCase.mockReset();
     mockReadV12NativeAcceptanceReceipt.mockImplementation(async (request) => {
       const contract = v12NativeAcceptanceCaseContract(request.shard, request.caseId);
+      const domainObservation = request.shard === "multi-plan";
       const state = (phase: "pre" | "action" | "post", digest: string) => ({
         probe_id: contract.probes[phase].id,
         facts_sha256: digest.repeat(64),
@@ -98,8 +101,10 @@ describe("v1.2 native acceptance route", () => {
         operation_handler_id: contract.operation.handlerId,
         operation_postcondition_id: contract.operation.postcondition.id,
         command_receipt_id: contract.operation.kind === "repository-mutation" ? `${request.caseId}:durable-receipt` : null,
-        command_outcome: contract.operation.kind === "repository-mutation" ? "committed" : null,
-        committed_effects: contract.operation.kind === "repository-mutation" ? 1 : 0,
+        command_outcome: contract.operation.kind === "repository-mutation"
+          ? domainObservation ? "already_committed" : "committed"
+          : null,
+        committed_effects: contract.operation.kind === "repository-mutation" && !domainObservation ? 1 : 0,
         source_probe: request.sourceProbe,
         authority_tables: request.authorityTables,
         pre: state("pre", "1"),
@@ -130,7 +135,7 @@ describe("v1.2 native acceptance route", () => {
     ["library-running", "library.metric-profile-migration", "Library and running"],
   ];
 
-  it.each(validRequests)("renders the source-owned %s receipt after the product action", async (shard, caseId, title) => {
+  it.each(validRequests)("renders the source-owned %s receipt after product interaction", async (shard, caseId, title) => {
     mockParams = { shard, case: caseId, fixture: "v12-synthetic-fixtures-r18", nonce: "a".repeat(48), mode: "receipt" };
 
     const view = await render(<NativeAcceptanceRoute />);
@@ -147,7 +152,6 @@ describe("v1.2 native acceptance route", () => {
       "accessibilityLabel", expect.stringContaining(`V12_UI_READBACK:`),
     );
     expect(mockReadV12NativeAcceptanceReceipt).toHaveBeenCalledWith(expect.objectContaining({ shard, caseId, nonce: "a".repeat(48) }));
-    expect(mockExecuteV12NativeAcceptanceCase).not.toHaveBeenCalled();
     expect(view.getByTestId("native-acceptance-source-receipt")).toHaveProp(
       "accessibilityLabel", expect.stringContaining("V12_SOURCE_RECEIPT:"),
     );
@@ -160,7 +164,6 @@ describe("v1.2 native acceptance route", () => {
 
     await waitFor(() => expect(view.getByTestId("native-acceptance-error")).toHaveTextContent("Receipt read failed"));
     expect(view.queryByTestId("native-acceptance-readback")).not.toBeOnTheScreen();
-    expect(mockExecuteV12NativeAcceptanceCase).not.toHaveBeenCalled();
   });
 
   it("keeps every Maestro shard on product controls and opens this route only for read-only receipts", () => {
@@ -170,14 +173,22 @@ describe("v1.2 native acceptance route", () => {
       "maestro/v1.2/library-running.yaml",
     ]) {
       const source = readFileSync(sourcePath, "utf8");
-      const productAction = source.indexOf('tapOn: { id: "${V12_PRODUCT_ACTION_ID}" }');
       const receiptRoute = source.indexOf("/native-acceptance/");
       expect(source).toContain('openLink: "${V12_PRODUCT_URL}"');
-      expect(source).toContain('id: "${V12_PRODUCT_READY_ID}"');
-      expect(source).toContain('id: "${V12_PRODUCT_RESULT_ID}"');
+      expect(source).toContain("V12_PRODUCT_READY_KIND");
+      expect(source).toContain("V12_PRODUCT_READY_VALUE");
+      expect(source).toContain("V12_PRODUCT_RESULT_KIND");
+      expect(source).toContain("V12_PRODUCT_RESULT_VALUE");
       expect(source).toContain("mode=receipt");
-      expect(productAction).toBeGreaterThan(-1);
-      expect(receiptRoute).toBeGreaterThan(productAction);
+      if (sourcePath.endsWith("multi-plan.yaml")) {
+        expect(source).toContain("V12_PRODUCT_INTERACTION == 'domain-observation'");
+        expect(source).toContain("V12_PRODUCT_ACTION_KIND == 'none'");
+        expect(source).not.toContain('tapOn: { id: "${V12_PRODUCT_ACTION_VALUE}" }');
+      } else {
+        const productAction = source.indexOf('tapOn: { id: "${V12_PRODUCT_ACTION_VALUE}" }');
+        expect(productAction).toBeGreaterThan(-1);
+        expect(receiptRoute).toBeGreaterThan(productAction);
+      }
       expect(source).not.toContain("native-acceptance-execute");
       expect(source).not.toContain("Native acceptance fixture");
     }
@@ -200,13 +211,12 @@ describe("v1.2 native acceptance route", () => {
       mode: "product",
     });
     expect(request).not.toBeNull();
-    let finishPreparation: (() => void) | undefined;
-    const prepareProductCase = jest.fn(() => new Promise<void>((resolve) => {
+    let finishPreparation: ((value: V12NativeAcceptancePreparedProductCase) => void) | undefined;
+    const prepareProductCase = jest.fn(() => new Promise<V12NativeAcceptancePreparedProductCase>((resolve) => {
       finishPreparation = resolve;
     }));
     const view = await render(
       <V12NativeAcceptanceProductGate
-        executeProductAction={jest.fn(async () => undefined)}
         prepareProductCase={prepareProductCase}
         request={request!}
       >
@@ -215,10 +225,22 @@ describe("v1.2 native acceptance route", () => {
     );
 
     expect(view.getByTestId("native-acceptance-product-preparing")).toBeOnTheScreen();
-    await act(async () => { finishPreparation?.(); });
+    await act(async () => { finishPreparation?.({
+      schema_version: 1,
+      operation_id: "workout:workout.complete-commit:complete-commit",
+      action_request_sha256: "a".repeat(64),
+      pre: {
+        probe_id: "workout.complete-commit:pre:session_sets",
+        facts_sha256: "b".repeat(64),
+        source_sha256: "c".repeat(64),
+        row_count: 1,
+        table_count: 1,
+        schema_version: 42,
+      },
+      prepared_product_path: null,
+    }); });
     await waitFor(() => expect(view.getByTestId("real-product-route")).toBeOnTheScreen());
     expect(prepareProductCase).toHaveBeenCalledWith(request);
-    expect(mockExecuteV12NativeAcceptanceCase).not.toHaveBeenCalled();
   });
 
   const invalidRequests: readonly (readonly [string, Readonly<Partial<{

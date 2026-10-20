@@ -1,4 +1,5 @@
 import React from "react";
+import { Redirect, usePathname } from "expo-router";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -7,6 +8,7 @@ import {
 } from "./contracts/phase15Workout.contract";
 import {
   authorityTablesForV12NativeAcceptance,
+  type V12NativeAcceptancePreparedProductCase,
   type V12NativeAcceptanceReadbacks,
   type V12NativeAcceptanceRequest,
   type V12NativeAcceptanceShard as NativeAcceptanceShard,
@@ -39,6 +41,56 @@ type NativeAcceptanceCase = Readonly<{
 }>;
 
 export type { V12NativeAcceptanceRequest } from "./v12NativeAcceptanceExecutor";
+
+const V12_APPEARANCE_PREFERENCE_KEY = "gym_tracker.appearance_preference.v1";
+
+/** Durable appearance storage for the isolated acceptance database. The
+ * production AppearanceProvider and Settings callback use this ordinary store
+ * interface; no UI control can dispatch an acceptance operation. */
+export function createV12NativeAcceptanceAppearanceStore(databaseName: string) {
+  const database = () => {
+    const { openDatabaseSync } = require("expo-sqlite") as typeof import("expo-sqlite");
+    return openDatabaseSync(databaseName);
+  };
+  return Object.freeze({
+    read() {
+      try {
+        const row = database().getFirstSync<Readonly<{ value_json: string }>>(
+          "SELECT value_json FROM app_settings WHERE key = ? LIMIT 1",
+          [V12_APPEARANCE_PREFERENCE_KEY],
+        );
+        if (row === null) return Object.freeze({ status: "ready" as const, value: null });
+        const value: unknown = JSON.parse(row.value_json);
+        return Object.freeze({
+          status: "ready" as const,
+          value: value === "Light" || value === "Dark" ? value : null,
+        });
+      } catch {
+        // The provider mounts before runtime migrations create app_settings.
+        return Object.freeze({ status: "ready" as const, value: null });
+      }
+    },
+    write(value: "Light" | "Dark" | null) {
+      try {
+        const db = database();
+        if (value === null) {
+          db.runSync("DELETE FROM app_settings WHERE key = ?", [V12_APPEARANCE_PREFERENCE_KEY]);
+        } else {
+          db.runSync(
+            `INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms)
+             VALUES (?, 1, ?, 1, ?)
+             ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json,
+               revision = app_settings.revision + 1, updated_at_ms = excluded.updated_at_ms`,
+            [V12_APPEARANCE_PREFERENCE_KEY, JSON.stringify(value), Date.now()],
+          );
+        }
+        return Object.freeze({ status: "written" as const, value });
+      } catch {
+        return Object.freeze({ status: "failed" as const });
+      }
+    },
+  });
+}
 
 const casesFor = (shard: NativeAcceptanceShard): readonly NativeAcceptanceCase[] => Object.freeze(
   V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.filter((entry) => entry.shard === shard).map((entry) => Object.freeze({
@@ -160,66 +212,48 @@ export type V12NativeAcceptanceReceiptReader = (
 
 export type V12NativeAcceptanceProductPreparer = (
   request: V12NativeAcceptanceRequest,
-) => Promise<void>;
-
-export type V12NativeAcceptanceProductActionExecutor = (
-  request: V12NativeAcceptanceRequest,
-) => Promise<void>;
-
-export type V12NativeAcceptanceProductActionBinding = Readonly<{
-  actionId: string;
-  execute(): Promise<void>;
-}>;
-
-const V12NativeAcceptanceProductActionContext = React.createContext<Readonly<{
-  request: V12NativeAcceptanceRequest;
-  binding: V12NativeAcceptanceProductActionBinding;
-}> | null>(null);
-
-export function useV12NativeAcceptanceProductAction(
-  shard: V12NativeAcceptanceRequest["shard"],
-): V12NativeAcceptanceProductActionBinding | undefined {
-  const value = React.useContext(V12NativeAcceptanceProductActionContext);
-  return value?.request.shard === shard ? value.binding : undefined;
-}
+) => Promise<V12NativeAcceptancePreparedProductCase>;
 
 export function V12NativeAcceptanceProductGate({
   children,
-  executeProductAction,
   prepareProductCase,
   request,
 }: Readonly<{
   children: React.ReactNode;
-  executeProductAction: V12NativeAcceptanceProductActionExecutor;
   prepareProductCase: V12NativeAcceptanceProductPreparer;
   request: V12NativeAcceptanceRequest;
 }>) {
-  const [status, setStatus] = React.useState<"preparing" | "ready" | "failed">("preparing");
+  const pathname = usePathname();
+  const [state, setState] = React.useState<Readonly<{
+    status: "preparing" | "ready" | "failed";
+    preparedPath: string | null;
+  }>>({ status: "preparing", preparedPath: null });
   React.useEffect(() => {
     let active = true;
-    setStatus("preparing");
-    void prepareProductCase(request).then(() => {
-      if (active) setStatus("ready");
+    setState({ status: "preparing", preparedPath: null });
+    void prepareProductCase(request).then((prepared) => {
+      if (active) setState({ status: "ready", preparedPath: prepared.prepared_product_path });
     }).catch(() => {
-      if (active) setStatus("failed");
+      if (active) setState({ status: "failed", preparedPath: null });
     });
     return () => { active = false; };
   }, [prepareProductCase, request]);
-  if (status === "preparing") return <Text testID="native-acceptance-product-preparing">Preparing product state</Text>;
-  if (status === "failed") return <Text testID="native-acceptance-product-error">Product state unavailable</Text>;
-  const definition = v12NativeAcceptanceProductDefinition(request.shard, request.caseId);
-  const contextValue = Object.freeze({
-    request,
-    binding: Object.freeze({
-      actionId: definition.actionId,
-      execute: () => executeProductAction(request),
-    }),
-  });
-  return (
-    <V12NativeAcceptanceProductActionContext.Provider value={contextValue}>
-      {children}
-    </V12NativeAcceptanceProductActionContext.Provider>
-  );
+  if (state.status === "preparing") return <Text testID="native-acceptance-product-preparing">Preparing product state</Text>;
+  if (state.status === "failed") return <Text testID="native-acceptance-product-error">Product state unavailable</Text>;
+  if (state.preparedPath !== null && pathname !== state.preparedPath) {
+    return <Redirect href={{
+      pathname: state.preparedPath as never,
+      params: {
+        shard: request.shard,
+        case: request.caseId,
+        fixture: request.fixtureId,
+        nonce: request.nonce,
+        mode: "product",
+      },
+    }} />;
+  }
+  v12NativeAcceptanceProductDefinition(request.shard, request.caseId);
+  return children;
 }
 
 /** Read-only post-action bridge. Product UI owns every action; this component

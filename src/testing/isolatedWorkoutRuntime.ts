@@ -2,6 +2,7 @@ import {
   createProductionWorkoutAppRuntimeDependencies,
   type WorkoutAppRuntimeDependencies,
 } from "../bootstrap/workoutAppRuntime";
+import { createScheduleRuntimePort } from "../bootstrap/scheduleRuntime";
 import type {
   RestAlertPreferences,
   RestNotificationPort,
@@ -18,6 +19,7 @@ export type StrictIsolatedWorkoutRuntimeOptions = Readonly<{
   databaseName: string;
   now?: () => Date;
   nowMs?: () => number;
+  randomUUID?: () => string;
   prepareRuntime?: PrepareRuntime;
   onDisposed?: () => void;
   onDisposalFailure?: (error: unknown) => void;
@@ -60,6 +62,7 @@ export function createStrictIsolatedWorkoutRuntimeDependencies({
   databaseName,
   now,
   nowMs,
+  randomUUID,
   prepareRuntime,
   onDisposed,
   onDisposalFailure,
@@ -102,6 +105,21 @@ export function createStrictIsolatedWorkoutRuntimeDependencies({
     }),
     ...(now === undefined ? {} : { now }),
     ...(nowMs === undefined ? {} : { nowMs }),
+    ...(randomUUID === undefined ? {} : {
+      randomUUID,
+      createScheduleRuntime: (
+        kernel: Parameters<NonNullable<WorkoutAppRuntimeDependencies["createScheduleRuntime"]>>[0],
+        ownedPlans: Parameters<NonNullable<WorkoutAppRuntimeDependencies["createScheduleRuntime"]>>[1],
+      ) => createScheduleRuntimePort(kernel, ownedPlans, {
+        now: now ?? (() => new Date()),
+        nowMs: nowMs ?? (() => Date.now()),
+        randomUUID,
+        sha256: (value) => {
+          const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+          return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
+        },
+      }),
+    }),
     ...(prepareRuntime === undefined ? {} : { prepareRuntime }),
     strictDisposal: true,
     ...(onDisposalFailure === undefined

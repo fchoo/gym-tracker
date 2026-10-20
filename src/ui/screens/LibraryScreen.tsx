@@ -193,7 +193,6 @@ type LibraryScreenProps = Readonly<{
   headingRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionNativeID?: string;
-  nativeAcceptanceAction?: Readonly<{ actionId: string; execute(): Promise<void> }>;
 }>;
 
 type ExerciseBrowseState = Readonly<{
@@ -550,7 +549,7 @@ function PlansContent({
   ) {
     return (
       <InlineNotice
-        action={<PrimaryAction label="Create plan" onPress={onCreatePlan} />}
+        action={<PrimaryAction label="Create plan" onPress={onCreatePlan} testID="library-create-plan" />}
         body="Create a strength or running plan to get started."
         heading="No plans yet"
       />
@@ -1249,7 +1248,6 @@ export function LibraryScreen({
   headingRef,
   settingsActionRef,
   settingsActionNativeID,
-  nativeAcceptanceAction,
   onUsefulContent,
 }: LibraryScreenProps) {
   const [snapshot, setSnapshot] = useState<LibraryBrowseSnapshot | null>(null);
@@ -1645,6 +1643,7 @@ export function LibraryScreen({
         <PrimaryAction
           label="Create plan"
           onPress={onCreatePlan}
+          testID="library-create-plan"
         />
       )
     : (
@@ -1669,15 +1668,8 @@ export function LibraryScreen({
                   <SecondaryAction
                     label={LIBRARY_ACTION_SHEET_CONFIGURATION.triggerLabel}
                     nativeID="library-actions-trigger"
-                    onPress={() => {
-                      if (nativeAcceptanceAction === undefined) {
-                        setActionsVisible(true);
-                        return;
-                      }
-                      void nativeAcceptanceAction.execute().then(() => setActionsVisible(true));
-                    }}
+                    onPress={() => setActionsVisible(true)}
                     ref={actionsActionRef}
-                    {...(nativeAcceptanceAction === undefined ? {} : { testID: nativeAcceptanceAction.actionId })}
                   />
                 ),
                 (
@@ -1955,7 +1947,7 @@ export function LibraryScreen({
         heading={LIBRARY_ACTION_SHEET_CONFIGURATION.heading}
         onCancel={() => setActionsVisible(false)}
         restoreFocusRef={actionsActionRef}
-        testID={LIBRARY_ACTION_SHEET_CONFIGURATION.sheetTestId}
+        testID="library-actions-sheet-frame"
         visible={actionsVisible}
       >
         {LIBRARY_ACTION_SHEET_CONFIGURATION.actions.map((action) => {

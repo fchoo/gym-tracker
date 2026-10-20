@@ -75,6 +75,7 @@ jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
     finishPartial: jest.fn(),
     getActiveWorkout: mockGetActiveWorkout,
     listOwnedPlanExercises: mockListOwnedPlanExercises,
+    nowMs: () => 1_786_767_200_000,
     notificationPermission: "undetermined",
     pauseRest: jest.fn(),
     readRestAlertPreferences: () => ({ soundEnabled: false }),

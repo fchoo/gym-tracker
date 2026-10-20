@@ -398,9 +398,7 @@ export function RestDock({
             disabled={busy || remainingMs === 0}
             icon={state.state === "paused" ? Play : Pause}
             onPress={state.state === "paused" ? onResume : onPause}
-            testID={`rest-control-${
-              state.state === "paused" ? "Resume rest" : "Pause rest"
-            }`}
+            testID={state.state === "paused" ? "rest-resume" : "rest-pause"}
           />
           <RestTextControl
             accessibilityLabel="Add 15 seconds to rest"

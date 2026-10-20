@@ -412,9 +412,6 @@ import type {
   TrainingCalendarRange,
 } from "../platform/sqlite/repositories/trainingCalendarRepository";
 import {
-  applyWorkoutMutationTestControl,
-} from "./workoutMutationTestControls";
-import {
   createStarterPlanRuntimeCatalog,
 } from "./starterPlanRuntime";
 import type {
@@ -1644,7 +1641,6 @@ describe("WorkoutAppRuntimeProvider", () => {
     mockRestoreHistorySession.mockImplementation(actualHistoryCommands.restoreHistorySession as never);
     mockCollectSourceStateProof.mockReset();
     mockCollectSourceStateProof.mockImplementation(actualSourceStateProof.collectPhase14SourceStateProof as never);
-    applyWorkoutMutationTestControl("reset_workout_failures");
   });
 
   it("prepares an isolated runtime after migration and disposes it after the kernel closes", async () => {
@@ -4982,6 +4978,10 @@ describe("WorkoutAppRuntimeProvider", () => {
       if (sql === "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?") {
         return parameters.map((name) => ({ name }));
       }
+      if (sql.includes("FROM sqlite_master")
+        && sql.includes("WHERE name IN (?, ?, ?, ?)")) {
+        return parameters.map((name) => ({ name }));
+      }
       if (sql.includes("FROM sqlite_master WHERE type = 'trigger' AND name = ?")) {
         return parameters.map((name) => ({ name }));
       }
@@ -6371,48 +6371,6 @@ describe("WorkoutAppRuntimeProvider", () => {
       failure: {
         kind: "failed",
         code: "session_write_back_preview_failed",
-      },
-    });
-    expect(applySessionExerciseEdits).not.toHaveBeenCalled();
-  });
-
-  it("keeps the completed workout safe when the development-test write-back hook fails", async () => {
-    const repository = runtimeRepository([activeView], [activation]);
-    const previewSessionExerciseEdits = jest.fn(async () =>
-      sessionWriteBackPreview
-    );
-    const applySessionExerciseEdits = jest.fn();
-    mockedCreateOwnedPlanRuntimePort.mockReturnValueOnce({
-      ...({} as ReturnType<typeof createOwnedPlanRuntimePort>),
-      previewSessionExerciseEdits,
-      applySessionExerciseEdits,
-    } as unknown as ReturnType<typeof createOwnedPlanRuntimePort>);
-    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
-    await render(
-      <RuntimeCaptureHarness
-        dependencies={dependencies(repository)}
-        onReady={(runtime) => {
-          captured = runtime;
-        }}
-      />,
-    );
-    await waitFor(() => {
-      expect(captured?.launchState).toBe("trusted");
-    });
-    if (captured === undefined) {
-      throw new Error("runtime_not_captured");
-    }
-
-    applyWorkoutMutationTestControl("arm_plan_write_back_failure");
-    await expect(captured.applyCompletedWorkoutPlanWriteBack({
-      state: "awaiting_choice",
-      preview: sessionWriteBackPreview,
-    })).resolves.toEqual({
-      state: "save_failed",
-      preview: sessionWriteBackPreview,
-      failure: {
-        kind: "failed",
-        code: "session_write_back_failed",
       },
     });
     expect(applySessionExerciseEdits).not.toHaveBeenCalled();

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, jest } from "@jest/globals";
+import { afterEach, describe, expect, it } from "@jest/globals";
 import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 
@@ -15,10 +15,15 @@ import {
   V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS,
   type V12NativeAcceptanceCaseContract,
 } from "../../src/testing/contracts/phase15Workout.contract";
-import { MULTI_PLAN_RUNNING_CONTRACT_CASES } from "../../src/testing/contracts/multiPlanRunning.contract";
+import {
+  MULTI_PLAN_RUNNING_CONTRACT_CASES,
+  runMultiPlanRunningContractCase,
+} from "../../src/testing/contracts/multiPlanRunning.contract";
 import { createRunningPlanRuntimePort } from "../../src/bootstrap/runningPlanRuntime";
 import { createOwnedPlanRuntimePort } from "../../src/bootstrap/ownedPlanRuntime";
 import { createCustomExerciseRepository } from "../../src/platform/sqlite/repositories/customExerciseRepository";
+import { createWorkoutRepository } from "../../src/platform/sqlite/repositories/workoutRepository";
+import { completeSet } from "../../src/domains/workout/setCommands";
 import {
   LIBRARY_ACCESSIBILITY_RECOVERY_PROFILE,
   LIBRARY_ACTION_SHEET_CONFIGURATION,
@@ -32,6 +37,7 @@ import {
   readV12NativeAcceptanceReceipt,
   type V12NativeAcceptanceRequest,
 } from "../../src/testing/v12NativeAcceptanceExecutor";
+import { V12_NATIVE_ACCEPTANCE_PRODUCT_REGISTRY } from "../../src/testing/v12NativeAcceptanceProductRegistry";
 
 class Result<Row extends Record<string, unknown>> implements SqlitePreparedResult<Row> {
   constructor(
@@ -181,6 +187,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
     expect(reads).toHaveLength(33);
 
     const receiptIds = new Set<string>();
+    const behaviorallyExecutedCaseIds = new Set<string>();
     for (const [index, contract] of sourceOwned.entries()) {
       let audit: Awaited<ReturnType<typeof executeSourceContractAudit>>;
       try {
@@ -190,6 +197,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
         throw new Error(`v12_native_acceptance_source_contract_audit_failed:${contract.caseId}:${detail}`);
       }
       const { first, replay } = audit;
+      behaviorallyExecutedCaseIds.add(contract.caseId);
       expect(first.source_receipt).toMatchObject({
         operation_id: contract.operation.id,
         operation_handler_id: contract.operation.handlerId,
@@ -222,6 +230,26 @@ describe("v1.2 Workout and Library production operation registry", () => {
       receiptIds.add(first.source_receipt.command_receipt_id!);
     }
     expect(receiptIds.size).toBe(55);
+
+    const productDefinitions = V12_NATIVE_ACCEPTANCE_PRODUCT_REGISTRY.filter(
+      ({ interaction }) => interaction !== "domain-observation",
+    );
+    expect(productDefinitions).toHaveLength(88);
+    const semanticCallbackGroups = new Map<string, string>();
+    for (const definition of productDefinitions) {
+      const owner = JSON.stringify({
+        canonicalOperation: definition.canonicalOperation,
+        callbackSource: definition.callbackSource,
+        callbackOwnerToken: definition.callbackOwnerToken,
+      });
+      const existing = semanticCallbackGroups.get(definition.callbackGroup);
+      expect(existing === undefined || existing === owner).toBe(true);
+      semanticCallbackGroups.set(definition.callbackGroup, owner);
+    }
+    const behaviorallyCoveredGroups = new Set(productDefinitions
+      .filter(({ caseId }) => behaviorallyExecutedCaseIds.has(caseId))
+      .map(({ callbackGroup }) => callbackGroup));
+    expect([...behaviorallyCoveredGroups].sort()).toEqual([...semanticCallbackGroups.keys()].sort());
   }, 180_000);
 
   it("retains pre-action evidence and reads a mutation receipt without dispatching again", async () => {
@@ -273,37 +301,160 @@ describe("v1.2 Workout and Library production operation registry", () => {
       .toMatch(/^\{"id":"finish-partial:/u);
   });
 
-  it("delegates each Phase 13 case through the full source-owned wrapper", async () => {
+  it("drives WRK-19 through the normal Complete Set command and proves the failed draft is unchanged", async () => {
     const kernel = await open();
-    const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ shard, caseId }) => (
-      shard === "multi-plan" && caseId === "phase13-migration-failure-cuts"
-    ))!;
-    const runWrapper = jest.fn(async () => ({
-      schemaVersion: 1 as const, contractVersion: 1 as const, status: "passed" as const,
-      total: 13, passed: 13, failed: 0, skipped: 0 as const,
-      cases: MULTI_PLAN_RUNNING_CONTRACT_CASES.map((id) => ({ id, status: "passed" as const, durationMs: 1 })),
-      startedAt: "2026-10-01T00:00:00.000Z", finishedAt: "2026-10-01T00:00:01.000Z",
-    }));
-    await expect(dispatchV12NativeAcceptanceProductionOperation({
+    const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(
+      ({ caseId }) => caseId === "workout.complete-failure",
+    )!;
+    const request = requestFor(contract, 225);
+    const hash = async (value: string) => createHash("sha256").update(value).digest("hex");
+    const prepared = await prepareV12NativeAcceptanceProductCase({
       kernel,
-      contract,
-      request: {
-        shard: contract.shard, caseId: contract.caseId, fixtureId: "v12-synthetic-fixtures-r18",
-        title: "Phase 13", source: "MULTI_PLAN_RUNNING_CONTRACT_CASES", requirement: contract.requirement,
-        action: contract.actionId, readback: contract.uiReadback.label, sourceProbe: contract.sourceProbe,
-        authorityTables: contract.probes.post.tables, nonce: `01${"a".repeat(46)}`,
-      },
-      runtime: { multiPlan: { runWrapper } },
-    })).resolves.toMatchObject({
-      result: "committed",
-      facts: { outcome: "committed", committed_effects: 1, authoritative_readback: {
-        status: "passed", total: 13, passed: 13, case: { id: contract.caseId, status: "passed" },
-      } },
+      request,
+      sha256: hash,
+      prepareOperation: ({ contract: operationContract, request: operationRequest }) =>
+        prepareV12NativeAcceptanceProductionOperation({
+          kernel,
+          contract: operationContract,
+          request: operationRequest,
+        }),
     });
-    expect(runWrapper).toHaveBeenCalledTimes(1);
-    await expect(dispatchV12NativeAcceptanceProductionOperation({ kernel, contract }))
-      .rejects.toThrow("v12_native_acceptance_request_required");
+    const [session] = await kernel.queryAll<Readonly<{ id: string }>>(
+      "SELECT id FROM workout_sessions WHERE status = 'in_progress' ORDER BY started_at_ms DESC LIMIT 1",
+    );
+    if (session === undefined) throw new Error("wrk19_session_missing");
+    const repository = createWorkoutRepository(kernel);
+    const view = await repository.getActiveWorkout(session.id);
+    const activeSet = view.currentExercise.workingSets.find(({ id }) => id === view.activeSetId);
+    if (activeSet?.observation?.profile !== "unscored") throw new Error("wrk19_draft_missing");
+    expect(activeSet.observation).toMatchObject({ completed: false, source: "manual" });
+    const before = await kernel.queryAll(
+      `SELECT session.id, session.active_set_id, session.revision AS session_revision,
+              set_row.id AS set_id, set_row.status, set_row.observed_json,
+              set_row.completion_idempotency_key, set_row.revision AS set_revision,
+              rest.status AS rest_status, rest.revision AS rest_revision
+       FROM workout_sessions session
+       JOIN session_sets set_row ON set_row.id = session.active_set_id
+       LEFT JOIN session_rest_states rest ON rest.session_id = session.id
+       WHERE session.id = ?`,
+      [session.id],
+    );
+
+    await expect(completeSet({
+      repository,
+      haptics: { committed: async () => undefined, cue: async () => undefined },
+      invalidate: async () => undefined,
+      drainEffects: async () => undefined,
+      input: {
+        sessionId: session.id,
+        setId: activeSet.id,
+        expectedSessionRevision: view.revision,
+        expectedSetRevision: activeSet.revision,
+        completionIdempotencyKey: `complete_${session.id}_${activeSet.id}_${activeSet.revision}`,
+        metricIdentity: activeSet.metricIdentity,
+        observation: activeSet.observation,
+        completedAtMs: 1_800_000_004_000,
+      },
+    })).rejects.toThrow("metric_observation_invalid");
+    expect(await kernel.queryAll(
+      `SELECT session.id, session.active_set_id, session.revision AS session_revision,
+              set_row.id AS set_id, set_row.status, set_row.observed_json,
+              set_row.completion_idempotency_key, set_row.revision AS set_revision,
+              rest.status AS rest_status, rest.revision AS rest_revision
+       FROM workout_sessions session
+       JOIN session_sets set_row ON set_row.id = session.active_set_id
+       LEFT JOIN session_rest_states rest ON rest.session_id = session.id
+       WHERE session.id = ?`,
+      [session.id],
+    )).toEqual(before);
+
+    const readOnlyKernel = Object.freeze({
+      ...kernel,
+      write: async () => { throw new Error("wrk19_receipt_write_forbidden"); },
+    }) as SqliteKernel;
+    const readbacks = await readV12NativeAcceptanceReceipt({
+      kernel: readOnlyKernel,
+      request,
+      preparedProductCase: prepared,
+      sha256: hash,
+    });
+    expect(readbacks.source_receipt).toMatchObject({
+      case_id: "workout.complete-failure",
+      operation_result: "read",
+      command_receipt_id: null,
+      command_outcome: null,
+      committed_effects: 0,
+      pre: prepared.pre,
+    });
+    expect(readbacks.source_receipt.post.facts_sha256).toBe(prepared.pre.facts_sha256);
   });
+
+  it("prepares and reads all 13 Phase 13 durable domain observations without a UI dispatch", async () => {
+    const kernel = await open();
+    const contracts = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.filter(({ shard }) => shard === "multi-plan");
+    expect(contracts.map(({ caseId }) => caseId)).toEqual(MULTI_PLAN_RUNNING_CONTRACT_CASES);
+
+    for (const [index, contract] of contracts.entries()) {
+      const request = requestFor(contract, 32 + index);
+      const domainObservationAdapter = {
+        async runCase(caseId: (typeof MULTI_PLAN_RUNNING_CONTRACT_CASES)[number]) {
+          const domainKernel = await open();
+          try {
+            await runMultiPlanRunningContractCase(caseId, domainKernel, {
+              // The portable-merge implementation has its own focused host
+              // integration suite; this bridge consumes only its pass/fail
+              // authority while every other case executes here directly.
+              runPortableMergeContract: async () => ({ status: "passed" as const, failed: 0 }),
+            });
+          } finally {
+            kernels.delete(domainKernel);
+            await domainKernel.close();
+          }
+        },
+      };
+      const prepared = await prepareV12NativeAcceptanceProductCase({
+        kernel,
+        request,
+        sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+        prepareOperation: ({ contract: operationContract, request: operationRequest }) =>
+          prepareV12NativeAcceptanceProductionOperation({
+            kernel,
+            contract: operationContract,
+            request: operationRequest,
+            runtime: { domainObservationAdapter },
+          }),
+      });
+      const readOnlyKernel = Object.freeze({
+        ...kernel,
+        write: async () => {
+          throw new Error("domain_observation_receipt_write_forbidden");
+        },
+      }) as SqliteKernel;
+      const readback = await readV12NativeAcceptanceReceipt({
+        kernel: readOnlyKernel,
+        request,
+        preparedProductCase: prepared,
+        sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+      });
+
+      expect(prepared.pre.facts_sha256).toBe(readback.source_receipt.post.facts_sha256);
+      expect(readback.source_receipt).toMatchObject({
+        case_id: contract.caseId,
+        operation_id: contract.operation.id,
+        operation_result: "committed",
+        command_outcome: "already_committed",
+        committed_effects: 0,
+      });
+      expect(readback.source_receipt.command_receipt_id).toContain(`:${contract.caseId}:${request.nonce}`);
+      expect(readback.ui_readback).toMatchObject({ case_id: contract.caseId });
+    }
+
+    const observationRows = await kernel.queryAll<Readonly<{ count: number }>>(
+      "SELECT COUNT(*) AS count FROM app_settings WHERE key LIKE 'development-test.v12.phase13-domain-observation.v1:%'",
+    );
+    expect(observationRows).toHaveLength(1);
+    expect(observationRows[0]?.count).toBe(13);
+  }, 180_000);
 
   it("executes every exact projection against schema 46 and refuses all 55 empty mutation receipts", async () => {
     const kernel = await open();

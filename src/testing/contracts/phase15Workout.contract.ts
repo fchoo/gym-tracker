@@ -169,7 +169,8 @@ function workoutTables(caseId: string): readonly string[] {
   if (caseId === "workout.offline-recovery") return tables("logical_backup_receipts", "portable_owner_identity");
   if (["workout.outcomes", "workout.completion-review"].includes(caseId)) return WORKOUT_TABLES.completion;
   if (caseId === "workout.completion-writeback") return WORKOUT_TABLES.completionWriteback;
-  if (["workout.timing-policy", "workout.appearance", "workout.accessibility", "workout.performance", "workout.readonly-presentation"].includes(caseId)) return WORKOUT_TABLES.settings;
+  if (caseId === "workout.appearance") return tables("app_settings");
+  if (["workout.timing-policy", "workout.accessibility", "workout.performance", "workout.readonly-presentation"].includes(caseId)) return WORKOUT_TABLES.settings;
   if (["workout.set-states", "workout.row-edit", "workout.load-reps-editor", "workout.duration-editor", "workout.all-metrics", "workout.warmup-order", "workout.add-set", "workout.complete-commit", "workout.complete-failure", "workout.completion-collapse"].includes(caseId)) return WORKOUT_TABLES.set;
   return WORKOUT_TABLES.active;
 }
@@ -218,9 +219,13 @@ function nativeAcceptanceContract(input: Readonly<{
   }>;
 }>): V12NativeAcceptanceCaseContract {
   const operationId = `${input.shard}:${input.caseId}:${input.actionId}`;
-  const authorityTables = input.receipt === undefined || input.authorityTables.includes(input.receipt.table)
-    ? input.authorityTables
-    : tables(...input.authorityTables, input.receipt.table);
+  const domainObservationTables = input.shard === "multi-plan"
+    && !input.authorityTables.includes("app_settings")
+    ? tables(...input.authorityTables, "app_settings")
+    : input.authorityTables;
+  const authorityTables = input.receipt === undefined || domainObservationTables.includes(input.receipt.table)
+    ? domainObservationTables
+    : tables(...domainObservationTables, input.receipt.table);
   const probe = (phase: "pre" | "action" | "post") => Object.freeze({
     id: `${input.caseId}:${phase}:${input.sourceProbe}`,
     tables: Object.freeze([...authorityTables]),
@@ -293,7 +298,7 @@ const WORKOUT_OPERATION_HANDLERS: Readonly<Record<string, string>> = Object.free
   "workout.readonly-presentation": "workout.workout-presentation.project-workout",
   "workout.timing-policy": "workout.workout-preference-repository.write",
   "workout.accessibility": "workout.workout-presentation.project-accessibility",
-  "workout.appearance": "workout.workout-preference-repository.write",
+  "workout.appearance": "appearance.preference.write",
   "workout.offline-recovery": "backup.logical-backup-repository.collect",
   "workout.performance": "workout.workout-presentation.project-workout",
 });

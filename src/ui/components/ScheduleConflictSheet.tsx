@@ -52,10 +52,12 @@ function RadioChoice({
   checked,
   label,
   onPress,
+  testID,
 }: Readonly<{
   checked: boolean;
   label: string;
   onPress(): void;
+  testID?: string;
 }>) {
   const { colors } = useAppTheme();
   return (
@@ -71,6 +73,7 @@ function RadioChoice({
           borderColor: checked ? colors.action : colors.divider,
         },
       ]}
+      testID={testID}
     >
       <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>
         {label}
@@ -114,12 +117,15 @@ export function ScheduleConflictSheet({
           {`${preview.running.planName} and ${preview.strength.planName} overlap. Choose a calendar arrangement; no medical judgment is made.`}
         </Text>
         <View accessibilityRole="radiogroup" style={styles.choices}>
-          {factualChoices.map((candidate) => (
+          {factualChoices.map((candidate, index) => (
             <RadioChoice
               checked={false}
               key={candidate}
               label={choiceLabel(candidate, preview)}
               onPress={() => setChoice(candidate)}
+              {...(index === 0
+                ? { testID: "schedule-conflict-first-choice" }
+                : {})}
             />
           ))}
         </View>

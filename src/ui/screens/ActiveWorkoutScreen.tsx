@@ -441,10 +441,11 @@ type SectionGlyphActionProps = Readonly<{
   disabled?: boolean;
   icon: LucideIcon;
   onPress: () => void;
+  testID?: string;
 }>;
 
 const SectionGlyphAction = React.forwardRef<View, SectionGlyphActionProps>(function SectionGlyphAction(
-  { accessibilityLabel, busy = false, disabled = false, icon: Icon, onPress },
+  { accessibilityLabel, busy = false, disabled = false, icon: Icon, onPress, testID },
   ref,
 ) {
   const { colors, reduceMotion } = useAppTheme();
@@ -458,6 +459,7 @@ const SectionGlyphAction = React.forwardRef<View, SectionGlyphActionProps>(funct
       focusable={!unavailable}
       onPress={onPress}
       ref={ref}
+      testID={testID}
       style={({ pressed }) => [
         styles.sectionGlyphAction,
         {
@@ -1155,10 +1157,12 @@ function PopulatedWorkoutOverview({
               icon="more"
               onPress={() => setMoreVisible(true)}
               ref={moreActionRef}
+              testID="workout-more-actions"
             />
           </ActionCluster>
         }
         backAction={onGoBack}
+        backActionTestID="active-workout-back"
         eyebrow={
           "WORKOUT OVERVIEW"
         }
@@ -2207,12 +2211,15 @@ function PopulatedWorkoutOverview({
                     accessibilityLabel={`View ${exercise.name} trend`}
                     accessibilityRole="button"
                     focusable
+                    nativeID="workout-exercise-trend"
                     onPress={() => setTrendExerciseId(exercise.id)}
                     style={({ pressed }) => [styles.exerciseHeaderAction, {
                       backgroundColor: pressed ? colors.contentCardPressed : "transparent",
                       borderColor: colors.contentCardBorder,
                     }]}
-                    testID={`exercise-trend-${exercise.exerciseId}`}
+                    testID={exercise.id === activeExercise.id
+                      ? "workout-active-exercise-trend"
+                      : `exercise-trend-${exercise.exerciseId}`}
                   >
                     <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>↗</Text>
                   </FocusablePressable>
@@ -2226,6 +2233,7 @@ function PopulatedWorkoutOverview({
                     }}
                     disabled={exerciseEditBusy}
                     focusable={!exerciseEditBusy}
+                    nativeID="workout-exercise-menu"
                     onPress={() => {
                       setExerciseActionsVisibleForId(exercise.id);
                       setExerciseEditFailure(null);
@@ -2244,7 +2252,9 @@ function PopulatedWorkoutOverview({
                         opacity: exerciseEditBusy ? 0.62 : 1,
                       },
                     ]}
-                    testID={`exercise-actions-${exercise.exerciseId}`}
+                    testID={exercise.id === activeExercise.id
+                      ? "workout-active-exercise-menu"
+                      : `exercise-actions-${exercise.exerciseId}`}
                   >
                     <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>•••</Text>
                   </FocusablePressable>
@@ -2326,6 +2336,7 @@ function PopulatedWorkoutOverview({
                       onPress={() => {
                         void submitExerciseReorder(index, index + 1);
                       }}
+                      testID="workout-reorder-exercise-down"
                     />
                   </View>
                   {exerciseReorderAnnouncement?.sessionExerciseId === exercise.id
@@ -2483,6 +2494,9 @@ function PopulatedWorkoutOverview({
                         setAddSetMenuExerciseId(exercise.id);
                       }}
                       ref={workingAddRef}
+                      testID={exercise.id === activeExercise.id
+                        ? "workout-active-add-set"
+                        : `workout-add-set-${exercise.id}`}
                     />
                   </View>
                 )}
@@ -2522,8 +2536,12 @@ function PopulatedWorkoutOverview({
                   set={set}
                   tone="card"
                   {...(isMultiExerciseOverview
-                    ? { overviewTestID: `overview-${exercise.id}-${set.id}` }
-                    : {})}
+                    ? { overviewTestID: view.activeSetId === set.id
+                      ? "workout-active-set-row"
+                      : `overview-${exercise.id}-${set.id}` }
+                    : view.activeSetId === set.id
+                      ? { overviewTestID: "workout-active-set-row" }
+                      : {})}
                 />
                 </React.Fragment>
               ))}
@@ -2750,6 +2768,7 @@ function PopulatedWorkoutOverview({
             onPress={() => {
               void submitExerciseAdd();
             }}
+            testID="workout-add-exercise-confirm"
           />
         )}
         <M3SearchField
@@ -2775,7 +2794,7 @@ function PopulatedWorkoutOverview({
           />
         ) : exerciseAddCandidates.length === 0 ? (
           <InlineNotice body="Try a different search." heading="No exercises found" tone="neutral" />
-        ) : exerciseAddCandidates.map((candidate) => (
+        ) : exerciseAddCandidates.map((candidate, index) => (
           <FocusablePressable
             accessibilityLabel={`${candidate.name}. Add exercise`}
             accessibilityRole="button"
@@ -2785,7 +2804,7 @@ function PopulatedWorkoutOverview({
               exerciseAddSearchRef.current?.blur();
               Keyboard.dismiss();
             }}
-            testID={`add-exercise-option-${candidate.id}`}
+            testID={index === 0 ? "workout-add-exercise-first-option" : `add-exercise-option-${candidate.id}`}
             style={[
               styles.exerciseOption,
               {
@@ -2837,6 +2856,7 @@ function PopulatedWorkoutOverview({
                     exerciseId: replacementPickerForId,
                   });
                 }}
+                testID="workout-replace-exercise-confirm"
               />
             )}
             <M3SearchField
@@ -2854,7 +2874,7 @@ function PopulatedWorkoutOverview({
                 tone="neutral"
               />
             )}
-            {replacementCandidates.map((candidate) => (
+            {replacementCandidates.map((candidate, index) => (
               <FocusablePressable
                 accessibilityLabel={candidate.name}
                 accessibilityRole="radio"
@@ -2865,7 +2885,7 @@ function PopulatedWorkoutOverview({
                   replacementSearchRef.current?.blur();
                   Keyboard.dismiss();
                 }}
-                testID={`replace-exercise-option-${candidate.id}`}
+                testID={index === 0 ? "workout-replace-exercise-first-option" : `replace-exercise-option-${candidate.id}`}
                 style={[
                   styles.exerciseOption,
                   {

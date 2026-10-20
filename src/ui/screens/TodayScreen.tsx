@@ -94,7 +94,6 @@ export type TodayScreenProps = Readonly<{
   headingRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionNativeID?: string;
-  nativeAcceptanceAction?: Readonly<{ actionId: string; execute(): Promise<void> }>;
   onUsefulContent?: () => void;
 }>;
 
@@ -283,8 +282,9 @@ function ScheduledContent({
           onPress={() => selectedPreview === undefined || onStartOccurrence === undefined
             ? onStart(selectedView.dayId, "scheduled")
             : onStartOccurrence(selectedPreview.occurrence)}
+          testID="today-start-workout"
         />
-        <SecondaryAction label="Choose another day" onPress={() => setStartSheetVisible(true)} ref={startSheetActionRef} />
+        <SecondaryAction label="Choose another day" onPress={() => setStartSheetVisible(true)} ref={startSheetActionRef} testID="today-choose-plan-day" />
       </ContentCard>
       <View style={styles.section}>
         <Text
@@ -388,6 +388,7 @@ function RestDayContent({
           label={hasNextPlanDay ? "Train anyway" : "Choose another day"}
           onPress={() => setStartSheetVisible(true)}
           ref={startSheetActionRef}
+          testID="today-choose-plan-day"
         />
       </ContentCard>
       <WorkoutStartSheet
@@ -444,7 +445,6 @@ export function TodayScreen({
   headingRef,
   settingsActionRef,
   settingsActionNativeID,
-  nativeAcceptanceAction,
   onUsefulContent,
 }: TodayScreenProps) {
   const [activationPreview, setActivationPreview] = useState(false);
@@ -568,15 +568,8 @@ export function TodayScreen({
                   disabled={!trusted}
                   icon="settings"
                   nativeID={settingsActionNativeID}
-                  onPress={() => {
-                    if (nativeAcceptanceAction === undefined) {
-                      onOpenSettings();
-                      return;
-                    }
-                    void nativeAcceptanceAction.execute().then(onOpenSettings);
-                  }}
+                  onPress={onOpenSettings}
                   ref={settingsActionRef as React.Ref<View>}
-                  {...(nativeAcceptanceAction === undefined ? {} : { testID: nativeAcceptanceAction.actionId })}
                 />
               }
               title="Workout"

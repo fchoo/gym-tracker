@@ -167,6 +167,17 @@ const PROFILE_PRESENTATION: Readonly<Record<
     comparison: "Completion only; no performance ranking.",
   },
 };
+const METRIC_PROFILE_TEST_IDS: Readonly<Record<MetricProfile, string>> = Object.freeze({
+  load_reps: "metric-migration-profile-load-reps",
+  bodyweight_reps: "metric-migration-profile-bodyweight-reps",
+  added_load_reps: "metric-migration-profile-added-load-reps",
+  assisted_reps: "metric-migration-profile-assisted-reps",
+  timed_hold: "metric-migration-profile-timed-hold",
+  fixed_distance: "metric-migration-profile-fixed-distance",
+  fixed_time: "metric-migration-profile-fixed-time",
+  intervals: "metric-migration-profile-intervals",
+  unscored: "metric-migration-profile-unscored",
+});
 
 function emptyReplacement(): ReplacementDraft {
   return {
@@ -828,6 +839,7 @@ export function MetricMigrationScreen({
                     onSelect={selectProfile}
                     profile={profile}
                     selected={selectedProfile === profile}
+                    testID={METRIC_PROFILE_TEST_IDS[profile]}
                   />
                 );
               })}
@@ -918,7 +930,7 @@ export function MetricMigrationScreen({
               supportingText="Each occurrence requires a compatible reviewed policy or explicit manual Hold."
               title="Progression policy"
             />
-            {snapshot.occurrences.map((occurrence) => (
+            {snapshot.occurrences.map((occurrence, index) => (
               <View
                 key={occurrence.occurrenceId}
                 style={[styles.policy, { borderColor: colors.divider }]}
@@ -941,6 +953,9 @@ export function MetricMigrationScreen({
                   selected={
                     policies[occurrence.occurrenceId] === "manual_hold"
                   }
+                  {...(index === 0
+                    ? { testID: "metric-migration-first-policy-hold" }
+                    : {})}
                 />
                 <MetricProfileOption
                   comparison="The compatible policy starts from a fresh baseline."

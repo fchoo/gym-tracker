@@ -11,7 +11,6 @@ import React, {
 import {
   useWorkoutAppRuntime,
 } from "../../src/bootstrap/workoutAppRuntime";
-import { useV12NativeAcceptanceProductAction } from "../../src/testing/v12NativeAcceptanceFixture";
 import type {
   ProgressRecommendationReview,
 } from "../../src/domains/progress";
@@ -23,7 +22,6 @@ import {
 } from "../../src/ui/shell/rootFocus";
 
 export default function TodayRoute() {
-  const nativeAcceptanceAction = useV12NativeAcceptanceProductAction("workout");
   const settingsActionNativeID = rootSettingsTriggerNativeID("index");
   const headingRef = useRootHeadingRef("index");
   const settingsActionRef = useRef(null);
@@ -97,7 +95,6 @@ export default function TodayRoute() {
     <TodayScreen
       {...optionalStateProps}
       launchState={runtime.launchState}
-      {...(nativeAcceptanceAction === undefined ? {} : { nativeAcceptanceAction })}
       pendingRecommendations={pendingRecommendations}
       onOpenSettings={() => rootSettings.openRootSettings({
         root: "index",

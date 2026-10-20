@@ -92,7 +92,7 @@ export type V12CompletionWritebackAcceptanceProof = Readonly<{
   action: V12CompletionWritebackActionProof;
 }>;
 
-type Seed = Readonly<{
+export type V12CompletionWritebackSeed = Readonly<{
   planId: string;
   planDayId: string;
   sessionId: string;
@@ -162,11 +162,14 @@ function acceptedSchedule(template: AcceptedStarterTemplate) {
   });
 }
 
-async function seedCompletionWritebackGraph(input: Readonly<{
+export async function prepareV12NativeAcceptanceCompletionWriteback(input: Readonly<{
   kernel: SqliteKernel;
   nonce: string;
   sha256: Hash;
-}>): Promise<Seed> {
+}>): Promise<V12CompletionWritebackSeed> {
+  if (!NONCE.test(input.nonce)) {
+    throw new Error("v12_completion_writeback_nonce_invalid");
+  }
   const ids = identities(input.nonce);
   const activationTime = activatedAtMs(input.nonce);
   await createContentRepository(input.kernel).importAcceptedCatalog({
@@ -423,7 +426,7 @@ function parseDurableResult(receipt: DurableReceipt): DurableResult {
 
 async function readDurableSourceState(input: Readonly<{
   kernel: SqliteKernel;
-  seed: Seed;
+  seed: V12CompletionWritebackSeed;
   receipt: DurableReceipt;
 }>): Promise<Readonly<{
   occurrenceId: string;
@@ -469,7 +472,7 @@ async function completionWritebackProof(input: Readonly<{
   kernel: SqliteKernel;
   nonce: string;
   sha256: Hash;
-  seed: Seed;
+  seed: V12CompletionWritebackSeed;
   requestId: string;
   receipt: DurableReceipt;
   outcome: "committed" | "already_committed";
@@ -554,7 +557,7 @@ export async function runV12NativeAcceptanceCompletionWriteback(input: Readonly<
   if (!NONCE.test(input.nonce)) {
     throw new Error("v12_completion_writeback_nonce_invalid");
   }
-  const seed = await seedCompletionWritebackGraph(input);
+  const seed = await prepareV12NativeAcceptanceCompletionWriteback(input);
   const requestId = await sessionExerciseWriteBackRequestId({
     sourceSessionId: seed.sessionId,
     sha256: input.sha256,

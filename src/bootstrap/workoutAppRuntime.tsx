@@ -228,9 +228,6 @@ import {
   createExpoHapticsAdapter,
 } from "../platform/haptics/expoHapticsAdapter";
 import {
-  runWorkoutMutationWithTestFailure,
-} from "./workoutMutationTestControls";
-import {
   createExpoRestNotificationAdapter,
 } from "../platform/notifications/expoRestNotificationAdapter";
 import {
@@ -402,12 +399,10 @@ import {
   type Phase20QualityWorkloadProof,
 } from "../testing/phase20QualityWorkload";
 import {
-  dispatchV12NativeAcceptanceProductionOperation,
-  executeV12NativeAcceptanceProductAction as executeV12NativeAcceptanceProductActionFromKernel,
-  executeV12NativeAcceptanceReadAction,
   prepareV12NativeAcceptanceProductCase as prepareV12NativeAcceptanceProductCaseFromKernel,
   prepareV12NativeAcceptanceProductionOperation,
   readV12NativeAcceptanceReceipt as readV12NativeAcceptanceReceiptFromKernel,
+  v12NativeAcceptanceProductRequestId,
   type V12NativeAcceptancePreparedProductCase,
   type V12NativeAcceptanceReadbacks,
   type V12NativeAcceptanceRequest,
@@ -731,13 +726,12 @@ function revisionDisplayValue(value: unknown): string {
 }
 
 type RuntimeValue = RuntimeState & Readonly<{
+  nowMs(): number;
   runningPlanRuntime: RunningPlanRuntimePort | null;
   garminImport: GarminImportApplicationPort;
   collectPhase14SourceStateProof(): Promise<Phase14SourceStateProof>;
   collectPhase20QualitySourceProof(): Promise<Phase20QualityWorkloadProof>;
-  executeV12NativeAcceptanceCase(request: V12NativeAcceptanceRequest): Promise<V12NativeAcceptanceReadbacks>;
-  executeV12NativeAcceptanceProductAction(request: V12NativeAcceptanceRequest): Promise<void>;
-  prepareV12NativeAcceptanceProductCase(request: V12NativeAcceptanceRequest): Promise<void>;
+  prepareV12NativeAcceptanceProductCase(request: V12NativeAcceptanceRequest): Promise<V12NativeAcceptancePreparedProductCase>;
   readV12NativeAcceptanceReceipt(request: V12NativeAcceptanceRequest): Promise<V12NativeAcceptanceReadbacks>;
   triggerPhase20ProgressRebuild(): Promise<void>;
   collectPhase17SourceStateProof(): Promise<Phase14SourceStateProof>;
@@ -1233,6 +1227,7 @@ export type WorkoutAppRuntimeDependencies = Readonly<{
   ): ScheduleRuntimeAdapter;
   now(): Date;
   nowMs(): number;
+  randomUUID?(): string;
   prepareRuntime?(input: Readonly<{
     kernel: SqliteKernel;
     starterPlans?: StarterPlanRuntimeCatalog;
@@ -2090,7 +2085,17 @@ export function WorkoutAppRuntimeProvider({
   const progressBodyweightCommandsRef = useRef(new Map<string, BodyweightCommand>());
   const phase17FixtureProtocolRef = useRef<ReturnType<typeof createPhase17FixtureProtocol> | null>(null);
   const phase17ActionEnvelopeSourceRef = useRef<ReturnType<typeof createPhase17ActionEnvelopeSource> | null>(null);
+  const v12NativeAcceptanceProductRequestRef = useRef<V12NativeAcceptanceRequest | null>(null);
+  const runtimeRandomUUID = useCallback(() => {
+    if (dependencies.randomUUID !== undefined) return dependencies.randomUUID();
+    const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
+    return randomUUID();
+  }, [dependencies]);
   const phase17RequestId = useCallback(async (label: string, productionRequestId: string) => {
+    const acceptanceRequest = v12NativeAcceptanceProductRequestRef.current;
+    if (acceptanceRequest !== null) {
+      return v12NativeAcceptanceProductRequestId(acceptanceRequest, label);
+    }
     if (!phase17NativeContractEnabled()) return productionRequestId;
     const source = phase17ActionEnvelopeSourceRef.current;
     if (source === null) throw new Error("phase17_action_envelope_missing");
@@ -2235,12 +2240,7 @@ export function WorkoutAppRuntimeProvider({
     });
     const ownedPlans = createOwnedPlanRuntimePort(kernel, {
       nowMs: dependencies.nowMs,
-      randomUUID: () => {
-        const {
-          randomUUID,
-        } = require("expo-crypto") as typeof import("expo-crypto");
-        return randomUUID();
-      },
+      randomUUID: runtimeRandomUUID,
       sha256: (value) => {
         const {
           CryptoDigestAlgorithm,
@@ -2251,10 +2251,7 @@ export function WorkoutAppRuntimeProvider({
     });
     const runningPlans = createRunningPlanRuntimePort(kernel, {
       nowMs: dependencies.nowMs,
-      randomUUID: () => {
-        const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
-        return randomUUID();
-      },
+      randomUUID: runtimeRandomUUID,
       sha256: (value) => {
         const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
         return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
@@ -2472,7 +2469,7 @@ export function WorkoutAppRuntimeProvider({
         ));
       }
     }
-  }, [closeServices, dependencies, trustedRead]);
+  }, [closeServices, dependencies, runtimeRandomUUID, trustedRead]);
 
   useEffect(() => {
     void initialize();
@@ -3079,8 +3076,13 @@ export function WorkoutAppRuntimeProvider({
       requireServices().runningPlans.saveRunningTarget(input),
   }), [requireServices]);
 
-  const createProgressId = useCallback((kind: string) =>
-    requireServices().runningPlans.createId(kind), [requireServices]);
+  const createProgressId = useCallback((kind: string) => {
+    const acceptanceRequest = v12NativeAcceptanceProductRequestRef.current;
+    if (acceptanceRequest?.caseId === "workout.plan-increment" && kind === "recommendation-use") {
+      return v12NativeAcceptanceProductRequestId(acceptanceRequest, kind);
+    }
+    return requireServices().runningPlans.createId(kind);
+  }, [requireServices]);
 
   const loadProgressBodyweightHistory = useCallback(async (): Promise<readonly ProgressBodyweightEntry[]> => {
     const services = requireServices();
@@ -4391,13 +4393,10 @@ export function WorkoutAppRuntimeProvider({
     }
     let result: CompletedWorkoutPlanWriteBackState;
     try {
-      result = await runWorkoutMutationWithTestFailure(
-        "plan_write_back",
-        () => applyCompletedWorkoutPlanWriteBack({
-          port: services.ownedPlans,
-          state: beginCompletedWorkoutPlanWriteBack(retryState),
-        }),
-      );
+      result = await applyCompletedWorkoutPlanWriteBack({
+        port: services.ownedPlans,
+        state: beginCompletedWorkoutPlanWriteBack(retryState),
+      });
     } catch {
       return {
         state: "save_failed",
@@ -4961,6 +4960,7 @@ export function WorkoutAppRuntimeProvider({
 
   const value = useMemo<RuntimeValue>(() => ({
     ...state,
+    nowMs: dependencies.nowMs,
     runningPlanRuntime: state.launchState === "trusted"
       ? requireServices().runningPlans
       : null,
@@ -5007,45 +5007,12 @@ export function WorkoutAppRuntimeProvider({
           digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
       });
     },
-    executeV12NativeAcceptanceCase: (request) => {
-      if (!phase20QualitySourceProofEnabled()) {
-        return Promise.reject(new Error("v12_native_acceptance_executor_unavailable"));
-      }
-      const {
-        CryptoDigestAlgorithm,
-        digestStringAsync,
-      } = require("expo-crypto") as typeof import("expo-crypto");
-      return executeV12NativeAcceptanceReadAction({
-        kernel: requireServices().kernel,
-        request,
-        sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
-        prepareOperation: ({ contract, request: operationRequest }) => prepareV12NativeAcceptanceProductionOperation({
-          kernel: requireServices().kernel,
-          contract,
-          request: operationRequest,
-          runtime: {
-            running: requireServices().runningPlans,
-            ownedPlans: requireServices().ownedPlans,
-            customExercises: requireServices().customExerciseRepository,
-          },
-        }),
-        executeOperation: ({ contract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
-          kernel: requireServices().kernel,
-          contract,
-          request: operationRequest,
-          runtime: {
-            running: requireServices().runningPlans,
-            ownedPlans: requireServices().ownedPlans,
-            customExercises: requireServices().customExerciseRepository,
-          },
-        }),
-      });
-    },
     prepareV12NativeAcceptanceProductCase: async (request) => {
       if (!phase20QualitySourceProofEnabled()) {
         throw new Error("v12_native_acceptance_executor_unavailable");
       }
       const services = requireServices();
+      v12NativeAcceptanceProductRequestRef.current = request;
       const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
       const prepared = await prepareV12NativeAcceptanceProductCaseFromKernel({
         kernel: services.kernel,
@@ -5067,35 +5034,8 @@ export function WorkoutAppRuntimeProvider({
         `${request.shard}:${request.caseId}:${request.nonce}`,
         prepared,
       );
-    },
-    executeV12NativeAcceptanceProductAction: async (request) => {
-      if (!phase20QualitySourceProofEnabled()) {
-        throw new Error("v12_native_acceptance_executor_unavailable");
-      }
-      const key = `${request.shard}:${request.caseId}:${request.nonce}`;
-      const preparedProductCase = v12NativeAcceptancePreparedProductCases.get(key);
-      if (preparedProductCase === undefined) {
-        throw new Error("v12_native_acceptance_prepared_case_missing");
-      }
-      const services = requireServices();
-      const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
-      await executeV12NativeAcceptanceProductActionFromKernel({
-        kernel: services.kernel,
-        request,
-        preparedProductCase,
-        sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
-        executeOperation: ({ contract, request: operationRequest }) =>
-          dispatchV12NativeAcceptanceProductionOperation({
-            kernel: services.kernel,
-            contract,
-            request: operationRequest,
-            runtime: {
-              running: services.runningPlans,
-              ownedPlans: services.ownedPlans,
-              customExercises: services.customExerciseRepository,
-            },
-          }),
-      });
+      setState(await trustedRead(services));
+      return prepared;
     },
     readV12NativeAcceptanceReceipt: async (request) => {
       if (!phase20QualitySourceProofEnabled()) {
@@ -5115,6 +5055,7 @@ export function WorkoutAppRuntimeProvider({
         sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
       });
       v12NativeAcceptancePreparedProductCases.delete(key);
+      v12NativeAcceptanceProductRequestRef.current = null;
       return readbacks;
     },
     triggerPhase20ProgressRebuild: async () => {

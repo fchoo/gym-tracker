@@ -17,7 +17,6 @@ import {
   authorityTablesForV12NativeAcceptance,
   assertV12NativeAcceptanceProductionHandlerRegistry,
   dispatchV12NativeAcceptanceProductionOperation,
-  executeV12NativeAcceptanceProductAction,
   executeV12NativeAcceptanceReadAction,
   prepareV12NativeAcceptanceProductCase,
   prepareV12NativeAcceptanceProductionOperation,
@@ -53,16 +52,15 @@ describe("v1.2 acceptance production API parity", () => {
     expect(executorSource).not.toContain("collectWithReceipt");
     expect(executorSource).not.toContain("completionWritebackProofs");
     const prepareHookStart = runtimeSource.lastIndexOf("prepareV12NativeAcceptanceProductCase: async");
-    const actionHookStart = runtimeSource.lastIndexOf("executeV12NativeAcceptanceProductAction: async");
     const readHookStart = runtimeSource.lastIndexOf("readV12NativeAcceptanceReceipt: async");
     const nextHookStart = runtimeSource.indexOf("triggerPhase20ProgressRebuild:", readHookStart);
     expect(prepareHookStart).toBeGreaterThan(-1);
-    expect(actionHookStart).toBeGreaterThan(prepareHookStart);
-    expect(readHookStart).toBeGreaterThan(actionHookStart);
-    expect(runtimeSource.slice(prepareHookStart, actionHookStart))
+    expect(readHookStart).toBeGreaterThan(prepareHookStart);
+    expect(runtimeSource).not.toContain("executeV12NativeAcceptanceCase:");
+    expect(runtimeSource).not.toContain("executeV12NativeAcceptanceReadAction");
+    expect(runtimeSource).not.toContain("dispatchV12NativeAcceptanceProductionOperation");
+    expect(runtimeSource.slice(prepareHookStart, readHookStart))
       .not.toContain("dispatchV12NativeAcceptanceProductionOperation");
-    expect(runtimeSource.slice(actionHookStart, readHookStart))
-      .toContain("dispatchV12NativeAcceptanceProductionOperation");
     expect(runtimeSource.slice(readHookStart, nextHookStart))
       .not.toMatch(/prepareV12NativeAcceptanceProductionOperation|dispatchV12NativeAcceptanceProductionOperation/u);
   });
@@ -78,16 +76,6 @@ describe("v1.2 acceptance production API parity", () => {
       request: productRequest,
       sha256,
       prepareOperation,
-    });
-    await executeV12NativeAcceptanceProductAction({
-      kernel: runtime,
-      request: productRequest,
-      preparedProductCase: prepared,
-      sha256,
-      executeOperation: async ({ contract: operationContract, request: operationRequest }) => ({
-        result: "read",
-        facts: await operationFactsFor(runtime, operationContract, operationRequest),
-      }),
     });
     const commandCountAfterPrepare = commands.length;
     const readbacks = await readV12NativeAcceptanceReceipt({
@@ -109,70 +97,51 @@ describe("v1.2 acceptance production API parity", () => {
     expect(commands.slice(commandCountAfterPrepare).every((sql) => /^SELECT |^PRAGMA /u.test(sql))).toBe(true);
   });
 
-  it("prepares multi-plan authority without executing the case and reads it after a real product observation", async () => {
-    const contract = v12NativeAcceptanceCaseContract("multi-plan", "phase13-map01-activation");
-    const productRequest = requestForContract(contract, "d".repeat(48));
+  it("prepares and reads every Phase 13 domain observation without a product action dispatch", async () => {
     const commands: string[] = [];
     const runtime = kernel({ commands });
-    const prepareOperation = jest.fn(async () => undefined);
+    const observed: string[] = [];
+    const contracts = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.filter(({ shard }) => shard === "multi-plan");
+    expect(contracts.map(({ caseId }) => caseId)).toEqual(MULTI_PLAN_RUNNING_CONTRACT_CASES);
 
-    const prepared = await prepareV12NativeAcceptanceProductCase({
-      kernel: runtime,
-      request: productRequest,
-      sha256,
-      prepareOperation,
-    });
-    let wrapperCalls = 0;
-    await executeV12NativeAcceptanceProductAction({
-      kernel: runtime,
-      request: productRequest,
-      preparedProductCase: prepared,
-      sha256,
-      executeOperation: ({ contract: operationContract, request: operationRequest }) =>
-        dispatchV12NativeAcceptanceProductionOperation({
-          kernel: runtime,
-          contract: operationContract,
-          request: operationRequest,
-          runtime: {
-            multiPlan: {
-              runWrapper: async () => {
-                wrapperCalls += 1;
-                return {
-                  schemaVersion: 1 as const,
-                  contractVersion: 1 as const,
-                  status: "passed" as const,
-                  total: MULTI_PLAN_RUNNING_CONTRACT_CASES.length,
-                  passed: MULTI_PLAN_RUNNING_CONTRACT_CASES.length,
-                  failed: 0,
-                  skipped: 0 as const,
-                  cases: MULTI_PLAN_RUNNING_CONTRACT_CASES.map((id) => ({ id, status: "passed" as const, durationMs: 1 })),
-                  startedAt: "2026-10-01T00:00:00.000Z",
-                  finishedAt: "2026-10-01T00:00:01.000Z",
-                };
+    for (const [index, contract] of contracts.entries()) {
+      const productRequest = requestForContract(contract, index.toString(16).padStart(2, "0") + "d".repeat(46));
+      const prepared = await prepareV12NativeAcceptanceProductCase({
+        kernel: runtime,
+        request: productRequest,
+        sha256,
+        prepareOperation: ({ contract: operationContract, request: operationRequest }) =>
+          prepareV12NativeAcceptanceProductionOperation({
+            kernel: runtime,
+            contract: operationContract,
+            request: operationRequest,
+            runtime: {
+              domainObservationAdapter: {
+                runCase: async (caseId) => { observed.push(caseId); },
               },
             },
-          },
-        }),
-    });
-    const commandCountAfterPrepare = commands.length;
-    const readbacks = await readV12NativeAcceptanceReceipt({
-      kernel: runtime,
-      request: productRequest,
-      preparedProductCase: prepared,
-      sha256,
-    });
+          }),
+      });
+      const commandCountAfterPrepare = commands.length;
+      const readbacks = await readV12NativeAcceptanceReceipt({
+        kernel: runtime,
+        request: productRequest,
+        preparedProductCase: prepared,
+        sha256,
+      });
 
-    expect(prepareOperation).toHaveBeenCalledTimes(1);
-    expect(wrapperCalls).toBe(1);
-    expect(readbacks.source_receipt).toMatchObject({
-      case_id: productRequest.caseId,
-      operation_kind: "repository-mutation",
-      operation_result: "committed",
-      command_outcome: "committed",
-      committed_effects: 1,
-      pre: prepared.pre,
-    });
-    expect(commands.slice(commandCountAfterPrepare).every((sql) => /^SELECT |^PRAGMA /u.test(sql))).toBe(true);
+      expect(readbacks.source_receipt).toMatchObject({
+        case_id: productRequest.caseId,
+        operation_kind: "repository-mutation",
+        operation_result: "committed",
+        command_outcome: "already_committed",
+        committed_effects: 0,
+        pre: prepared.pre,
+      });
+      expect(readbacks.source_receipt.post.facts_sha256).toBe(prepared.pre.facts_sha256);
+      expect(commands.slice(commandCountAfterPrepare).every((sql) => /^SELECT |^PRAGMA /u.test(sql))).toBe(true);
+    }
+    expect(observed).toEqual(MULTI_PLAN_RUNNING_CONTRACT_CASES);
   });
 });
 
@@ -224,11 +193,15 @@ function kernel(options: Readonly<{
   let snapshot = 0;
   let mutationRevision = options.initialRevision ?? 1;
   const productReceipts = new Map<string, Readonly<{ source_json: string; ui_json: string; receipt_sha256: string }>>();
+  const appSettings = new Map<string, string>();
   const queryAll = async <Row,>(sql: string, parameters: readonly SqliteParameter[] = []): Promise<readonly Row[]> => {
     options.commands?.push(sql);
     if (/FROM v12_native_acceptance_product_receipts/u.test(sql)) {
       const value = productReceipts.get(`${parameters[0]}:${parameters[1]}:${parameters[2]}`);
       return (value === undefined ? [] : [value]) as Row[];
+    }
+    if (/FROM app_settings/u.test(sql) && appSettings.has(String(parameters[0]))) {
+      return [{ value_json: appSettings.get(String(parameters[0]))! }] as Row[];
     }
     if (sql === "PRAGMA user_version") return (options.version === null ? [] : [{ user_version: options.version ?? 42 }]) as Row[];
     if ((options.empty || options.emptySql?.test(sql)) && /^SELECT /u.test(sql)) return [];
@@ -266,6 +239,9 @@ function kernel(options: Readonly<{
           ui_json: String(parameters[4]),
           receipt_sha256: String(parameters[5]),
         });
+      }
+      if (/INSERT INTO app_settings/u.test(sql)) {
+        appSettings.set(String(parameters[0]), String(parameters[1]));
       }
       mutationRevision += 1;
       return { changes: options.changes ?? 1, lastInsertRowId: 0 };
@@ -363,7 +339,7 @@ describe("v1.2 native acceptance production executor", () => {
         parameterContract?: string;
         postcondition?: Readonly<{ id?: string; description?: string }>;
       }>;
-      expect(operation.handlerId).toMatch(/^(?:workout|active-workout|rest|history|owned-plan|starter-plan|plan-impact|library|custom-exercise|metric-profile|running-plan|schedule-collision|backup|migration)\.[a-z0-9.-]+$/u);
+      expect(operation.handlerId).toMatch(/^(?:workout|active-workout|rest|history|owned-plan|starter-plan|plan-impact|library|custom-exercise|metric-profile|running-plan|schedule-collision|backup|migration|appearance)\.[a-z0-9.-]+$/u);
       expect(operation.parameterContract).toContain(entry.caseId);
       expect(operation.postcondition?.id).toContain(entry.caseId);
       expect(operation.postcondition?.description?.length).toBeGreaterThan(12);
@@ -583,7 +559,7 @@ describe("v1.2 native acceptance production executor", () => {
     })).rejects.toThrow("v12_native_acceptance_request_required");
   });
 
-  it("rejects missing production runtimes and propagates a failed source-owned wrapper", async () => {
+  it("rejects missing production runtimes and propagates a failed Phase 13 domain case", async () => {
     const running = v12NativeAcceptanceCaseContract("workout", "workout.context-running");
     await expect(dispatchV12NativeAcceptanceProductionOperation({
       kernel: kernel(), contract: running, request: requestForContract(running),
@@ -600,30 +576,18 @@ describe("v1.2 native acceptance production executor", () => {
       runtime: { customExercises: {} as never },
     })).rejects.toThrow("v12_native_acceptance_owned_plan_runtime_required");
 
-    const wrapper = v12NativeAcceptanceCaseContract("multi-plan", "phase13-map01-activation");
-    await expect(dispatchV12NativeAcceptanceProductionOperation({
-      kernel: kernel(), contract: wrapper, request: requestForContract(wrapper),
+    const domainObservation = v12NativeAcceptanceCaseContract("multi-plan", "phase13-map01-activation");
+    await expect(prepareV12NativeAcceptanceProductionOperation({
+      kernel: kernel(), contract: domainObservation, request: requestForContract(domainObservation),
       runtime: {
-        multiPlan: {
-          runWrapper: async () => ({
-            schemaVersion: 1,
-            contractVersion: 1,
-            status: "failed",
-            total: MULTI_PLAN_RUNNING_CONTRACT_CASES.length,
-            passed: MULTI_PLAN_RUNNING_CONTRACT_CASES.length - 1,
-            failed: 1,
-            skipped: 0,
-            cases: MULTI_PLAN_RUNNING_CONTRACT_CASES.map((id) => ({
-              id,
-              status: id === wrapper.caseId ? "failed" as const : "passed" as const,
-              durationMs: 1,
-            })),
-            startedAt: "2026-10-01T00:00:00.000Z",
-            finishedAt: "2026-10-01T00:00:01.000Z",
-          }),
+        domainObservationAdapter: {
+          runCase: async () => { throw new Error("phase13_domain_contract_failed"); },
         },
       },
-    })).rejects.toThrow("v12_native_acceptance_multi_plan_wrapper_failed");
+    })).rejects.toThrow("phase13_domain_contract_failed");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel(), contract: domainObservation, request: requestForContract(domainObservation),
+    })).rejects.toThrow("v12_native_acceptance_domain_observation_invalid");
   });
 
   it("fails preparation before a missing request or fixture can mint a production operation", async () => {
@@ -871,7 +835,7 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
-  it("rejects missing rest, invalid presentation, and an unexpected complete-set conflict", async () => {
+  it("rejects missing rest and invalid presentation", async () => {
     const { executor, contracts } = isolateExecutorWithMocks([
       {
         moduleName: "../platform/sqlite/repositories/restRepository",
@@ -899,29 +863,12 @@ describe("v1.2 native acceptance production executor", () => {
         kernel: kernel(), contract: presentation, request: requestForContract(presentation),
       })).rejects.toThrow("v12_native_acceptance_workout_presentation_postcondition_failed");
 
-      const conflict = contracts.v12NativeAcceptanceCaseContract("workout", "workout.complete-failure");
-      const conflictKernel = kernel();
-      const normalQuery = conflictKernel.queryAll.bind(conflictKernel);
-      conflictKernel.queryAll = async <Row extends Record<string, unknown>,>(sql: string, params?: readonly SqliteParameter[]): Promise<readonly Row[]> => {
-        if (sql.includes("session.id AS session_id, session.revision AS session_revision")) {
-          return [{
-            session_id: "session-owned-1", session_revision: 1,
-            exercise_id: "exercise-owned-1", exercise_revision: 1,
-            set_id: "set-owned-1", set_revision: 1,
-            metric_profile: "load_reps", metric_contract_version: 1, exercise_metric_generation: 1,
-          }] as unknown as Row[];
-        }
-        return normalQuery(sql, params);
-      };
-      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
-        kernel: conflictKernel, contract: conflict, request: requestForContract(conflict),
-      })).rejects.toThrow("v12_native_acceptance_workout_complete_conflict_missing");
     } finally {
       jest.resetModules();
     }
   });
 
-  it("rejects invalid Workout fixture revisions, set metrics, lists, and instruction catalogs", async () => {
+  it("rejects invalid Workout fixture revisions, lists, and instruction catalogs", async () => {
     const rest = isolateExecutorWithMocks([{
       moduleName: "../platform/sqlite/repositories/restRepository",
       factory: () => ({
@@ -939,13 +886,6 @@ describe("v1.2 native acceptance production executor", () => {
     } finally {
       jest.resetModules();
     }
-
-    const conflict = v12NativeAcceptanceCaseContract("workout", "workout.complete-failure");
-    await expect(dispatchV12NativeAcceptanceProductionOperation({
-      kernel: kernel({ values: { metric_profile: "timed_hold" } }),
-      contract: conflict,
-      request: requestForContract(conflict),
-    })).rejects.toThrow("v12_native_acceptance_workout_metric_precondition_missing");
 
     const remove = v12NativeAcceptanceCaseContract("workout", "workout.delete-exercise");
     await expect(dispatchV12NativeAcceptanceProductionOperation({
@@ -982,7 +922,7 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
-  it("rejects late Workout reader and conflict postconditions after valid setup", async () => {
+  it("rejects late Workout reader postconditions after valid setup", async () => {
     const rest = isolateExecutorWithMocks([{
       moduleName: "../platform/sqlite/repositories/restRepository",
       factory: () => {
@@ -1021,44 +961,6 @@ describe("v1.2 native acceptance production executor", () => {
       await expect(outcome.executor.dispatchV12NativeAcceptanceProductionOperation({
         kernel: kernel(), contract, request: requestForContract(contract),
       })).rejects.toThrow("v12_native_acceptance_workout_read_precondition_missing");
-    } finally {
-      jest.resetModules();
-    }
-
-    const conflict = isolateExecutorWithMocks([{
-      moduleName: "../domains/workout/setCommands",
-      factory: () => {
-        const actual = jest.requireActual<typeof import("../domains/workout/setCommands")>("../domains/workout/setCommands");
-        const active = jest.requireActual<typeof import("../domains/workout/activeWorkout")>("../domains/workout/activeWorkout");
-        return {
-          ...actual,
-          completeSet: async ({ haptics, invalidate, drainEffects }: Readonly<{
-            haptics: Readonly<{ committed(): Promise<void>; cue(): Promise<void> }>;
-            invalidate(): Promise<void>;
-            drainEffects(): Promise<void>;
-          }>) => {
-            await haptics.committed();
-            await haptics.cue();
-            await invalidate();
-            await drainEffects();
-            throw new active.WorkoutCommandConflictError("complete_set_conflict");
-          },
-        };
-      },
-    }]);
-    try {
-      const contract = conflict.contracts.v12NativeAcceptanceCaseContract("workout", "workout.complete-failure");
-      const runtime = kernel({ values: { metric_profile: "load_reps" } });
-      const queryAll = runtime.queryAll.bind(runtime);
-      runtime.queryAll = async <Row extends Record<string, unknown>,>(sql: string, params?: readonly SqliteParameter[]) => {
-        if (sql === "SELECT status, revision FROM session_sets WHERE id = ?") {
-          return [{ status: "completed", revision: 1 }] as unknown as readonly Row[];
-        }
-        return queryAll(sql, params);
-      };
-      await expect(conflict.executor.dispatchV12NativeAcceptanceProductionOperation({
-        kernel: runtime, contract, request: requestForContract(contract),
-      })).rejects.toThrow("v12_native_acceptance_workout_complete_conflict_postcondition_failed");
     } finally {
       jest.resetModules();
     }
@@ -1868,7 +1770,7 @@ describe("v1.2 native acceptance production executor", () => {
       }),
     }]);
     try {
-      const contract = preferenceWrite.contracts.v12NativeAcceptanceCaseContract("workout", "workout.appearance");
+      const contract = preferenceWrite.contracts.v12NativeAcceptanceCaseContract("workout", "workout.timing-policy");
       await expect(preferenceWrite.executor.dispatchV12NativeAcceptanceProductionOperation({
         kernel: kernel(), contract, request: requestForContract(contract),
       })).rejects.toThrow("v12_native_acceptance_workout_preference_postcondition_failed");
@@ -1895,7 +1797,7 @@ describe("v1.2 native acceptance production executor", () => {
       },
     }]);
     try {
-      const contract = preferenceReadback.contracts.v12NativeAcceptanceCaseContract("workout", "workout.appearance");
+      const contract = preferenceReadback.contracts.v12NativeAcceptanceCaseContract("workout", "workout.timing-policy");
       await expect(preferenceReadback.executor.dispatchV12NativeAcceptanceProductionOperation({
         kernel: kernel(), contract, request: requestForContract(contract),
       })).rejects.toThrow("v12_native_acceptance_workout_preference_postcondition_failed");
@@ -2939,7 +2841,7 @@ describe("v1.2 native acceptance production executor", () => {
   });
 
   it("fails rest commands closed for missing, invalid, or unpersisted contexts", async () => {
-    const assertRestFailure = async (caseId: "workout.rest-controls" | "workout.rest-recovery", contexts: readonly (Readonly<{ state: string; revision: number; remainingMs: number; startedAtMs: number }> | null)[], expected: string) => {
+    const assertRestFailure = async (caseId: "workout.rest-controls" | "workout.rest-recovery", contexts: readonly (Readonly<{ state: string; revision: number; remainingMs: number; startedAtMs: number; endsAtMs?: number }> | null)[], expected: string) => {
       let repositoryInstances = 0;
       const isolated = isolateExecutorWithMocks([
         {
@@ -2960,10 +2862,11 @@ describe("v1.2 native acceptance production executor", () => {
               repositoryInstances += 1;
               let reads = 0;
               return {
+                startManualRest: async () => undefined,
                 getRestContext: async () => {
                   const context = instance === 0
                     ? contexts[Math.min(reads, contexts.length - 1)]!
-                    : { state: "running", revision: 1, remainingMs: 10_000, startedAtMs: 0 };
+                    : { state: "running", revision: 1, remainingMs: 10_000, startedAtMs: 0, endsAtMs: 10_000 };
                   reads += 1;
                   return context === null ? null : { state: context };
                 },
@@ -2983,73 +2886,69 @@ describe("v1.2 native acceptance production executor", () => {
     };
 
     await assertRestFailure("workout.rest-controls", [null], "v12_native_acceptance_workout_rest_precondition_missing");
-    await assertRestFailure("workout.rest-controls", [{ state: "idle", revision: 1, remainingMs: 0, startedAtMs: 0 }], "v12_native_acceptance_workout_rest_precondition_missing");
+    await assertRestFailure("workout.rest-controls", [{ state: "idle", revision: 1, remainingMs: 0, startedAtMs: 0 }], "v12_native_acceptance_workout_rest_start_failed");
     await assertRestFailure("workout.rest-controls", [
-      { state: "running", revision: 1, remainingMs: 10_000, startedAtMs: 0 },
-      { state: "running", revision: 2, remainingMs: 10_000, startedAtMs: 0 },
-    ], "v12_native_acceptance_workout_rest_pause_missing");
+      { state: "running", revision: 1, remainingMs: 10_000, startedAtMs: 0, endsAtMs: 10_000 },
+      { state: "running", revision: 2, remainingMs: 10_000, startedAtMs: 0, endsAtMs: 10_000 },
+    ], "v12_native_acceptance_workout_rest_adjust_postcondition_failed");
     await assertRestFailure("workout.rest-recovery", [null], "v12_native_acceptance_workout_rest_precondition_missing");
-    await assertRestFailure("workout.rest-recovery", [{ state: "idle", revision: 1, remainingMs: 0, startedAtMs: 0 }], "v12_native_acceptance_workout_rest_precondition_missing");
+    await assertRestFailure("workout.rest-recovery", [{ state: "idle", revision: 1, remainingMs: 0, startedAtMs: 0 }], "v12_native_acceptance_workout_rest_start_failed");
     await assertRestFailure("workout.rest-recovery", [
-      { state: "running", revision: 1, remainingMs: 10_000, startedAtMs: 0 },
-      { state: "running", revision: 2, remainingMs: 10_000, startedAtMs: 0 },
+      { state: "running", revision: 1, remainingMs: 10_000, startedAtMs: 0, endsAtMs: 10_000 },
+      { state: "running", revision: 2, remainingMs: 10_000, startedAtMs: 0, endsAtMs: 10_000 },
     ], "v12_native_acceptance_workout_rest_pause_missing");
   });
 
-  it("consumes the full multi-plan wrapper projection through the outer source receipt", async () => {
+  it("keeps the Phase 13 handler observation-only after canonical preparation", async () => {
     const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ shard, caseId }) => (
       shard === "multi-plan" && caseId === "phase13-map01-activation"
     ))!;
     const runtime = kernel();
     let calls = 0;
-    const result = await executeV12NativeAcceptanceReadAction({
+    const operationRequest = request({
+      shard: contract.shard,
+      caseId: contract.caseId,
+      action: contract.actionId,
+      readback: contract.uiReadback.label,
+      sourceProbe: contract.sourceProbe,
+      authorityTables: contract.probes.post.tables,
+    });
+    await prepareV12NativeAcceptanceProductionOperation({
       kernel: runtime,
-      request: request({
-        shard: contract.shard,
-        caseId: contract.caseId,
-        action: contract.actionId,
-        readback: contract.uiReadback.label,
-        sourceProbe: contract.sourceProbe,
-        authorityTables: contract.probes.post.tables,
-      }),
-      sha256,
-      executeOperation: ({ contract: operationContract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
-        kernel: runtime,
-        contract: operationContract,
-        request: operationRequest,
-        runtime: {
-          multiPlan: {
-            runWrapper: async () => {
-              calls += 1;
-              return {
-                schemaVersion: 1,
-                contractVersion: 1,
-                status: "passed",
-                total: MULTI_PLAN_RUNNING_CONTRACT_CASES.length,
-                passed: MULTI_PLAN_RUNNING_CONTRACT_CASES.length,
-                failed: 0,
-                skipped: 0,
-                cases: MULTI_PLAN_RUNNING_CONTRACT_CASES.map((id) => ({ id, status: "passed", durationMs: 1 })),
-                startedAt: "2026-10-01T00:00:00.000Z",
-                finishedAt: "2026-10-01T00:00:01.000Z",
-              };
-            },
+      contract,
+      request: operationRequest,
+      runtime: {
+        domainObservationAdapter: {
+          runCase: async (caseId) => {
+            expect(caseId).toBe(contract.caseId);
+            calls += 1;
           },
         },
-      }),
+      },
+    });
+    const result = await dispatchV12NativeAcceptanceProductionOperation({
+      kernel: runtime,
+      contract,
+      request: operationRequest,
     });
 
     expect(calls).toBe(1);
-    expect(result.source_receipt).toMatchObject({
-      operation_result: "committed",
-      command_outcome: "committed",
-      committed_effects: 1,
+    expect(result).toMatchObject({
+      result: "committed",
+      facts: {
+        outcome: "already_committed",
+        committed_effects: 0,
+        authoritative_readback: {
+          caseId: contract.caseId,
+          case: { id: contract.caseId, status: "passed" },
+        },
+      },
     });
   });
 
   it("maps source families to exact authority tables and rejects unowned probes", () => {
     expect(authorityTablesForV12NativeAcceptance("multi-plan", "phase13-map01-activation", "multi-plan-running:phase13-map01-activation"))
-      .toEqual(["plans", "owned_plan_schedules", "owned_plan_mutation_requests"]);
+      .toEqual(["plans", "owned_plan_schedules", "owned_plan_mutation_requests", "app_settings"]);
     expect(authorityTablesForV12NativeAcceptance("library-running", "library.metric-profile-migration", "metric_profile_migration_events"))
       .toEqual(["metric_profile_migration_events", "exercises"]);
     expect(() => authorityTablesForV12NativeAcceptance("library-running", "library.remembered-state", "not_a_probe"))

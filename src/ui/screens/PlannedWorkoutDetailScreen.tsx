@@ -78,12 +78,10 @@ function hasTargets(detail: PlannedStrengthOccurrenceDetail): boolean {
 export function PlannedWorkoutDetailScreen({
   occurrenceId,
   loadOccurrence,
-  nativeAcceptanceAction,
   onBack,
 }: Readonly<{
   occurrenceId: string;
   loadOccurrence(occurrenceId: string): Promise<PlannedStrengthOccurrenceDetail | null>;
-  nativeAcceptanceAction?: Readonly<{ actionId: string; execute(): Promise<void> }>;
   onBack(): void;
 }>) {
   const { colors } = useAppTheme();
@@ -91,7 +89,6 @@ export function PlannedWorkoutDetailScreen({
   const [state, setState] = useState<LoadState>("loading");
   const [generation, setGeneration] = useState(0);
   const [expandedExerciseIds, setExpandedExerciseIds] = useState<ReadonlySet<string>>(() => new Set());
-  const [nativeAcceptanceObserved, setNativeAcceptanceObserved] = useState(false);
   const requestGeneration = useRef(0);
   const backActionRef = useRef<View>(null);
 
@@ -117,9 +114,7 @@ export function PlannedWorkoutDetailScreen({
         return;
       }
       setDetail(result);
-      setExpandedExerciseIds(nativeAcceptanceAction === undefined
-        ? new Set(result.exercises.map(({ id }) => id))
-        : new Set());
+      setExpandedExerciseIds(new Set(result.exercises.map(({ id }) => id)));
       setState("ready");
     }).catch(() => {
       if (!mounted || request !== requestGeneration.current) return;
@@ -130,7 +125,7 @@ export function PlannedWorkoutDetailScreen({
       mounted = false;
       if (requestGeneration.current === request) requestGeneration.current += 1;
     };
-  }, [generation, loadOccurrence, nativeAcceptanceAction, occurrenceId]);
+  }, [generation, loadOccurrence, occurrenceId]);
 
   if (state === "loading") {
     return <AdaptiveScreen primary={<><ScreenHeader backAction={onBack} backActionLabel="Back to Calendar agenda" backActionRef={backActionRef} title="Workout preview" titleStyle={calendarTypeScale.heading as TextStyle} /><SkeletonBlock height={48} width="64%" /><SkeletonBlock height={160} /></>} />;
@@ -158,7 +153,7 @@ export function PlannedWorkoutDetailScreen({
           </View>
         </View>
         <View accessibilityLabel="Planned Strength target facts" style={styles.exerciseList}>
-          {detail.exercises.map((exercise, exerciseIndex) => {
+          {detail.exercises.map((exercise) => {
             const expanded = expandedExerciseIds.has(exercise.id);
             const firstTarget = targetText(exercise.targets[0]!.targetJson)!;
             return (
@@ -168,22 +163,14 @@ export function PlannedWorkoutDetailScreen({
                   accessibilityRole="button"
                   accessibilityState={{ expanded }}
                   onPress={() => {
-                    const applyProductionDisclosure = () => setExpandedExerciseIds((current) => {
+                    setExpandedExerciseIds((current) => {
                       const next = new Set(current);
                       if (expanded) next.delete(exercise.id); else next.add(exercise.id);
                       return next;
                     });
-                    if (nativeAcceptanceAction === undefined || exerciseIndex !== 0) {
-                      applyProductionDisclosure();
-                      return;
-                    }
-                    void nativeAcceptanceAction.execute().then(() => {
-                      applyProductionDisclosure();
-                      setNativeAcceptanceObserved(true);
-                    });
                   }}
                   style={styles.exerciseHeader}
-                  testID={exerciseIndex === 0 ? nativeAcceptanceAction?.actionId : undefined}
+                  testID={`planned-exercise-action-${exercise.id}`}
                 >
                   <View style={styles.exerciseCopy}>
                     <Text accessibilityRole="header" style={[calendarTypeScale.heading as TextStyle, { color: colors.textPrimary }]}>{exercise.exerciseName}</Text>
@@ -195,7 +182,7 @@ export function PlannedWorkoutDetailScreen({
                     testID={`planned-exercise-disclosure-${exercise.id}`}
                   />
                 </FocusablePressable>
-                {expanded ? <View style={styles.table} {...(nativeAcceptanceObserved && exerciseIndex === 0 ? { testID: "planned-workout-expanded-result" } : {})}>
+                {expanded ? <View style={styles.table} testID={`planned-exercise-result-${exercise.id}`}>
                   <View style={styles.tableHeader}>
                     {["Set", "Previous", "Target", "State"].map((label) => <Text key={label} style={[calendarTypeScale.metadata as TextStyle, styles.cell, { color: colors.textSecondary }]}>{label}</Text>)}
                   </View>
