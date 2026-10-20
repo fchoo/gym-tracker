@@ -82,15 +82,18 @@ function kernel(options: Readonly<{
     const selected = /^SELECT ([\s\S]+?) FROM /u.exec(sql)?.[1]
       ?.split(",").map((column) => column.trim().replaceAll('"', "")) ?? ["id", "revision"];
     const row = Object.fromEntries(selected.map((column) => {
-      if (Object.hasOwn(options.values ?? {}, column)) return [column, options.values?.[column]];
-      if (/json$/u.test(column)) return [column, JSON.stringify({ case: "owned", column })];
-      if (/(?:revision|ordinal|_ms|count|version|favorite|hidden|archived|acknowledged)$/u.test(column)) {
-        return [column, options.snapshotValues?.[current] ?? (options.drift ? current : mutationRevision)];
+      const output = /\s+AS\s+([a-z_][a-z0-9_]*)$/iu.exec(column)?.[1]
+        ?? column.split(".").at(-1)!;
+      if (Object.hasOwn(options.values ?? {}, column)) return [output, options.values?.[column]];
+      if (Object.hasOwn(options.values ?? {}, output)) return [output, options.values?.[output]];
+      if (/json$/u.test(output)) return [output, JSON.stringify({ case: "owned", column: output })];
+      if (/(?:revision|ordinal|_ms|count|version|favorite|hidden|archived|acknowledged)$/u.test(output)) {
+        return [output, options.snapshotValues?.[current] ?? (options.drift ? current : mutationRevision)];
       }
-      if (column === "completion_idempotency_key") return [column, "durable-completion-receipt"];
-      if (column === "status") return [column, "committed"];
-      if (column === "operation") return [column, "case-owned-operation"];
-      return [column, options.values?.[column] ?? `${column}-owned-1`];
+      if (output === "completion_idempotency_key") return [output, "durable-completion-receipt"];
+      if (output === "status") return [output, "committed"];
+      if (output === "operation") return [output, "case-owned-operation"];
+      return [output, `${output}-owned-1`];
     }));
     return [row, Object.fromEntries(Object.entries(row).map(([key, value]) => [
       key,
