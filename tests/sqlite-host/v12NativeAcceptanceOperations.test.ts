@@ -181,6 +181,11 @@ describe("v1.2 Workout and Library production operation registry", () => {
     const receiptIds = new Set<string>();
     for (const [index, contract] of sourceOwned.entries()) {
       const { first, replay } = await executeSourceContractAudit(contract, index + 128);
+      expect(first.source_receipt).toMatchObject({
+        operation_id: contract.operation.id,
+        operation_handler_id: contract.operation.handlerId,
+        operation_postcondition_id: contract.operation.postcondition.id,
+      });
       if (contract.operation.kind === "repository-read") {
         expect(first.source_receipt).toMatchObject({
           operation_result: "read",
@@ -191,9 +196,15 @@ describe("v1.2 Workout and Library production operation registry", () => {
         expect(first.source_receipt.pre.facts_sha256).toBe(first.source_receipt.post.facts_sha256);
         continue;
       }
-      expect(first.source_receipt).toMatchObject({ command_outcome: "committed" });
+      expect(first.source_receipt).toMatchObject({
+        operation_result: "committed",
+        command_outcome: "committed",
+      });
       expect(first.source_receipt.committed_effects).toBeGreaterThanOrEqual(1);
+      expect(first.source_receipt.command_receipt_id).toEqual(expect.any(String));
+      expect(first.source_receipt.pre.facts_sha256).not.toBe(first.source_receipt.post.facts_sha256);
       expect(replay?.source_receipt).toMatchObject({
+        operation_result: "committed",
         command_outcome: "already_committed",
         committed_effects: 0,
         command_receipt_id: first.source_receipt.command_receipt_id,
