@@ -112,35 +112,60 @@ export function runV12BoundedProcess(program, args, {
   spawnImplementation = spawn,
   killImplementation = process.kill.bind(process),
   taskkillImplementation = spawnSync,
+  windowsTreeProbeImplementation = spawnSync,
 } = {}) {
   if (typeof program !== "string" || !path.isAbsolute(program) || !Array.isArray(args)
     || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || !Number.isSafeInteger(termGraceMs) || termGraceMs < 1
     || !Number.isSafeInteger(killGraceMs) || killGraceMs < 1 || !["win32", "darwin", "linux", "freebsd", "openbsd", "aix", "sunos"].includes(platform)
     || typeof spawnImplementation !== "function" || typeof killImplementation !== "function" || typeof taskkillImplementation !== "function"
+    || typeof windowsTreeProbeImplementation !== "function"
     || signal?.aborted) {
     return Promise.reject(new Error(signal?.aborted ? "v12_maestro_process_cancelled" : "v12_maestro_process_arguments_invalid"));
   }
   return new Promise((resolve, reject) => {
     const child = spawnImplementation(program, args, { cwd, env, detached: platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = ""; let stdoutBytes = 0; let stderrBytes = 0; let settled = false; let terminationCode;
+    let stdout = ""; let stdoutBytes = 0; let stderrBytes = 0; let settled = false; let terminationCode; let terminalOutcome;
     let timeout; let escalation; let killDeadline;
-    const groupAlive = () => {
-      if (child.pid === undefined) return false;
-      try { killImplementation(platform === "win32" ? child.pid : -child.pid, 0); return true; }
-      catch { return false; }
+    const windowsTreePids = () => {
+      if (child.pid === undefined) return [];
+      const script = "$root=[uint32]$args[0];$all=@(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId);$seen=@{};$queue=New-Object System.Collections.Queue;$queue.Enqueue($root);while($queue.Count -gt 0){$parent=[uint32]$queue.Dequeue();foreach($item in $all){if([uint32]$item.ParentProcessId -eq $parent -and -not $seen.ContainsKey([uint32]$item.ProcessId)){$seen[[uint32]$item.ProcessId]=$true;$queue.Enqueue([uint32]$item.ProcessId)}}};foreach($item in $all){if([uint32]$item.ProcessId -eq $root){$seen[$root]=$true}};$seen.Keys | Sort-Object";
+      let outcome;
+      try {
+        outcome = windowsTreeProbeImplementation("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script, String(child.pid)], {
+          encoding: "utf8", maxBuffer: 256 * 1024, timeout: killGraceMs, windowsHide: true,
+        });
+      } catch { return null; }
+      if (outcome?.status !== 0 || outcome.signal !== null || outcome.error !== undefined || typeof outcome.stdout !== "string") return null;
+      const values = outcome.stdout.trim() === "" ? [] : outcome.stdout.trim().split(/\r?\n/u).map((value) => Number(value.trim()));
+      if (values.length > 4_096 || values.some((value) => !Number.isSafeInteger(value) || value < 1)) return null;
+      return [...new Set(values)];
+    };
+    const treeState = () => {
+      if (child.pid === undefined) return "empty";
+      if (platform === "win32") {
+        const pids = windowsTreePids();
+        return pids === null ? "unknown" : pids.length === 0 ? "empty" : "alive";
+      }
+      try { killImplementation(-child.pid, 0); return "alive"; }
+      catch (error) { return error?.code === "ESRCH" ? "empty" : "unknown"; }
     };
     const taskkillTree = (force) => {
       if (child.pid === undefined) return false;
-      let outcome;
-      try {
-        outcome = taskkillImplementation("taskkill", ["/PID", String(child.pid), "/T", ...(force ? ["/F"] : [])], {
-          encoding: "utf8",
-          maxBuffer: 64 * 1024,
-          timeout: force ? killGraceMs : termGraceMs,
-          windowsHide: true,
-        });
-      } catch { return false; }
-      return outcome?.status === 0 && outcome.signal === null && outcome.error === undefined;
+      const observed = windowsTreePids();
+      if (Array.isArray(observed) && observed.length === 0) return true;
+      const targets = observed === null || observed.includes(child.pid) ? [child.pid] : observed;
+      const signalled = targets.every((pid) => {
+        let outcome;
+        try {
+          outcome = taskkillImplementation("taskkill", ["/PID", String(pid), "/T", ...(force ? ["/F"] : [])], {
+            encoding: "utf8", maxBuffer: 64 * 1024, timeout: force ? killGraceMs : termGraceMs, windowsHide: true,
+          });
+        } catch { return false; }
+        return outcome?.status === 0 && outcome.signal === null && outcome.error === undefined;
+      });
+      if (signalled) return true;
+      const after = windowsTreePids();
+      return Array.isArray(after) && after.length === 0;
     };
     const killTree = (signalName) => {
       if (child.pid === undefined) return false;
@@ -157,32 +182,42 @@ export function runV12BoundedProcess(program, args, {
       clearTimeout(timeout); clearTimeout(escalation); clearTimeout(killDeadline);
       signal?.removeEventListener("abort", onAbort);
     };
-    const rejectTermination = () => {
+    const settleAfterTree = () => {
       if (settled) return;
-      settled = true; cleanup(); reject(new Error(`v12_maestro_${terminationCode}`));
+      if (treeState() !== "empty") terminationCode = "process_tree_termination_failed";
+      settled = true; cleanup();
+      if (terminationCode !== undefined) reject(new Error(`v12_maestro_${terminationCode}`));
+      else if (terminalOutcome?.code !== 0 || terminalOutcome?.signal !== null) reject(new Error("v12_maestro_process_failed"));
+      else resolve(stdout);
     };
-    const terminate = (code) => {
-      if (terminationCode !== undefined || settled) return;
-      terminationCode = code;
+    const drainTree = () => {
+      if (settled || escalation !== undefined || killDeadline !== undefined) return;
+      if (treeState() === "empty") { settleAfterTree(); return; }
       const cooperative = killTree("SIGTERM");
       if (platform === "win32" && !cooperative) {
         if (!killTree("SIGKILL")) {
           terminationCode = "process_tree_termination_failed";
-          rejectTermination();
+          settleAfterTree();
           return;
         }
-        killDeadline = setTimeout(rejectTermination, killGraceMs);
+        killDeadline = setTimeout(settleAfterTree, killGraceMs);
         return;
       }
       escalation = setTimeout(() => {
-        if (!groupAlive()) { rejectTermination(); return; }
+        escalation = undefined;
+        if (treeState() === "empty") { settleAfterTree(); return; }
         if (!killTree("SIGKILL")) {
           terminationCode = "process_tree_termination_failed";
-          rejectTermination();
+          settleAfterTree();
           return;
         }
-        killDeadline = setTimeout(rejectTermination, killGraceMs);
+        killDeadline = setTimeout(settleAfterTree, killGraceMs);
       }, termGraceMs);
+    };
+    const terminate = (code) => {
+      if (terminationCode !== undefined || settled) return;
+      terminationCode = code;
+      drainTree();
     };
     const onAbort = () => terminate("process_cancelled");
     signal?.addEventListener("abort", onAbort, { once: true });
@@ -199,17 +234,14 @@ export function runV12BoundedProcess(program, args, {
     });
     child.on("error", () => {
       if (settled) return;
-      settled = true; cleanup(); reject(new Error("v12_maestro_process_spawn_failed"));
+      terminationCode = "process_spawn_failed";
+      drainTree();
     });
     child.on("close", (code, childSignal) => {
       if (settled) return;
-      if (terminationCode !== undefined) {
-        if (!groupAlive()) rejectTermination();
-        return;
-      }
-      settled = true; cleanup();
-      if (code !== 0 || childSignal !== null) reject(new Error("v12_maestro_process_failed"));
-      else resolve(stdout);
+      terminalOutcome = { code, signal: childSignal };
+      if (treeState() === "empty") settleAfterTree();
+      else drainTree();
     });
   });
 }

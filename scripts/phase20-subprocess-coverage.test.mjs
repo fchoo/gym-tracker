@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
+import { PassThrough } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -2383,6 +2385,81 @@ test("a timed-out coverage project kills its TERM-resistant grandchild", {
     }
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("a successful coverage leader drains its TERM-resistant POSIX process group", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "phase20-project-success-tree-"));
+  const child = new EventEmitter();
+  child.pid = 5151; child.exitCode = null; child.signalCode = null;
+  child.stdio = [null, null, null, new PassThrough()];
+  let descendantAlive = true;
+  const signals = [];
+  try {
+    writeFileSync(path.join(root, "success.test.mjs"), "import test from 'node:test'; test('ok', () => {});\n");
+    await runPhase20SubprocessCoverage({
+      projectRoot: root,
+      projects: [{ name: "success", coverage: false, tests: ["success.test.mjs"] }],
+      outputDirectory: path.join(root, "coverage"),
+      maxParallel: 1,
+      projectTimeoutMs: 2_000,
+      terminateGraceMs: 5,
+      platform: "linux",
+      spawnImplementation: () => {
+        const report = path.join(root, "coverage/projects/success/test-results.tap");
+        mkdirSync(path.dirname(report), { recursive: true }); writeFileSync(report, "# skipped 0\n");
+        queueMicrotask(() => { child.exitCode = 0; child.emit("close", 0, null); });
+        return child;
+      },
+      killImplementation: (_target, signal) => {
+        if (signal === 0) {
+          if (descendantAlive) return;
+          const error = new Error("gone"); error.code = "ESRCH"; throw error;
+        }
+        signals.push(signal);
+        if (signal === "SIGKILL") descendantAlive = false;
+      },
+    });
+    assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
+    assert.equal(descendantAlive, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a successful mocked Windows coverage leader verifies and drains its task tree", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "phase20-project-windows-success-"));
+  const child = new EventEmitter();
+  child.pid = 6262; child.exitCode = null; child.signalCode = null;
+  child.stdio = [null, null, null, new PassThrough()];
+  let descendantAlive = true;
+  const taskkillCalls = [];
+  try {
+    writeFileSync(path.join(root, "success.test.mjs"), "import test from 'node:test'; test('ok', () => {});\n");
+    await runPhase20SubprocessCoverage({
+      projectRoot: root,
+      projects: [{ name: "success", coverage: false, tests: ["success.test.mjs"] }],
+      outputDirectory: path.join(root, "coverage"),
+      maxParallel: 1,
+      projectTimeoutMs: 1_000,
+      terminateGraceMs: 5,
+      platform: "win32",
+      spawnImplementation: () => {
+        const report = path.join(root, "coverage/projects/success/test-results.tap");
+        mkdirSync(path.dirname(report), { recursive: true }); writeFileSync(report, "# skipped 0\n");
+        queueMicrotask(() => { child.exitCode = 0; child.emit("close", 0, null); });
+        return child;
+      },
+      windowsTreeProbeImplementation: () => ({ status: 0, signal: null, error: undefined,
+        stdout: descendantAlive ? "7272\n" : "" }),
+      taskkillImplementation: (_program, args) => {
+        taskkillCalls.push(args);
+        if (args.includes("/F")) descendantAlive = false;
+        return { status: 0, signal: null, error: undefined };
+      },
+    });
+    assert.deepEqual(taskkillCalls, [["/PID", "7272", "/T"], ["/PID", "7272", "/T", "/F"]]);
+    assert.equal(descendantAlive, false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("first project failure stops dequeuing and awaits cleanup of every active project tree", {

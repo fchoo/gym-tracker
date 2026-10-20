@@ -43,32 +43,59 @@ function installChildOnlyCoverage() {
 
 installChildOnlyCoverage();
 
-function signalProcessGroup(child, signal) {
-  if (!Number.isSafeInteger(child.pid) || child.pid < 1 || child.exitCode !== null || child.signalCode !== null) return true;
-  if (process.platform === "win32") {
-    const result = childProcess.spawnSync("taskkill", ["/PID", String(child.pid), "/T", ...(signal === "SIGKILL" ? ["/F"] : [])], {
-      encoding: "utf8",
-      timeout: 5_000,
-      windowsHide: true,
+function windowsTreePids(processGroupId, windowsTreeProbeImplementation, timeoutMs) {
+  const script = "$root=[uint32]$args[0];$all=@(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId);$seen=@{};$queue=New-Object System.Collections.Queue;$queue.Enqueue($root);while($queue.Count -gt 0){$parent=[uint32]$queue.Dequeue();foreach($item in $all){if([uint32]$item.ParentProcessId -eq $parent -and -not $seen.ContainsKey([uint32]$item.ProcessId)){$seen[[uint32]$item.ProcessId]=$true;$queue.Enqueue([uint32]$item.ProcessId)}}};foreach($item in $all){if([uint32]$item.ProcessId -eq $root){$seen[$root]=$true}};$seen.Keys | Sort-Object";
+  let result;
+  try {
+    result = windowsTreeProbeImplementation("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script, String(processGroupId)], {
+      encoding: "utf8", maxBuffer: 256 * 1024, timeout: timeoutMs, windowsHide: true,
     });
-    return !result.error && !result.signal && result.status === 0;
+  } catch { return null; }
+  if (result?.status !== 0 || result.signal !== null || result.error !== undefined || typeof result.stdout !== "string") return null;
+  const values = result.stdout.trim() === "" ? [] : result.stdout.trim().split(/\r?\n/u).map((value) => Number(value.trim()));
+  if (values.length > 4_096 || values.some((value) => !Number.isSafeInteger(value) || value < 1)) return null;
+  return [...new Set(values)];
+}
+
+function signalProcessGroup(child, signal, { platform, killImplementation, taskkillImplementation,
+  windowsTreeProbeImplementation, timeoutMs }) {
+  if (!Number.isSafeInteger(child.pid) || child.pid < 1) return true;
+  if (platform === "win32") {
+    const observed = windowsTreePids(child.pid, windowsTreeProbeImplementation, timeoutMs);
+    if (Array.isArray(observed) && observed.length === 0) return true;
+    const targets = observed === null || observed.includes(child.pid) ? [child.pid] : observed;
+    const signalled = targets.every((pid) => {
+      let result;
+      try {
+        result = taskkillImplementation("taskkill", ["/PID", String(pid), "/T", ...(signal === "SIGKILL" ? ["/F"] : [])], {
+          encoding: "utf8", timeout: timeoutMs, windowsHide: true,
+        });
+      } catch { return false; }
+      return !result.error && !result.signal && result.status === 0;
+    });
+    if (signalled) return true;
+    const after = windowsTreePids(child.pid, windowsTreeProbeImplementation, timeoutMs);
+    return Array.isArray(after) && after.length === 0;
   }
-  try { process.kill(-child.pid, signal); return true; }
+  try { killImplementation(-child.pid, signal); return true; }
   catch (error) { return error?.code === "ESRCH"; }
 }
 
-function processGroupIsEmpty(processGroupId) {
-  if (process.platform === "win32") return true;
-  try { process.kill(-processGroupId, 0); return false; }
+function processGroupIsEmpty(processGroupId, { platform, killImplementation, windowsTreeProbeImplementation, timeoutMs }) {
+  if (platform === "win32") {
+    const observed = windowsTreePids(processGroupId, windowsTreeProbeImplementation, timeoutMs);
+    return Array.isArray(observed) && observed.length === 0;
+  }
+  try { killImplementation(-processGroupId, 0); return false; }
   catch (error) { return error?.code === "ESRCH"; }
 }
 
-async function verifyProcessGroupEmpty(processGroupId, timeoutMs) {
+async function verifyProcessGroupEmpty(processGroupId, timeoutMs, dependencies) {
   const deadline = Date.now() + timeoutMs;
-  while (!processGroupIsEmpty(processGroupId) && Date.now() < deadline) {
+  while (!processGroupIsEmpty(processGroupId, dependencies) && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  return processGroupIsEmpty(processGroupId);
+  return processGroupIsEmpty(processGroupId, dependencies);
 }
 
 function runTestProject(project, {
@@ -79,6 +106,11 @@ function runTestProject(project, {
   terminateGraceMs,
   signal,
   onProjectSignal,
+  platform,
+  spawnImplementation,
+  killImplementation,
+  taskkillImplementation,
+  windowsTreeProbeImplementation,
 }) {
   return new Promise((resolve, reject) => {
     const { name, tests, concurrency = 1 } = project;
@@ -97,7 +129,10 @@ function runTestProject(project, {
     let terminalError;
     let terminateTimer;
     let killTimer;
-    const child = spawn(process.execPath, [PROCESS_BOOTSTRAP, process.execPath,
+    let termSent = false; let killSent = false;
+    const processDependencies = { platform, killImplementation, taskkillImplementation,
+      windowsTreeProbeImplementation, timeoutMs: terminateGraceMs };
+    const child = spawnImplementation(process.execPath, [PROCESS_BOOTSTRAP, process.execPath,
       "--test",
       `--test-concurrency=${String(concurrency)}`,
       "--test-timeout=600000",
@@ -109,7 +144,7 @@ function runTestProject(project, {
       ...tests,
     ], {
       cwd: projectRoot,
-      detached: process.platform !== "win32",
+      detached: platform !== "win32",
       env: environment,
       stdio: ["ignore", "inherit", "inherit", "pipe"],
       windowsHide: true,
@@ -117,14 +152,22 @@ function runTestProject(project, {
     const processGroupId = child.pid;
     const notifyAndSignal = (treeSignal) => {
       onProjectSignal?.({ project: name, signal: treeSignal });
-      cleanupVerified = signalProcessGroup(child, treeSignal) && cleanupVerified;
+      if (treeSignal === "SIGTERM") termSent = true;
+      if (treeSignal === "SIGKILL") killSent = true;
+      signalProcessGroup(child, treeSignal, processDependencies);
     };
     const finish = async (code, childSignal) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout); clearTimeout(terminateTimer); clearTimeout(killTimer);
       signal?.removeEventListener("abort", onAbort);
-      cleanupVerified = cleanupVerified && await verifyProcessGroupEmpty(processGroupId, terminateGraceMs);
+      if (!await verifyProcessGroupEmpty(processGroupId, 0, processDependencies)) {
+        if (!termSent) notifyAndSignal("SIGTERM");
+        if (!await verifyProcessGroupEmpty(processGroupId, terminateGraceMs, processDependencies)) {
+          if (!killSent) notifyAndSignal("SIGKILL");
+          cleanupVerified = await verifyProcessGroupEmpty(processGroupId, terminateGraceMs, processDependencies);
+        }
+      }
       if (!cleanupVerified) {
         reject(new Error(`phase20_coverage_project_cleanup_failed:${name}:${stopReason ?? "exit"}`));
       } else if (terminalError !== undefined) {
@@ -350,6 +393,11 @@ export async function runPhase20SubprocessCoverage({
   projectTimeoutMs = PROJECT_TIMEOUT_MS,
   terminateGraceMs = TERMINATE_GRACE_MS,
   onProjectSignal,
+  platform = process.platform,
+  spawnImplementation = spawn,
+  killImplementation = process.kill.bind(process),
+  taskkillImplementation = childProcess.spawnSync,
+  windowsTreeProbeImplementation = childProcess.spawnSync,
 }) {
   const { registeredModules, registeredTests } = validateCoverageProjects(projects, projectRoot);
   rmSync(outputDirectory, { force: true, recursive: true });
@@ -370,6 +418,11 @@ export async function runPhase20SubprocessCoverage({
             terminateGraceMs,
             signal,
             onProjectSignal,
+            platform,
+            spawnImplementation,
+            killImplementation,
+            taskkillImplementation,
+            windowsTreeProbeImplementation,
           });
           assertNoSkippedTests(testReportPath, project.name);
           if (project.coverage === false) return {

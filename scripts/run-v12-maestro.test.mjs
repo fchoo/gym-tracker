@@ -355,6 +355,32 @@ test("bounded supervisor kills a TERM-resistant process tree", { timeout: 10_000
   assert.throws(() => process.kill(descendant, 0), /ESRCH/u);
 });
 
+test("bounded supervisor drains a TERM-resistant descendant after a successful POSIX leader", { timeout: 10_000 }, async (t) => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "v12-maestro-success-tree-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const childPid = path.join(root, "child.pid");
+  const script = path.join(root, "successful-leader.mjs");
+  writeFileSync(script, [
+    'import { spawn } from "node:child_process";',
+    'import { writeFileSync } from "node:fs";',
+    `const child = spawn(process.execPath, ["-e", ${JSON.stringify('process.on("SIGTERM",()=>{});setInterval(()=>{},1000)')}], { stdio: "ignore" });`,
+    `writeFileSync(${JSON.stringify(childPid)}, String(child.pid));`,
+    "child.unref();",
+    "",
+  ].join("\n"));
+  let descendant = null;
+  try {
+    assert.equal(await runV12BoundedProcess(process.execPath, [script], {
+      cwd: root, timeoutMs: 2_000, termGraceMs: 100, killGraceMs: 1_000,
+    }), "");
+    descendant = Number(readFileSync(childPid, "utf8"));
+    assert.throws(() => process.kill(descendant, 0), /ESRCH/u);
+    descendant = null;
+  } finally {
+    if (descendant !== null) { try { process.kill(descendant, "SIGKILL"); } catch { /* already gone */ } }
+  }
+});
+
 function simulatedWindowsChild() {
   const child = new EventEmitter();
   child.pid = 4242;
@@ -373,6 +399,8 @@ test("Windows bounded supervisor uses taskkill tree termination even when the le
     platform: "win32",
     spawnImplementation: () => child,
     killImplementation: () => { if (!leaderAlive) throw new Error("ESRCH"); },
+    windowsTreeProbeImplementation: () => ({ status: 0, signal: null, error: undefined,
+      stdout: leaderAlive || descendantAlive ? "4242\n" : "" }),
     taskkillImplementation: (_program, args) => {
       calls.push(args);
       descendantAlive = !args.includes("/T");
@@ -390,6 +418,32 @@ test("Windows bounded supervisor uses taskkill tree termination even when the le
   assert.equal(descendantAlive, false);
 });
 
+test("Windows bounded supervisor verifies and drains a resistant descendant after leader success", async () => {
+  const child = simulatedWindowsChild();
+  let descendantAlive = true;
+  const taskkillCalls = [];
+  const running = runV12BoundedProcess("/tools/maestro.exe", ["test"], {
+    platform: "win32",
+    spawnImplementation: () => {
+      queueMicrotask(() => child.emit("close", 0, null));
+      return child;
+    },
+    windowsTreeProbeImplementation: () => ({ status: 0, signal: null, error: undefined,
+      stdout: descendantAlive ? "5252\n" : "" }),
+    taskkillImplementation: (_program, args) => {
+      taskkillCalls.push(args);
+      if (args.includes("/F")) descendantAlive = false;
+      return { status: 0, signal: null, error: undefined };
+    },
+    timeoutMs: 1_000,
+    termGraceMs: 5,
+    killGraceMs: 20,
+  });
+  assert.equal(await running, "");
+  assert.deepEqual(taskkillCalls, [["/PID", "5252", "/T"], ["/PID", "5252", "/T", "/F"]]);
+  assert.equal(descendantAlive, false);
+});
+
 test("Windows bounded supervisor escalates the complete tree and rejects failed taskkill outcomes", async () => {
   const escalatedChild = simulatedWindowsChild();
   let leaderAlive = true;
@@ -398,6 +452,8 @@ test("Windows bounded supervisor escalates the complete tree and rejects failed 
     platform: "win32",
     spawnImplementation: () => escalatedChild,
     killImplementation: () => { if (!leaderAlive) throw new Error("ESRCH"); },
+    windowsTreeProbeImplementation: () => ({ status: 0, signal: null, error: undefined,
+      stdout: leaderAlive ? "4242\n" : "" }),
     taskkillImplementation: (_program, args) => {
       escalationCalls.push(args);
       if (args.includes("/F")) {
@@ -419,6 +475,7 @@ test("Windows bounded supervisor escalates the complete tree and rejects failed 
     platform: "win32",
     spawnImplementation: () => failedChild,
     killImplementation: () => undefined,
+    windowsTreeProbeImplementation: () => ({ status: 0, signal: null, error: undefined, stdout: "4242\n" }),
     taskkillImplementation: (_program, args) => {
       failedCalls.push(args);
       return { status: 1, signal: null, error: undefined };
