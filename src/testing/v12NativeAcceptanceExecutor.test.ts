@@ -635,6 +635,53 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects invalid Owned Plan seed, read, and absent-plan projections", async () => {
+    const seed = isolateExecutorWithMocks([
+      {
+        moduleName: "../platform/sqlite/repositories/ownedPlanRepository",
+        factory: () => ({
+          ...jest.requireActual<typeof import("../platform/sqlite/repositories/ownedPlanRepository")>("../platform/sqlite/repositories/ownedPlanRepository"),
+          createOwnedPlanRepository: () => ({
+            read: async () => null,
+            createDraft: async () => ({ outcome: "already_committed", plan: { id: "wrong", days: [] } }),
+          }),
+        }),
+      },
+    ]);
+    try {
+      const contract = seed.contracts.v12NativeAcceptanceCaseContract("library-running", "library.plan-groups");
+      await expect(seed.executor.prepareV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_owned_plan_read_seed_invalid");
+    } finally {
+      jest.resetModules();
+    }
+
+    const invalidRead = isolateExecutorWithMocks([
+      {
+        moduleName: "../platform/sqlite/repositories/ownedPlanRepository",
+        factory: () => ({
+          ...jest.requireActual<typeof import("../platform/sqlite/repositories/ownedPlanRepository")>("../platform/sqlite/repositories/ownedPlanRepository"),
+          createOwnedPlanRepository: () => ({
+            read: async () => ({ name: "wrong", days: [] }),
+          }),
+        }),
+      },
+    ]);
+    try {
+      const read = invalidRead.contracts.v12NativeAcceptanceCaseContract("library-running", "library.plan-groups");
+      await expect(invalidRead.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract: read, request: requestForContract(read),
+      })).rejects.toThrow("v12_native_acceptance_owned_plan_read_postcondition_failed");
+      const absent = invalidRead.contracts.v12NativeAcceptanceCaseContract("library-running", "library.neutral-plan-chooser");
+      await expect(invalidRead.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract: absent, request: requestForContract(absent),
+      })).rejects.toThrow("v12_native_acceptance_plan_create_intent_postcondition_failed");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("consumes the full multi-plan wrapper projection through the outer source receipt", async () => {
     const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ shard, caseId }) => (
       shard === "multi-plan" && caseId === "phase13-map01-activation"
