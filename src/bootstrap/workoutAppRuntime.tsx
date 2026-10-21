@@ -2475,9 +2475,9 @@ export function WorkoutAppRuntimeProvider({
     void initialize();
     return () => {
       generationRef.current += 1;
-      void closeServices().catch((error: unknown) => {
+      void closeServices().catch(() => {
         if (!dependencies.strictDisposal) return;
-        console.error("workout_runtime_strict_disposal_failed", error instanceof Error ? error.message : "unknown");
+        console.error("workout_runtime_strict_disposal_failed");
       });
     };
   }, [closeServices, initialize]);

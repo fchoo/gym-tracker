@@ -7991,13 +7991,13 @@ describe("WorkoutAppRuntimeProvider", () => {
     view.unmount();
 
     await waitFor(() => expect(reportDisposalFailure).toHaveBeenCalledWith(strictFailure));
-    expect(consoleError).toHaveBeenCalledWith("workout_runtime_strict_disposal_failed", "unknown");
+    expect(consoleError).toHaveBeenCalledWith("workout_runtime_strict_disposal_failed");
     consoleError.mockRestore();
   });
 
   it.each([false, true])("contains cleanup errors from unsubscribing with strict disposal %s", async (strictDisposal) => {
     const lifecycle = runtimeLifecycle();
-    const failure = new Error("cleanup_unsubscribe_failed");
+    const failure = new Error("private_cleanup_detail_must_not_be_logged");
     lifecycle.subscribeForeground.mockReturnValueOnce(() => { throw failure; });
     const consoleError = jest.spyOn(console, "error").mockImplementation(() => undefined);
     const view = await render(<RuntimeHarness dependencies={dependencies(runtimeRepository([noPlanView], [null]), {
@@ -8009,7 +8009,8 @@ describe("WorkoutAppRuntimeProvider", () => {
       await view.unmount();
       await act(async () => { await Promise.resolve(); });
       if (strictDisposal) {
-        expect(consoleError).toHaveBeenCalledWith("workout_runtime_strict_disposal_failed", "cleanup_unsubscribe_failed");
+        expect(consoleError).toHaveBeenCalledWith("workout_runtime_strict_disposal_failed");
+        expect(JSON.stringify(consoleError.mock.calls)).not.toContain(failure.message);
       } else {
         expect(consoleError).not.toHaveBeenCalled();
       }
