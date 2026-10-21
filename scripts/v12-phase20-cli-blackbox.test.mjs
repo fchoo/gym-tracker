@@ -64,7 +64,7 @@ function fixtureRoot({ performanceOverBudget = false } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "v12-phase20-blackbox-"));
   // Production CLIs use cwd as their source/run root. These are source inputs,
   // not production modules, and the entrypoints themselves remain absolute.
-  for (const member of ["scripts", "src/testing/contracts", "src/testing/phase20VisualStateRegistry.json", "src/testing/phase20CalendarFixture.ts", "maestro/v1.2", ".planning/design", ".planning/phases/20-native-acceptance", ".planning/REQUIREMENTS.md"]) {
+  for (const member of ["scripts", "src/testing/contracts", "src/testing/package.json", "src/testing/v12NativeAcceptanceProductRegistry.ts", "src/testing/phase20VisualStateRegistry.json", "src/testing/phase20VisualStateRegistry.generated.ts", "src/testing/phase20CalendarFixture.ts", "maestro/v1.2", ".planning/design", ".planning/phases/20-native-acceptance", ".planning/REQUIREMENTS.md"]) {
     const source = path.join(project, member);
     if (existsSync(source)) cpSync(source, path.join(root, member), { recursive: true });
   }
