@@ -3588,25 +3588,31 @@ describe("WorkoutAppRuntimeProvider", () => {
     await act(async () => {
       await captured!.adjustRest({ sessionId: "session-1", expectedSessionRevision: 1, expectedRestRevision: 0, deltaMs: 15_000, nowMs: 3 });
     });
-    await expect(captured!.requestRestNotificationPermission()).resolves.toBe("denied");
-    await expect(captured!.setRestAlertPreferences({ soundEnabled: true, vibrationEnabled: true }))
-      .resolves.toMatchObject({ status: "persisted" });
+    await act(async () => {
+      await expect(captured!.requestRestNotificationPermission()).resolves.toBe("denied");
+      await expect(captured!.setRestAlertPreferences({ soundEnabled: true, vibrationEnabled: true }))
+        .resolves.toMatchObject({ status: "persisted" });
+    });
     preferenceStore.write.mockImplementationOnce(() => {
       throw new Error("preference_write_failed");
     });
     preferenceStore.read.mockImplementationOnce(() => {
       throw new Error("preference_read_failed");
     });
-    await expect(captured!.setRestAlertPreferences({ soundEnabled: false, vibrationEnabled: false }))
-      .resolves.toEqual({
-        status: "failed",
-        preferences: { soundEnabled: true, vibrationEnabled: true },
-      });
+    await act(async () => {
+      await expect(captured!.setRestAlertPreferences({ soundEnabled: false, vibrationEnabled: false }))
+        .resolves.toEqual({
+          status: "failed",
+          preferences: { soundEnabled: true, vibrationEnabled: true },
+        });
+    });
     const previousState = AppState.currentState;
     Object.defineProperty(AppState, "currentState", { configurable: true, value: "background" });
     try {
-      await expect(captured!.expireRest({ sessionId: "session-1", expectedSessionRevision: 1, expectedRestRevision: 0, nowMs: 3 }))
-        .resolves.toBeDefined();
+      await act(async () => {
+        await expect(captured!.expireRest({ sessionId: "session-1", expectedSessionRevision: 1, expectedRestRevision: 0, nowMs: 3 }))
+          .resolves.toBeDefined();
+      });
     } finally {
       Object.defineProperty(AppState, "currentState", { configurable: true, value: previousState });
     }
@@ -3687,7 +3693,8 @@ describe("WorkoutAppRuntimeProvider", () => {
     await waitFor(() => expect(captured?.launchState).toBe("trusted"));
     repository.getTodayView.mockRejectedValue(new Error("refresh_deferred"));
     workoutRepository.getActiveWorkout.mockRejectedValueOnce(new Error("active_read_failed"));
-    await expect(captured!.addExercise({
+    await act(async () => {
+      await expect(captured!.addExercise({
       requestId: "add-callback-failure",
       requestSha256: "a".repeat(64),
       sessionId: "session-1",
@@ -3710,6 +3717,7 @@ describe("WorkoutAppRuntimeProvider", () => {
     await expect(captured!.setWorkoutPreferences({} as never)).resolves.toBeDefined();
     await expect(captured!.finishCompleted({ sessionId: "session-1", expectedSessionRevision: 1, endedAtMs: 2 } as never))
       .resolves.toBeDefined();
+    });
   });
 
   it("keeps a committed result authoritative when its immediate refresh fails", async () => {
@@ -7859,7 +7867,9 @@ describe("WorkoutAppRuntimeProvider", () => {
       await waitFor(() => expect(captured?.launchState).toBe("trusted"));
       if (captured === undefined) throw new Error("runtime_not_captured");
 
-      await expect(captured.prepareV12NativeAcceptanceProductCase(productRequest)).resolves.toBe(prepared);
+      await act(async () => {
+        await expect(captured!.prepareV12NativeAcceptanceProductCase(productRequest)).resolves.toBe(prepared);
+      });
       expect(mockPrepareV12NativeAcceptanceProductCase).toHaveBeenCalledWith(expect.objectContaining({ request: productRequest }));
       await expect(captured.readV12NativeAcceptanceReceipt(productRequest)).resolves.toBe(readbacks);
       expect(mockReadV12NativeAcceptanceReceipt).toHaveBeenCalledWith(expect.objectContaining({
