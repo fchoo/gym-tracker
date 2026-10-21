@@ -2586,10 +2586,12 @@ describe("WorkoutAppRuntimeProvider", () => {
     const fenceCalls = () => queryAll.mock.calls.filter(([sql]) =>
       String(sql).includes("FROM progression_recommendations")).length;
     const callsBeforeKeep = fenceCalls();
-    await expect(captured!.progressRecommendationRuntime.decide(pending, "keep_current_target"))
-      .rejects.toThrow();
-    await expect(captured!.progressRecommendationRuntime.decide(pending, "keep_current_target"))
-      .resolves.toMatchObject({ status: "rejected" });
+    await act(async () => {
+      await expect(captured!.progressRecommendationRuntime.decide(pending, "keep_current_target"))
+        .rejects.toThrow();
+      await expect(captured!.progressRecommendationRuntime.decide(pending, "keep_current_target"))
+        .resolves.toMatchObject({ status: "rejected" });
+    });
     expect(fenceCalls() - callsBeforeKeep).toBe(2);
 
   });
@@ -3651,8 +3653,10 @@ describe("WorkoutAppRuntimeProvider", () => {
         sessionRevision: 12,
         invalidationScopes: [["active-workout", "session-1"], ["today"]],
       });
-    await expect(captured!.exerciseNotificationExpiry("foreground"))
-      .resolves.toBe("platform_failure");
+    await act(async () => {
+      await expect(captured!.exerciseNotificationExpiry("foreground"))
+        .resolves.toBe("platform_failure");
+    });
 
     expireRestWithForegroundFeedback.mockResolvedValueOnce({
       state: { version: 1, state: "expired", revision: 8, expiredAtMs: 120_000, nextSetId: "set-2" },
@@ -3660,12 +3664,16 @@ describe("WorkoutAppRuntimeProvider", () => {
       invalidationScopes: [["active-workout", "session-1"], ["today"]],
     });
     lifecycle.trigger.mockResolvedValue({ foregroundFeedback: [] } as never);
-    await expect(captured!.exerciseNotificationExpiry("foreground"))
-      .resolves.toBe("platform_failure");
+    await act(async () => {
+      await expect(captured!.exerciseNotificationExpiry("foreground"))
+        .resolves.toBe("platform_failure");
+    });
 
     jest.mocked(restRepository.listActiveSessionIds).mockRejectedValueOnce(new Error("rest_list_failed"));
-    await expect(captured!.exerciseNotificationExpiry("foreground"))
-      .resolves.toBe("platform_failure");
+    await act(async () => {
+      await expect(captured!.exerciseNotificationExpiry("foreground"))
+        .resolves.toBe("platform_failure");
+    });
   });
 
   it("covers post-commit callback failures without reversing committed facts", async () => {
@@ -4634,47 +4642,57 @@ describe("WorkoutAppRuntimeProvider", () => {
       .mockImplementationOnce((async (input: any) => { await input.sha256("weekday"); return { plan: { id: "editable-weekday-copy" } }; }) as never)
       .mockImplementationOnce((async (input: any) => { await input.sha256("rotation"); return { plan: { id: "editable-rotation-copy" } }; }) as never)
       .mockImplementationOnce((async (input: any) => { await input.sha256("update"); return { plan: { id: "template-update-copy" } }; }) as never);
-    await expect(captured.activateAcceptedStarterPlan({
-      templateId: template.id,
-      startLocalDate: "2026-08-17",
-      timeZone: "Asia/Singapore",
-      mode: "weekday",
-      bindings: [{ planDaySourceId: "full-body-a", ordinal: 0, weekIndex: 0, weekday: "Monday" }],
-      copyChoice: null,
-      expectedActiveScheduleRevision: 7,
-    })).resolves.toMatchObject({ plan: { id: "activated-starter" } });
+    await act(async () => {
+      await expect(captured!.activateAcceptedStarterPlan({
+        templateId: template.id,
+        startLocalDate: "2026-08-17",
+        timeZone: "Asia/Singapore",
+        mode: "weekday",
+        bindings: [{ planDaySourceId: "full-body-a", ordinal: 0, weekIndex: 0, weekday: "Monday" }],
+        copyChoice: null,
+        expectedActiveScheduleRevision: 7,
+      })).resolves.toMatchObject({ plan: { id: "activated-starter" } });
+    });
     mockedActivateStarterPlan.mockResolvedValueOnce({ plan: { id: "fallback-template-revision" } } as never);
-    await expect(captured.activateAcceptedStarterPlan({
-      templateId: "missing-template",
-      startLocalDate: "2026-08-17",
-      timeZone: "Asia/Singapore",
-      mode: "weekday",
-      bindings: [],
-      copyChoice: null,
-      expectedActiveScheduleRevision: null,
-    })).resolves.toMatchObject({ plan: { id: "fallback-template-revision" } });
+    await act(async () => {
+      await expect(captured!.activateAcceptedStarterPlan({
+        templateId: "missing-template",
+        startLocalDate: "2026-08-17",
+        timeZone: "Asia/Singapore",
+        mode: "weekday",
+        bindings: [],
+        copyChoice: null,
+        expectedActiveScheduleRevision: null,
+      })).resolves.toMatchObject({ plan: { id: "fallback-template-revision" } });
+    });
     expect(mockedActivateStarterPlan).toHaveBeenLastCalledWith(expect.objectContaining({
       templateId: "missing-template",
       templateRevision: catalog.pack.revision,
     }));
-    await expect(captured.createStarterEditableCopy(template.id)).resolves.toBe("editable-weekday-copy");
-    await expect(captured.createStarterEditableCopy("push-pull-legs")).resolves.toBe("editable-rotation-copy");
-    await expect(captured.createStarterEditableCopy("missing-template")).rejects.toThrow("starter_template_not_found");
-    await expect(captured.createStarterTemplateUpdateCopy(outdatedPreview!)).resolves.toBe("template-update-copy");
+    await act(async () => {
+      await expect(captured!.createStarterEditableCopy(template.id)).resolves.toBe("editable-weekday-copy");
+      await expect(captured!.createStarterEditableCopy("push-pull-legs")).resolves.toBe("editable-rotation-copy");
+      await expect(captured!.createStarterEditableCopy("missing-template")).rejects.toThrow("starter_template_not_found");
+      await expect(captured!.createStarterTemplateUpdateCopy(outdatedPreview!)).resolves.toBe("template-update-copy");
+    });
     repository.getTodayView.mockRejectedValueOnce(new Error("refresh_failed"));
     mockedActivateStarterPlan.mockResolvedValueOnce({ plan: { id: "activated-starter-2" } } as never);
-    await expect(captured.activateAcceptedStarterPlan({
-      templateId: template.id,
-      startLocalDate: "2026-08-17",
-      timeZone: "Asia/Singapore",
-      mode: "weekday",
-      bindings: [],
-      copyChoice: null,
-      expectedActiveScheduleRevision: 7,
-    })).resolves.toMatchObject({ plan: { id: "activated-starter-2" } });
+    await act(async () => {
+      await expect(captured!.activateAcceptedStarterPlan({
+        templateId: template.id,
+        startLocalDate: "2026-08-17",
+        timeZone: "Asia/Singapore",
+        mode: "weekday",
+        bindings: [],
+        copyChoice: null,
+        expectedActiveScheduleRevision: 7,
+      })).resolves.toMatchObject({ plan: { id: "activated-starter-2" } });
+    });
     repository.getTodayView.mockRejectedValueOnce(new Error("refresh_failed"));
     mockedCreateStarterPlanCopy.mockResolvedValueOnce({ plan: { id: "editable-failed-refresh" } } as never);
-    await expect(captured.createStarterEditableCopy(template.id)).resolves.toBe("editable-failed-refresh");
+    await act(async () => {
+      await expect(captured!.createStarterEditableCopy(template.id)).resolves.toBe("editable-failed-refresh");
+    });
   });
 
   it("rejects duplicate active sport plans and ambiguous starter activation state", async () => {
@@ -5556,10 +5574,12 @@ describe("WorkoutAppRuntimeProvider", () => {
         onReady={(runtime) => { captured = runtime; }}
       />);
       await waitFor(() => expect(captured?.launchState).toBe("trusted"));
-      automaticSubscribers[0]?.(automaticPresentation);
-      lifecycleSubscribers[0]?.(await lifecycle.trigger("foreground") as never);
-      appStateSubscriber?.("background");
-      appStateSubscriber?.("active");
+      await act(async () => {
+        automaticSubscribers[0]?.(automaticPresentation);
+        lifecycleSubscribers[0]?.(await lifecycle.trigger("foreground") as never);
+        appStateSubscriber?.("background");
+        appStateSubscriber?.("active");
+      });
       await waitFor(() => expect(automaticRuntime.refresh).toHaveBeenCalledTimes(1));
       expect(captured?.contentUpdateFailed).toBe(true);
       await act(async () => {
@@ -5568,8 +5588,10 @@ describe("WorkoutAppRuntimeProvider", () => {
       await waitFor(() => expect(automaticSubscribers).toHaveLength(2));
       await waitFor(() => expect(lifecycleSubscribers).toHaveLength(2));
       await waitFor(() => expect(captured?.launchState).toBe("trusted"));
-      automaticSubscribers[0]?.(automaticPresentation);
-      lifecycleSubscribers[0]?.(await lifecycle.trigger("foreground") as never);
+      await act(async () => {
+        automaticSubscribers[0]?.(automaticPresentation);
+        lifecycleSubscribers[0]?.(await lifecycle.trigger("foreground") as never);
+      });
       expect(captured?.launchState).toBe("trusted");
     } finally {
       appStateSpy.mockRestore();
@@ -6428,8 +6450,10 @@ describe("WorkoutAppRuntimeProvider", () => {
     />);
     await waitFor(() => expect(captured?.launchState).toBe("trusted"));
 
-    await expect(captured!.updateSessionExerciseDefaultRest({} as never))
-      .rejects.toThrow("session_exercise_default_rest_unavailable");
+    await act(async () => {
+      await expect(captured!.updateSessionExerciseDefaultRest({} as never))
+        .rejects.toThrow("session_exercise_default_rest_unavailable");
+    });
     await expect(captured!.undoCompletedSet({
       sessionId: "session-1",
       completedSetId: "set-1",
@@ -6796,9 +6820,11 @@ describe("WorkoutAppRuntimeProvider", () => {
     />);
     await waitFor(() => expect(captured?.launchState).toBe("trusted"));
     repository.getTodayView.mockRejectedValue(new Error("refresh_deferred"));
-    await expect(captured!.correctHistorySession({} as never)).resolves.toEqual({ outcome: "committed" });
-    await expect(captured!.removeHistorySession({} as never)).resolves.toEqual({ outcome: "committed" });
-    await expect(captured!.restoreHistorySession({} as never)).resolves.toEqual({ outcome: "committed" });
+    await act(async () => {
+      await expect(captured!.correctHistorySession({} as never)).resolves.toEqual({ outcome: "committed" });
+      await expect(captured!.removeHistorySession({} as never)).resolves.toEqual({ outcome: "committed" });
+      await expect(captured!.restoreHistorySession({} as never)).resolves.toEqual({ outcome: "committed" });
+    });
     expect(mockCorrectHistorySession).toHaveBeenCalled();
     expect(mockRemoveHistorySession).toHaveBeenCalled();
     expect(mockRestoreHistorySession).toHaveBeenCalled();
@@ -6921,47 +6947,50 @@ describe("WorkoutAppRuntimeProvider", () => {
     await waitFor(() => expect(captured?.launchState).toBe("trusted"));
     if (captured === undefined) throw new Error("runtime_not_captured");
 
-    await expect(captured.createCustomExercise({ requestId: "create" } as never)).resolves.toMatchObject({ outcome: "committed" });
-    await expect(captured.editCustomExercise({ requestId: "edit" } as never)).resolves.toMatchObject({ outcome: "committed" });
-    await expect(captured.createCustomCopy({ requestId: "copy" } as never)).resolves.toMatchObject({ outcome: "committed" });
-    await expect(captured.loadCustomExercise("exercise")).resolves.toBe(detail);
-    await expect(captured.loadCustomExerciseMigration("exercise")).resolves.toEqual({ exerciseId: "exercise" });
-    await expect(captured.setCustomExerciseFavorite({ exerciseId: "exercise", expectedPreferenceRevision: null, favorite: true })).resolves.toBe(detail);
-    await expect(captured.setCustomExerciseHidden({ exerciseId: "exercise", expectedPreferenceRevision: null, hidden: true })).resolves.toBe(detail);
-    await expect(captured.previewCustomExerciseArchive("exercise", 1)).resolves.toEqual({ kind: "preview" });
-    await expect(captured.setCustomExerciseArchived({ exerciseId: "exercise", expectedExerciseRevision: 1, expectedPreferenceRevision: null, previewRevision: "preview", archived: true })).resolves.toBe(detail);
-    await expect(captured.setCustomExerciseArchived({ exerciseId: "exercise", expectedExerciseRevision: 2, expectedPreferenceRevision: null, previewRevision: "preview", archived: false })).resolves.toBe(detail);
-    await expect(captured.migrateCustomExerciseMetricProfile({ idempotencyKey: "migration" } as never)).resolves.toEqual({ outcome: "committed" });
-    mockReadCustomExerciseDetail.mockResolvedValueOnce(null as never);
-    await expect(captured.setCustomExerciseFavorite({ exerciseId: "missing", expectedPreferenceRevision: null, favorite: true })).rejects.toThrow("custom_exercise_not_found");
+    const readyRuntime = captured;
+    await act(async () => {
+      await expect(readyRuntime.createCustomExercise({ requestId: "create" } as never)).resolves.toMatchObject({ outcome: "committed" });
+      await expect(readyRuntime.editCustomExercise({ requestId: "edit" } as never)).resolves.toMatchObject({ outcome: "committed" });
+      await expect(readyRuntime.createCustomCopy({ requestId: "copy" } as never)).resolves.toMatchObject({ outcome: "committed" });
+      await expect(readyRuntime.loadCustomExercise("exercise")).resolves.toBe(detail);
+      await expect(readyRuntime.loadCustomExerciseMigration("exercise")).resolves.toEqual({ exerciseId: "exercise" });
+      await expect(readyRuntime.setCustomExerciseFavorite({ exerciseId: "exercise", expectedPreferenceRevision: null, favorite: true })).resolves.toBe(detail);
+      await expect(readyRuntime.setCustomExerciseHidden({ exerciseId: "exercise", expectedPreferenceRevision: null, hidden: true })).resolves.toBe(detail);
+      await expect(readyRuntime.previewCustomExerciseArchive("exercise", 1)).resolves.toEqual({ kind: "preview" });
+      await expect(readyRuntime.setCustomExerciseArchived({ exerciseId: "exercise", expectedExerciseRevision: 1, expectedPreferenceRevision: null, previewRevision: "preview", archived: true })).resolves.toBe(detail);
+      await expect(readyRuntime.setCustomExerciseArchived({ exerciseId: "exercise", expectedExerciseRevision: 2, expectedPreferenceRevision: null, previewRevision: "preview", archived: false })).resolves.toBe(detail);
+      await expect(readyRuntime.migrateCustomExerciseMetricProfile({ idempotencyKey: "migration" } as never)).resolves.toEqual({ outcome: "committed" });
+      mockReadCustomExerciseDetail.mockResolvedValueOnce(null as never);
+      await expect(readyRuntime.setCustomExerciseFavorite({ exerciseId: "missing", expectedPreferenceRevision: null, favorite: true })).rejects.toThrow("custom_exercise_not_found");
 
-    await expect(captured.createOwnedPlanDraft({ name: "Plan", dayName: "Day" })).resolves.toBe(committed);
-    await expect(captured.saveOwnedPlan({ expectedRevision: 1, plan: {} as never })).resolves.toBe(committed);
-    await expect(captured.duplicateOwnedPlan({ sourcePlanId: "plan", expectedRevision: 1, name: "Copy" })).resolves.toBe(committed);
-    await expect(captured.archiveOwnedPlan({ planId: "plan", expectedRevision: 1 })).resolves.toBe(committed);
-    await expect(captured.restoreOwnedPlan({ planId: "plan", expectedRevision: 2 })).resolves.toBe(committed);
-    await expect(captured.previewOwnedPlanDayRemoval({ planId: "plan", dayId: "day" })).resolves.toEqual({ kind: "preview" });
-    await expect(captured.removeOwnedPlanDayWithImpact({} as never)).resolves.toBe(committed);
-    await expect(captured.previewOwnedPlanExerciseReplacement({ planId: "plan", occurrenceId: "occurrence" })).resolves.toEqual({ kind: "preview" });
-    await expect(captured.replaceOwnedPlanExercise({} as never)).resolves.toBe(committed);
+      await expect(readyRuntime.createOwnedPlanDraft({ name: "Plan", dayName: "Day" })).resolves.toBe(committed);
+      await expect(readyRuntime.saveOwnedPlan({ expectedRevision: 1, plan: {} as never })).resolves.toBe(committed);
+      await expect(readyRuntime.duplicateOwnedPlan({ sourcePlanId: "plan", expectedRevision: 1, name: "Copy" })).resolves.toBe(committed);
+      await expect(readyRuntime.archiveOwnedPlan({ planId: "plan", expectedRevision: 1 })).resolves.toBe(committed);
+      await expect(readyRuntime.restoreOwnedPlan({ planId: "plan", expectedRevision: 2 })).resolves.toBe(committed);
+      await expect(readyRuntime.previewOwnedPlanDayRemoval({ planId: "plan", dayId: "day" })).resolves.toEqual({ kind: "preview" });
+      await expect(readyRuntime.removeOwnedPlanDayWithImpact({} as never)).resolves.toBe(committed);
+      await expect(readyRuntime.previewOwnedPlanExerciseReplacement({ planId: "plan", occurrenceId: "occurrence" })).resolves.toEqual({ kind: "preview" });
+      await expect(readyRuntime.replaceOwnedPlanExercise({} as never)).resolves.toBe(committed);
 
-    const alreadyCommitted = { outcome: "already_committed", plan: { id: "plan", revision: 2 } } as never;
-    const requiresImpact = { outcome: "requires_schedule_impact", preview: { kind: "preview" } } as never;
-    owned.createDraft
-      .mockResolvedValueOnce(alreadyCommitted)
-      .mockResolvedValueOnce(requiresImpact);
-    await expect(captured.createOwnedPlanDraft({ name: "Replay", dayName: "Day" })).resolves.toBe(alreadyCommitted);
-    await expect(captured.createOwnedPlanDraft({ name: "Impact", dayName: "Day" })).resolves.toBe(requiresImpact);
-    owned.removeDayWithImpact
-      .mockResolvedValueOnce(alreadyCommitted)
-      .mockResolvedValueOnce(requiresImpact);
-    await expect(captured.removeOwnedPlanDayWithImpact({} as never)).resolves.toBe(alreadyCommitted);
-    await expect(captured.removeOwnedPlanDayWithImpact({} as never)).resolves.toBe(requiresImpact);
-    owned.replaceExercise
-      .mockResolvedValueOnce(alreadyCommitted)
-      .mockResolvedValueOnce(requiresImpact);
-    await expect(captured.replaceOwnedPlanExercise({} as never)).resolves.toBe(alreadyCommitted);
-    await expect(captured.replaceOwnedPlanExercise({} as never)).resolves.toBe(requiresImpact);
+      const alreadyCommitted = { outcome: "already_committed", plan: { id: "plan", revision: 2 } } as never;
+      const requiresImpact = { outcome: "requires_schedule_impact", preview: { kind: "preview" } } as never;
+      owned.createDraft
+        .mockResolvedValueOnce(alreadyCommitted)
+        .mockResolvedValueOnce(requiresImpact);
+      await expect(readyRuntime.createOwnedPlanDraft({ name: "Replay", dayName: "Day" })).resolves.toBe(alreadyCommitted);
+      await expect(readyRuntime.createOwnedPlanDraft({ name: "Impact", dayName: "Day" })).resolves.toBe(requiresImpact);
+      owned.removeDayWithImpact
+        .mockResolvedValueOnce(alreadyCommitted)
+        .mockResolvedValueOnce(requiresImpact);
+      await expect(readyRuntime.removeOwnedPlanDayWithImpact({} as never)).resolves.toBe(alreadyCommitted);
+      await expect(readyRuntime.removeOwnedPlanDayWithImpact({} as never)).resolves.toBe(requiresImpact);
+      owned.replaceExercise
+        .mockResolvedValueOnce(alreadyCommitted)
+        .mockResolvedValueOnce(requiresImpact);
+      await expect(readyRuntime.replaceOwnedPlanExercise({} as never)).resolves.toBe(alreadyCommitted);
+      await expect(readyRuntime.replaceOwnedPlanExercise({} as never)).resolves.toBe(requiresImpact);
+    });
   });
 
   it("forwards every schedule capability through the injected runtime port", async () => {
@@ -7085,8 +7114,10 @@ describe("WorkoutAppRuntimeProvider", () => {
     />);
     await waitFor(() => expect(captured?.launchState).toBe("trusted"));
 
-    await expect(captured!.startPlanDay("day-a", "alternate"))
-      .resolves.toBe("session-1");
+    await act(async () => {
+      await expect(captured!.startPlanDay("day-a", "alternate"))
+        .resolves.toBe("session-1");
+    });
     expect(repository.startWorkout).toHaveBeenCalledWith(expect.objectContaining({
       mode: "alternate",
       planDayId: "day-a",
