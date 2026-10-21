@@ -196,7 +196,7 @@ test("production subprocess returns measured F200/accessibility with restored se
   const writes = [];
   const shardManifest = { ...runner.build, configuration: { id: "AP-L-C390-P-F100" } };
   const phase14 = phase14ShellEvidenceFixture(shardManifest);
-  const shard = executeLiveV12AccessibilityShard({ runId: runner.build.run_id, manifest: shardManifest,
+  const shard = executeLiveV12AccessibilityShard({ runId: runner.build.run_id, root: runner.root, manifest: shardManifest,
     phase14Manifest: phase14.phase14Manifest, phase14Evidence: phase14.evidence,
     phase14ValidationOptions: SYNTHETIC_PHASE14_VALIDATION_OPTIONS,
     observe: () => result, write: (file, value) => writes.push([file, value]) });
