@@ -1,7 +1,7 @@
 /** Version 3 is the Phase 13 successor graph.  Versions 1 and 2 stay frozen. */
-/** Version 10 carries immutable recommendation decision receipts. */
-export const LOGICAL_BACKUP_FORMAT_VERSION = 10 as const;
-export const LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const);
+/** Version 11 carries immutable unscheduled plan-exercise replacement receipts. */
+export const LOGICAL_BACKUP_FORMAT_VERSION = 11 as const;
+export const LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const);
 
 export type LogicalBackupFormatVersion =
   (typeof LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS)[number];
@@ -66,6 +66,7 @@ export const LOGICAL_BACKUP_TABLE_DEFINITIONS = Object.freeze({
   owned_plan_working_set_targets: { primaryKey: ["id"] },
   owned_plan_progression_policies: { primaryKey: ["id"] },
   owned_plan_occurrence_sources: { primaryKey: ["plan_day_exercise_id"] },
+  plan_exercise_replacement_receipts: { primaryKey: ["request_id"] },
   owned_plan_schedules: { primaryKey: ["id"] },
   owned_plan_schedule_versions: { primaryKey: ["id"] },
   owned_plan_schedule_bindings: { primaryKey: ["id"] },
@@ -142,7 +143,7 @@ const RECOMMENDATION_DECISION_RECEIPT_TABLES = Object.freeze([
 const LEGACY_LOGICAL_BACKUP_TABLES = Object.freeze(
   LOGICAL_BACKUP_TABLES.filter((table) => !(
     RECOMMENDATION_DECISION_RECEIPT_TABLES as readonly string[]
-  ).includes(table)),
+  ).includes(table) && table !== "plan_exercise_replacement_receipts"),
 ) as readonly LogicalBackupTableName[];
 
 /** The historical v2 graph must never grow when successor source tables land. */
@@ -247,6 +248,12 @@ export const LOGICAL_BACKUP_V9_TABLES = Object.freeze(
 
 /** v10 adds durable recommendation decision receipts. */
 export const LOGICAL_BACKUP_V10_TABLES = Object.freeze(
+  LOGICAL_BACKUP_TABLES.filter((table) => table !== "running_current_matches"
+    && table !== "plan_exercise_replacement_receipts"),
+) as readonly LogicalBackupTableName[];
+
+/** v11 adds durable immutable plan-exercise replacement command receipts. */
+export const LOGICAL_BACKUP_V11_TABLES = Object.freeze(
   LOGICAL_BACKUP_TABLES.filter((table) => table !== "running_current_matches"),
 ) as readonly LogicalBackupTableName[];
 
@@ -318,6 +325,7 @@ export function logicalBackupTablesForVersion(
   version: LogicalBackupFormatVersion,
   schemaVersion = Number.POSITIVE_INFINITY,
 ): readonly (keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS)[] {
+  if (version === 11) return LOGICAL_BACKUP_V11_TABLES;
   if (version === 10) return LOGICAL_BACKUP_V10_TABLES;
   if (version === 9) return LOGICAL_BACKUP_V9_TABLES;
   if (version === 8) return LOGICAL_BACKUP_V8_TABLES;

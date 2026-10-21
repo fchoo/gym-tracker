@@ -408,6 +408,7 @@ describe("restore preflight", () => {
     [9, 44],
     [10, 45],
     [10, 46],
+    [11, 47],
   ])("accepts logical format v%i at its explicit schema-%i compatibility boundary", async (version, schemaVersion) => {
     const commands = createRestoreCommands({
       crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
@@ -427,6 +428,7 @@ describe("restore preflight", () => {
     [8, 43],
     [9, 42],
     [9, 45],
+    [11, 46],
   ])("rejects logical format v%i outside its explicit schema-%i compatibility boundary", async (version, schemaVersion) => {
     const commands = createRestoreCommands({
       crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({

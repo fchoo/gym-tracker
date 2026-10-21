@@ -86,6 +86,7 @@ export const LOGICAL_RESTORE_DELETE_TRIGGER_NAMES = Object.freeze([
   "running_activity_match_receipts_immutable_delete",
   "schedule_collision_outcomes_immutable_delete",
   "schedule_collision_receipts_immutable_delete",
+  "plan_exercise_replacement_receipts_immutable_delete",
 ] as const);
 
 /**

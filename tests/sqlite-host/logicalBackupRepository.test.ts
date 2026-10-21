@@ -3,6 +3,7 @@ import {
   describe,
   expect,
   it,
+  jest,
 } from "@jest/globals";
 import { DatabaseSync } from "node:sqlite";
 import {
@@ -35,8 +36,10 @@ import type {
 } from "../../src/platform/sqlite/recoveryBackup";
 import {
   createLogicalBackupRepository,
+  logicalBackupCollectionIdentity,
   LOGICAL_BACKUP_TABLE_FILTERS,
 } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
+import * as runtimeSha256 from "../../src/platform/crypto/runtimeSha256";
 import {
   LOGICAL_BACKUP_REFERENCE_DEFINITIONS,
 } from "../../src/domains/portability/restoreCommands";
@@ -172,6 +175,10 @@ async function seed(kernel: SqliteKernel): Promise<void> {
     await transaction.execute("INSERT INTO owned_plan_progression_policies (id, plan_day_exercise_id, policy_kind, policy_id, policy_version, rule_json, metric_profile, metric_contract_version, exercise_metric_generation, status, revision) VALUES ('owned-policy', 'owned-occurrence', 'manual_hold', 'manual-hold', 1, '{}', 'load_reps', 1, 1, 'active', 1)");
     await transaction.execute("INSERT INTO owned_plan_occurrence_sources (plan_day_exercise_id, plan_day_id, source_occurrence_id, source_exercise_id, source_ordinal, catalog_metric_profile, catalog_metric_contract_version, catalog_exercise_metric_generation, metric_override_json, content_rationale) VALUES ('owned-occurrence', 'copied-day', 'template-occurrence', 'template-exercise', 1, 'load_reps', 1, 1, NULL, 'Owner adjustment')");
     await transaction.execute("INSERT INTO owned_plan_occurrence_sources (plan_day_exercise_id, plan_day_id, source_occurrence_id, source_exercise_id, source_ordinal, catalog_metric_profile, catalog_metric_contract_version, catalog_exercise_metric_generation, metric_override_json, content_rationale) VALUES ('owned-catalog-occurrence', 'copied-day', 'template-catalog-occurrence', 'plan-only-row', 2, 'load_reps', 1, 1, NULL, 'Owner catalog reference')");
+    await transaction.execute(
+      "INSERT INTO plan_exercise_replacement_receipts (request_id, request_sha256, plan_id, source_occurrence_id, replacement_exercise_id, expected_plan_revision, result_plan_revision, result_json, committed_at_ms) VALUES ('replacement-receipt', ?, 'copied-plan', 'owned-occurrence', 'custom-exercise', 1, 2, ?, 3)",
+      [hash, JSON.stringify({ outcome: "committed", planId: "copied-plan" })],
+    );
     await transaction.execute("INSERT INTO owned_plan_schedules (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms) VALUES ('owned-schedule', 'copied-plan', 'active', 1, 3, NULL)");
     await transaction.execute("INSERT INTO owned_plan_schedule_versions (id, schedule_id, version_number, effective_local_date, mode, timezone, rotation_pointer, created_at_ms) VALUES ('owned-version', 'owned-schedule', 1, '2026-08-24', 'weekday', 'Asia/Singapore', NULL, 3)");
     await transaction.execute("INSERT INTO owned_plan_schedule_bindings (id, schedule_version_id, mode, ordinal, week_index, weekday, plan_day_id) VALUES ('owned-binding', 'owned-version', 'weekday', 0, 0, 'Monday', 'copied-day')");
@@ -247,6 +254,82 @@ describe("logical backup repository", () => {
       snapshot_sha256: firstReceipt.snapshot_sha256,
       total_rows: first.manifest.totalRows,
     }]);
+  });
+
+  it("rejects an invalid collection identity before opening a writer", async () => {
+    await expect(logicalBackupCollectionIdentity({ snapshotId: " ", createdAtMs: 1 }))
+      .rejects.toThrow("logical_backup_collection_failed");
+    await expect(logicalBackupCollectionIdentity({ snapshotId: "snapshot", createdAtMs: -1 }))
+      .rejects.toThrow("logical_backup_collection_failed");
+  });
+
+  it("rejects malformed persisted collection receipts and failed receipt writes", async () => {
+    const kernel = await open();
+    const malformedReceiptKernel: SqliteKernel = {
+      ...kernel,
+      write: (command) => kernel.write(async (transaction) => command({
+        ...transaction,
+        queryAll: async function queryAll<Row extends Record<string, unknown>>(
+          sql: string,
+          parameters: readonly (null | number | string | Uint8Array)[] = [],
+        ) {
+          if (sql.includes("FROM logical_backup_receipts")) {
+            return [{
+              request_id: "logical-backup:" + "a".repeat(64),
+              request_sha256: "invalid",
+              snapshot_id: "backup-test",
+              snapshot_sha256: "b".repeat(64),
+              total_rows: 1,
+              committed_at_ms: 1,
+            }] as unknown as readonly Row[];
+          }
+          return transaction.queryAll<Row>(sql, parameters);
+        },
+      })),
+    };
+    await expect(collect(malformedReceiptKernel)).rejects.toThrow(
+      "logical_backup_collection_failed",
+    );
+
+    const failedReceiptWriteKernel: SqliteKernel = {
+      ...kernel,
+      write: (command) => kernel.write(async (transaction) => command({
+        ...transaction,
+        execute: async (sql, parameters) => {
+          if (sql.includes("INSERT INTO logical_backup_receipts")) {
+            return { changes: 0, lastInsertRowId: 0 };
+          }
+          return transaction.execute(sql, parameters);
+        },
+      })),
+    };
+    await expect(collect(failedReceiptWriteKernel)).rejects.toThrow(
+      "logical_backup_collection_failed",
+    );
+  });
+
+  it("rejects a replay whose source facts changed after its request receipt committed", async () => {
+    const kernel = await open();
+    const repository = createLogicalBackupRepository(kernel);
+    const input = { snapshotId: "source-change", createdAtMs: 1 };
+    await repository.collect(input);
+    await kernel.write((transaction) => transaction.execute(
+      "INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES ('source-change', 1, '{}', 1, 1)",
+    ));
+    await expect(repository.collect(input)).rejects.toThrow(
+      "logical_backup_request_identity_conflict",
+    );
+  });
+
+  it("fails closed when snapshot hashing cannot produce a SHA-256 digest", async () => {
+    const kernel = await open();
+    const digest = jest.spyOn(runtimeSha256, "runtimeSha256");
+    digest
+      .mockResolvedValueOnce("a".repeat(64))
+      .mockResolvedValueOnce("b".repeat(64))
+      .mockResolvedValueOnce("invalid");
+    await expect(collect(kernel)).rejects.toThrow("logical_backup_collection_failed");
+    digest.mockRestore();
   });
 
   it("keeps every logical-table foreign key represented by the restore reference registry", async () => {
@@ -332,6 +415,17 @@ describe("logical backup repository", () => {
       "copied-plan",
       "custom-plan",
     ]);
+    expect(first.tables.plan_exercise_replacement_receipts).toEqual([{
+      request_id: "replacement-receipt",
+      request_sha256: hash,
+      plan_id: "copied-plan",
+      source_occurrence_id: "owned-occurrence",
+      replacement_exercise_id: "custom-exercise",
+      expected_plan_revision: 1,
+      result_plan_revision: 2,
+      result_json: JSON.stringify({ outcome: "committed", planId: "copied-plan" }),
+      committed_at_ms: 3,
+    }]);
     expect(first.tables.history_audit_events!.map(({ event_type }) => event_type)).toEqual([
       "correction",
       "restore",

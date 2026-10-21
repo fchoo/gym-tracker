@@ -23,7 +23,7 @@ import {
   type LogicalBackupSnapshot,
 } from "../../src/domains/portability/backupContracts";
 import {
-  createLogicalBackupRepository,
+  collectLogicalBackupSnapshot,
 } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
 import {
   createLogicalRestoreRepository,
@@ -111,9 +111,10 @@ async function open(): Promise<SqliteKernel> {
 }
 
 async function snapshot(kernel: SqliteKernel): Promise<LogicalBackupSnapshot> {
-  return createLogicalBackupRepository(kernel).collect({
-    createdAtMs: 1, snapshotId: "restore-fixture",
-  });
+  return kernel.write((transaction) => collectLogicalBackupSnapshot(transaction, {
+    createdAtMs: 1,
+    snapshotId: "restore-fixture",
+  }));
 }
 
 function emptySnapshot(): LogicalBackupSnapshot {
@@ -238,6 +239,21 @@ async function seed(kernel: SqliteKernel, suffix: string): Promise<void> {
       [`occurrence-${suffix}`, `day-${suffix}`, `exercise-${suffix}`],
     );
     await transaction.execute(
+      "INSERT INTO owned_plan_day_exercises (id, plan_day_id, exercise_id, ordinal, between_exercise_rest_seconds, metric_profile, metric_contract_version, exercise_metric_generation, revision) VALUES (?, ?, ?, 0, 90, 'load_reps', 1, 1, 1)",
+      [`owned-occurrence-${suffix}`, `day-${suffix}`, `exercise-${suffix}`],
+    );
+    await transaction.execute(
+      "INSERT INTO plan_exercise_replacement_receipts (request_id, request_sha256, plan_id, source_occurrence_id, replacement_exercise_id, expected_plan_revision, result_plan_revision, result_json, committed_at_ms) VALUES (?, ?, ?, ?, ?, 1, 2, ?, 3)",
+      [
+        `replacement-${suffix}`,
+        "b".repeat(64),
+        `plan-${suffix}`,
+        `owned-occurrence-${suffix}`,
+        `exercise-${suffix}`,
+        JSON.stringify({ planId: `plan-${suffix}`, outcome: "committed" }),
+      ],
+    );
+    await transaction.execute(
       "INSERT INTO plan_working_set_targets (id, plan_day_exercise_id, ordinal, load_grams, min_reps, max_reps, target_json, unit_json, metric_profile, metric_contract_version, exercise_metric_generation, revision) VALUES (?, ?, 0, 10000, 8, 10, '{}', '{}', 'load_reps', 1, 1, 1)",
       [`target-${suffix}`, `occurrence-${suffix}`],
     );
@@ -301,6 +317,15 @@ describe("logical restore repository", () => {
       session_exercise_id: "session-exercise-archive",
       default_rest_seconds: 75,
       result_json: JSON.stringify({ version: 1, sessionId: "session-archive", sessionExerciseId: "session-exercise-archive", defaultRestSeconds: 75 }),
+    }]);
+    await expect(kernel.queryAll(
+      "SELECT request_id, plan_id, source_occurrence_id, replacement_exercise_id, result_plan_revision FROM plan_exercise_replacement_receipts",
+    )).resolves.toEqual([{
+      request_id: "replacement-archive",
+      plan_id: "plan-archive",
+      source_occurrence_id: "owned-occurrence-archive",
+      replacement_exercise_id: "exercise-archive",
+      result_plan_revision: 2,
     }]);
     await expect(kernel.queryAll("SELECT state, updated_at_ms FROM portability_restore_state"))
       .resolves.toEqual([{ state: "rebuild_pending", updated_at_ms: 99 }]);
@@ -483,9 +508,11 @@ describe("logical restore repository", () => {
     expect(LOGICAL_BACKUP_TABLES).toContain("owned_progression_recommendation_decision_receipts");
     expect(LOGICAL_BACKUP_TABLES).toContain("custom_exercise_mutation_receipts");
     expect(LOGICAL_BACKUP_TABLES).toContain("workout_session_exercise_rest_default_receipts");
-    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(10);
+    expect(LOGICAL_BACKUP_TABLES).toContain("plan_exercise_replacement_receipts");
+    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(11);
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).toContain("portable_owner_identity_adoption_only");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).toContain("workout_session_exercise_rest_default_receipts_immutable_delete");
+    expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).toContain("plan_exercise_replacement_receipts_immutable_delete");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("starter_plan_sources_immutable_delete");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("session_sets_target_graph_insert");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("progression_recommendations_actionable_evidence_insert");

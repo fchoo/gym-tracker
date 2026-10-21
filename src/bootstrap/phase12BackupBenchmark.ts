@@ -91,8 +91,8 @@ const OWNER_NAMESPACE = "f".repeat(32);
 const ROWS_PER_TABLE = BACKUP_LIMITS.maxRowsPerTable;
 const ALIAS_ROWS = 10_000;
 const REORDER_RECEIPT_ROWS = ROWS_PER_TABLE - ALIAS_ROWS;
-/** Current schema-45 logical-backup graph before app_settings padding. */
-export const PHASE12_SQLITE_PRE_PADDING_BYTES = 23_242_738;
+/** Current schema-47 logical-backup graph before app_settings padding. */
+export const PHASE12_SQLITE_PRE_PADDING_BYTES = 23_242_817;
 const SQLITE_APP_SETTING_ROWS = PHASE12_MAX_SNAPSHOT_ROWS
   - 5
   - (ROWS_PER_TABLE * 3);
@@ -397,7 +397,12 @@ export async function seedMaximumHistory(
   });
   assertPhase12BenchmarkActive(controls);
   const collector = createLogicalBackupRepository(kernel);
-  const baseline = await collector.collect({ snapshotId: "phase12-writer-00", createdAtMs: 100 });
+  // The pre-padding baseline is diagnostic-only. It must not claim the
+  // idempotency identity later used by the first measured writer capture.
+  const baseline = await collector.collect({
+    snapshotId: "phase12-prepad-00",
+    createdAtMs: 100,
+  });
   const baselineBytes = encodedBytes(baseline);
   if (baselineBytes !== PHASE12_SQLITE_PRE_PADDING_BYTES) {
     throw new Error(`phase12_sqlite_fixture_baseline_invalid:${baselineBytes}`);

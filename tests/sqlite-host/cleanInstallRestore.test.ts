@@ -377,7 +377,7 @@ async function canonicalState(kernel: SqliteKernel): Promise<unknown> {
 }
 
 describe("clean install logical restore", () => {
-  it("collects, encrypts, preflights, restores, and reads back a current schema-46 backup on a clean host database", async () => {
+  it("collects, encrypts, preflights, restores, and reads back a current schema-47 backup on a clean host database", async () => {
     const catalog = await acceptedCatalog();
     const bundledExercise = catalog.exercises.find(({ source }) =>
       source.upstreamId !== null
@@ -424,8 +424,8 @@ describe("clean install logical restore", () => {
       snapshotId: "clean-install-archive",
     });
     expect(archive).toEqual(expect.objectContaining({
-      version: 10,
-      schemaVersion: 46,
+      version: 11,
+      schemaVersion: 47,
     }));
     const encryptedArchive = await createBackupEnvelopeCodec(crypto()).seal({
       snapshot: archive,
@@ -473,7 +473,7 @@ describe("clean install logical restore", () => {
       version: LOGICAL_BACKUP_FORMAT_VERSION,
       snapshotId: "clean-install-empty-owner-state",
       createdAtMs: 1,
-      schemaVersion: 46,
+      schemaVersion: 47,
       manifest: {
         catalogReferenceCount: 0,
         rowCounts: expect.any(Object),

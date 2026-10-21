@@ -64,6 +64,7 @@ export const PORTABLE_MERGE_TABLE_CLASSES = Object.freeze({
   owned_plan_working_set_targets: "owned_plan",
   owned_plan_progression_policies: "owned_plan",
   owned_plan_occurrence_sources: "owned_plan",
+  plan_exercise_replacement_receipts: "owned_plan",
   owned_plan_schedules: "owned_plan",
   owned_plan_schedule_versions: "owned_plan",
   owned_plan_schedule_bindings: "owned_plan",

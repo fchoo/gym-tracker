@@ -191,6 +191,7 @@ export const LOGICAL_BACKUP_TABLE_FILTERS = Object.freeze({
   owned_plan_working_set_targets: ownedOccurrenceWhere("owned_plan_working_set_targets"),
   owned_plan_progression_policies: ownedOccurrenceWhere("owned_plan_progression_policies"),
   owned_plan_occurrence_sources: ownedOccurrenceWhere("owned_plan_occurrence_sources"),
+  plan_exercise_replacement_receipts: ownedPlanWhere("plan_exercise_replacement_receipts"),
   owned_plan_schedules: ownedPlanWhere("owned_plan_schedules"),
   owned_plan_schedule_versions: "EXISTS (SELECT 1 FROM owned_plan_schedules schedule JOIN plans plan ON plan.id = schedule.plan_id WHERE schedule.id = owned_plan_schedule_versions.schedule_id AND plan.origin IN ('custom', 'copied'))",
   owned_plan_schedule_bindings: "EXISTS (SELECT 1 FROM owned_plan_schedule_versions version JOIN owned_plan_schedules schedule ON schedule.id = version.schedule_id JOIN plans plan ON plan.id = schedule.plan_id WHERE version.id = owned_plan_schedule_bindings.schedule_version_id AND plan.origin IN ('custom', 'copied'))",
