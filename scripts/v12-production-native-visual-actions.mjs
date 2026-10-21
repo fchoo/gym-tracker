@@ -178,7 +178,7 @@ function verifyDevice(native, attestation, payload, serial) {
   const identity = phase18DeviceIdentitySha256({ serial, abi: shell("getprop", "ro.product.cpu.abi"), apiLevel: shell("getprop", "ro.build.version.sdk"), model: shell("getprop", "ro.product.model") });
   if (identity !== attestation.device_identity_sha256) fail("device_mismatch");
   const installed = shell("pm", "path", PACKAGE);
-  if (!/^package:\/data\/app\/[A-Za-z0-9_./=+-]+\.apk$/u.test(installed)
+  if (!/^package:\/data\/app\/[A-Za-z0-9_./=+~-]+\.apk$/u.test(installed)
     || shell("sha256sum", installed.slice(8)).split(/\s/u)[0] !== attestation.apk_sha256) fail("apk_mismatch");
   let lease;
   try { lease = JSON.parse(shell("cat", LEASE)); } catch { fail("lease_invalid"); }

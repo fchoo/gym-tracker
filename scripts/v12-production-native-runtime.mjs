@@ -75,7 +75,7 @@ export function createProductionNativeRuntime(attestation, {
   function verifyApk() {
     const installed = shell("pm", "path", PACKAGE);
     // This build is a standalone APK. Reject split sets rather than hash only a base APK.
-    if (!/^package:\/data\/app\/[A-Za-z0-9_./=+-]+\.apk$/u.test(installed)) nativeFailure("installed_apk_invalid");
+    if (!/^package:\/data\/app\/[A-Za-z0-9_./=+~-]+\.apk$/u.test(installed)) nativeFailure("installed_apk_invalid");
     const digest = shell("sha256sum", installed.slice(8)).split(/\s/u)[0];
     if (!HASH.test(digest) || digest !== attestation.apk_sha256) nativeFailure("apk_identity_mismatch");
     const apk = readFileSync(safeFile(root, build.apk.path));

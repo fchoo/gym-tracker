@@ -934,7 +934,7 @@ async function measureDirectMaestroDeviceAsync(adb, serial, manifest) {
   const packages = (await adb("shell", "pm", "list", "packages", packageName)).split(/\r?\n/u).filter(Boolean);
   if (packages.length !== 1 || packages[0] !== `package:${packageName}`) genericFail("identity_mismatch");
   const installedPaths = (await adb("shell", "pm", "path", packageName)).split(/\r?\n/u).filter(Boolean);
-  if (installedPaths.length !== 1 || !/^package:\/data\/app\/[A-Za-z0-9_./=+-]+\.apk$/u.test(installedPaths[0])) genericFail("identity_mismatch");
+  if (installedPaths.length !== 1 || !/^package:\/data\/app\/[A-Za-z0-9_./=+~-]+\.apk$/u.test(installedPaths[0])) genericFail("identity_mismatch");
   const installedApkSha256 = (await adb("shell", "sha256sum", installedPaths[0].slice("package:".length))).split(/\s/u)[0];
   const abi = await adb("shell", "getprop", "ro.product.cpu.abi");
   const apiLevel = await adb("shell", "getprop", "ro.build.version.sdk");
@@ -972,7 +972,7 @@ export function readV12DirectMaestroDeviceMeasurement(manifest, {
   const packages = adb("shell", "pm", "list", "packages", packageName).split(/\r?\n/u).filter(Boolean);
   if (packages.length !== 1 || packages[0] !== `package:${packageName}`) genericFail("identity_mismatch");
   const installedPaths = adb("shell", "pm", "path", packageName).split(/\r?\n/u).filter(Boolean);
-  if (installedPaths.length !== 1 || !/^package:\/data\/app\/[A-Za-z0-9_./=+-]+\.apk$/u.test(installedPaths[0])) genericFail("identity_mismatch");
+  if (installedPaths.length !== 1 || !/^package:\/data\/app\/[A-Za-z0-9_./=+~-]+\.apk$/u.test(installedPaths[0])) genericFail("identity_mismatch");
   const installedApkSha256 = adb("shell", "sha256sum", installedPaths[0].slice("package:".length)).split(/\s/u)[0];
   const abi = adb("shell", "getprop", "ro.product.cpu.abi");
   const apiLevel = adb("shell", "getprop", "ro.build.version.sdk");

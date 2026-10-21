@@ -314,7 +314,7 @@ export async function executeProductionQualityAction(action, payload, attestatio
           // Recheck source, device and installed bytes after native execution as well.
           createProductionNativeRuntime(attestation);
           const installed = shell(executionTools.adb, serial, "pm", "path", PACKAGE);
-          if (!/^package:\/data\/app\/[A-Za-z0-9_./=+-]+\.apk$/u.test(installed)
+          if (!/^package:\/data\/app\/[A-Za-z0-9_./=+~-]+\.apk$/u.test(installed)
             || shell(executionTools.adb, serial, "sha256sum", installed.slice(8)).split(/\s/u)[0] !== identity.apk_sha256) fail("identity_mismatch");
         } finally {
           // A killed host ADB process need not stop the device-side instrumentation.

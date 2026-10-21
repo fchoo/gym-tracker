@@ -34,8 +34,8 @@ if (args[0] === "shell") {
   args = [...args[1].matchAll(/'([^']*)'/gu)].map((match) => match[1]);
   const [command, ...rest] = args;
   if (command === "getprop") { output(state.props[rest[0]]); return 0; }
-  if (command === "pm") { output("package:/data/app/controlled/base.apk"); return 0; }
-  if (command === "sha256sum") { output(`${state.wrongApk ? "0".repeat(64) : state.apkHash}  /data/app/controlled/base.apk`); return 0; }
+  if (command === "pm") { output("package:/data/app/~~controlled-token==/com.fchoo.gymtracker.devtest-controlled==/base.apk"); return 0; }
+  if (command === "sha256sum") { output(`${state.wrongApk ? "0".repeat(64) : state.apkHash}  /data/app/~~controlled-token==/com.fchoo.gymtracker.devtest-controlled==/base.apk`); return 0; }
   const lock = path.join(root, "lock");
   if (command === "mkdir") { try { mkdirSync(lock); } catch { fail(); } return 0; }
   if (command === "rmdir") { try { rmdirSync(lock); } catch { fail(); } return 0; }

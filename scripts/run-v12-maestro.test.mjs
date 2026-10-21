@@ -31,6 +31,31 @@ import { validateV12ProductionPublicationOrigins } from "./verify-v12-native-evi
 const TEST_TIMEOUT_MS = 30_000;
 const runId = "phase20-20261017T000000Z-aaaaaaaaaaaa";
 const hash = (value) => createHash("sha256").update(value).digest("hex");
+
+test("all native APK identity guards accept Android opaque install segments", () => {
+  const files = [
+    ["scripts/v12-production-native-runtime.mjs", 1],
+    ["scripts/v12-production-native-quality-actions.mjs", 1],
+    ["scripts/v12-production-native-visual-actions.mjs", 1],
+    ["scripts/run-v12-maestro.mjs", 2],
+  ];
+  const prefix = "/^package:\\/data\\/app\\/";
+  for (const [file, expected] of files) {
+    const lines = readFileSync(file, "utf8").split("\n").filter(line => line.includes(prefix));
+    assert.equal(lines.length, expected, file);
+    for (const line of lines) {
+      const start = line.indexOf(prefix);
+      const end = line.indexOf("/u", start) + 2;
+      const guard = new RegExp(line.slice(start + 1, end - 2), "u");
+      assert.equal(guard.test("package:/data/app/controlled/base.apk"), true, file);
+      assert.equal(guard.test("package:/data/app/~~opaque-token==/com.fchoo.gymtracker.devtest-token==/base.apk"), true, file);
+      assert.equal(guard.test("package:/data/user/0/base.apk"), false, file);
+      assert.equal(guard.test("package:/data/app/base.apk;command"), false, file);
+      assert.equal(guard.test("package:/data/app/base.apk\npackage:/data/app/split.apk"), false, file);
+    }
+  }
+});
+
 const DEVICE_FACTS = Object.freeze({ serial: "physical-device-20", abi: "arm64-v8a", apiLevel: "36", model: "Samsung N4" });
 const DEVICE_SETTINGS = Object.freeze({ font_scale: "1", ui_night_mode: "1", animator_duration_scale: "1" });
 const deviceLeasePath = (root) => path.join(root,
