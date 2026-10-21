@@ -14,8 +14,8 @@ function processTreeError(code) {
 }
 
 function processTableArguments(platform) {
-  const environmentFlag = platform === "darwin" ? "-Eww" : "eww";
-  return [environmentFlag, "-axo", "pid=,stat=,args="];
+  if (platform === "darwin") return ["-Eww", "-axo", "pid=,stat=,args="];
+  return ["axeww", "-o", "pid=,stat=,args="];
 }
 
 function containsExactOwnershipToken(rawCommandAndEnvironment, ownershipToken) {

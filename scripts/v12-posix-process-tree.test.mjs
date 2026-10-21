@@ -133,7 +133,7 @@ test("Linux submits the complete candidate set to one bounded pidfd helper trans
   const tracker = createV12PosixProcessTreeTracker(options({
     probeImplementation: (program, args) => {
       assert.equal(program, "ps");
-      assert.deepEqual(args, ["eww", "-axo", "pid=,stat=,args="]);
+      assert.deepEqual(args, ["axeww", "-o", "pid=,stat=,args="]);
       return table(`${row}\n101 S ${marker}`);
     },
     pidfdPythonExecutable: "/synthetic/python3",
