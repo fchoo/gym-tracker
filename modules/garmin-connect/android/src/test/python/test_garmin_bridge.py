@@ -353,6 +353,15 @@ class GarminBridgeTests(unittest.TestCase):
         with self.assertRaisesRegex(garmin_bridge._BridgeInputError, "malformed_response"):
             garmin_bridge._safe_namespace("provider-account")
         self.assertIsInstance(garmin_bridge.create_bridge(), garmin_bridge.GarminBridge)
+        default_handle = garmin_bridge.create_bridge(
+            client_factory=lambda **_kwargs: FakeClient(needs_mfa=True),
+        )
+        with patch.object(garmin_bridge.secrets, "token_urlsafe", return_value="opaque-default-challenge") as token_urlsafe:
+            result = default_handle.dispatch("login", {"email": "owner", "password": "synthetic-secret"})
+        token_urlsafe.assert_called_once_with(24)
+        self.assertEqual(result["data"], {
+            "kind": "mfa_required", "challenge_handle": "opaque-default-challenge",
+        })
 
     def test_session_state_and_auth_validation_fail_closed(self):
         bridge = garmin_bridge.create_bridge()
