@@ -318,7 +318,8 @@ describe("Calendar semantic transitions", () => {
       expect(execFileSync(process.execPath, [
         "--input-type=module",
         "--eval",
-        `import { validateV12CalendarStageTrace } from ${JSON.stringify(validator)}; process.stdout.write(String(validateV12CalendarStageTrace(JSON.parse(process.argv[1]))));`,
+        `import { validateV12CalendarStageTrace } from ${JSON.stringify(validator)}; process.stdout.write(String(validateV12CalendarStageTrace(JSON.parse(process.argv[2]))));`,
+        path.resolve("package.json"),
         JSON.stringify(trace),
       ], { encoding: "utf8" })).toBe("true");
       if (diagnosticStage === "drag-retreat") {
@@ -381,7 +382,8 @@ describe("Calendar semantic transitions", () => {
       expect(execFileSync(process.execPath, [
         "--input-type=module",
         "--eval",
-        `import { validateV12CalendarStageTrace } from ${JSON.stringify(validator)}; process.stdout.write(String(validateV12CalendarStageTrace(JSON.parse(process.argv[1]))));`,
+        `import { validateV12CalendarStageTrace } from ${JSON.stringify(validator)}; process.stdout.write(String(validateV12CalendarStageTrace(JSON.parse(process.argv[2]))));`,
+        path.resolve("package.json"),
         JSON.stringify(trace),
       ], { encoding: "utf8" })).toBe("true");
       clearPhase16CalendarTestControls();
