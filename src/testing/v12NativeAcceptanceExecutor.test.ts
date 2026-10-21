@@ -23,6 +23,7 @@ import {
   readV12NativeAcceptanceReceipt,
   resolveV12NativeAcceptanceProductionHandler,
   validateV12NativeAcceptanceAuthorityTables,
+  v12NativeAcceptanceProductRequestId,
   type V12NativeAcceptanceRequest,
 } from "./v12NativeAcceptanceExecutor";
 
@@ -30,6 +31,33 @@ const sha256 = async (value: string): Promise<string> =>
   createHash("sha256").update(value).digest("hex");
 
 describe("v1.2 acceptance production API parity", () => {
+  it("derives nonce-scoped ids only for the production callback that owns each prepared case", () => {
+    const nonce = "c".repeat(48);
+    const exactCases = [
+      ["workout.plan-increment", "recommendation-use", `v12:workout-plan-increment:${nonce}`],
+      ["library.owned-lifecycle", "owned-plan-lifecycle", `v12:owned-plan-archive:${nonce}`],
+      ["library.plan-editor", "owned-plan-save", `v12:owned-plan-save:${nonce}`],
+      ["library.starter-detail", "starter-editable-copy", `v12:starter-editable-copy:${nonce}`],
+      ["library.starter-activation", "starter-plan-activation", `v12:starter-activation:${nonce}`],
+      ["library.template-update", "starter-template-update-copy", `v12:starter-template-update-copy:${nonce}`],
+      ["library.true-no-plans", "owned-plan-create", `v12:owned-plan-create:library.true-no-plans:${nonce}`],
+      ["library.create-strength", "owned-plan-create", `v12:owned-plan-create:library.create-strength:${nonce}`],
+      ["library.schedule-editor", "schedule-save", `v12:schedule-editor:${nonce}`],
+      ["library.replacement-impact", "plan-impact-replace", `v12:replacement-impact:${nonce}`],
+      ["library.day-removal-impact", "plan-impact-remove", `v12:day-removal-impact:${nonce}`],
+      ["library.running-session-common", "running-session-save", `v12:running:library.running-session-common:${nonce}:action`],
+      ["library.custom-exercise-edit", "custom-exercise-edit", `v12:custom-exercise:library.custom-exercise-edit:${nonce}:action`],
+    ] as const;
+
+    for (const [caseId, label, expected] of exactCases) {
+      expect(v12NativeAcceptanceProductRequestId(request({ caseId, nonce }), label)).toBe(expected);
+    }
+    expect(() => v12NativeAcceptanceProductRequestId(request({ nonce }), "not-the-owner"))
+      .toThrow("v12_native_acceptance_callback_owner_mismatch");
+    expect(() => v12NativeAcceptanceProductRequestId(request({ caseId: "workout.day-switch", nonce }), "anything"))
+      .toThrow("v12_native_acceptance_callback_owner_mismatch");
+  });
+
   it("registers only canonical operations that retain non-test production callers", () => {
     const executorSource = readFileSync(
       require.resolve("./v12NativeAcceptanceExecutor"),
@@ -95,6 +123,45 @@ describe("v1.2 acceptance production API parity", () => {
       pre: prepared.pre,
     });
     expect(commands.slice(commandCountAfterPrepare).every((sql) => /^SELECT |^PRAGMA /u.test(sql))).toBe(true);
+  });
+
+  it("derives prepared product routes from the authoritative fixtures and rejects mismatched read-only handoffs", async () => {
+    const preparedRoutes = [
+      ["workout.plan-increment", "/completion/"],
+      ["workout.completion-writeback", "/completion/"],
+      ["library.schedule-editor", "/library/plan/"],
+      ["library.replacement-impact", "/replace/"],
+      ["library.day-removal-impact", "/remove"],
+    ] as const;
+
+    for (const [caseId, expectedPath] of preparedRoutes) {
+      const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find((entry) => entry.caseId === caseId)!;
+      const prepared = await prepareV12NativeAcceptanceProductCase({
+        kernel: kernel(), request: requestForContract(contract), sha256,
+        prepareOperation: async () => undefined,
+      });
+      expect(prepared.prepared_product_path).toContain(expectedPath);
+    }
+
+    const contract = v12NativeAcceptanceCaseContract("workout", "workout.day-switch");
+    const productRequest = requestForContract(contract);
+    const prepared = await prepareV12NativeAcceptanceProductCase({
+      kernel: kernel(), request: productRequest, sha256, prepareOperation: async () => undefined,
+    });
+    await expect(executeV12NativeAcceptanceReadAction({
+      kernel: kernel(), request: productRequest, sha256,
+      preparedProductCase: { ...prepared, operation_id: "substituted" },
+      executeOperation: async () => ({ result: "read", facts: {} }),
+    })).rejects.toThrow("v12_native_acceptance_prepared_case_mismatch");
+    await expect(executeV12NativeAcceptanceReadAction({
+      kernel: kernel(), request: productRequest, sha256, preparedProductCase: prepared,
+      prepareOperation: async () => undefined,
+      executeOperation: async () => ({ result: "read", facts: {} }),
+    })).rejects.toThrow("v12_native_acceptance_read_only_prepare_forbidden");
+    await expect(readV12NativeAcceptanceReceipt({
+      kernel: kernel(), request: productRequest,
+      preparedProductCase: { ...prepared, schema_version: 2 as never }, sha256,
+    })).rejects.toThrow("v12_native_acceptance_prepared_case_mismatch");
   });
 
   it("prepares and reads every Phase 13 domain observation without a product action dispatch", async () => {

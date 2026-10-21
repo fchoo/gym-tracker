@@ -7745,6 +7745,46 @@ describe("WorkoutAppRuntimeProvider", () => {
     mockNativeContractSuite = undefined;
   });
 
+  it("keeps the v1.2 acceptance hooks gated, prepared-only, and unable to dispatch a generic action", async () => {
+    const repository = runtimeRepository([noPlanView], [null]);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    const productRequest = {
+      shard: "workout" as const,
+      caseId: "workout.day-switch",
+      fixtureId: "v12-synthetic-fixtures-r18",
+      title: "Workout",
+      source: "PHASE15_REQUIRED_CASES",
+      requirement: "WRK-02",
+      action: "day-switch",
+      readback: "Workout source contract observation",
+      sourceProbe: "phase15-workout-ledger:workout.day-switch",
+      authorityTables: ["plans", "owned_plan_schedules", "workout_sessions"],
+      nonce: "f".repeat(48),
+    };
+    await render(<RuntimeCaptureHarness dependencies={dependencies(repository)} onReady={(runtime) => { captured = runtime; }} />);
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+    if (captured === undefined) throw new Error("runtime_not_captured");
+
+    await expect(captured.collectPhase20QualitySourceProof())
+      .rejects.toThrow("phase20_quality_source_proof_unavailable");
+    await expect(captured.prepareV12NativeAcceptanceProductCase(productRequest))
+      .rejects.toThrow("v12_native_acceptance_executor_unavailable");
+    await expect(captured.readV12NativeAcceptanceReceipt(productRequest))
+      .rejects.toThrow("v12_native_acceptance_executor_unavailable");
+    await expect(captured.triggerPhase20ProgressRebuild())
+      .rejects.toThrow("phase20_quality_progress_rebuild_unavailable");
+
+    mockBuildProfile = "development-test";
+    mockNativeContractSuite = "v1.2-acceptance";
+    await expect(captured.readV12NativeAcceptanceReceipt(productRequest))
+      .rejects.toThrow("v12_native_acceptance_prepared_case_missing");
+    await expect(captured.collectPhase20QualitySourceProof()).rejects.toThrow();
+    await expect(captured.prepareV12NativeAcceptanceProductCase(productRequest)).rejects.toThrow();
+    await expect(captured.triggerPhase20ProgressRebuild()).resolves.toBeUndefined();
+    mockBuildProfile = undefined;
+    mockNativeContractSuite = undefined;
+  });
+
   it("rejects use outside its provider", async () => {
     function OutsideProbe() {
       useWorkoutAppRuntime();
