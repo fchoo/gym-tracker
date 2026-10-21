@@ -2037,7 +2037,7 @@ describe("logical merge repository", () => {
         }
         : aggregate),
     })],
-    ["a replacement receipt whose replacement is not bound to the owned occurrence", (plan: PortableMergePlan) => ({
+    ["a replacement receipt whose result affected occurrence is outside the owned graph", (plan: PortableMergePlan) => ({
       ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
         ? {
           ...aggregate,
@@ -2045,11 +2045,9 @@ describe("logical merge repository", () => {
             ...aggregate.tables,
             plan_exercise_replacement_receipts: [{
               ...(aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()),
-              replacement_exercise_id: "missing-exercise",
               result_json: JSON.stringify({
                 ...JSON.parse(String((aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()).result_json)),
-                replacementExerciseId: "missing-exercise",
-                invalidations: ["library:plans", "plan:archive-plan", "exercise:missing-exercise", "today"],
+                affectedOccurrenceIds: ["missing-occurrence"],
               }),
             }],
           },
@@ -2744,7 +2742,7 @@ describe("logical merge repository", () => {
     }]);
   });
 
-  it("preserves a created unscheduled replacement receipt through a keep-both merge and exact replay", async () => {
+  it("preserves successive historical replacement receipts through a keep-both merge and exact replay", async () => {
     const archiveKernel = await open("replacement-receipt-archive");
     await seedOwnedPlan(archiveKernel, {
       id: "archive-plan",
@@ -2793,6 +2791,22 @@ describe("logical merge repository", () => {
          VALUES ('replacement', 'bundled', 'Replacement', 'strength', 'compound',
            'load_reps', 1, 1, 'available', 1)`,
       );
+      await transaction.execute(
+        `INSERT INTO exercises
+          (id, content_pack_id, origin, source_namespace, upstream_id, name,
+           metric_profile, metric_contract_version, exercise_metric_generation,
+           equipment, default_rest_seconds, revision)
+         VALUES ('current', NULL, 'custom', NULL, NULL,
+           'Current', 'load_reps', 1, 1, 'Unspecified', 90, 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO exercise_library_entries
+          (exercise_id, origin, canonical_name, exercise_type, movement_class,
+           metric_profile, metric_contract_version, exercise_metric_generation,
+           availability, revision)
+         VALUES ('current', 'custom', 'Current', 'strength', 'compound',
+           'load_reps', 1, 1, 'available', 1)`,
+      );
     });
     const archiveRepository = createPlanImpactRepository(archiveKernel, {});
     const preview = await archiveRepository.readExerciseReplacement({
@@ -2817,6 +2831,29 @@ describe("logical merge repository", () => {
       outcome: "committed",
       planId: "archive-plan",
       replacementExerciseId: "replacement",
+    });
+    const secondPreview = await archiveRepository.readExerciseReplacement({
+      planId: "archive-plan",
+      occurrenceId: "owned-occurrence",
+    });
+    expect(secondPreview).not.toBeNull();
+    const secondCommand = {
+      requestId: "merge-current-request",
+      requestSha256: "b".repeat(64),
+      planId: secondPreview!.planId,
+      sourceOccurrenceId: secondPreview!.sourceOccurrenceId,
+      sourceExerciseId: secondPreview!.sourceExerciseId,
+      expectedPlanRevision: secondPreview!.planRevision,
+      expectedPreview: secondPreview!,
+      scope: "this_occurrence" as const,
+      replacementExerciseId: "current",
+      occurrences: [secondPreview!.occurrences[0]!],
+      committedAtMs: 200,
+    };
+    await expect(archiveRepository.applyExerciseReplacement(secondCommand)).resolves.toMatchObject({
+      outcome: "committed",
+      planId: "archive-plan",
+      replacementExerciseId: "current",
     });
     const archive = await snapshot(archiveKernel);
 
@@ -2847,6 +2884,22 @@ describe("logical merge repository", () => {
          VALUES ('replacement', 'bundled', 'Replacement', 'strength', 'compound',
            'load_reps', 1, 1, 'available', 1)`,
       );
+      await transaction.execute(
+        `INSERT INTO exercises
+          (id, content_pack_id, origin, source_namespace, upstream_id, name,
+           metric_profile, metric_contract_version, exercise_metric_generation,
+           equipment, default_rest_seconds, revision)
+         VALUES ('current', NULL, 'custom', NULL, NULL,
+           'Current', 'load_reps', 1, 1, 'Unspecified', 90, 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO exercise_library_entries
+          (exercise_id, origin, canonical_name, exercise_type, movement_class,
+           metric_profile, metric_contract_version, exercise_metric_generation,
+           availability, revision)
+         VALUES ('current', 'custom', 'Current', 'strength', 'compound',
+           'load_reps', 1, 1, 'available', 1)`,
+      );
     });
     const local = await createSqliteMergeLocalFactsPort(localKernel).read();
     const plan = await buildPortableMergePlan({
@@ -2874,20 +2927,38 @@ describe("logical merge repository", () => {
     expect(operation).toMatchObject({ kind: "keep_both", archiveId: "archive-plan" });
     if (operation?.aggregateClass !== "owned_plan") throw new Error("owned_plan_operation_missing");
     const mappedPlanId = operation.localId;
-    const mappedReceipt = plan.aggregates.find((value) =>
+    const mappedReceipts = plan.aggregates.find((value) =>
       value.aggregateClass === "owned_plan" && value.portableId === "d".repeat(32),
-    )!.tables.plan_exercise_replacement_receipts![0]!;
+    )!.tables.plan_exercise_replacement_receipts!;
+    expect(mappedReceipts).toHaveLength(2);
+    const mappedReceipt = mappedReceipts.find((receipt) => receipt.request_id === command.requestId)!;
+    const mappedCurrentReceipt = mappedReceipts.find((receipt) => receipt.request_id === secondCommand.requestId)!;
     expect(mappedReceipt).toMatchObject({
       request_id: command.requestId,
       request_sha256: command.requestSha256,
       plan_id: mappedPlanId,
       replacement_exercise_id: "replacement",
     });
+    expect(mappedCurrentReceipt).toMatchObject({
+      request_id: secondCommand.requestId,
+      request_sha256: secondCommand.requestSha256,
+      plan_id: mappedPlanId,
+      source_occurrence_id: mappedReceipt.source_occurrence_id,
+    });
+    const mappedCurrentExerciseId = String(mappedCurrentReceipt.replacement_exercise_id);
+    expect(mappedCurrentExerciseId).toMatch(/^merge_exercise_/u);
     const mappedResult = JSON.parse(String(mappedReceipt.result_json));
+    const mappedCurrentResult = JSON.parse(String(mappedCurrentReceipt.result_json));
     expect(mappedResult).toMatchObject({
       outcome: "committed",
       planId: mappedPlanId,
       replacementExerciseId: "replacement",
+      affectedOccurrenceIds: [mappedReceipt.source_occurrence_id],
+    });
+    expect(mappedCurrentResult).toMatchObject({
+      outcome: "committed",
+      planId: mappedPlanId,
+      replacementExerciseId: mappedCurrentExerciseId,
       affectedOccurrenceIds: [mappedReceipt.source_occurrence_id],
     });
     expect(mappedResult.invalidations).toContain(`plan:${mappedPlanId}`);
@@ -2895,6 +2966,9 @@ describe("logical merge repository", () => {
     expect(mappedResult.invalidations).toContain("exercise:bundled");
     expect(mappedResult.invalidations).toContain("exercise:replacement");
     expect(mappedResult.invalidations).not.toContain("exercise:archive-exercise");
+    expect(mappedCurrentResult.invalidations).toContain(`plan:${mappedPlanId}`);
+    expect(mappedCurrentResult.invalidations).toContain(`exercise:${mappedCurrentExerciseId}`);
+    expect(mappedCurrentResult.invalidations).not.toContain("exercise:current");
 
     await expect(createFullPlanLogicalMergeWriter(localKernel, { sha256 })
       .commitFullPlan({
@@ -2906,7 +2980,8 @@ describe("logical merge repository", () => {
       `SELECT request_id, request_sha256, plan_id, source_occurrence_id,
               replacement_exercise_id, expected_plan_revision,
               result_plan_revision, result_json, committed_at_ms
-       FROM plan_exercise_replacement_receipts`,
+       FROM plan_exercise_replacement_receipts
+       ORDER BY committed_at_ms`,
     )).resolves.toEqual([{
       request_id: command.requestId,
       request_sha256: command.requestSha256,
@@ -2917,6 +2992,16 @@ describe("logical merge repository", () => {
       result_plan_revision: 2,
       result_json: mappedReceipt.result_json,
       committed_at_ms: 100,
+    }, {
+      request_id: secondCommand.requestId,
+      request_sha256: secondCommand.requestSha256,
+      plan_id: mappedPlanId,
+      source_occurrence_id: mappedReceipt.source_occurrence_id,
+      replacement_exercise_id: mappedCurrentExerciseId,
+      expected_plan_revision: 2,
+      result_plan_revision: 3,
+      result_json: mappedCurrentReceipt.result_json,
+      committed_at_ms: 200,
     }]);
     kernels.delete(localKernel);
     await localKernel.close();
@@ -2930,10 +3015,17 @@ describe("logical merge repository", () => {
        WHERE occurrence.id = ?`,
       [mappedReceipt.source_occurrence_id as string],
     );
+    expect(beforeReplay).toEqual([expect.objectContaining({ exercise_id: mappedCurrentExerciseId })]);
     await expect(createPlanImpactRepository(reopenedKernel, {})
       .applyExerciseReplacement(command))
       .resolves.toEqual({
         ...mappedResult,
+        outcome: "already_committed",
+      });
+    await expect(createPlanImpactRepository(reopenedKernel, {})
+      .applyExerciseReplacement(secondCommand))
+      .resolves.toEqual({
+        ...mappedCurrentResult,
         outcome: "already_committed",
       });
     await expect(reopenedKernel.queryAll(
@@ -2947,7 +3039,7 @@ describe("logical merge repository", () => {
     )).resolves.toEqual(beforeReplay);
     await expect(reopenedKernel.queryAll(
       "SELECT COUNT(*) AS count FROM plan_exercise_replacement_receipts",
-    )).resolves.toEqual([{ count: 1 }]);
+    )).resolves.toEqual([{ count: 2 }]);
   });
 
   it("commits an admitted empty source graph through the source-generation transaction", async () => {

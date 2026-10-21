@@ -274,7 +274,7 @@ function assertReplacementReceiptBinding(
   row: LogicalBackupRow,
   input: Readonly<{
     planId: string;
-    ownedOccurrenceExerciseIds: ReadonlyMap<string, string>;
+    ownedOccurrenceIds: ReadonlySet<string>;
   }>,
 ): void {
   const planId = textId(row.plan_id);
@@ -286,9 +286,8 @@ function assertReplacementReceiptBinding(
   requireValid(nonEmptyText(row.request_id));
   requireValid(/^[a-f0-9]{64}$/u.test(textId(row.request_sha256)));
   requireValid(planId === input.planId);
-  requireValid(input.ownedOccurrenceExerciseIds.has(sourceOccurrenceId));
+  requireValid(input.ownedOccurrenceIds.has(sourceOccurrenceId));
   requireValid(nonEmptyText(replacementExerciseId));
-  requireValid(input.ownedOccurrenceExerciseIds.get(sourceOccurrenceId) === replacementExerciseId);
   if (typeof expectedPlanRevisionValue !== "number"
     || !safeInteger(expectedPlanRevisionValue)) fail();
   if (typeof resultPlanRevisionValue !== "number"
@@ -315,7 +314,7 @@ function assertReplacementReceiptBinding(
   requireValid(affectedOccurrenceIdList.length > 0);
   requireValid(affectedOccurrenceIdList.every((id) =>
     typeof id === "string"
-      && input.ownedOccurrenceExerciseIds.get(id) === replacementExerciseId
+      && input.ownedOccurrenceIds.has(id)
   ));
   requireValid(affectedOccurrenceIdList.includes(sourceOccurrenceId));
   requireValid(replacementReceiptInvalidationsMatch(result.invalidations, {
@@ -597,7 +596,7 @@ function assertOwnedPlanAggregate(
   for (const row of aggregate.tables.plan_exercise_replacement_receipts ?? []) {
     assertReplacementReceiptBinding(row, {
       planId: operation.localId,
-      ownedOccurrenceExerciseIds,
+      ownedOccurrenceIds,
     });
   }
 }
