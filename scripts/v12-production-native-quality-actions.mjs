@@ -263,10 +263,9 @@ function validatePerformance(performance, identity) {
  * The invoking adapter derives its deadline from the 20-minute producer plus
  * every independently bounded ADB call through restoration and lease release.
  */
-export async function executeProductionQualityAction(action, payload, attestation, {
-  executionTools = resolveV12NativeExecutionTools(),
-} = {}) {
+export async function executeProductionQualityAction(action, payload, attestation, options = {}) {
   if (action !== "accessibility" && action !== "performance") return undefined;
+  const { executionTools = resolveV12NativeExecutionTools() } = options;
   try {
     if (process.env.NODE_ENV === "test" || process.env.V12_NATIVE_ADAPTER_TEST_MODE !== undefined
       || process.env.V12_NATIVE_ADAPTER_TEST_PROCESS !== undefined || process.env.V12_NATIVE_ADAPTER_COMMAND !== undefined) fail("test_environment_forbidden");

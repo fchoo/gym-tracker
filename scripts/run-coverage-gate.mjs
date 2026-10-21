@@ -293,7 +293,14 @@ const phase20EvidenceProjects = Object.freeze([
     name: "native-fixtures",
     concurrency: 1,
     coverage: false,
-    tests: [...phase20NativeActionTests].filter((file) => !phase20NativeCoverageTests.has(file)),
+    tests: [...phase20NativeActionTests].filter((file) => !phase20NativeCoverageTests.has(file)
+      && file !== "scripts/v12-production-native-quality-actions.test.mjs"),
+  }),
+  Object.freeze({
+    name: "quality-coverage",
+    concurrency: 1,
+    modules: Object.freeze(["scripts/v12-production-native-quality-actions.mjs"]),
+    tests: Object.freeze(["scripts/v12-production-native-quality-actions.test.mjs"]),
   }),
   Object.freeze({
     name: "cli-blackbox",
@@ -812,6 +819,7 @@ const expectedPhase20ProjectNames = [
   "contracts",
   "native-actions",
   "native-fixtures",
+  "quality-coverage",
   "cli-blackbox",
   "cli-coverage",
   "fixture-coverage",
@@ -822,7 +830,7 @@ if (JSON.stringify(phase20EvidenceProjects.map(({ name }) => name)) !== JSON.str
   || assignedPhase20Tests.length !== 50
   || new Set(assignedPhase20Tests).size !== 50
   || JSON.stringify([...assignedPhase20Tests].sort()) !== JSON.stringify(registeredPhase20EvidenceTests)
-  || assignedPhase20Modules.size !== 16
+  || assignedPhase20Modules.size !== 17
   || phase20EvidenceProjects.find(({ name }) => name === "cli-blackbox")?.coverage !== false) {
   throw new Error(JSON.stringify({
     error: "phase20_coverage_project_manifest_invalid",

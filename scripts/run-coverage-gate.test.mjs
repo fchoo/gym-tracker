@@ -110,11 +110,12 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   );
   assert.equal(manifest.phase20_coverage.jest_istanbul_modules.length, 8);
   const coverageProjects = manifest.phase20_coverage.node_v8_projects;
-  assert.equal(coverageProjects.length, 6);
+  assert.equal(coverageProjects.length, 7);
   assert.deepEqual(coverageProjects.map(({ name }) => name), [
     "contracts",
     "native-actions",
     "native-fixtures",
+    "quality-coverage",
     "cli-blackbox",
     "cli-coverage",
     "fixture-coverage",
@@ -132,7 +133,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   assert.equal(new Set(registeredProjectTests).size, 50);
   assert.deepEqual([...registeredProjectTests].sort(), manifest.phase20);
   const coveredModules = new Set(coverageProjects.flatMap(({ modules }) => modules));
-  assert.equal(coveredModules.size, 16);
+  assert.equal(coveredModules.size, 17);
   for (const required of [
     "scripts/v12-atomic-shard-publication.mjs",
     "scripts/v12-rollback-evidence.mjs",
@@ -146,6 +147,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
     "scripts/v12-native-adapter.mjs",
     "scripts/v12-native-time-budgets.mjs",
     "scripts/v12-posix-process-tree.mjs",
+    "scripts/v12-production-native-quality-actions.mjs",
     "scripts/v12-sqlite-shard.mjs",
     "scripts/v12-sqlite-producer-contract.mjs",
     "scripts/v12-blocker-row-resolver.mjs",

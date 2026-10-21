@@ -55,7 +55,7 @@ if (command.slice(0,3).join(' ') === 'pm list instrumentation') {
   state.coldLog = ''; save();
 } else if (command[0] === 'logcat' && command.includes('monotonic')) {
   record();
-  process.stdout.write(state.coldLog ?? '');
+  if (!state.missingColdReady) process.stdout.write(state.coldLog ?? '');
 } else if (command[0] === 'am' && command[1] === 'force-stop') {
   record();
   if (state.failStop) { process.stderr.write('private-device /Users/private bearer'); process.exit(1); }
@@ -126,10 +126,14 @@ function fixture(t, action = "performance") {
   const resultFile = path.join(runner.scratch, "quality-result.json");
   const deviceFile = path.join(runner.scratch, "quality-device.mjs");
   writeFileSync(deviceFile, DEVICE_TOOL);
-  writeFileSync(path.join(runner.scratch, "bin/adb"), `#!/bin/sh\nexec ${quoted(process.execPath)} ${quoted(deviceFile)} "$@"\n`, { mode: 0o755 });
+  // Do not instrument the synthetic ADB executable: it imports no production
+  // quality code, and thousands of irrelevant V8 reports can exhaust tmpfs.
+  writeFileSync(path.join(runner.scratch, "bin/adb"), `#!/bin/sh\nunset NODE_V8_COVERAGE\nexec ${quoted(process.execPath)} ${quoted(deviceFile)} "$@"\n`, { mode: 0o755 });
   const environment = { ...process.env, ...runner.executionEnvironment, NODE_ENV: "production", PATH: `${path.join(runner.scratch, "bin")}:${process.env.PATH}`, V12_DEVICE_SERIAL: "controlled-device-20", V12_CONTROLLED_STATE: runner.scratch };
   for (const name of ["NODE_TEST_CONTEXT", "V12_NATIVE_ADAPTER_COMMAND", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS"]) delete environment[name];
-  const program = `import fs from 'node:fs'; import {executeProductionQualityAction} from './scripts/v12-production-native-quality-actions.mjs';
+  const productionQuality = new URL("./v12-production-native-quality-actions.mjs", import.meta.url);
+  assert.equal(hash(readFileSync(productionQuality)), hash(readFileSync(path.join(runner.root, "scripts/v12-production-native-quality-actions.mjs"))));
+  const program = `import fs from 'node:fs'; import {executeProductionQualityAction} from ${JSON.stringify(productionQuality.href)};
     const {action,payload,attestation}=JSON.parse(fs.readFileSync(0,'utf8'));
     try {const result=await executeProductionQualityAction(action,payload,attestation); process.stdout.write(JSON.stringify(result));}
     catch(e) {process.stderr.write(e.message); process.exitCode=1;}`;
@@ -138,7 +142,10 @@ function fixture(t, action = "performance") {
     return spawnSync(process.execPath, ["--input-type=module", "--eval", program], { cwd: runner.root, env: { ...environment, ...env },
       input: JSON.stringify({ action, payload: { run_id: build.run_id, ...payload }, attestation }), encoding: "utf8", timeout: 45_000, maxBuffer: 4 * 1024 * 1024 });
   };
-  return { ...runner, invoke, identity, measured, attestation };
+  const runProgram = (program) => spawnSync(process.execPath, ["--input-type=module", "--eval", program], {
+    cwd: runner.root, env: environment, encoding: "utf8", timeout: 45_000, maxBuffer: 4 * 1024 * 1024,
+  });
+  return { ...runner, invoke, runProgram, identity, measured, attestation };
 }
 function rejected(result, code) {
   assert.notEqual(result.status, 0); assert.equal(result.stdout, "");
@@ -154,8 +161,20 @@ function independentQualityCommands(runner) {
 }
 
 test("unsupported actions return undefined without reading identity or running ADB", async () => {
-  for (const action of ["sqlite", "calendar", "garmin", "recovery", "visual-capture", "unknown", undefined]) {
-    assert.equal(await executeProductionQualityAction(action), undefined);
+  const saved = { ANDROID_HOME: process.env.ANDROID_HOME, ANDROID_SDK_ROOT: process.env.ANDROID_SDK_ROOT };
+  const unreadable = new Proxy({}, { get() { throw new Error("unsupported_quality_action_read_input"); } });
+  try {
+    process.env.ANDROID_HOME = "/phase20-missing-android-sdk";
+    process.env.ANDROID_SDK_ROOT = "/phase20-missing-android-sdk";
+    for (const action of ["sqlite", "calendar", "garmin", "recovery", "visual-capture", "unknown", undefined]) {
+      assert.equal(await executeProductionQualityAction(action), undefined);
+      assert.equal(await executeProductionQualityAction(action, unreadable, unreadable, unreadable), undefined);
+    }
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
 });
 test("production subprocess returns the complete native performance raw schema unchanged", (t) => {
@@ -341,9 +360,52 @@ test("production module rejects adapter overrides, test markers and unknown requ
     rejected(runner.invoke({}, env), "test_environment_forbidden");
   }
   rejected(runner.invoke({ marker_file: "private" }), "request_invalid");
+  rejected(runner.invoke({ run_id: "wrong-run" }), "request_invalid");
   rejected(runner.invoke({ workload: {} }), "request_invalid");
   assert.equal(runner.readState().instrumentCalls, undefined);
 });
+test("unexpected quality request errors are reduced to a bounded diagnostic", (t) => {
+  const runner = fixture(t);
+  const moduleUrl = new URL("./v12-production-native-quality-actions.mjs", import.meta.url).href;
+  const result = runner.runProgram(`
+    import assert from 'node:assert/strict';
+    import {executeProductionQualityAction} from ${JSON.stringify(moduleUrl)};
+    for (const failure of [new Error('private credential detail must not be logged'), null]) {
+      const input = new Proxy({}, { get() { throw failure; } });
+      await assert.rejects(executeProductionQualityAction('performance', input, {run_id:'synthetic'}, {executionTools:{}}),
+        error => error.message === 'v12_production_native_launcher_quality_observation_invalid');
+    }
+    process.stdout.write('bounded');
+  `);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, "bounded");
+  assert.equal(result.stderr, "");
+  assert.equal(runner.readState().instrumentCalls, undefined);
+});
+
+test("cold readiness polling keeps its fixed deadline and fails closed without a marker", (t) => {
+  const runner = fixture(t);
+  runner.updateState({ missingColdReady: true });
+  const moduleUrl = new URL("./v12-production-native-quality-actions.mjs", import.meta.url).href;
+  const toolsUrl = new URL("./v12-native-execution-origin.mjs", import.meta.url).href;
+  const result = runner.runProgram(`
+    import {collectV12ColdLaunchEvidence} from ${JSON.stringify(moduleUrl)};
+    import {resolveV12NativeExecutionTools} from ${JSON.stringify(toolsUrl)};
+    const times = [0, 0, 60001];
+    Date.now = () => times.shift() ?? 60001;
+    try {
+      await collectV12ColdLaunchEvidence('controlled-device-20', 'a'.repeat(48), ${JSON.stringify(runner.identity.source_tree_sha256)}, 1,
+        resolveV12NativeExecutionTools({requiredTools:['adb']}));
+      process.exitCode = 2;
+    } catch (error) {
+      process.stderr.write(error.message);
+      process.exitCode = 1;
+    }
+  `);
+  rejected(result, "cold_marker_timeout");
+  assert.equal(existsSync(path.join(runner.scratch, "lock")), false);
+});
+
 test("missing progress is bounded even when the ADB subprocess never exits", (t) => {
   // The idle timeout is action-independent. Accessibility avoids spending the
   // parent harness budget on the performance path's 20 cold-launch cycles.
