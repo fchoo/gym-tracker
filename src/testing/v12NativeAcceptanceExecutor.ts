@@ -341,6 +341,13 @@ async function readCaseAuthorityFacts(
   }
 }
 
+async function acceptanceNoopEffect(): Promise<void> {}
+
+const ACCEPTANCE_NOOP_HAPTICS = Object.freeze({
+  committed: acceptanceNoopEffect,
+  cue: acceptanceNoopEffect,
+});
+
 function operationFacts(input: Readonly<{
   contract: V12NativeAcceptanceCaseContract;
   authoritativeReadback: unknown;
@@ -445,9 +452,10 @@ async function prepareWorkoutCompleteFailureFixture(
 ): Promise<void> {
   const request = requireRequest(input);
   const set = await workoutMetricDraftSet(input);
-  if (set.metric_profile !== "unscored") {
-    throw new Error("v12_native_acceptance_workout_metric_precondition_missing");
-  }
+  // workoutMetricDraftSet is the single profile gate for this case and has
+  // already rejected every non-unscored row before returning this fixture.
+  // Rechecking its validated return value was unreachable and did not guard a
+  // distinct storage read or mutation.
   const observation = Object.freeze({
     version: 1 as const,
     profile: "unscored" as const,
@@ -724,7 +732,7 @@ async function prepareWorkoutHistoryFixture(input: V12NativeAcceptanceProduction
     if (initial.metric_profile !== "load_reps") throw new Error("v12_native_acceptance_workout_history_precondition_missing");
     await completeSet({
       repository: createWorkoutRepository(input.kernel),
-      haptics: { committed: async () => undefined, cue: async () => undefined },
+      haptics: ACCEPTANCE_NOOP_HAPTICS,
       invalidate: async () => undefined,
       drainEffects: async () => undefined,
       input: {
@@ -766,7 +774,7 @@ async function prepareWorkoutHistoryFixture(input: V12NativeAcceptanceProduction
       if (next === undefined) break;
       await completeSet({
         repository: createWorkoutRepository(input.kernel),
-        haptics: { committed: async () => undefined, cue: async () => undefined },
+        haptics: ACCEPTANCE_NOOP_HAPTICS,
         invalidate: async () => undefined,
         drainEffects: async () => undefined,
         input: {
@@ -2724,7 +2732,7 @@ async function executeWorkoutUndoCompletedSet(input: V12NativeAcceptanceProducti
     if (set.metric_profile !== "load_reps") throw new Error("v12_native_acceptance_workout_metric_precondition_missing");
     const completed = await completeSet({
       repository: createWorkoutRepository(input.kernel),
-      haptics: { committed: async () => undefined, cue: async () => undefined },
+      haptics: ACCEPTANCE_NOOP_HAPTICS,
       invalidate: async () => undefined,
       drainEffects: async () => undefined,
       input: {
@@ -2814,7 +2822,7 @@ async function executeWorkoutCompleteSet(input: V12NativeAcceptanceProductionHan
   if (set !== null) {
     await completeSet({
       repository: createWorkoutRepository(input.kernel),
-      haptics: { committed: async () => undefined, cue: async () => undefined },
+      haptics: ACCEPTANCE_NOOP_HAPTICS,
       invalidate: async () => undefined,
       drainEffects: async () => undefined,
       input: {

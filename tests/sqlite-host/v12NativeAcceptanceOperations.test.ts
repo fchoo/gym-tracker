@@ -4,13 +4,19 @@ import { createHash } from "node:crypto";
 
 import type {
   SqliteConnection,
+  SqliteParameter,
   SqlitePreparedResult,
   SqlitePreparedStatement,
 } from "../../src/platform/sqlite/connection";
 import { configureSqliteConnection } from "../../src/platform/sqlite/connection";
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
-import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
+import {
+  createSqliteKernel,
+  type SqliteKernel,
+  type SqliteReadTransactionExecutor,
+  type SqliteTransactionExecutor,
+} from "../../src/platform/sqlite/sqliteKernel";
 import {
   V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS,
   type V12NativeAcceptanceCaseContract,
@@ -177,7 +183,425 @@ async function executeSourceContractAudit(
   }
 }
 
+/**
+ * Runs an acceptance handler against the migrated host database while corrupting
+ * one read boundary.  The writer and every non-faulted read remain the real
+ * SQLite kernel, so these cases prove the executor rejects a bad authoritative
+ * readback rather than relying on a synthetic handler result.
+ */
+function faultedReadKernel(
+  base: SqliteKernel,
+  intercept: (
+    sql: string,
+    parameters: readonly SqliteParameter[],
+    read: () => Promise<readonly unknown[]>,
+  ) => Promise<readonly unknown[]>,
+): SqliteKernel {
+  const queryAll = async <Row,>(
+    sql: string,
+    parameters: readonly SqliteParameter[] = [],
+  ): Promise<readonly Row[]> => intercept(
+    sql,
+    parameters,
+    () => base.queryAll(sql, parameters) as Promise<readonly unknown[]>,
+  ) as Promise<readonly Row[]>;
+  return {
+    queryAll,
+    readSnapshot: async <Result,>(read: (transaction: SqliteReadTransactionExecutor) => Promise<Result>) => base.readSnapshot!(async (transaction) => {
+      const snapshotQueryAll = async <Row,>(
+        sql: string,
+        parameters: readonly SqliteParameter[] = [],
+      ): Promise<readonly Row[]> => intercept(
+        sql,
+        parameters,
+        () => transaction.queryAll(sql, parameters) as Promise<readonly unknown[]>,
+      ) as Promise<readonly Row[]>;
+      return read({ queryAll: snapshotQueryAll });
+    }),
+    write: async <Result,>(command: (transaction: SqliteTransactionExecutor) => Promise<Result>) => base.write(async (transaction) => {
+      const writeQueryAll = async <Row,>(
+        sql: string,
+        parameters: readonly SqliteParameter[] = [],
+      ): Promise<readonly Row[]> => intercept(
+        sql,
+        parameters,
+        () => transaction.queryAll(sql, parameters) as Promise<readonly unknown[]>,
+      ) as Promise<readonly Row[]>;
+      return command({ ...transaction, queryAll: writeQueryAll });
+    }),
+  } as SqliteKernel;
+}
+
+function contractFor(caseId: string): V12NativeAcceptanceCaseContract {
+  const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find((entry) => entry.caseId === caseId);
+  if (contract === undefined) throw new Error(`missing v12 contract: ${caseId}`);
+  return contract;
+}
+
+async function prepareHostCase(
+  kernel: SqliteKernel,
+  contract: V12NativeAcceptanceCaseContract,
+  index: number,
+): Promise<V12NativeAcceptanceRequest> {
+  const request = requestFor(contract, index);
+  await prepareV12NativeAcceptanceProductionOperation({ kernel, contract, request });
+  return request;
+}
+
+async function expectRejectsExactly(promise: Promise<unknown>, message: string): Promise<void> {
+  try {
+    await promise;
+  } catch (error) {
+    expect(error).toBeInstanceOf(Error);
+    if ((error as Error).message !== message) {
+      const cause = (error as Error).cause;
+      const causeMessage = cause instanceof Error ? cause.message : String(cause);
+      throw new Error(`expected ${message} but received ${(error as Error).message} cause ${causeMessage}`);
+    }
+    expect((error as Error).cause).toBeUndefined();
+    return;
+  }
+  throw new Error(`expected rejection: ${message}`);
+}
+
+async function expectRejectsWithExactCause(promise: Promise<unknown>, message: string, causeMessage: string): Promise<void> {
+  try {
+    await promise;
+  } catch (error) {
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe(message);
+    expect((error as Error).cause).toBeInstanceOf(Error);
+    expect(((error as Error).cause as Error).message).toBe(causeMessage);
+    return;
+  }
+  throw new Error(`expected rejection: ${message}`);
+}
+
+function failReadOnMatch(
+  needle: string,
+  errorRows: readonly unknown[] = [],
+  target = 1,
+): (
+  sql: string,
+  parameters: readonly SqliteParameter[],
+  read: () => Promise<readonly unknown[]>,
+) => Promise<readonly unknown[]> {
+  let matches = 0;
+  return async (sql, _parameters, read) => {
+    const rows = await read();
+    if (!sql.includes(needle)) return rows;
+    matches += 1;
+    return matches === target ? errorRows : rows;
+  };
+}
+
+async function dispatchPreparedHostCase(input: Readonly<{
+  caseId: string;
+  index: number;
+  intercept: Parameters<typeof faultedReadKernel>[1];
+  runtime?: Parameters<typeof dispatchV12NativeAcceptanceProductionOperation>[0]["runtime"];
+}>): Promise<unknown> {
+  const kernel = await open();
+  const contract = contractFor(input.caseId);
+  const request = await prepareHostCase(kernel, contract, input.index);
+  return dispatchV12NativeAcceptanceProductionOperation({
+    kernel: faultedReadKernel(kernel, input.intercept),
+    contract,
+    request,
+    ...(input.runtime === undefined ? {} : { runtime: input.runtime }),
+  });
+}
+
 describe("v1.2 Workout and Library production operation registry", () => {
+  it("fails closed when real SQLite reads violate executor fixture and mutation postconditions", async () => {
+    const cases = [
+      {
+        caseId: "workout.complete-failure",
+        error: "v12_native_acceptance_workout_metric_draft_precondition_missing",
+        intercept: async (sql: string, _parameters: readonly SqliteParameter[], read: () => Promise<readonly unknown[]>) => {
+          const rows = await read();
+          return sql.includes("set_row.metric_profile")
+            ? (rows as readonly Record<string, unknown>[]).map((row) => ({ ...row, metric_profile: "load_reps" }))
+            : rows;
+        },
+      },
+      {
+        caseId: "workout.complete-failure",
+        error: "v12_native_acceptance_workout_complete_failure_fixture_invalid",
+        intercept: async (sql: string, _parameters: readonly SqliteParameter[], read: () => Promise<readonly unknown[]>) => {
+          const rows = await read();
+          return sql.includes("SELECT status, observed_json, completion_idempotency_key FROM session_sets")
+            ? (rows as readonly Record<string, unknown>[]).map((row) => ({ ...row, status: "completed" }))
+            : rows;
+        },
+      },
+      {
+        caseId: "workout.duration-editor",
+        error: "v12_native_acceptance_workout_metric_draft_activation_failed",
+        intercept: async (sql: string, _parameters: readonly SqliteParameter[], read: () => Promise<readonly unknown[]>) => {
+          const rows = await read();
+          if (sql.includes("SELECT active_session_exercise_id, active_set_id FROM workout_sessions")) {
+            return (rows as readonly Record<string, unknown>[]).map((row) => ({ ...row, active_session_exercise_id: "wrong-active-exercise" }));
+          }
+          return sql.includes("LEFT JOIN session_exercises exercise")
+            ? (rows as readonly Record<string, unknown>[]).map((row) => ({ ...row, exercise_id: null, exercise_revision: null }))
+            : rows;
+        },
+      },
+      {
+        caseId: "workout.appearance",
+        error: "v12_native_acceptance_appearance_preference_postcondition_failed",
+        intercept: async (sql: string, _parameters: readonly SqliteParameter[], read: () => Promise<readonly unknown[]>) => {
+          const rows = await read();
+          return sql.includes("SELECT value_json FROM app_settings WHERE key = ? LIMIT 1")
+            ? [{ value_json: JSON.stringify("Light") }]
+            : rows;
+        },
+      },
+      {
+        caseId: "workout.timing-policy",
+        error: "v12_native_acceptance_handler_execution_failed",
+        intercept: (() => {
+          let preferenceReads = 0;
+          return async (sql: string, _parameters: readonly SqliteParameter[], read: () => Promise<readonly unknown[]>) => {
+            const rows = await read();
+            if (!sql.includes("SELECT value_json, revision FROM app_settings WHERE key = ?")) return rows;
+            preferenceReads += 1;
+            return preferenceReads === 4
+              ? [{ value_json: JSON.stringify({ version: 1, planId: "wrong", defaultRestSeconds: 30, weightIncrementGrams: 2500 }), revision: 99 }]
+              : rows;
+          };
+        })(),
+      },
+      {
+        caseId: "workout.complete-commit",
+        error: "v12_native_acceptance_workout_complete_postcondition_failed",
+        intercept: async (sql: string, _parameters: readonly SqliteParameter[], read: () => Promise<readonly unknown[]>) => {
+          const rows = await read();
+          if (sql.includes("set_row.completion_idempotency_key IS NOT NULL")) return [];
+          return sql.includes("WHERE completion_idempotency_key = ?")
+            ? (rows as readonly Record<string, unknown>[]).map((row) => ({ ...row, status: "planned" }))
+            : rows;
+        },
+      },
+    ] as const;
+
+    for (const [index, fault] of cases.entries()) {
+      const kernel = await open();
+      const contract = contractFor(fault.caseId);
+      const request = await prepareHostCase(kernel, contract, 32 + index);
+      await expect(dispatchV12NativeAcceptanceProductionOperation({
+        kernel: faultedReadKernel(kernel, fault.intercept),
+        contract,
+        request,
+      })).rejects.toThrow(fault.error);
+    }
+  }, 180_000);
+
+  it("executes the first complete-set callback on SQLite instead of taking only the replay path", async () => {
+    const kernel = await open();
+    const contract = contractFor("workout.complete-commit");
+    const request = await prepareHostCase(kernel, contract, 80);
+    const result = await dispatchV12NativeAcceptanceProductionOperation({
+      kernel: faultedReadKernel(kernel, async (sql, _parameters, read) => (
+        sql.includes("set_row.completion_idempotency_key IS NOT NULL") ? [] : read()
+      )),
+      contract,
+      request,
+    });
+    expect(result).toMatchObject({ result: "committed", facts: { outcome: "committed" } });
+  }, 90_000);
+
+
+  it("fails exact late SQLite read guards after valid acceptance setup", async () => {
+    const cases = [
+      {
+        caseId: "workout.rest-recovery",
+        error: "v12_native_acceptance_workout_rest_precondition_missing",
+        intercept: failReadOnMatch("LEFT JOIN session_rest_states rs ON rs.session_id = ws.id", [], 3),
+      },
+      {
+        caseId: "workout.add-exercise",
+        error: "v12_native_acceptance_workout_fixture_session_missing",
+        intercept: failReadOnMatch("WHERE plan_id = ? AND started_at_ms = ? AND source = 'alternate_day'", [], 2),
+      },
+      {
+        caseId: "workout.completion-review",
+        error: "v12_native_acceptance_workout_read_precondition_missing",
+        intercept: failReadOnMatch("WHERE plan_id = ? AND started_at_ms = ? AND source = 'alternate_day'", [], 2),
+      },
+      {
+        caseId: "workout.readonly-presentation",
+        error: "v12_native_acceptance_workout_read_precondition_missing",
+        intercept: failReadOnMatch("WHERE plan_id = ? AND started_at_ms = ? AND source = 'alternate_day'", [], 2),
+      },
+      {
+        caseId: "workout.trend",
+        error: "v12_native_acceptance_workout_fixture_session_missing",
+        intercept: failReadOnMatch("WHERE plan_id = ? AND started_at_ms = ? AND source = 'alternate_day'", [], 2),
+      },
+      {
+        caseId: "workout.plan-increment",
+        error: "v12_native_acceptance_plan_increment_session_missing",
+        intercept: failReadOnMatch("WHERE plan_id = ? AND started_at_ms = ? AND source = 'alternate_day'", [], 3),
+      },
+      {
+        caseId: "workout.outcomes",
+        error: "v12_native_acceptance_workout_finish_partial_precondition_missing",
+        intercept: failReadOnMatch("WHERE plan_id = ? AND started_at_ms = ? AND source = 'alternate_day'", [], 2),
+      },
+      {
+        caseId: "workout.start-alternate",
+        error: "v12_native_acceptance_workout_start_postcondition_failed",
+        intercept: failReadOnMatch("WHERE plan_id = ? AND started_at_ms = ? AND source = 'alternate_day'", [], 2),
+      },
+      {
+        caseId: "workout.rest-controls",
+        error: "v12_native_acceptance_workout_rest_precondition_missing",
+        intercept: failReadOnMatch("LEFT JOIN session_rest_states rs ON rs.session_id = ws.id", [], 3),
+      },
+      {
+        caseId: "workout.undo",
+        error: "v12_native_acceptance_workout_undo_receipt_missing",
+        intercept: failReadOnMatch("FROM session_undo_snapshots", [], 2),
+      },
+
+      {
+        caseId: "workout.complete-failure",
+        error: "v12_native_acceptance_workout_complete_failure_fixture_invalid",
+        intercept: async (sql: string, _parameters: readonly SqliteParameter[], read: () => Promise<readonly unknown[]>) => {
+          const rows = await read();
+          return sql.includes("SELECT status, observed_json, completion_idempotency_key FROM session_sets")
+            ? (rows as readonly Record<string, unknown>[]).map((row) => ({ ...row, status: "draft", observed_json: null, completion_idempotency_key: null }))
+            : rows;
+        },
+      },
+      {
+        caseId: "workout.delete-exercise",
+        error: "v12_native_acceptance_workout_fixture_session_missing",
+        intercept: failReadOnMatch("WHERE plan_id = ? AND started_at_ms = ? AND source = 'alternate_day'", [], 3),
+      },
+      {
+        caseId: "workout.undo",
+        error: "v12_native_acceptance_workout_fixture_session_missing",
+        intercept: failReadOnMatch("WHERE plan_id = ? AND started_at_ms = ? AND source = 'alternate_day'", [], 3),
+      },
+      {
+        caseId: "workout.rest-controls",
+        error: "v12_native_acceptance_workout_fixture_session_missing",
+        intercept: failReadOnMatch("SELECT id, revision FROM workout_sessions WHERE id = ? AND status = 'in_progress'", [], 1),
+      },
+      {
+        caseId: "workout.complete-commit",
+        error: "v12_native_acceptance_workout_metric_precondition_missing",
+        intercept: async (sql: string, _parameters: readonly SqliteParameter[], read: () => Promise<readonly unknown[]>) => {
+          const rows = await read();
+          return sql.includes("set_row.metric_profile")
+            ? (rows as readonly Record<string, unknown>[]).map((row) => ({ ...row, metric_profile: "unscored" }))
+            : rows;
+        },
+      },
+    ] as const;
+
+    for (const [offset, fault] of cases.entries()) {
+      await expectRejectsExactly(dispatchPreparedHostCase({
+        caseId: fault.caseId,
+        index: 96 + offset,
+        intercept: fault.intercept,
+      }), fault.error);
+    }
+  }, 240_000);
+
+  it("fails exact late SQLite receipt and postcondition replay guards", async () => {
+    const cases = [
+      {
+        caseId: "library.owned-lifecycle",
+        error: "v12_native_acceptance_owned_plan_archive_postcondition_failed",
+        intercept: failReadOnMatch("FROM owned_plan_mutation_requests", [], 3),
+      },
+      {
+        caseId: "library.plan-editor",
+        error: "v12_native_acceptance_owned_plan_save_postcondition_failed",
+        intercept: failReadOnMatch("FROM owned_plan_mutation_requests", [], 3),
+      },
+      {
+        caseId: "library.schedule-editor",
+        error: "v12_native_acceptance_schedule_receipt_invalid",
+        intercept: failReadOnMatch("FROM owned_plan_schedule_events", [], 3),
+      },
+      {
+        caseId: "library.starter-detail",
+        error: "v12_native_acceptance_starter_editable_copy_postcondition_failed",
+        intercept: failReadOnMatch("FROM owned_plan_mutation_requests", [], 3),
+      },
+      {
+        caseId: "library.template-update",
+        error: "v12_native_acceptance_starter_template_copy_postcondition_failed",
+        intercept: failReadOnMatch("FROM owned_plan_mutation_requests", [], 3),
+      },
+
+      {
+        caseId: "workout.outcomes",
+        error: "v12_native_acceptance_workout_finish_partial_postcondition_failed",
+        intercept: async (sql: string, _parameters: readonly SqliteParameter[], read: () => Promise<readonly unknown[]>) => {
+          const rows = await read();
+          return sql.includes("FROM workout_receipts") && sql.includes("WHERE id = ?")
+            ? (rows as readonly Record<string, unknown>[]).map((row) => ({ ...row, request_sha256: "0".repeat(64) }))
+            : rows;
+        },
+      },
+      {
+        caseId: "workout.rest-controls",
+        error: "v12_native_acceptance_workout_rest_adjust_postcondition_failed",
+        intercept: failReadOnMatch("LEFT JOIN session_rest_states rs ON rs.session_id = ws.id", [{
+          session_revision: 4,
+          status: "paused",
+          started_at_ms: null,
+          ends_at_ms: null,
+          remaining_ms: 1,
+          expired_at_ms: null,
+          next_set_id: null,
+          rest_revision: 2,
+        }], 6),
+      },
+    ] as const;
+
+    for (const [offset, fault] of cases.entries()) {
+      await expectRejectsExactly(dispatchPreparedHostCase({
+        caseId: fault.caseId,
+        index: 112 + offset,
+        intercept: fault.intercept,
+      }), fault.error);
+    }
+  }, 240_000);
+
+  it("executes custom exercise commands when owner preference snapshots are absent", async () => {
+    const cases = [
+      "library.exercise-favorites",
+      "library.custom-exercise-hide",
+      "library.custom-exercise-archive",
+    ] as const;
+    for (const [offset, caseId] of cases.entries()) {
+      const kernel = await open();
+      const contract = contractFor(caseId);
+      const runtime = { customExercises: createCustomExerciseRepository(kernel) };
+      const request = requestFor(contract, 120 + offset);
+      await prepareV12NativeAcceptanceProductionOperation({ kernel, contract, request, runtime });
+      let preferenceReads = 0;
+      await expectRejectsWithExactCause(dispatchV12NativeAcceptanceProductionOperation({
+        kernel: faultedReadKernel(kernel, async (sql, _parameters, read) => {
+          const rows = await read();
+          if (!sql.includes("SELECT favorite, revision FROM exercise_owner_preferences WHERE exercise_id = ?")) return rows;
+          preferenceReads += 1;
+          return preferenceReads === 1 ? [] : rows;
+        }),
+        contract,
+        request,
+        runtime,
+      }), "v12_native_acceptance_handler_execution_failed", "custom_exercise_preference_revision_conflict");
+    }
+  }, 120_000);
+
   it("audits all 55 fresh mutations/replays and all 33 case-specific reads on fresh migrated SQLite", async () => {
     const sourceOwned = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.filter(({ shard }) => shard !== "multi-plan");
     const mutations = sourceOwned.filter(({ operation }) => operation.kind === "repository-mutation");

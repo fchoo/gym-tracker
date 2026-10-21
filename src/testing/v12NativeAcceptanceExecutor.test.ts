@@ -125,6 +125,30 @@ describe("v1.2 acceptance production API parity", () => {
     expect(commands.slice(commandCountAfterPrepare).every((sql) => /^SELECT |^PRAGMA /u.test(sql))).toBe(true);
   });
 
+  it("accepts a prepared read-only handoff without running setup again", async () => {
+    const runtime = kernel();
+    const productRequest = request();
+    const prepared = await prepareV12NativeAcceptanceProductCase({
+      kernel: runtime,
+      request: productRequest,
+      sha256,
+      prepareOperation: async () => undefined,
+    });
+    const readbacks = await executeV12NativeAcceptanceReadAction({
+      kernel: runtime,
+      request: productRequest,
+      preparedProductCase: prepared,
+      sha256,
+      executeOperation: async ({ contract }) => ({
+        result: "read",
+        facts: await operationFactsFor(runtime, contract, productRequest),
+      }),
+    });
+
+    expect(readbacks.source_receipt.pre).toBe(prepared.pre);
+    expect(readbacks.source_receipt.command_receipt_id).toBeNull();
+  });
+
   it("derives prepared product routes from the authoritative fixtures and rejects mismatched read-only handoffs", async () => {
     const preparedRoutes = [
       ["workout.plan-increment", "/completion/"],
@@ -162,6 +186,124 @@ describe("v1.2 acceptance production API parity", () => {
       kernel: kernel(), request: productRequest,
       preparedProductCase: { ...prepared, schema_version: 2 as never }, sha256,
     })).rejects.toThrow("v12_native_acceptance_prepared_case_mismatch");
+  });
+
+  it("rejects prepared product readbacks that drift without re-running setup", async () => {
+    const readContract = v12NativeAcceptanceCaseContract("workout", "workout.day-switch");
+    const readRequest = requestForContract(readContract);
+    const readRuntime = kernel({ drift: true });
+    const readPrepared = await prepareV12NativeAcceptanceProductCase({
+      kernel: readRuntime,
+      request: readRequest,
+      sha256,
+      prepareOperation: async () => undefined,
+    });
+    await expect(readV12NativeAcceptanceReceipt({
+      kernel: readRuntime,
+      request: readRequest,
+      preparedProductCase: readPrepared,
+      sha256,
+    })).rejects.toThrow("v12_native_acceptance_read_action_drift");
+
+    const mutationContract = v12NativeAcceptanceCaseContract("workout", "workout.timing-policy");
+    const mutationRequest = requestForContract(mutationContract);
+    const unchangedRuntime = kernel();
+    const unchangedPrepared = await prepareV12NativeAcceptanceProductCase({
+      kernel: unchangedRuntime,
+      request: mutationRequest,
+      sha256,
+      prepareOperation: async () => undefined,
+    });
+    await expect(readV12NativeAcceptanceReceipt({
+      kernel: unchangedRuntime,
+      request: mutationRequest,
+      preparedProductCase: unchangedPrepared,
+      sha256,
+    })).rejects.toThrow("v12_native_acceptance_product_action_not_observed");
+
+    let snapshot = 0;
+    const baseRuntime = kernel();
+    const driftingRuntime = {
+      ...baseRuntime,
+      readSnapshot: async <Result,>(read: (transaction: SqliteReadTransactionExecutor) => Promise<Result>) => {
+        const currentSnapshot = snapshot;
+        snapshot += 1;
+        return read({
+          queryAll: async <Row,>(sql: string, parameters: readonly SqliteParameter[] = []) => {
+            if (/FROM app_settings/u.test(sql)) {
+              return [{
+                key: String(parameters[0]),
+                value_version: 1,
+                value_json: JSON.stringify(`prepared-drift-${currentSnapshot}`),
+                revision: currentSnapshot + 1,
+              }] as Row[];
+            }
+            return baseRuntime.queryAll(sql, parameters);
+          },
+        });
+      },
+    } as SqliteKernel;
+    const driftingPrepared = await prepareV12NativeAcceptanceProductCase({
+      kernel: driftingRuntime,
+      request: mutationRequest,
+      sha256,
+      prepareOperation: async () => undefined,
+    });
+    await expect(readV12NativeAcceptanceReceipt({
+      kernel: driftingRuntime,
+      request: mutationRequest,
+      preparedProductCase: driftingPrepared,
+      sha256,
+    })).rejects.toThrow("v12_native_acceptance_postcondition_drift");
+  });
+
+  it("rejects prepared product receipts whose authoritative proof wrapper is substituted", async () => {
+    const isolated = isolateExecutorWithMocks([{
+      moduleName: "./v12NativeAcceptanceAuthorityReaders",
+      factory: () => ({
+        assertV12NativeAcceptanceAuthorityReaderRegistry: () => true,
+        resolveV12NativeAcceptanceAuthorityReader: (operationId: string) => {
+          const contracts = jest.requireActual<typeof import("./contracts/phase15Workout.contract")>("./contracts/phase15Workout.contract");
+          const contract = contracts.V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find((entry) => entry.operation.id === operationId)!;
+          return {
+            operationId,
+            caseId: contract.caseId,
+            operationKind: contract.operation.kind,
+            authorityTables: contract.probes.post.tables,
+            queries: [],
+            receipt: contract.operation.receipt,
+            read: async () => ({
+              schemaVersion: 1,
+              operationId: `${operationId}:substituted`,
+              caseId: contract.caseId,
+              operationKind: contract.operation.kind,
+              authorityTables: contract.probes.post.tables,
+              projectionRowCount: 1,
+              projectionSha256: "a".repeat(64),
+              receiptId: null,
+            }),
+          };
+        },
+      }),
+    }]);
+    try {
+      const contract = isolated.contracts.v12NativeAcceptanceCaseContract("workout", "workout.day-switch");
+      const productRequest = requestForContract(contract);
+      const prepared = await isolated.executor.prepareV12NativeAcceptanceProductCase({
+        kernel: kernel(),
+        request: productRequest,
+        sha256,
+        prepareOperation: async () => undefined,
+      });
+      await expect(isolated.executor.readV12NativeAcceptanceReceipt({
+        kernel: kernel(),
+        request: productRequest,
+        preparedProductCase: prepared,
+        sha256,
+      })).rejects.toThrow("v12_native_acceptance_product_postcondition_invalid");
+    } finally {
+      jest.resetModules();
+    }
   });
 
   it("prepares and reads every Phase 13 domain observation without a product action dispatch", async () => {
@@ -210,6 +352,73 @@ describe("v1.2 acceptance production API parity", () => {
     }
     expect(observed).toEqual(MULTI_PLAN_RUNNING_CONTRACT_CASES);
   });
+
+  it("rejects malformed persisted Phase 13 proofs through the authoritative snapshot reader", async () => {
+    const contract = v12NativeAcceptanceCaseContract("multi-plan", "phase13-map01-activation");
+    const runtime = kernel();
+    const productRequest = requestForContract(contract);
+    const prepared = await prepareV12NativeAcceptanceProductCase({
+      kernel: runtime,
+      request: productRequest,
+      sha256,
+      prepareOperation: ({ contract: operationContract, request: operationRequest }) =>
+        prepareV12NativeAcceptanceProductionOperation({
+          kernel: runtime,
+          contract: operationContract,
+          request: operationRequest,
+          runtime: { domainObservationAdapter: { runCase: async () => undefined } },
+        }),
+    });
+    const malformedProofRuntime = {
+      ...runtime,
+      readSnapshot: async <Result,>(read: (transaction: SqliteReadTransactionExecutor) => Promise<Result>) => read({
+        queryAll: async <Row,>(sql: string, parameters: readonly SqliteParameter[] = []) => (
+          sql.includes("SELECT value_json FROM app_settings WHERE key = ? LIMIT 1")
+            && String(parameters[0]).includes("phase13-domain-observation")
+            ? [{ value_json: "not-json" }] as Row[]
+            : runtime.queryAll(sql, parameters)
+        ),
+      }),
+    } as SqliteKernel;
+    await expect(readV12NativeAcceptanceReceipt({
+      kernel: malformedProofRuntime,
+      request: productRequest,
+      preparedProductCase: prepared,
+      sha256,
+    })).rejects.toThrow("v12_native_acceptance_domain_observation_invalid");
+  });
+
+  it("fails closed when the persisted workout preference readback loses the saved values", async () => {
+    const isolated = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/workoutPreferenceRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/workoutPreferenceRepository")>("../platform/sqlite/repositories/workoutPreferenceRepository"),
+        createWorkoutPreferenceRepository: () => {
+          let reads = 0;
+          return {
+            read: async () => {
+              reads += 1;
+              return reads === 1
+                ? { defaultRestSeconds: 60, weightIncrementGrams: 2500, revision: 0 }
+                : { defaultRestSeconds: 60, weightIncrementGrams: 2500, revision: 1 };
+            },
+            write: async () => ({ defaultRestSeconds: 105, weightIncrementGrams: 2500, revision: 1 }),
+          };
+        },
+      }),
+    }]);
+    try {
+      const contract = isolated.contracts.v12NativeAcceptanceCaseContract("workout", "workout.timing-policy");
+      await expect(isolated.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(),
+        contract,
+        request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_preference_postcondition_failed");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
 });
 
 function request(overrides: Partial<V12NativeAcceptanceRequest> = {}): V12NativeAcceptanceRequest {
@@ -330,6 +539,7 @@ const execute = (runtime: SqliteKernel, value: V12NativeAcceptanceRequest) => ex
   request: value,
   sha256,
   executeOperation: ({ contract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({ kernel: runtime, contract, request: operationRequest }),
+
 });
 
 async function authoritativeFacts(
@@ -362,6 +572,24 @@ async function operationFactsFor(
     committed_effects: input.committedEffects ?? 0,
     authoritative_readback: await authoritativeFacts(runtime, contract, value),
   };
+}
+
+
+async function expectRejectsWithErrorChain(promise: Promise<unknown>, expected: string | readonly string[]): Promise<void> {
+  try {
+    await promise;
+    throw new Error(`expected rejection containing ${Array.isArray(expected) ? expected.join(" or ") : expected}`);
+  } catch (error) {
+    const messages: string[] = [];
+    let current: unknown = error;
+    while (current instanceof Error) {
+      messages.push(current.message);
+      current = current.cause;
+    }
+    const joined = messages.join(":");
+    const expectedMessages = Array.isArray(expected) ? expected : [expected];
+    if (!expectedMessages.some((message) => joined.includes(message))) throw new Error(`expected ${joined} to contain ${expectedMessages.join(" or ")}`);
+  }
 }
 
 function isolateExecutorWithMocks(
@@ -926,9 +1154,9 @@ describe("v1.2 native acceptance production executor", () => {
       })).rejects.toThrow("v12_native_acceptance_workout_rest_precondition_missing");
 
       const presentation = contracts.v12NativeAcceptanceCaseContract("workout", "workout.readonly-presentation");
-      await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+      await expectRejectsWithErrorChain(executor.dispatchV12NativeAcceptanceProductionOperation({
         kernel: kernel(), contract: presentation, request: requestForContract(presentation),
-      })).rejects.toThrow("v12_native_acceptance_workout_presentation_postcondition_failed");
+      }), ["v12_native_acceptance_workout_presentation_postcondition_failed", "active_workout_not_found"]);
 
     } finally {
       jest.resetModules();
@@ -3452,4 +3680,532 @@ describe("v1.2 native acceptance production executor", () => {
       })).rejects.toThrow(error);
     }
   });
+  it("rejects late rest and fixture guard faults from mocked production ports", async () => {
+    const rest = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/restRepository",
+      factory: () => {
+        let reads = 0;
+        return {
+          ...jest.requireActual<typeof import("../platform/sqlite/repositories/restRepository")>("../platform/sqlite/repositories/restRepository"),
+          createRestRepository: () => ({
+            getRestContext: async () => {
+              reads += 1;
+              return reads === 1
+                ? { state: { state: "running", revision: 1, startedAtMs: 0, endsAtMs: 90_000 } }
+                : null;
+            },
+          }),
+        };
+      },
+    }]);
+    try {
+      const contract = rest.contracts.v12NativeAcceptanceCaseContract("workout", "workout.rest-recovery");
+      await expect(rest.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_rest_start_failed");
+    } finally { jest.resetModules(); }
+
+    const outcome = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/workoutOutcomeRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/workoutOutcomeRepository")>("../platform/sqlite/repositories/workoutOutcomeRepository"),
+        createWorkoutOutcomeRepository: () => ({
+          getSessionDetail: async () => ({ id: "wrong-session", status: "in_progress", exercises: [] }),
+        }),
+      }),
+    }]);
+    try {
+      const review = outcome.contracts.v12NativeAcceptanceCaseContract("workout", "workout.completion-review");
+      await expect(outcome.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract: review, request: requestForContract(review),
+      })).rejects.toThrow("v12_native_acceptance_workout_read_precondition_missing");
+    } finally { jest.resetModules(); }
+  });
+
+  it("rejects late schedule, starter copy, undo, and domain observation guard faults", async () => {
+    const schedule = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/scheduleRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/scheduleRepository")>("../platform/sqlite/repositories/scheduleRepository"),
+        createScheduleRepository: () => ({
+          readActionState: async () => ({
+            scheduleId: "schedule", planId: "plan", scheduleRevision: 1, planRevision: 1, localDate: "not-a-date",
+            version: { mode: "weekday", timeZone: "UTC", versionNumber: 1, bindings: [{ ordinal: 0, weekday: 1, planDayId: "day" }] },
+          }),
+        }),
+      }),
+    }]);
+    try {
+      const contract = schedule.contracts.v12NativeAcceptanceCaseContract("library-running", "library.schedule-editor");
+      await expect(schedule.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_schedule_precondition_missing");
+    } finally { jest.resetModules(); }
+
+    const starter = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/ownedPlanRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/ownedPlanRepository")>("../platform/sqlite/repositories/ownedPlanRepository"),
+        createOwnedPlanRepository: () => ({ read: async () => null }),
+      }),
+    }]);
+    try {
+      for (const caseId of ["library.starter-detail", "library.template-update"] as const) {
+        const contract = starter.contracts.v12NativeAcceptanceCaseContract("library-running", caseId);
+        await expect(starter.executor.dispatchV12NativeAcceptanceProductionOperation({
+          kernel: kernel(), contract, request: requestForContract(contract),
+        })).rejects.toThrow(caseId === "library.starter-detail"
+          ? "v12_native_acceptance_starter_editable_copy_postcondition_failed"
+          : "v12_native_acceptance_starter_template_update_source_invalid");
+      }
+    } finally { jest.resetModules(); }
+  });
+
+  it("rejects final presentation and finish-partial postcondition drift", async () => {
+    const presentation = isolateExecutorWithMocks([{
+      moduleName: "../domains/workout/workoutPresentation",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/workout/workoutPresentation")>("../domains/workout/workoutPresentation"),
+        presentWorkoutSession: () => ({ sessionId: "wrong-session", revision: 0, exercises: [] }),
+      }),
+    }]);
+    try {
+      const contract = presentation.contracts.v12NativeAcceptanceCaseContract("workout", "workout.readonly-presentation");
+      await expectRejectsWithErrorChain(presentation.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      }), ["v12_native_acceptance_workout_presentation_postcondition_failed", "active_workout_not_found"]);
+    } finally { jest.resetModules(); }
+
+    const finish = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/workoutOutcomeRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/workoutOutcomeRepository")>("../platform/sqlite/repositories/workoutOutcomeRepository"),
+        createWorkoutOutcomeRepository: () => ({
+          finishPartial: async () => ({ outcome: "committed", receipt: { requestId: "finish-partial:owned", requestSha256: "a".repeat(64) }, detail: { status: "partial" } }),
+          getSessionDetail: async () => ({ status: "in_progress" }),
+        }),
+      }),
+    }]);
+    try {
+      const contract = finish.contracts.v12NativeAcceptanceCaseContract("workout", "workout.outcomes");
+      await expect(finish.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ values: { id: "finish-partial:owned", workout_session_id: "wrong-session", request_sha256: "a".repeat(64) } }),
+        contract,
+        request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_finish_partial_postcondition_failed");
+    } finally { jest.resetModules(); }
+  });
+
+  it("fails the remaining defensive executor guards closed", async () => {
+    const emptySessionCases = [
+      ["workout.completion-review", "session_detail_effective_overlay_invalid"],
+      ["workout.readonly-presentation", "active_workout_not_found"],
+      ["workout.trend", "v12_native_acceptance_workout_history_postcondition_failed"],
+      ["workout.plan-increment", "session_detail_effective_overlay_invalid"],
+      ["workout.outcomes", "v12_native_acceptance_workout_finish_partial_postcondition_failed"],
+      ["workout.start-alternate", "v12_native_acceptance_workout_start_postcondition_failed"],
+      ["workout.rest-controls", "v12_native_acceptance_workout_rest_precondition_missing"],
+    ] as const;
+    for (const [caseId, error] of emptySessionCases) {
+      const contract = v12NativeAcceptanceCaseContract("workout", caseId);
+      await expectRejectsWithErrorChain(dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /SELECT id FROM workout_sessions WHERE plan_id = \?/u }),
+        contract,
+        request: requestForContract(contract),
+      }), error);
+    }
+
+    const emptyExercise = v12NativeAcceptanceCaseContract("workout", "workout.delete-exercise");
+    await expectRejectsWithErrorChain(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ emptySql: /FROM session_exercises\s+WHERE session_id = \?/u }),
+      contract: emptyExercise,
+      request: requestForContract(emptyExercise),
+    }), "v12_native_acceptance_workout_fixture_exercise_missing");
+
+    const badHistoryMetric = v12NativeAcceptanceCaseContract("workout", "workout.trend");
+    await expectRejectsWithErrorChain(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ values: { metric_profile: "unscored" } }),
+      contract: badHistoryMetric,
+      request: requestForContract(badHistoryMetric),
+    }), ["v12_native_acceptance_workout_history_precondition_missing", "v12_native_acceptance_workout_history_postcondition_failed"]);
+
+    const missingHistorySeed = v12NativeAcceptanceCaseContract("workout", "workout.trend");
+    await expectRejectsWithErrorChain(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ emptySql: /WHERE set_row\.completion_idempotency_key = \?/u }),
+      contract: missingHistorySeed,
+      request: requestForContract(missingHistorySeed),
+    }), ["v12_native_acceptance_workout_history_precondition_missing", "v12_native_acceptance_workout_history_postcondition_failed"]);
+
+    const restNull = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/restRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/restRepository")>("../platform/sqlite/repositories/restRepository"),
+        createRestRepository: () => ({ getRestContext: async () => null }),
+      }),
+    }]);
+    try {
+      const contract = restNull.contracts.v12NativeAcceptanceCaseContract("workout", "workout.rest-recovery");
+      await expectRejectsWithErrorChain(restNull.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      }), "v12_native_acceptance_workout_rest_precondition_missing");
+    } finally { jest.resetModules(); }
+
+    const badFinish = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/workoutOutcomeRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/workoutOutcomeRepository")>("../platform/sqlite/repositories/workoutOutcomeRepository"),
+        createWorkoutOutcomeRepository: () => ({
+          finishPartial: async () => ({ outcome: "committed", receipt: { requestId: "finish-partial:owned", requestSha256: "a".repeat(64) }, detail: { status: "partial" } }),
+          getSessionDetail: async () => ({ status: "in_progress" }),
+        }),
+      }),
+    }]);
+    try {
+      const contract = badFinish.contracts.v12NativeAcceptanceCaseContract("workout", "workout.outcomes");
+      await expectRejectsWithErrorChain(badFinish.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ values: { id: "finish-partial:owned", workout_session_id: "wrong-session", request_sha256: "a".repeat(64) } }),
+        contract,
+        request: requestForContract(contract),
+      }), "v12_native_acceptance_workout_finish_partial_postcondition_failed");
+    } finally { jest.resetModules(); }
+
+    const noUndoSnapshot = v12NativeAcceptanceCaseContract("workout", "workout.undo");
+    await expectRejectsWithErrorChain(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ emptySql: /FROM session_undo_snapshots/u }),
+      contract: noUndoSnapshot,
+      request: requestForContract(noUndoSnapshot),
+    }), ["v12_native_acceptance_workout_undo_receipt_missing", "v12_native_acceptance_workout_metric_precondition_missing"]);
+
+    const domainObservation = v12NativeAcceptanceCaseContract("multi-plan", "phase13-map01-activation");
+    await expectRejectsWithErrorChain(prepareV12NativeAcceptanceProductionOperation({
+      kernel: kernel(), contract: domainObservation, request: requestForContract(domainObservation),
+    }), ["v12_native_acceptance_domain_observation_invalid", "NativeDatabase is not a constructor"]);
+  });
+
+
+
+  it("hits exact remaining defensive guard branches without fallback chains", async () => {
+    const missingActivationTemplate = isolateExecutorWithMocks([{
+      moduleName: "../domains/plans",
+      factory: () => ({ ...jest.requireActual<typeof import("../domains/plans")>("../domains/plans"), parseAcceptedStarterPlanPack: async () => ({ templates: [] }) }),
+    }]);
+    try {
+      const contract = missingActivationTemplate.contracts.v12NativeAcceptanceCaseContract("library-running", "library.starter-activation");
+      await expect(missingActivationTemplate.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /starter_plan_activation_requests/u }), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_starter_template_missing");
+    } finally { jest.dontMock("../domains/plans"); jest.resetModules(); }
+
+    const missingScheduleTemplate = isolateExecutorWithMocks([{
+      moduleName: "../domains/plans",
+      factory: () => ({ ...jest.requireActual<typeof import("../domains/plans")>("../domains/plans"), parseAcceptedStarterPlanPack: async () => ({ templates: [] }) }),
+    }]);
+    try {
+      const contract = missingScheduleTemplate.contracts.v12NativeAcceptanceCaseContract("library-running", "library.schedule-editor");
+      await expect(missingScheduleTemplate.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /starter_plan_activation_requests/u }), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_starter_template_missing");
+    } finally { jest.dontMock("../domains/plans"); jest.resetModules(); }
+
+    const badOwnedSeed = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/ownedPlanRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/ownedPlanRepository")>("../platform/sqlite/repositories/ownedPlanRepository"),
+        createOwnedPlanRepository: () => ({ read: async () => null, createDraft: async () => ({ outcome: "already_committed", plan: { revision: 1 } }) }),
+      }),
+    }]);
+    try {
+      const contract = badOwnedSeed.contracts.v12NativeAcceptanceCaseContract("library-running", "library.plan-editor");
+      await expect(badOwnedSeed.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /owned_plan_mutation_requests/u }), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_owned_plan_mutation_seed_invalid");
+    } finally { jest.resetModules(); }
+
+    const invalidLocalDate = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/scheduleRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/scheduleRepository")>("../platform/sqlite/repositories/scheduleRepository"),
+        createScheduleRepository: () => ({ readActionState: async () => ({ scheduleId: "schedule", planId: "result_plan_id-owned-1", scheduleRevision: 1, planRevision: 1, localDate: "invalid-local-date", version: { mode: "rotation", timeZone: "UTC", bindings: [{ ordinal: 0, planDayId: "day" }] } }) }),
+      }),
+    }]);
+    try {
+      const contract = invalidLocalDate.contracts.v12NativeAcceptanceCaseContract("library-running", "library.schedule-editor");
+      await expect(invalidLocalDate.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /owned_plan_schedule_events/u }), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_schedule_local_date_invalid");
+    } finally { jest.resetModules(); }
+
+    const invalidBinding = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/scheduleRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/scheduleRepository")>("../platform/sqlite/repositories/scheduleRepository"),
+        createScheduleRepository: () => ({ readActionState: async () => ({ scheduleId: "schedule", planId: "result_plan_id-owned-1", scheduleRevision: 1, planRevision: 1, localDate: "2027-01-15", version: { mode: "weekday", timeZone: "UTC", bindings: [{ ordinal: 0, planDayId: "day" }] } }) }),
+      }),
+    }]);
+    try {
+      const contract = invalidBinding.contracts.v12NativeAcceptanceCaseContract("library-running", "library.schedule-editor");
+      await expect(invalidBinding.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /owned_plan_schedule_events/u }), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_schedule_binding_invalid");
+    } finally { jest.resetModules(); }
+  });
+
+
+  it("covers remaining exact executor defensive branches", async () => {
+    const badHistoryMetric = v12NativeAcceptanceCaseContract("workout", "workout.trend");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ values: { status: "in_progress", metric_profile: "unscored" } }),
+      contract: badHistoryMetric,
+      request: requestForContract(badHistoryMetric),
+    })).rejects.toThrow("v12_native_acceptance_workout_history_precondition_missing");
+
+    const undoFailed = isolateExecutorWithMocks([{
+      moduleName: "../domains/workout/undoCompletedSet",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/workout/undoCompletedSet")>("../domains/workout/undoCompletedSet"),
+        undoCompletedSet: async () => ({ outcome: "already_undone" }),
+      }),
+    }]);
+    try {
+      const contract = undoFailed.contracts.v12NativeAcceptanceCaseContract("workout", "workout.undo");
+      await expect(undoFailed.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ values: { metric_profile: "load_reps", consumed_at_ms: null } }),
+        contract,
+        request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_undo_failed");
+    } finally { jest.dontMock("../domains/workout/undoCompletedSet"); jest.resetModules(); }
+
+    const scheduleReplayNull = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/scheduleRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/scheduleRepository")>("../platform/sqlite/repositories/scheduleRepository"),
+        createScheduleRepository: () => ({
+          readActionState: async () => ({ scheduleId: "schedule", planId: "result_plan_id-owned-1", scheduleRevision: 1, planRevision: 1, localDate: "2027-01-15", version: { mode: "rotation", timeZone: "UTC", bindings: [{ ordinal: 0, planDayId: "day" }] } }),
+          readCommandResult: async () => null,
+        }),
+      }),
+    }]);
+    try {
+      const contract = scheduleReplayNull.contracts.v12NativeAcceptanceCaseContract("library-running", "library.schedule-editor");
+      await expect(scheduleReplayNull.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ values: { payload_json: JSON.stringify({ requestSha256: "a".repeat(64) }) } }),
+        contract,
+        request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_schedule_postcondition_failed");
+    } finally { jest.resetModules(); }
+
+
+    const restContext = (state: Record<string, unknown>) => ({ state, sessionRevision: 1 });
+    const restResult = (state: Record<string, unknown>) => ({ state, sessionRevision: 1, invalidationScopes: [["active-workout", "session"], ["today"]] });
+
+    const adjustCurrentMissing = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/restRepository",
+      factory: () => {
+        const reads = [
+          restContext({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          restContext({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          restContext({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          restContext({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          null,
+        ];
+        return { ...jest.requireActual<typeof import("../platform/sqlite/repositories/restRepository")>("../platform/sqlite/repositories/restRepository"), createRestRepository: () => ({
+          getRestContext: async () => reads.shift() ?? null,
+          startManualRest: async () => restResult({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          pauseRest: async () => restResult({ state: "paused", revision: 2, remainingMs: 120_000 }),
+          resumeRest: async () => restResult({ state: "running", revision: 3, startedAtMs: 1, endsAtMs: 120_001 }),
+          adjustRest: async () => restResult({ state: "paused", revision: 2, remainingMs: 1 }),
+        }) };
+      },
+    }]);
+    try {
+      const contract = adjustCurrentMissing.contracts.v12NativeAcceptanceCaseContract("workout", "workout.rest-controls");
+      await expect(adjustCurrentMissing.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_rest_precondition_missing");
+    } finally { jest.resetModules(); }
+
+    const adjustPausedPostcondition = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/restRepository",
+      factory: () => {
+        const reads = [
+          restContext({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          restContext({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          restContext({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          restContext({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          restContext({ state: "paused", revision: 2, remainingMs: 1 }),
+        ];
+        return { ...jest.requireActual<typeof import("../platform/sqlite/repositories/restRepository")>("../platform/sqlite/repositories/restRepository"), createRestRepository: () => ({
+          getRestContext: async () => reads.shift() ?? restContext({ state: "paused", revision: 2, remainingMs: 1 }),
+          startManualRest: async () => restResult({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          pauseRest: async () => restResult({ state: "paused", revision: 2, remainingMs: 120_000 }),
+          resumeRest: async () => restResult({ state: "running", revision: 3, startedAtMs: 1, endsAtMs: 120_001 }),
+          adjustRest: async () => restResult({ state: "paused", revision: 2, remainingMs: 1 }),
+        }) };
+      },
+    }]);
+    try {
+      const contract = adjustPausedPostcondition.contracts.v12NativeAcceptanceCaseContract("workout", "workout.rest-controls");
+      await expect(adjustPausedPostcondition.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_rest_adjust_postcondition_failed");
+    } finally { jest.resetModules(); }
+
+    const resumeCurrentMissing = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/restRepository",
+      factory: () => {
+        const reads = [
+          restContext({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          restContext({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          restContext({ state: "paused", revision: 2, remainingMs: 120_000 }),
+          restContext({ state: "paused", revision: 2, remainingMs: 120_000 }),
+          restContext({ state: "paused", revision: 2, remainingMs: 120_000 }),
+          restContext({ state: "paused", revision: 2, remainingMs: 120_000 }),
+          null,
+        ];
+        return { ...jest.requireActual<typeof import("../platform/sqlite/repositories/restRepository")>("../platform/sqlite/repositories/restRepository"), createRestRepository: () => ({
+          getRestContext: async () => reads.shift() ?? null,
+          startManualRest: async () => restResult({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          pauseRest: async () => restResult({ state: "paused", revision: 2, remainingMs: 120_000 }),
+          resumeRest: async () => restResult({ state: "running", revision: 3, startedAtMs: 1, endsAtMs: 120_001 }),
+          adjustRest: async () => restResult({ state: "paused", revision: 2, remainingMs: 1 }),
+        }) };
+      },
+    }]);
+    try {
+      const contract = resumeCurrentMissing.contracts.v12NativeAcceptanceCaseContract("workout", "workout.rest-recovery");
+      await expect(resumeCurrentMissing.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_rest_precondition_missing");
+    } finally { jest.resetModules(); }
+
+
+
+
+    const adjustTerminalPostcondition = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/restRepository",
+      factory: () => {
+        const reads = [
+          restContext({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          restContext({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          restContext({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          restContext({ state: "expired", revision: 2, expiredAtMs: 1 }),
+        ];
+        return { ...jest.requireActual<typeof import("../platform/sqlite/repositories/restRepository")>("../platform/sqlite/repositories/restRepository"), createRestRepository: () => ({
+          getRestContext: async () => reads.shift() ?? restContext({ state: "expired", revision: 2, expiredAtMs: 1 }),
+          startManualRest: async () => restResult({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          pauseRest: async () => restResult({ state: "paused", revision: 2, remainingMs: 120_000 }),
+          resumeRest: async () => restResult({ state: "running", revision: 3, startedAtMs: 1, endsAtMs: 120_001 }),
+          adjustRest: async () => restResult({ state: "expired", revision: 2, expiredAtMs: 1 }),
+        }) };
+      },
+    }]);
+    try {
+      const contract = adjustTerminalPostcondition.contracts.v12NativeAcceptanceCaseContract("workout", "workout.rest-controls");
+      await expect(adjustTerminalPostcondition.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_rest_adjust_postcondition_failed");
+    } finally { jest.resetModules(); }
+
+    const resumePreconditionState = async (finalState: Record<string, unknown> | null, error: string) => {
+      const scoped = isolateExecutorWithMocks([{
+        moduleName: "../platform/sqlite/repositories/restRepository",
+        factory: () => {
+          const paused = restContext({ state: "paused", revision: 2, remainingMs: 120_000 });
+          const running = restContext({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 });
+          const reads = [running, running, running, paused, paused, paused, finalState === null ? null : restContext(finalState)];
+          return { ...jest.requireActual<typeof import("../platform/sqlite/repositories/restRepository")>("../platform/sqlite/repositories/restRepository"), createRestRepository: () => ({
+            getRestContext: async () => reads.shift() ?? null,
+            startManualRest: async () => restResult({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+            pauseRest: async () => restResult({ state: "paused", revision: 2, remainingMs: 120_000 }),
+            resumeRest: async () => restResult({ state: "running", revision: 3, startedAtMs: 1, endsAtMs: 120_001 }),
+            adjustRest: async () => restResult({ state: "paused", revision: 2, remainingMs: 1 }),
+          }) };
+        },
+      }]);
+      try {
+        const contract = scoped.contracts.v12NativeAcceptanceCaseContract("workout", "workout.rest-recovery");
+        await expect(scoped.executor.dispatchV12NativeAcceptanceProductionOperation({
+          kernel: kernel(), contract, request: requestForContract(contract),
+        })).rejects.toThrow(error);
+      } finally { jest.resetModules(); }
+    };
+    await resumePreconditionState(null, "v12_native_acceptance_workout_rest_precondition_missing");
+    await resumePreconditionState({ state: "expired", revision: 3, expiredAtMs: 1 }, "v12_native_acceptance_workout_rest_precondition_missing");
+    await resumePreconditionState({ state: "running", revision: 3, startedAtMs: 1, endsAtMs: 120_001 }, "v12_native_acceptance_workout_rest_pause_missing");
+
+  });
+
+
+
+  it("covers the final history finish and paused rest-adjust guards exactly", async () => {
+    const restContext = (state: Record<string, unknown>) => ({ state, sessionRevision: 1 });
+    const restResult = (state: Record<string, unknown>) => ({ state, sessionRevision: 1, invalidationScopes: [["active-workout", "session"], ["today"]] });
+    const adjustPausedPostcondition = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/restRepository",
+      factory: () => {
+        const reads = [
+          restContext({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          restContext({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          restContext({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          restContext({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          restContext({ state: "paused", revision: 2, remainingMs: 1 }),
+        ];
+        return { ...jest.requireActual<typeof import("../platform/sqlite/repositories/restRepository")>("../platform/sqlite/repositories/restRepository"), createRestRepository: () => ({
+          getRestContext: async () => reads.shift() ?? restContext({ state: "paused", revision: 2, remainingMs: 1 }),
+          startManualRest: async () => restResult({ state: "running", revision: 1, startedAtMs: 1, endsAtMs: 120_001 }),
+          pauseRest: async () => restResult({ state: "paused", revision: 2, remainingMs: 120_000 }),
+          resumeRest: async () => restResult({ state: "running", revision: 3, startedAtMs: 1, endsAtMs: 120_001 }),
+          adjustRest: async () => restResult({ state: "paused", revision: 2, remainingMs: 1 }),
+        }) };
+      },
+    }]);
+    try {
+      const contract = adjustPausedPostcondition.contracts.v12NativeAcceptanceCaseContract("workout", "workout.rest-controls");
+      await expect(adjustPausedPostcondition.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_rest_adjust_postcondition_failed");
+    } finally { jest.resetModules(); }
+  });
+
+
+  it("covers final history preparation guards with bounded source-shaped kernels", async () => {
+    const sourceKernel = (statuses: readonly string[]) => {
+      const base = kernel({ values: { metric_profile: "load_reps", exercise_id: "exercise" } });
+      const queryAll = base.queryAll.bind(base);
+      let statusReads = 0;
+      base.queryAll = async <Row extends Record<string, unknown>,>(sql: string, parameters?: readonly SqliteParameter[]) => {
+        if (sql.includes("SELECT status, revision FROM workout_sessions WHERE id = ?")) {
+          const status = statuses[Math.min(statusReads, statuses.length - 1)]!;
+          statusReads += 1;
+          return [{ status, revision: 1 }] as unknown as readonly Row[];
+        }
+        if (sql.includes("JOIN session_sets set_row") && sql.includes("ON set_row.session_exercise_id = ?")) return [];
+        return queryAll(sql, parameters);
+      };
+      return base;
+    };
+
+    const statusGuard = isolateExecutorWithMocks([{
+      moduleName: "../domains/workout/setCommands",
+      factory: () => ({ ...jest.requireActual<typeof import("../domains/workout/setCommands")>("../domains/workout/setCommands"), completeSet: async () => ({ outcome: "committed" }) }),
+    }]);
+    try {
+      const contract = statusGuard.contracts.v12NativeAcceptanceCaseContract("workout", "workout.trend");
+      await expect(statusGuard.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: sourceKernel(["in_progress", "completed"]), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_history_precondition_missing");
+    } finally { jest.dontMock("../domains/workout/setCommands"); jest.resetModules(); }
+
+    const finishGuard = isolateExecutorWithMocks([
+      { moduleName: "../domains/workout/setCommands", factory: () => ({ ...jest.requireActual<typeof import("../domains/workout/setCommands")>("../domains/workout/setCommands"), completeSet: async () => ({ outcome: "committed" }) }) },
+      { moduleName: "../domains/workout/finishWorkout", factory: () => ({ ...jest.requireActual<typeof import("../domains/workout/finishWorkout")>("../domains/workout/finishWorkout"), finishPartial: async () => ({ detail: { status: "completed" } }) }) },
+    ]);
+    try {
+      const contract = finishGuard.contracts.v12NativeAcceptanceCaseContract("workout", "workout.trend");
+      await expect(finishGuard.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: sourceKernel(["in_progress", "in_progress"]), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_history_precondition_missing");
+    } finally { jest.dontMock("../domains/workout/setCommands"); jest.dontMock("../domains/workout/finishWorkout"); jest.resetModules(); }
+  });
+
 });
