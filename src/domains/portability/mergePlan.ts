@@ -565,6 +565,25 @@ function rewriteRecommendationDecisionReceipt(
   });
 }
 
+function rewriteReplacementInvalidationScope(
+  scope: string,
+  planIds: ReadonlyMap<string, string>,
+  exerciseIds: ReadonlyMap<string, string>,
+): string {
+  if (scope === "library:plans" || scope === "today") return scope;
+  if (scope.startsWith("plan:")) {
+    const planId = scope.slice("plan:".length);
+    if (planId.length === 0) invalid();
+    return `plan:${mappedIdentifier(planIds, planId)}`;
+  }
+  if (scope.startsWith("exercise:")) {
+    const exerciseId = scope.slice("exercise:".length);
+    if (exerciseId.length === 0) invalid();
+    return `exercise:${exerciseIds.get(exerciseId) ?? exerciseId}`;
+  }
+  return invalid();
+}
+
 function rewriteExerciseReplacementReceipt(
   row: LogicalBackupRow,
   planIds: ReadonlyMap<string, string>,
@@ -592,20 +611,25 @@ function rewriteExerciseReplacementReceipt(
     || !affectedOccurrenceIds.every((id) => typeof id === "string")) {
     invalid();
   }
+  const expectedPlanRevision = row.expected_plan_revision;
+  const resultPlanRevision = row.result_plan_revision;
+  const committedAtMs = row.committed_at_ms;
   const rewrittenOccurrenceIds = affectedOccurrenceIds.map((id) =>
     mappedIdentifier(occurrenceIds, id)
   );
   if (!rewrittenOccurrenceIds.includes(sourceOccurrenceId)
-    || !Number.isSafeInteger(row.expected_plan_revision)
-    || !Number.isSafeInteger(row.result_plan_revision)
-    || row.expected_plan_revision < 1
-    || row.result_plan_revision !== row.expected_plan_revision + 1
-    || typeof row.committed_at_ms !== "number"
-    || !Number.isSafeInteger(row.committed_at_ms)
-    || row.committed_at_ms < 0
+    || typeof expectedPlanRevision !== "number"
+    || !Number.isSafeInteger(expectedPlanRevision)
+    || typeof resultPlanRevision !== "number"
+    || !Number.isSafeInteger(resultPlanRevision)
+    || expectedPlanRevision < 1
+    || resultPlanRevision !== expectedPlanRevision + 1
+    || typeof committedAtMs !== "number"
+    || !Number.isSafeInteger(committedAtMs)
+    || committedAtMs < 0
     || result.outcome !== "committed"
     || typeof result.planRevision !== "number"
-    || result.planRevision !== row.result_plan_revision
+    || result.planRevision !== resultPlanRevision
     || typeof result.currentWorkoutUnaffected !== "boolean"
     || !Array.isArray(result.invalidations)
     || !result.invalidations.every((value) => typeof value === "string")) {
@@ -621,6 +645,9 @@ function rewriteExerciseReplacementReceipt(
       planId,
       replacementExerciseId,
       affectedOccurrenceIds: rewrittenOccurrenceIds,
+      invalidations: result.invalidations.map((scope) =>
+        rewriteReplacementInvalidationScope(scope, planIds, exerciseIds)
+      ),
     }),
   });
 }

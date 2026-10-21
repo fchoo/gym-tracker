@@ -2660,13 +2660,16 @@ describe("portable merge plan", () => {
         replacementExerciseId: "archive-exercise",
         affectedOccurrenceIds: ["archive-occurrence"],
         currentWorkoutUnaffected: true,
-        invalidations: ["exercise:archive-exercise"],
+        invalidations: ["library:plans", "plan:archive-plan", "exercise:source-exercise", "exercise:archive-exercise", "today"],
       }),
       committed_at_ms: 10,
     };
     const planIds = new Map([["archive-plan", "merged-plan"]]);
     const occurrenceIds = new Map([["archive-occurrence", "merged-occurrence"]]);
-    const exerciseIds = new Map([["archive-exercise", "merged-exercise"]]);
+    const exerciseIds = new Map([
+      ["archive-exercise", "merged-exercise"],
+      ["source-exercise", "merged-source-exercise"],
+    ]);
     const rewritten = __mergePlanTestOnly.rewriteExerciseReplacementReceipt(
       row,
       planIds,
@@ -2687,7 +2690,7 @@ describe("portable merge plan", () => {
       replacementExerciseId: "merged-exercise",
       affectedOccurrenceIds: ["merged-occurrence"],
       currentWorkoutUnaffected: true,
-      invalidations: ["exercise:archive-exercise"],
+      invalidations: ["library:plans", "plan:merged-plan", "exercise:merged-source-exercise", "exercise:merged-exercise", "today"],
     });
     for (const invalidRow of [
       { ...row, request_sha256: "bad" },
@@ -2709,6 +2712,24 @@ describe("portable merge plan", () => {
         replacementExerciseId: "archive-exercise",
         affectedOccurrenceIds: ["archive-occurrence"],
         currentWorkoutUnaffected: true, invalidations: [],
+      }) },
+      { ...row, result_json: JSON.stringify({
+        outcome: "committed", planId: "archive-plan", planRevision: 4,
+        replacementExerciseId: "archive-exercise",
+        affectedOccurrenceIds: ["archive-occurrence"],
+        currentWorkoutUnaffected: true, invalidations: ["plan:"],
+      }) },
+      { ...row, result_json: JSON.stringify({
+        outcome: "committed", planId: "archive-plan", planRevision: 4,
+        replacementExerciseId: "archive-exercise",
+        affectedOccurrenceIds: ["archive-occurrence"],
+        currentWorkoutUnaffected: true, invalidations: ["exercise:"],
+      }) },
+      { ...row, result_json: JSON.stringify({
+        outcome: "committed", planId: "archive-plan", planRevision: 4,
+        replacementExerciseId: "archive-exercise",
+        affectedOccurrenceIds: ["archive-occurrence"],
+        currentWorkoutUnaffected: true, invalidations: ["schedule:archive-schedule"],
       }) },
     ]) {
       expect(() => __mergePlanTestOnly.rewriteExerciseReplacementReceipt(

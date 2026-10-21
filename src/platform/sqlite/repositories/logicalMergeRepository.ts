@@ -218,6 +218,112 @@ function requireValid(condition: boolean): void {
   if (!condition) fail();
 }
 
+function parseJsonObject(value: unknown): Record<string, unknown> {
+  if (typeof value !== "string") fail();
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) fail();
+    return parsed as Record<string, unknown>;
+  } catch {
+    return fail();
+  }
+}
+
+function safeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value);
+}
+
+function replacementReceiptInvalidationsMatch(
+  value: unknown,
+  input: Readonly<{ planId: string; replacementExerciseId: string }>,
+): boolean {
+  if (!Array.isArray(value) || !value.every((scope) => typeof scope === "string")) {
+    return false;
+  }
+  let hasLibrary = false;
+  let hasPlan = false;
+  let hasReplacementExercise = false;
+  let hasToday = false;
+  for (const scope of value) {
+    if (scope === "library:plans") {
+      hasLibrary = true;
+      continue;
+    }
+    if (scope === "today") {
+      hasToday = true;
+      continue;
+    }
+    if (scope.startsWith("plan:")) {
+      const planId = scope.slice("plan:".length);
+      if (planId !== input.planId) return false;
+      hasPlan = true;
+      continue;
+    }
+    if (scope.startsWith("exercise:")) {
+      const exerciseId = scope.slice("exercise:".length);
+      if (exerciseId.length === 0) return false;
+      if (exerciseId === input.replacementExerciseId) hasReplacementExercise = true;
+      continue;
+    }
+    return false;
+  }
+  return hasLibrary && hasPlan && hasReplacementExercise && hasToday;
+}
+
+function assertReplacementReceiptBinding(
+  row: LogicalBackupRow,
+  input: Readonly<{
+    planId: string;
+    ownedOccurrenceExerciseIds: ReadonlyMap<string, string>;
+  }>,
+): void {
+  const planId = textId(row.plan_id);
+  const sourceOccurrenceId = textId(row.source_occurrence_id);
+  const replacementExerciseId = textId(row.replacement_exercise_id);
+  const expectedPlanRevisionValue = row.expected_plan_revision;
+  const resultPlanRevisionValue = row.result_plan_revision;
+  const committedAtMsValue = row.committed_at_ms;
+  requireValid(nonEmptyText(row.request_id));
+  requireValid(/^[a-f0-9]{64}$/u.test(textId(row.request_sha256)));
+  requireValid(planId === input.planId);
+  requireValid(input.ownedOccurrenceExerciseIds.has(sourceOccurrenceId));
+  requireValid(nonEmptyText(replacementExerciseId));
+  requireValid(input.ownedOccurrenceExerciseIds.get(sourceOccurrenceId) === replacementExerciseId);
+  if (typeof expectedPlanRevisionValue !== "number"
+    || !safeInteger(expectedPlanRevisionValue)) fail();
+  if (typeof resultPlanRevisionValue !== "number"
+    || !safeInteger(resultPlanRevisionValue)) fail();
+  if (typeof committedAtMsValue !== "number"
+    || !safeInteger(committedAtMsValue)) fail();
+  const expectedPlanRevision = expectedPlanRevisionValue;
+  const resultPlanRevision = resultPlanRevisionValue;
+  const committedAtMs = committedAtMsValue;
+  requireValid(expectedPlanRevision >= 1);
+  requireValid(resultPlanRevision === expectedPlanRevision + 1);
+  requireValid(committedAtMs >= 0);
+
+  const result = parseJsonObject(row.result_json);
+  requireValid(result.outcome === "committed");
+  requireValid(result.planId === planId);
+  requireValid(result.planRevision === resultPlanRevision);
+  requireValid(result.replacementExerciseId === replacementExerciseId);
+  requireValid(result.currentWorkoutUnaffected === true
+    || result.currentWorkoutUnaffected === false);
+  const affectedOccurrenceIds = result.affectedOccurrenceIds;
+  requireValid(Array.isArray(affectedOccurrenceIds));
+  const affectedOccurrenceIdList = affectedOccurrenceIds as readonly unknown[];
+  requireValid(affectedOccurrenceIdList.length > 0);
+  requireValid(affectedOccurrenceIdList.every((id) =>
+    typeof id === "string"
+      && input.ownedOccurrenceExerciseIds.get(id) === replacementExerciseId
+  ));
+  requireValid(affectedOccurrenceIdList.includes(sourceOccurrenceId));
+  requireValid(replacementReceiptInvalidationsMatch(result.invalidations, {
+    planId,
+    replacementExerciseId,
+  }));
+}
+
 function aggregateRequired(kind: string): boolean {
   return kind === "insert" || kind === "keep_both" || kind === "archive_won";
 }
@@ -425,11 +531,13 @@ function assertOwnedPlanAggregate(
     requireValid(recommendationIds.has(textId(row.recommendation_id)));
   }
   const ownedOccurrenceIds = new Set<string>();
+  const ownedOccurrenceExerciseIds = new Map<string, string>();
   for (const row of aggregate.tables.owned_plan_day_exercises ?? []) {
     const occurrenceId = textId(row.id);
     requireValid(!ownedOccurrenceIds.has(occurrenceId));
     requireValid(dayIds.has(textId(row.plan_day_id)));
     ownedOccurrenceIds.add(occurrenceId);
+    ownedOccurrenceExerciseIds.set(occurrenceId, textId(row.exercise_id));
   }
   const ownedTargetIds = new Set<string>();
   for (const row of aggregate.tables.owned_plan_working_set_targets ?? []) {
@@ -485,6 +593,12 @@ function assertOwnedPlanAggregate(
   for (const row of aggregate.tables.owned_plan_occurrence_sources ?? []) {
     requireValid(ownedOccurrenceIds.has(textId(row.plan_day_exercise_id)));
     requireValid(dayIds.has(textId(row.plan_day_id)));
+  }
+  for (const row of aggregate.tables.plan_exercise_replacement_receipts ?? []) {
+    assertReplacementReceiptBinding(row, {
+      planId: operation.localId,
+      ownedOccurrenceExerciseIds,
+    });
   }
 }
 

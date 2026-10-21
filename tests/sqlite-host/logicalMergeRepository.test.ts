@@ -808,6 +808,35 @@ function operationPlan(operations: PortableMergePlan["operations"]): PortableMer
   };
 }
 
+function ownedReplacementReceipt(input: Readonly<{
+  planId?: string;
+  occurrenceId?: string;
+  replacementExerciseId?: string;
+}> = {}): LogicalBackupRow {
+  const planId = input.planId ?? "archive-plan";
+  const occurrenceId = input.occurrenceId ?? "owned-occurrence";
+  const replacementExerciseId = input.replacementExerciseId ?? "bundled";
+  return {
+    request_id: "replacement-request",
+    request_sha256: "c".repeat(64),
+    plan_id: planId,
+    source_occurrence_id: occurrenceId,
+    replacement_exercise_id: replacementExerciseId,
+    expected_plan_revision: 1,
+    result_plan_revision: 2,
+    result_json: JSON.stringify({
+      outcome: "committed",
+      planId,
+      planRevision: 2,
+      replacementExerciseId,
+      affectedOccurrenceIds: [occurrenceId],
+      currentWorkoutUnaffected: false,
+      invalidations: ["library:plans", `plan:${planId}`, `exercise:${replacementExerciseId}`, "today"],
+    }),
+    committed_at_ms: 1,
+  };
+}
+
 function maximalOwnedPlanAggregate() {
   const portableId = "6".repeat(32);
   const operation = {
@@ -834,11 +863,12 @@ function maximalOwnedPlanAggregate() {
       owned_plan_aggregate_states: [{ plan_id: "plan" }],
       owned_plan_starter_sources: [{ plan_id: "plan" }],
       owned_plan_day_sources: [{ plan_day_id: "day", plan_id: "plan" }],
-      owned_plan_day_exercises: [{ id: "owned-occurrence", plan_day_id: "day" }],
+      owned_plan_day_exercises: [{ id: "owned-occurrence", plan_day_id: "day", exercise_id: "bundled" }],
       owned_plan_warmup_sets: [{ id: "owned-warmup", plan_day_exercise_id: "owned-occurrence" }],
       owned_plan_working_set_targets: [{ id: "owned-target", plan_day_exercise_id: "owned-occurrence" }],
       owned_plan_progression_policies: [{ id: "owned-policy", plan_day_exercise_id: "owned-occurrence" }],
       owned_plan_occurrence_sources: [{ plan_day_exercise_id: "owned-occurrence", plan_day_id: "day" }],
+      plan_exercise_replacement_receipts: [ownedReplacementReceipt({ planId: "plan" })],
       owned_plan_schedules: [{ id: "owned-schedule", plan_id: "plan" }],
       owned_plan_schedule_versions: [{ id: "owned-version", schedule_id: "owned-schedule" }],
       owned_plan_schedule_bindings: [{ id: "owned-binding", schedule_version_id: "owned-version", plan_day_id: "day" }],
@@ -1979,6 +2009,236 @@ describe("logical merge repository", () => {
         ? { ...aggregate, tables: { ...aggregate.tables, owned_progression_recommendation_decision_receipts: [{ request_id: "receipt", recommendation_id: "missing" }] } }
         : aggregate),
     })],
+    ["a replacement receipt bound to another plan", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            plan_exercise_replacement_receipts: [{
+              ...(aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()),
+              plan_id: "other-plan",
+            }],
+          },
+        }
+        : aggregate),
+    })],
+    ["a replacement receipt outside its owned occurrence graph", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            plan_exercise_replacement_receipts: [{
+              ...(aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()),
+              source_occurrence_id: "missing-occurrence",
+            }],
+          },
+        }
+        : aggregate),
+    })],
+    ["a replacement receipt whose replacement is not bound to the owned occurrence", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            plan_exercise_replacement_receipts: [{
+              ...(aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()),
+              replacement_exercise_id: "missing-exercise",
+              result_json: JSON.stringify({
+                ...JSON.parse(String((aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()).result_json)),
+                replacementExerciseId: "missing-exercise",
+                invalidations: ["library:plans", "plan:archive-plan", "exercise:missing-exercise", "today"],
+              }),
+            }],
+          },
+        }
+        : aggregate),
+    })],
+    ["a replacement receipt with result JSON bound to a stale plan", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            plan_exercise_replacement_receipts: [{
+              ...(aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()),
+              result_json: JSON.stringify({
+                ...JSON.parse(String((aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()).result_json)),
+                planId: "other-plan",
+              }),
+            }],
+          },
+        }
+        : aggregate),
+    })],
+    ["a replacement receipt with stale invalidation scopes", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            plan_exercise_replacement_receipts: [{
+              ...(aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()),
+              result_json: JSON.stringify({
+                ...JSON.parse(String((aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()).result_json)),
+                invalidations: ["library:plans", "plan:other-plan", "exercise:bundled", "today"],
+              }),
+            }],
+          },
+        }
+        : aggregate),
+    })],
+    ["a replacement receipt with non-string result JSON", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            plan_exercise_replacement_receipts: [{
+              ...(aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()),
+              result_json: null,
+            }],
+          },
+        }
+        : aggregate),
+    })],
+    ["a replacement receipt with array result JSON", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            plan_exercise_replacement_receipts: [{
+              ...(aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()),
+              result_json: "[]",
+            }],
+          },
+        }
+        : aggregate),
+    })],
+    ["a replacement receipt with malformed result JSON", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            plan_exercise_replacement_receipts: [{
+              ...(aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()),
+              result_json: "{",
+            }],
+          },
+        }
+        : aggregate),
+    })],
+    ["a replacement receipt with non-array invalidations", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            plan_exercise_replacement_receipts: [{
+              ...(aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()),
+              result_json: JSON.stringify({
+                ...JSON.parse(String((aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()).result_json)),
+                invalidations: "plan:archive-plan",
+              }),
+            }],
+          },
+        }
+        : aggregate),
+    })],
+    ["a replacement receipt with an empty exercise invalidation scope", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            plan_exercise_replacement_receipts: [{
+              ...(aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()),
+              result_json: JSON.stringify({
+                ...JSON.parse(String((aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()).result_json)),
+                invalidations: ["library:plans", "plan:archive-plan", "exercise:", "today"],
+              }),
+            }],
+          },
+        }
+        : aggregate),
+    })],
+    ["a replacement receipt with an unsupported invalidation scope", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            plan_exercise_replacement_receipts: [{
+              ...(aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()),
+              result_json: JSON.stringify({
+                ...JSON.parse(String((aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()).result_json)),
+                invalidations: ["library:plans", "plan:archive-plan", "schedule:archive-schedule", "today"],
+              }),
+            }],
+          },
+        }
+        : aggregate),
+    })],
+    ["a replacement receipt with an unsafe expected revision", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            plan_exercise_replacement_receipts: [{
+              ...(aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()),
+              expected_plan_revision: 1.5,
+            }],
+          },
+        }
+        : aggregate),
+    })],
+    ["a replacement receipt with an unsafe result revision", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            plan_exercise_replacement_receipts: [{
+              ...(aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()),
+              result_plan_revision: 2.5,
+            }],
+          },
+        }
+        : aggregate),
+    })],
+    ["a replacement receipt with an unsafe committed timestamp", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            plan_exercise_replacement_receipts: [{
+              ...(aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()),
+              committed_at_ms: 1.5,
+            }],
+          },
+        }
+        : aggregate),
+    })],
+    ["a replacement receipt with a malformed request hash", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            plan_exercise_replacement_receipts: [{
+              ...(aggregate.tables.plan_exercise_replacement_receipts?.[0] ?? ownedReplacementReceipt()),
+              request_sha256: "bad",
+            }],
+          },
+        }
+        : aggregate),
+    })],
     ["an owned schedule version outside its schedule graph", (plan: PortableMergePlan) => ({
       ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
         ? { ...aggregate, tables: { ...aggregate.tables, owned_plan_schedule_versions: [{ id: "version", schedule_id: "missing" }] } }
@@ -2612,7 +2872,8 @@ describe("logical merge repository", () => {
       value.aggregateClass === "owned_plan" && value.portableId === "d".repeat(32),
     );
     expect(operation).toMatchObject({ kind: "keep_both", archiveId: "archive-plan" });
-    const mappedPlanId = operation!.localId;
+    if (operation?.aggregateClass !== "owned_plan") throw new Error("owned_plan_operation_missing");
+    const mappedPlanId = operation.localId;
     const mappedReceipt = plan.aggregates.find((value) =>
       value.aggregateClass === "owned_plan" && value.portableId === "d".repeat(32),
     )!.tables.plan_exercise_replacement_receipts![0]!;
@@ -2629,6 +2890,11 @@ describe("logical merge repository", () => {
       replacementExerciseId: "replacement",
       affectedOccurrenceIds: [mappedReceipt.source_occurrence_id],
     });
+    expect(mappedResult.invalidations).toContain(`plan:${mappedPlanId}`);
+    expect(mappedResult.invalidations).not.toContain("plan:archive-plan");
+    expect(mappedResult.invalidations).toContain("exercise:bundled");
+    expect(mappedResult.invalidations).toContain("exercise:replacement");
+    expect(mappedResult.invalidations).not.toContain("exercise:archive-exercise");
 
     await expect(createFullPlanLogicalMergeWriter(localKernel, { sha256 })
       .commitFullPlan({
