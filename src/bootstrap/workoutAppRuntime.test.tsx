@@ -67,6 +67,8 @@ const mockPhase17SetupIdentityFactory = jest.fn();
 const mockPhase17FamilyASelectorSchema = jest.fn();
 const mockCustomExerciseRepositoryFactory = jest.fn();
 const mockConfirmRunningActivityMatch = jest.fn();
+const mockPrepareV12NativeAcceptanceProductCase = jest.fn();
+const mockReadV12NativeAcceptanceReceipt = jest.fn();
 
 import starterPlansAsset from "../../assets/content/starter-plans.v2.json";
 import starterPlansAcceptanceAsset from "../../artifacts/review/phase2/starter-plans-acceptance.json";
@@ -298,6 +300,14 @@ jest.mock("../platform/sqlite/repositories/starterPlanRepository", () => {
 jest.mock("../platform/sqlite/repositories/restoreReconciliationRepository", () => ({
   createRestoreReconciliationRepository: (kernel: unknown, input: unknown) => mockRestoreReconciliationFactory(kernel, input),
 }));
+jest.mock("../testing/v12NativeAcceptanceExecutor", () => {
+  const actual = jest.requireActual<typeof import("../testing/v12NativeAcceptanceExecutor")>("../testing/v12NativeAcceptanceExecutor");
+  return {
+    ...actual,
+    prepareV12NativeAcceptanceProductCase: (input: unknown) => mockPrepareV12NativeAcceptanceProductCase(input),
+    readV12NativeAcceptanceReceipt: (input: unknown) => mockReadV12NativeAcceptanceReceipt(input),
+  };
+});
 jest.mock("./phase14SourceStateProof", () => ({
   collectPhase14SourceStateProof: (...args: unknown[]) => mockCollectSourceStateProof(...args),
 }));
@@ -1641,6 +1651,10 @@ describe("WorkoutAppRuntimeProvider", () => {
     mockRestoreHistorySession.mockImplementation(actualHistoryCommands.restoreHistorySession as never);
     mockCollectSourceStateProof.mockReset();
     mockCollectSourceStateProof.mockImplementation(actualSourceStateProof.collectPhase14SourceStateProof as never);
+    mockPrepareV12NativeAcceptanceProductCase.mockReset();
+    mockPrepareV12NativeAcceptanceProductCase.mockRejectedValue(new Error("v12_native_acceptance_fixture_unavailable"));
+    mockReadV12NativeAcceptanceReceipt.mockReset();
+    mockReadV12NativeAcceptanceReceipt.mockRejectedValue(new Error("v12_native_acceptance_fixture_unavailable"));
   });
 
   it("prepares an isolated runtime after migration and disposes it after the kernel closes", async () => {
@@ -7783,6 +7797,50 @@ describe("WorkoutAppRuntimeProvider", () => {
     await expect(captured.triggerPhase20ProgressRebuild()).resolves.toBeUndefined();
     mockBuildProfile = undefined;
     mockNativeContractSuite = undefined;
+  });
+
+  it("retains the case-bound prepared product receipt until its read-only handoff completes", async () => {
+    const repository = runtimeRepository([noPlanView], [null]);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    const productRequest = {
+      shard: "workout" as const,
+      caseId: "workout.day-switch",
+      fixtureId: "v12-synthetic-fixtures-r18",
+      title: "Workout",
+      source: "PHASE15_REQUIRED_CASES",
+      requirement: "WRK-02",
+      action: "day-switch",
+      readback: "Workout source contract observation",
+      sourceProbe: "phase15-workout-ledger:workout.day-switch",
+      authorityTables: ["plans", "owned_plan_schedules", "workout_sessions"],
+      nonce: "e".repeat(48),
+    };
+    const prepared = { operation_id: "workout:workout.day-switch:read", schema_version: 1 };
+    const readbacks = { source_receipt: { case_id: productRequest.caseId }, ui_readback: { case_id: productRequest.caseId } };
+    mockPrepareV12NativeAcceptanceProductCase.mockResolvedValueOnce(prepared);
+    mockReadV12NativeAcceptanceReceipt.mockResolvedValueOnce(readbacks);
+    mockBuildProfile = "development-test";
+    mockNativeContractSuite = "v1.2-acceptance";
+
+    try {
+      await render(<RuntimeCaptureHarness dependencies={dependencies(repository)} onReady={(runtime) => { captured = runtime; }} />);
+      await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+      if (captured === undefined) throw new Error("runtime_not_captured");
+
+      await expect(captured.prepareV12NativeAcceptanceProductCase(productRequest)).resolves.toBe(prepared);
+      expect(mockPrepareV12NativeAcceptanceProductCase).toHaveBeenCalledWith(expect.objectContaining({ request: productRequest }));
+      await expect(captured.readV12NativeAcceptanceReceipt(productRequest)).resolves.toBe(readbacks);
+      expect(mockReadV12NativeAcceptanceReceipt).toHaveBeenCalledWith(expect.objectContaining({
+        request: productRequest,
+        preparedProductCase: prepared,
+        sha256: expect.any(Function),
+      }));
+      await expect(captured.readV12NativeAcceptanceReceipt(productRequest))
+        .rejects.toThrow("v12_native_acceptance_prepared_case_missing");
+    } finally {
+      mockBuildProfile = undefined;
+      mockNativeContractSuite = undefined;
+    }
   });
 
   it("rejects use outside its provider", async () => {

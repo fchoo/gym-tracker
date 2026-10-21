@@ -3413,4 +3413,43 @@ describe("v1.2 native acceptance production executor", () => {
       })).rejects.toThrow(/^v12_native_acceptance_[a-z0-9_]+$/u);
     }
   });
+
+  it("fails prepared product navigation closed when the required authoritative fixture row is absent", async () => {
+    const cases = [
+      ["workout", "workout.plan-increment", "v12_native_acceptance_plan_increment_session_missing"],
+      ["workout", "workout.completion-writeback", "v12_native_acceptance_completion_writeback_session_missing"],
+      ["library-running", "library.schedule-editor", "v12_native_acceptance_schedule_fixture_missing"],
+    ] as const;
+    for (const [shard, caseId, error] of cases) {
+      const contract = v12NativeAcceptanceCaseContract(shard, caseId);
+      await expect(prepareV12NativeAcceptanceProductCase({
+        kernel: kernel({ empty: true }),
+        request: requestForContract(contract),
+        sha256,
+        prepareOperation: async () => undefined,
+      })).rejects.toThrow(error);
+    }
+
+    for (const [caseId, error, missingSql] of [
+      ["library.replacement-impact", "v12_native_acceptance_replacement_fixture_missing", /owned_plan_day_exercises/u],
+      ["library.day-removal-impact", "v12_native_acceptance_day_removal_fixture_missing", /SELECT id FROM plan_days/u],
+    ] as const) {
+      const contract = v12NativeAcceptanceCaseContract("library-running", caseId);
+      const runtime = kernel();
+      const queryAll = runtime.queryAll.bind(runtime);
+      runtime.queryAll = async <Row extends Record<string, unknown>,>(sql: string, parameters?: readonly SqliteParameter[]) => {
+        if (sql.includes("FROM starter_plan_activation_requests")) {
+          return [{ result_plan_id: "fixture-plan" }] as unknown as readonly Row[];
+        }
+        if (missingSql.test(sql)) return [] as readonly Row[];
+        return queryAll(sql, parameters);
+      };
+      await expect(prepareV12NativeAcceptanceProductCase({
+        kernel: runtime,
+        request: requestForContract(contract),
+        sha256,
+        prepareOperation: async () => undefined,
+      })).rejects.toThrow(error);
+    }
+  });
 });
