@@ -265,8 +265,8 @@ function validatePerformance(performance, identity) {
  */
 export async function executeProductionQualityAction(action, payload, attestation, options = {}) {
   if (action !== "accessibility" && action !== "performance") return undefined;
-  const { executionTools = resolveV12NativeExecutionTools() } = options;
   try {
+    const { executionTools = resolveV12NativeExecutionTools() } = options;
     if (process.env.NODE_ENV === "test" || process.env.V12_NATIVE_ADAPTER_TEST_MODE !== undefined
       || process.env.V12_NATIVE_ADAPTER_TEST_PROCESS !== undefined || process.env.V12_NATIVE_ADAPTER_COMMAND !== undefined) fail("test_environment_forbidden");
     if (!record(payload) || payload.run_id !== attestation?.run_id || attestation?.action !== action) fail("request_invalid");

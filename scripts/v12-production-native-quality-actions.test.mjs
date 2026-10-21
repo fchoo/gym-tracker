@@ -374,6 +374,11 @@ test("unexpected quality request errors are reduced to a bounded diagnostic", (t
       const input = new Proxy({}, { get() { throw failure; } });
       await assert.rejects(executeProductionQualityAction('performance', input, {run_id:'synthetic'}, {executionTools:{}}),
         error => error.message === 'v12_production_native_launcher_quality_observation_invalid');
+      for (const action of ['performance', 'accessibility']) {
+        const options = new Proxy({}, { get() { throw failure; } });
+        await assert.rejects(executeProductionQualityAction(action, {}, {}, options),
+          error => error.message === 'v12_production_native_launcher_quality_observation_invalid');
+      }
     }
     process.stdout.write('bounded');
   `);
