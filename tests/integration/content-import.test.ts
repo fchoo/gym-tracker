@@ -800,4 +800,37 @@ describe("accepted content import repository", () => {
       },
     ]);
   });
+
+  it("returns only valid bundled instruction shapes and fails closed for corrupt durable values", async () => {
+    const kernel = await createRuntime({}, runtimeMigrations);
+    const catalog = await acceptedCatalog();
+    const repository = createContentRepository(kernel);
+    await repository.importAcceptedCatalog({ catalog });
+    const exerciseId = catalog.exercises[0]!.id;
+
+    await expect(repository.readBundledExerciseInstructions(exerciseId))
+      .resolves.toMatchObject({ exerciseId });
+
+    await kernel.write((transaction) => transaction.execute(
+      "PRAGMA ignore_check_constraints = ON",
+    ));
+    for (const stepsJson of ["not-json", "[]", '[" trailing "]'] as const) {
+      await kernel.write((transaction) => transaction.execute(
+        "UPDATE exercise_instruction_sets SET steps_json = ? WHERE exercise_id = ?",
+        [stepsJson, exerciseId],
+      ));
+      await expect(repository.readBundledExerciseInstructions(exerciseId))
+        .rejects.toMatchObject({ code: "content_revision_conflict" });
+    }
+    await kernel.write((transaction) => transaction.execute(
+      "PRAGMA ignore_check_constraints = OFF",
+    ));
+
+    await kernel.write((transaction) => transaction.execute(
+      "DELETE FROM exercise_instruction_sets WHERE exercise_id = ?",
+      [exerciseId],
+    ));
+    await expect(repository.readBundledExerciseInstructions(exerciseId))
+      .resolves.toBeNull();
+  });
 });

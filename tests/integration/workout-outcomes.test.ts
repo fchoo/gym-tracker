@@ -78,6 +78,7 @@ import {
 import {
   createWorkoutRepository,
 } from "../../src/platform/sqlite/repositories/workoutRepository";
+import * as runtimeSha256 from "../../src/platform/crypto/runtimeSha256";
 import {
   createSqliteKernel,
   type SqliteKernel,
@@ -566,6 +567,99 @@ describe("Plan 01-10 explicit workout outcomes", () => {
       status: "in_progress",
       sessionId: session.id,
     });
+  });
+
+  it("fails closed for invalid or conflicting partial receipts and replays only durable partial state", async () => {
+    const invalid = await setupPlannedWorkout();
+    const digest = jest.spyOn(runtimeSha256, "runtimeSha256")
+      .mockResolvedValueOnce("invalid");
+    await expect(invalid.repository.finishPartial({
+      sessionId: invalid.session.id,
+      expectedSessionRevision: invalid.session.revision,
+      confirmation: "save_partial_workout",
+      endedAtMs: 1_786_853_700_000,
+    })).rejects.toMatchObject({ code: "finish_partial_receipt_input_invalid" });
+    expect(await invalid.kernel.queryAll("SELECT id FROM workout_receipts"))
+      .toEqual([]);
+    digest.mockRestore();
+
+    const replay = await setupPlannedWorkout();
+    const replayInput = {
+      sessionId: replay.session.id,
+      expectedSessionRevision: replay.session.revision,
+      confirmation: "save_partial_workout",
+      endedAtMs: 1_786_853_700_000,
+    } as const;
+    const replayCommitted = await replay.repository.finishPartial(replayInput);
+    await expect(replay.repository.finishPartial(replayInput)).resolves.toEqual(
+      expect.objectContaining({
+        outcome: "already_committed",
+        receipt: replayCommitted.receipt,
+      }),
+    );
+
+    const conflict = await setupPlannedWorkout();
+    const conflictInput = {
+      sessionId: conflict.session.id,
+      expectedSessionRevision: conflict.session.revision,
+      confirmation: "save_partial_workout",
+      endedAtMs: 1_786_853_700_000,
+    } as const;
+    const conflictRequestSha256 = await runtimeSha256.runtimeSha256(JSON.stringify({
+      operation: "finish_partial",
+      sessionId: conflictInput.sessionId,
+      expectedSessionRevision: conflictInput.expectedSessionRevision,
+      confirmation: conflictInput.confirmation,
+      endedAtMs: conflictInput.endedAtMs,
+    }));
+    const conflictRequestId = `finish-partial:${conflictInput.expectedSessionRevision}:${await runtimeSha256.runtimeSha256(conflictInput.sessionId)}`;
+    await conflict.kernel.write((transaction) => transaction.execute(
+      `INSERT INTO workout_receipts
+        (id, workout_session_id, request_sha256, committed_at_ms)
+       VALUES (?, ?, ?, ?)`,
+      [conflictRequestId, conflict.session.id, "0".repeat(64), 1_786_853_700_000],
+    ));
+    await expect(conflict.repository.finishPartial(conflictInput))
+      .rejects.toMatchObject({
+        code: "sqlite_transaction_failed",
+        cause: expect.objectContaining({
+          code: "finish_partial_receipt_identity_conflict",
+        }),
+      });
+    expect(conflictRequestSha256).toHaveLength(64);
+
+    const stale = await setupPlannedWorkout();
+    const staleInput = {
+      sessionId: stale.session.id,
+      expectedSessionRevision: stale.session.revision,
+      confirmation: "save_partial_workout",
+      endedAtMs: 1_786_853_700_000,
+    } as const;
+    const staleRequestSha256 = await runtimeSha256.runtimeSha256(JSON.stringify({
+      operation: "finish_partial",
+      sessionId: staleInput.sessionId,
+      expectedSessionRevision: staleInput.expectedSessionRevision,
+      confirmation: staleInput.confirmation,
+      endedAtMs: staleInput.endedAtMs,
+    }));
+    const staleRequestId = `finish-partial:${staleInput.expectedSessionRevision}:${await runtimeSha256.runtimeSha256(staleInput.sessionId)}`;
+    await stale.kernel.write((transaction) => transaction.execute(
+      `INSERT INTO workout_receipts
+        (id, workout_session_id, request_sha256, committed_at_ms)
+       VALUES (?, ?, ?, ?)`,
+      [staleRequestId, stale.session.id, staleRequestSha256, 1_786_853_700_000],
+    ));
+    await stale.kernel.write((transaction) => transaction.execute(
+      "UPDATE workout_sessions SET status = 'completed' WHERE id = ?",
+      [stale.session.id],
+    ));
+    await expect(stale.repository.finishPartial(staleInput))
+      .rejects.toMatchObject({
+        code: "sqlite_transaction_failed",
+        cause: expect.objectContaining({
+          code: "finish_partial_receipt_state_invalid",
+        }),
+      });
   });
 
   it("rebuilds Progress when a partial workout enters and leaves history", async () => {

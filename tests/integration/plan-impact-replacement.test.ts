@@ -2208,6 +2208,49 @@ describe("plan impact exercise replacement", () => {
     }
   });
 
+  it("rejects mismatched receipt kinds and replays a durable replacement without a second mutation", async () => {
+    const runtime = await setupRuntime();
+    const input = await replacementRepositoryInput(runtime);
+    const receiptHash = "a".repeat(64);
+    await runtime.kernel.write(async (transaction) => {
+      await transaction.execute(
+        `INSERT INTO owned_plan_schedule_events
+          (id, schedule_id, event_type, local_date, payload_json,
+           schedule_revision, created_at_ms)
+         VALUES (?, 'retained-schedule', 'plan_day_removed', '2026-10-01', ?, 1, 1)`,
+        [
+          "plan-impact-command:wrong-schedule-kind",
+          JSON.stringify({
+            requestSha256: receiptHash,
+            result: { outcome: "committed", replacementExerciseId: "exercise-incline" },
+          }),
+        ],
+      );
+      await transaction.execute(
+        `INSERT INTO plan_exercise_replacement_receipts
+          (request_id, request_sha256, plan_id, source_occurrence_id,
+           replacement_exercise_id, expected_plan_revision,
+           result_plan_revision, result_json, committed_at_ms)
+         VALUES ('wrong-replacement-kind', ?, 'retained-plan',
+                 'retained-occurrence', 'exercise-incline', 3, 4, ?, 1)`,
+        [receiptHash, JSON.stringify({ outcome: "committed" })],
+      );
+    });
+
+    await expect(runtime.repository.readCommandResult({
+      requestId: "wrong-schedule-kind",
+      requestSha256: receiptHash,
+    })).rejects.toThrow("plan_impact_receipt_kind_invalid");
+    await expect(runtime.repository.readExerciseReplacementCommandResult({
+      requestId: "wrong-replacement-kind",
+      requestSha256: receiptHash,
+    })).rejects.toThrow("plan_impact_receipt_kind_invalid");
+
+    const committed = await runtime.repository.applyExerciseReplacement(input);
+    const replayed = await runtime.repository.applyExerciseReplacement(input);
+    expect(replayed).toEqual({ ...committed, outcome: "already_committed" });
+  });
+
   const replacementRaceCases: [
     PlanImpactRepositoryTestStage,
     (
