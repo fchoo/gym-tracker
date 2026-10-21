@@ -132,7 +132,7 @@ function processAlive(pid) {
   catch (error) { return error?.code === "EPERM"; }
 }
 
-function processBirthSha256(pid) {
+function legacyProcessBirthSha256(pid) {
   if (!Number.isSafeInteger(pid) || pid < 1) return null;
   const result = spawnSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
     encoding: "utf8", timeout: 5_000, maxBuffer: 16 * 1024, stdio: ["ignore", "pipe", "ignore"],
@@ -141,10 +141,34 @@ function processBirthSha256(pid) {
   return birth.length === 0 ? null : sha256(birth);
 }
 
+function linuxProcessBirthSha256(pid) {
+  try {
+    const bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
+    const stat = readFileSync(`/proc/${String(pid)}/stat`, "utf8");
+    const end = stat.lastIndexOf(") ");
+    const fields = end === -1 ? [] : stat.slice(end + 2).trim().split(/\s+/u);
+    const startTicks = fields[19];
+    return /^[a-f0-9-]{36}$/u.test(bootId) && /^\d+$/u.test(startTicks ?? "")
+      ? sha256(`linux-procfs-v1:${bootId}:${String(pid)}:${startTicks}`)
+      : null;
+  } catch { return null; }
+}
+
+function processBirthSha256(pid) {
+  if (!Number.isSafeInteger(pid) || pid < 1) return null;
+  // Losing the precise Linux probe cannot turn a live precise owner into a
+  // mismatching legacy fingerprint. Unknown identity must fail closed.
+  if (process.platform === "linux") return linuxProcessBirthSha256(pid);
+  const legacy = legacyProcessBirthSha256(pid);
+  return legacy === null ? null : sha256(`ps-pid-v1:${String(pid)}:${legacy}`);
+}
+
 function claimOwnerAlive(owner) {
   if (!processAlive(owner.pid)) return false;
   const observed = processBirthSha256(owner.pid);
-  return observed === null || observed === owner.process_birth_sha256;
+  if (observed === null || observed === owner.process_birth_sha256) return true;
+  const legacyObserved = legacyProcessBirthSha256(owner.pid);
+  return legacyObserved === null || legacyObserved === owner.process_birth_sha256;
 }
 
 function validateClaimOwner(value, runId, shard) {

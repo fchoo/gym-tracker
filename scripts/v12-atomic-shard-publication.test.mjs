@@ -23,6 +23,16 @@ const productionOrigin = Object.freeze({
 const moduleUrl = new URL("./v12-atomic-shard-publication.mjs", import.meta.url).href;
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
+function legacyBirthSha256(pid = process.pid) {
+  const result = spawnSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
+    encoding: "utf8", timeout: 5_000, maxBuffer: 16 * 1024, stdio: ["ignore", "pipe", "ignore"],
+  });
+  assert.equal(result.status, 0);
+  const birth = result.stdout.trim().replaceAll(/\s+/gu, " ");
+  assert.notEqual(birth, "");
+  return sha256(birth);
+}
+
 function child(code, args) {
   return spawn(process.execPath, ["--input-type=module", "-e", code, ...args], { stdio: ["ignore", "pipe", "pipe"] });
 }
@@ -234,7 +244,7 @@ test("crash immediately after the manifest link cleans validated dead claim and 
   assert.deepEqual(publishV12AtomicShard({ root, runId, shard: "performance", produce: () => { throw new Error("must stay idempotent"); } }), recovered);
 });
 
-test("a reused live PID cannot keep a dead atomic owner claim forever", (t) => {
+test("a same-second PID collision cannot keep a dead atomic owner claim forever", (t) => {
   const root = mkdtempSync(path.join(tmpdir(), "v12-publish-pid-reuse-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(path.join(root, "artifacts/native/v1.2", runId), { recursive: true });
@@ -251,6 +261,9 @@ test("a reused live PID cannot keep a dead atomic owner claim forever", (t) => {
   const claimPath = path.join(root, "artifacts/native/v1.2", runId, ".claims/performance.json");
   const claim = JSON.parse(readFileSync(claimPath, "utf8"));
   assert.match(claim.process_birth_sha256, /^[a-f0-9]{64}$/u);
+  if (existsSync("/proc/sys/kernel/random/boot_id") && existsSync(`/proc/${String(process.pid)}/stat`)) {
+    assert.notEqual(claim.process_birth_sha256, legacyBirthSha256(process.pid));
+  }
   writeFileSync(claimPath, `${JSON.stringify({ ...claim, pid: process.pid })}\n`);
 
   const recovered = publishV12AtomicShard({
@@ -259,6 +272,138 @@ test("a reused live PID cannot keep a dead atomic owner claim forever", (t) => {
   });
   assert.equal(recovered.manifest.completed, true);
   assert.equal(verifyV12AtomicShard({ root, runId, shard: "performance" }), true);
+});
+
+test("a live legacy-ambiguous owner claim is never stolen", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-publish-live-legacy-claim-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const runRoot = path.join(root, "artifacts/native/v1.2", runId);
+  const claims = path.join(runRoot, ".claims");
+  mkdirSync(claims, { recursive: true });
+  const claimPath = path.join(claims, "performance.json");
+  const claim = {
+    schema_version: 2, run_id: runId, shard: "performance", pid: process.pid,
+    process_birth_sha256: legacyBirthSha256(process.pid), nonce: "0".repeat(32),
+  };
+  const claimBytes = `${JSON.stringify(claim)}\n`;
+  writeFileSync(claimPath, claimBytes);
+
+  assert.throws(() => publishV12AtomicShard({
+    root, runId, shard: "performance", produce: ({ write }) => write("performance.json", { producer: "test" }),
+  }), /v12_atomic_publish_claim_conflict/u);
+  assert.equal(readFileSync(claimPath, "utf8"), claimBytes);
+});
+
+test("an unreadable legacy birth probe cannot steal a live legacy claim", () => {
+  const code = `
+    import assert from 'node:assert/strict';
+    import fs from 'node:fs';
+    import childProcess from 'node:child_process';
+    import {createHash} from 'node:crypto';
+    import {syncBuiltinESMExports} from 'node:module';
+    import {tmpdir} from 'node:os';
+    import path from 'node:path';
+    const originalSpawn = childProcess.spawnSync;
+    const birth = originalSpawn('/bin/ps', ['-o','lstart=','-p',String(process.pid)], {encoding:'utf8'});
+    assert.equal(birth.status, 0);
+    const legacy = createHash('sha256').update(birth.stdout.trim().replaceAll(/\\s+/gu, ' ')).digest('hex');
+    const root = fs.mkdtempSync(path.join(tmpdir(), 'v12-publish-legacy-probe-failure-'));
+    const runId = ${JSON.stringify(runId)};
+    const claimPath = path.join(root, 'artifacts/native/v1.2', runId, '.claims/performance.json');
+    fs.mkdirSync(path.dirname(claimPath), {recursive:true});
+    const bytes = JSON.stringify({schema_version:2,run_id:runId,shard:'performance',pid:process.pid,process_birth_sha256:legacy,nonce:'0'.repeat(32)})+'\\n';
+    fs.writeFileSync(claimPath, bytes);
+    childProcess.spawnSync = (command, args, options) => command === '/bin/ps'
+      ? {status:1,signal:null,stdout:'',stderr:''}
+      : originalSpawn(command, args, options);
+    syncBuiltinESMExports();
+    const {publishV12AtomicShard} = await import(${JSON.stringify(moduleUrl)});
+    try {
+      assert.throws(() => publishV12AtomicShard({root,runId,shard:'performance',produce:() => {throw new Error('live claim must remain protected');}}), /v12_atomic_publish_claim_conflict/u);
+      assert.equal(fs.readFileSync(claimPath, 'utf8'), bytes);
+    } finally {
+      fs.rmSync(root, {recursive:true,force:true});
+    }
+  `;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test("loss of the precise Linux birth probe cannot steal a live precise claim", () => {
+  const code = `
+    import assert from 'node:assert/strict';
+    import fs from 'node:fs';
+    import path from 'node:path';
+    import {tmpdir} from 'node:os';
+    import {createHash} from 'node:crypto';
+    import {syncBuiltinESMExports} from 'node:module';
+    Object.defineProperty(process, 'platform', {value:'linux'});
+    const originalRead = fs.readFileSync;
+    const boot = '11111111-1111-1111-1111-111111111111';
+    let failed = false;
+    fs.readFileSync = (file, options) => {
+      if (String(file).startsWith('/proc/')) {
+        if (failed) throw new Error('probe unavailable');
+        return String(file).endsWith('boot_id') ? boot : process.pid+' (test) S '+Array(18).fill('0').join(' ')+' 99';
+      }
+      return originalRead(file, options);
+    };
+    syncBuiltinESMExports();
+    const {publishV12AtomicShard} = await import(${JSON.stringify(moduleUrl)});
+    const root = fs.mkdtempSync(path.join(tmpdir(), 'v12-publish-precise-probe-failure-'));
+    const runId = ${JSON.stringify(runId)};
+    const claimPath = path.join(root, 'artifacts/native/v1.2', runId, '.claims/performance.json');
+    fs.mkdirSync(path.dirname(claimPath), {recursive:true});
+    const precise = createHash('sha256').update('linux-procfs-v1:'+boot+':'+process.pid+':99').digest('hex');
+    const bytes = JSON.stringify({schema_version:2,run_id:runId,shard:'performance',pid:process.pid,process_birth_sha256:precise,nonce:'0'.repeat(32)})+'\\n';
+    fs.writeFileSync(claimPath, bytes);
+    failed = true;
+    try {
+      assert.throws(() => publishV12AtomicShard({root,runId,shard:'performance',produce:() => {throw new Error('live claim must remain protected');}}), /v12_atomic_publish_claim_conflict/u);
+      assert.equal(fs.readFileSync(claimPath, 'utf8'), bytes);
+    } finally {
+      fs.rmSync(root, {recursive:true,force:true});
+    }
+  `;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test("non-Linux owner fingerprints include PID and fail closed if the birth probe is absent", () => {
+  const code = `
+    import assert from 'node:assert/strict';
+    import fs from 'node:fs';
+    import path from 'node:path';
+    import {tmpdir} from 'node:os';
+    import {createHash} from 'node:crypto';
+    import childProcess from 'node:child_process';
+    import {syncBuiltinESMExports} from 'node:module';
+    Object.defineProperty(process, 'platform', {value:'darwin'});
+    const originalSpawn = childProcess.spawnSync;
+    let absent = false;
+    childProcess.spawnSync = (command, args, options) => command === '/bin/ps'
+      ? {status:0,signal:null,stdout:absent ? '' : 'same start second',stderr:''}
+      : originalSpawn(command, args, options);
+    syncBuiltinESMExports();
+    const {publishV12AtomicShard} = await import(${JSON.stringify(moduleUrl)});
+    const root = fs.mkdtempSync(path.join(tmpdir(), 'v12-publish-pid-fingerprint-'));
+    const runId = ${JSON.stringify(runId)};
+    fs.mkdirSync(path.join(root, 'artifacts/native/v1.2', runId), {recursive:true});
+    const hash = value => createHash('sha256').update(value).digest('hex');
+    try {
+      publishV12AtomicShard({root,runId,shard:'performance',produce:({write}) => write('performance.json', {producer:'test'}),beforeManifest:() => {
+        const claim = JSON.parse(fs.readFileSync(path.join(root, 'artifacts/native/v1.2', runId, '.claims/performance.json')));
+        assert.equal(claim.process_birth_sha256, hash('ps-pid-v1:'+process.pid+':'+hash('same start second')));
+        return true;
+      }});
+      absent = true;
+      assert.throws(() => publishV12AtomicShard({root,runId,shard:'visual',produce:() => {throw new Error('missing identity must fail first');}}), /v12_atomic_publish_claim_conflict/u);
+    } finally {
+      fs.rmSync(root, {recursive:true,force:true});
+    }
+  `;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
 });
 
 test("existing publication recovery rejects unvalidated staged residue", (t) => {
@@ -281,6 +426,119 @@ test("existing publication recovery rejects unvalidated staged residue", (t) => 
     () => publishV12AtomicShard({ root, runId, shard: "performance", produce: () => {} }),
     /stage_member_invalid/u,
   );
+});
+
+
+test("stale staged publication paths are cleaned or completed without clobbering", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-publish-staged-residue-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const runRoot = path.join(root, "artifacts/native/v1.2", runId);
+  mkdirSync(path.join(runRoot, ".staging/performance"), { recursive: true });
+  writeFileSync(path.join(runRoot, ".staging/performance/orphan.json"), "{}\n");
+  let produced = false;
+  assert.equal(publishV12AtomicShard({
+    root, runId, shard: "performance", produce: ({ write }) => {
+      produced = true;
+      write("performance.json", { schema_version: 1, producer: "test", run_id: runId });
+    },
+  }).manifest.completed, true);
+  assert.equal(produced, true);
+  assert.equal(existsSync(path.join(runRoot, ".staging")), false);
+});
+
+test("staged manifest retry accepts already promoted identical members", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-publish-promoted-member-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const runRoot = path.join(root, "artifacts/native/v1.2", runId);
+  const stage = path.join(runRoot, ".staging/performance");
+  mkdirSync(stage, { recursive: true });
+  const bytes = Buffer.from(`${JSON.stringify({ schema_version: 1, producer: "test", run_id: runId })}\n`);
+  const member = { artifact: "performance.json", sha256: sha256(bytes), size_bytes: bytes.length };
+  writeFileSync(path.join(stage, "performance.json"), bytes);
+  writeFileSync(path.join(runRoot, "performance.json"), bytes);
+  writeFileSync(path.join(stage, "manifest.json"), `${JSON.stringify({
+    schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: runId, shard: "performance", completed: true, members: [member],
+  })}\n`);
+
+  const result = publishV12AtomicShard({
+    root, runId, shard: "performance", produce: () => { throw new Error("staged manifest must drive retry"); },
+    validate: members => members.length === 1,
+  });
+  assert.equal(result.manifest.completed, true);
+  assert.equal(existsSync(path.join(stage, "performance.json")), false);
+  assert.equal(verifyV12AtomicShard({ root, runId, shard: "performance" }), true);
+});
+
+test("published manifest residue is compared before stale stage cleanup", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-publish-manifest-residue-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const runRoot = path.join(root, "artifacts/native/v1.2", runId);
+  mkdirSync(runRoot, { recursive: true });
+  const first = publishV12AtomicShard({
+    root, runId, shard: "performance", produce: ({ write }) => write("performance.json", { schema_version: 1, producer: "test", run_id: runId }),
+  });
+  const stage = path.join(runRoot, ".staging/performance");
+  mkdirSync(stage, { recursive: true });
+  writeFileSync(path.join(stage, "manifest.json"), readFileSync(path.join(runRoot, "publication/performance.json")));
+  assert.deepEqual(publishV12AtomicShard({
+    root, runId, shard: "performance", produce: () => { throw new Error("published manifest must remain idempotent"); },
+  }), first);
+  assert.equal(existsSync(path.join(runRoot, ".staging")), false);
+});
+
+test("published residue with a special staged member fails closed", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-publish-special-residue-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const runRoot = path.join(root, "artifacts/native/v1.2", runId);
+  mkdirSync(runRoot, { recursive: true });
+  publishV12AtomicShard({
+    root, runId, shard: "performance", produce: ({ write }) => write("performance.json", { schema_version: 1, producer: "test", run_id: runId }),
+  });
+  const stage = path.join(runRoot, ".staging/performance");
+  mkdirSync(stage, { recursive: true });
+  const fifo = path.join(stage, "special");
+  const made = spawnSync("mkfifo", [fifo], { encoding: "utf8" });
+  assert.equal(made.status, 0);
+  assert.throws(() => publishV12AtomicShard({
+    root, runId, shard: "performance", produce: () => { throw new Error("special residue must fail first"); },
+  }), /v12_atomic_publish_stage_member_invalid/u);
+});
+
+test("link-time EEXIST races either accept matching bytes or fail closed", () => {
+  const code = `
+    import assert from 'node:assert/strict';
+    import fs from 'node:fs';
+    import { tmpdir } from 'node:os';
+    import path from 'node:path';
+    import { syncBuiltinESMExports } from 'node:module';
+    const root = fs.mkdtempSync(path.join(tmpdir(), 'v12-publish-link-race-'));
+    const runId = ${JSON.stringify(runId)};
+    fs.mkdirSync(path.join(root, 'artifacts/native/v1.2', runId), { recursive: true });
+    const originalExists = fs.existsSync;
+    const originalLink = fs.linkSync;
+    const originalRead = fs.readFileSync;
+    const originalWrite = fs.writeFileSync;
+    fs.existsSync = value => String(value).endsWith('/performance.json') && !String(value).includes('/.staging/') && !String(value).includes('/publication/') ? false : originalExists(value);
+    fs.linkSync = (source, target) => {
+      if (String(target).endsWith('/performance.json')) {
+        originalWrite(target, originalRead(source));
+        const error = new Error('simulated-race'); error.code = 'EEXIST'; throw error;
+      }
+      return originalLink(source, target);
+    };
+    syncBuiltinESMExports();
+    const { publishV12AtomicShard, verifyV12AtomicShard } = await import(${JSON.stringify(moduleUrl)});
+    publishV12AtomicShard({ root, runId, shard: 'performance', produce: ({write}) => write('performance.json', {schema_version:1, producer:'test', run_id:runId}) });
+    assert.equal(verifyV12AtomicShard({ root, runId, shard: 'performance' }), true);
+    fs.linkSync = (source, target) => {
+      if (String(target).endsWith('/visual.json')) { const error = new Error('simulated-race'); error.code = 'EEXIST'; throw error; }
+      return originalLink(source, target);
+    };
+    syncBuiltinESMExports();
+    assert.throws(() => publishV12AtomicShard({ root, runId, shard: 'visual', produce: ({write}) => write('visual.json', {schema_version:1, producer:'test', run_id:runId}) }), /v12_atomic_publish_output_conflict/);
+  `;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
 });
 
 test("failure receipts use a bounded code and only a digest of the raw error", (t) => {
