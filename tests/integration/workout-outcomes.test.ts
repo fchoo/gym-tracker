@@ -3,6 +3,7 @@ import {
   describe,
   expect,
   it,
+  jest,
 } from "@jest/globals";
 import { DatabaseSync } from "node:sqlite";
 import {
@@ -590,7 +591,7 @@ describe("Plan 01-10 explicit workout outcomes", () => {
       confirmation: "save_partial_workout",
       endedAtMs: 1_786_853_700_000,
     } as const;
-    const replayCommitted = await replay.repository.finishPartial(replayInput);
+    const replayCommitted = await finishPartial({ repository: replay.repository, input: replayInput });
     await expect(replay.repository.finishPartial(replayInput)).resolves.toEqual(
       expect.objectContaining({
         outcome: "already_committed",

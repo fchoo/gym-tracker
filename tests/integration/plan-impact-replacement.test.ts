@@ -2241,7 +2241,7 @@ describe("plan impact exercise replacement", () => {
       requestId: "wrong-schedule-kind",
       requestSha256: receiptHash,
     })).rejects.toThrow("plan_impact_receipt_kind_invalid");
-    await expect(runtime.repository.readExerciseReplacementCommandResult({
+    await expect(runtime.repository.readExerciseReplacementCommandResult!({
       requestId: "wrong-replacement-kind",
       requestSha256: receiptHash,
     })).rejects.toThrow("plan_impact_receipt_kind_invalid");
