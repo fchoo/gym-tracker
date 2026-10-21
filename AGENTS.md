@@ -27,3 +27,5 @@ Key routing rules:
 - When a subagent fails after editing, inspect and preserve its worktree and commits before assigning recovery; continue from existing state instead of restarting from scratch.
 - For final-gate repairs, use at most two independent read-only audit agents at once, pin both to the same completed source SHA, and allow queue time separately from their execution budget.
 - Run only tests and coverage affected by a repair; do not repeat an already passing aggregate or old-SHA audit without source-based invalidation. Native evidence still requires a fresh final-source build and one exclusive device lease.
+- Avoid duplicating dependencies in new worktrees. When lockfiles match, reuse the active workspace's dependency environment; read-only audits should not install packages or run broad suites.
+- Retire obsolete worktrees after preserving their needed reports and uncommitted metadata. Keep branches and commits available, and never remove an active or pending-work checkout merely to relieve disk pressure.
