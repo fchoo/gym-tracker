@@ -38,7 +38,9 @@ test("rejects old fixture-shaped and incomplete accessibility evidence", () => {
   assert.throws(() => validateV12AccessibilityShard({ schema_version: 1, observations: motion }, identity), /motion_invalid/u);
 });
 
-test("writes exact semantic and geometry observations while keeping attended assistive-tech paths excluded", () => {
+test("writes exact semantic and geometry observations while keeping attended assistive-tech paths excluded", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-accessibility-synthetic-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
   const runId = "phase20-20261014T000000Z-aaaaaaaaaaaa";
   const identity = qualityIdentity();
   const observations = accessibilityEvidence(identity);
@@ -52,7 +54,7 @@ test("writes exact semantic and geometry observations while keeping attended ass
   manifest.build.package = "com.fchoo.gymtracker.devtest";
   const phase14 = phase14ShellEvidenceFixture(manifest);
   const written = new Map();
-  const result = executeLiveV12AccessibilityShard({ runId, manifest, phase14Manifest: phase14.phase14Manifest,
+  const result = executeLiveV12AccessibilityShard({ runId, root, manifest, phase14Manifest: phase14.phase14Manifest,
     phase14Evidence: phase14.evidence, phase14ValidationOptions: SYNTHETIC_PHASE14_VALIDATION_OPTIONS,
     observe: () => observations, write: (file, value) => written.set(file, value) });
   assert.equal(result.geometry.targets.length, observations.reduce((total, entry) => total + entry.targets.length, 0));
@@ -61,13 +63,13 @@ test("writes exact semantic and geometry observations while keeping attended ass
   assert.equal(result.semantic.shell_receipts.length, 13);
   written.set(`artifacts/native/v1.2/${runId}/build.json`, manifest);
   const readArtifact = (file) => written.get(`artifacts/native/v1.2/${runId}/${file}`);
-  assert.equal(verifyV12AccessibilityShard({ runId, readJson: (file) => written.get(file), readArtifact,
+  assert.equal(verifyV12AccessibilityShard({ runId, root, readJson: (file) => written.get(file), readArtifact,
     phase14ValidationOptions: SYNTHETIC_PHASE14_VALIDATION_OPTIONS }), true);
   const retainedEvidencePath = `artifacts/native/v1.2/${runId}/shell/phase14/maestro/phase14-evidence.json`;
   const substituted = JSON.parse(written.get(retainedEvidencePath).toString("utf8"));
   substituted.verdict = "FAIL";
   written.set(retainedEvidencePath, Buffer.from(`${JSON.stringify(substituted)}\n`));
-  assert.throws(() => verifyV12AccessibilityShard({ runId, readJson: (file) => written.get(file), readArtifact }), /member_invalid/u);
+  assert.throws(() => verifyV12AccessibilityShard({ runId, root, readJson: (file) => written.get(file), readArtifact }), /member_invalid/u);
 });
 
 test("retains and revalidates the complete Phase 14 closure after the source tree is removed", (t) => {
