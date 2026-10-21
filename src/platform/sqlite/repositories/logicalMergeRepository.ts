@@ -530,13 +530,11 @@ function assertOwnedPlanAggregate(
     requireValid(recommendationIds.has(textId(row.recommendation_id)));
   }
   const ownedOccurrenceIds = new Set<string>();
-  const ownedOccurrenceExerciseIds = new Map<string, string>();
   for (const row of aggregate.tables.owned_plan_day_exercises ?? []) {
     const occurrenceId = textId(row.id);
     requireValid(!ownedOccurrenceIds.has(occurrenceId));
     requireValid(dayIds.has(textId(row.plan_day_id)));
     ownedOccurrenceIds.add(occurrenceId);
-    ownedOccurrenceExerciseIds.set(occurrenceId, textId(row.exercise_id));
   }
   const ownedTargetIds = new Set<string>();
   for (const row of aggregate.tables.owned_plan_working_set_targets ?? []) {
