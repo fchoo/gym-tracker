@@ -665,7 +665,8 @@ describe("Phase2AttendedPreviewRoute", () => {
     expect(screen.getByRole("header", { name: "Workout" }))
       .toBeOnTheScreen();
     expect(screen.getAllByTestId(/overview-preview-exercise-1-preview-working-1-/u))
-      .toHaveLength(2);
+      .toHaveLength(1);
+    expect(screen.getByTestId("workout-active-set-row")).toBeOnTheScreen();
     await oneRendered.unmount();
   });
 
