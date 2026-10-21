@@ -447,10 +447,36 @@ test("all 101 product environments resolve through production UI selectors and c
   }
 });
 
-test("bounded Linux supervisor kills a TERM-resistant process tree through pidfds", {
-  skip: process.platform !== "linux",
+async function assertUnsupportedSupervisorCleanupIsClosed(leaderSuccess) {
+  const child = simulatedWindowsChild();
+  child.pid = 700;
+  let ownershipToken;
+  let helperCalls = 0;
+  let numericSignals = 0;
+  child.kill = () => { numericSignals += 1; return true; };
+  const running = runV12BoundedProcess(process.execPath, ["-e", ""], {
+    platform: "darwin",
+    spawnImplementation: (_program, _args, options) => {
+      ownershipToken = options.env[V12_POSIX_OWNERSHIP_ENV];
+      if (leaderSuccess) queueMicrotask(() => child.emit("close", 0, null));
+      return child;
+    },
+    posixProcessProbeImplementation: () => successfulProcessProbe(ownedProcessRow(700, "Ss", ownershipToken)),
+    posixPidfdSignalImplementation: () => { helperCalls += 1; return successfulPidfdHelper(); },
+    timeoutMs: 40, termGraceMs: 5, killGraceMs: 20,
+  });
+  await assert.rejects(running, /v12_maestro_process_tree_enumeration_failed/u);
+  assert.equal(helperCalls, 0);
+  assert.equal(numericSignals, 0);
+}
+
+test("bounded supervisor kills a resistant Linux tree or rejects unsupported POSIX cleanup", {
   timeout: 10_000,
 }, async (t) => {
+  if (process.platform !== "linux") {
+    await assertUnsupportedSupervisorCleanupIsClosed(false);
+    return;
+  }
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "v12-maestro-supervisor-")));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const childPid = path.join(root, "child.pid");
@@ -472,10 +498,13 @@ test("bounded Linux supervisor kills a TERM-resistant process tree through pidfd
   assert.throws(() => process.kill(descendant, 0), /ESRCH/u);
 });
 
-test("bounded Linux supervisor drains a TERM-resistant descendant after a successful leader", {
-  skip: process.platform !== "linux",
+test("bounded supervisor drains a Linux descendant or rejects unsupported cleanup after leader success", {
   timeout: 10_000,
 }, async (t) => {
+  if (process.platform !== "linux") {
+    await assertUnsupportedSupervisorCleanupIsClosed(true);
+    return;
+  }
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "v12-maestro-success-tree-")));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const childPid = path.join(root, "child.pid");
