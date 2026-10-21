@@ -85,6 +85,7 @@ const FULL_PLAN_OWNED_PLAN_TABLES = Object.freeze([
   "owned_plan_working_set_targets",
   "owned_plan_progression_policies",
   "owned_plan_occurrence_sources",
+  "plan_exercise_replacement_receipts",
   "owned_plan_schedules",
   "owned_plan_schedule_versions",
   "owned_plan_schedule_bindings",

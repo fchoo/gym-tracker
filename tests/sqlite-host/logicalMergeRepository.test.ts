@@ -55,6 +55,9 @@ import {
   createRestoreReconciliationRepository,
 } from "../../src/platform/sqlite/repositories/restoreReconciliationRepository";
 import {
+  createPlanImpactRepository,
+} from "../../src/platform/sqlite/repositories/planImpactRepository";
+import {
   createRunningPlanRepository,
 } from "../../src/platform/sqlite/repositories/runningPlanRepository";
 import {
@@ -104,6 +107,7 @@ class Connection implements SqliteConnection {
 
 const directories = new Set<string>();
 const kernels = new Set<SqliteKernel>();
+const kernelPaths = new WeakMap<SqliteKernel, string>();
 
 afterEach(async () => {
   await Promise.all([...kernels].map((kernel) => kernel.close()));
@@ -112,10 +116,7 @@ afterEach(async () => {
   directories.clear();
 });
 
-async function open(name: string): Promise<SqliteKernel> {
-  const directory = mkdtempSync(join(tmpdir(), `gym-merge-${name}-`));
-  directories.add(directory);
-  const path = join(directory, "gym.db");
+async function openDatabase(path: string): Promise<SqliteKernel> {
   const writer = new Connection(new DatabaseSync(path));
   const reader = new Connection(new DatabaseSync(path));
   await configureSqliteConnection(writer, { enableWal: true });
@@ -137,6 +138,23 @@ async function open(name: string): Promise<SqliteKernel> {
     },
   }).run();
   return kernel;
+}
+
+async function open(name: string): Promise<SqliteKernel> {
+  const directory = mkdtempSync(join(tmpdir(), `gym-merge-${name}-`));
+  directories.add(directory);
+  const path = join(directory, "gym.db");
+  const kernel = await openDatabase(path);
+  kernelPaths.set(kernel, path);
+  return kernel;
+}
+
+async function reopen(kernel: SqliteKernel): Promise<SqliteKernel> {
+  const path = kernelPaths.get(kernel);
+  if (path === undefined) throw new Error("logical_merge_kernel_path_missing");
+  const reopened = await openDatabase(path);
+  kernelPaths.set(reopened, path);
+  return reopened;
 }
 
 async function seedBundledExercise(kernel: SqliteKernel): Promise<void> {
@@ -2464,6 +2482,232 @@ describe("logical merge repository", () => {
       decision: "keep_current_target",
       result_json: JSON.stringify({ recommendationId: "owned-recommendation", status: "rejected" }),
     }]);
+  });
+
+  it("preserves a created unscheduled replacement receipt through a keep-both merge and exact replay", async () => {
+    const archiveKernel = await open("replacement-receipt-archive");
+    await seedOwnedPlan(archiveKernel, {
+      id: "archive-plan",
+      portableId: "d".repeat(32),
+      dayId: "archive-day",
+    });
+    await seedOwnedPlanExerciseGraph(archiveKernel, {
+      planId: "archive-plan",
+      dayId: "archive-day",
+    });
+    await archiveKernel.write(async (transaction) => {
+      await transaction.execute(
+        `INSERT INTO plans
+          (id, content_pack_id, origin, source_namespace, upstream_id, name,
+           days_per_week, audience, goal, estimate_minutes, attribution,
+           is_active, revision)
+         VALUES ('schedule-holder', NULL, 'bundled', 'catalog', 'schedule-holder',
+           'Schedule holder', 1, 'Owner', 'Strength', 1, 'Owner', 0, 1)`,
+      );
+      await transaction.execute(
+        "UPDATE owned_plan_schedules SET plan_id = 'schedule-holder' WHERE id = 'owned-schedule'",
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_progression_policies
+          (id, plan_day_exercise_id, policy_kind, policy_id, policy_version,
+           rule_json, metric_profile, metric_contract_version,
+           exercise_metric_generation, status, revision)
+         VALUES ('replacement-policy', 'owned-occurrence', 'manual_hold',
+           'manual-hold-v1', 1,
+           '{"kind":"manual_hold","id":"manual-hold-v1","version":1}',
+           'load_reps', 1, 1, 'active', 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO exercises
+          (id, content_pack_id, origin, source_namespace, upstream_id, name,
+           metric_profile, metric_contract_version, exercise_metric_generation,
+           equipment, default_rest_seconds, revision)
+         VALUES ('replacement', NULL, 'bundled', 'catalog', 'replacement',
+           'Replacement', 'load_reps', 1, 1, 'Unspecified', 90, 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO exercise_library_entries
+          (exercise_id, origin, canonical_name, exercise_type, movement_class,
+           metric_profile, metric_contract_version, exercise_metric_generation,
+           availability, revision)
+         VALUES ('replacement', 'bundled', 'Replacement', 'strength', 'compound',
+           'load_reps', 1, 1, 'available', 1)`,
+      );
+    });
+    const archiveRepository = createPlanImpactRepository(archiveKernel, {});
+    const preview = await archiveRepository.readExerciseReplacement({
+      planId: "archive-plan",
+      occurrenceId: "owned-occurrence",
+    });
+    expect(preview).not.toBeNull();
+    const command = {
+      requestId: "merge-replacement-request",
+      requestSha256: "a".repeat(64),
+      planId: preview!.planId,
+      sourceOccurrenceId: preview!.sourceOccurrenceId,
+      sourceExerciseId: preview!.sourceExerciseId,
+      expectedPlanRevision: preview!.planRevision,
+      expectedPreview: preview!,
+      scope: "this_occurrence" as const,
+      replacementExerciseId: "replacement",
+      occurrences: [preview!.occurrences[0]!],
+      committedAtMs: 100,
+    };
+    await expect(archiveRepository.applyExerciseReplacement(command)).resolves.toMatchObject({
+      outcome: "committed",
+      planId: "archive-plan",
+      replacementExerciseId: "replacement",
+    });
+    const archive = await snapshot(archiveKernel);
+
+    const localKernel = await open("replacement-receipt-local");
+    await seedOwnedPlan(localKernel, {
+      id: "archive-plan",
+      portableId: "e".repeat(32),
+      dayId: "local-day",
+    });
+    await seedOwnedPlanExerciseGraph(localKernel, {
+      planId: "archive-plan",
+      dayId: "local-day",
+    });
+    await localKernel.write(async (transaction) => {
+      await transaction.execute(
+        `INSERT INTO exercises
+          (id, content_pack_id, origin, source_namespace, upstream_id, name,
+           metric_profile, metric_contract_version, exercise_metric_generation,
+           equipment, default_rest_seconds, revision)
+         VALUES ('replacement', NULL, 'bundled', 'catalog', 'replacement',
+           'Replacement', 'load_reps', 1, 1, 'Unspecified', 90, 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO exercise_library_entries
+          (exercise_id, origin, canonical_name, exercise_type, movement_class,
+           metric_profile, metric_contract_version, exercise_metric_generation,
+           availability, revision)
+         VALUES ('replacement', 'bundled', 'Replacement', 'strength', 'compound',
+           'load_reps', 1, 1, 'available', 1)`,
+      );
+    });
+    const local = await createSqliteMergeLocalFactsPort(localKernel).read();
+    const plan = await buildPortableMergePlan({
+      archive: {
+        ...archive,
+        version: 2 as const,
+        tables: {
+          ...archive.tables,
+          portable_owner_identity: [{ id: 1, owner_namespace: local.ownerNamespace }],
+        },
+      },
+      local: {
+        version: 2,
+        ...local,
+        tables: {
+          ...local.tables,
+          portable_owner_identity: [{ id: 1, owner_namespace: local.ownerNamespace }],
+        },
+      },
+      payloadDigest: sha256,
+    });
+    const operation = plan.operations.find((value) =>
+      value.aggregateClass === "owned_plan" && value.portableId === "d".repeat(32),
+    );
+    expect(operation).toMatchObject({ kind: "keep_both", archiveId: "archive-plan" });
+    const mappedPlanId = operation!.localId;
+    const mappedReceipt = plan.aggregates.find((value) =>
+      value.aggregateClass === "owned_plan" && value.portableId === "d".repeat(32),
+    )!.tables.plan_exercise_replacement_receipts![0]!;
+    expect(mappedReceipt).toMatchObject({
+      request_id: command.requestId,
+      request_sha256: command.requestSha256,
+      plan_id: mappedPlanId,
+      replacement_exercise_id: "replacement",
+    });
+    const mappedResult = JSON.parse(String(mappedReceipt.result_json));
+    expect(mappedResult).toMatchObject({
+      outcome: "committed",
+      planId: mappedPlanId,
+      replacementExerciseId: "replacement",
+      affectedOccurrenceIds: [mappedReceipt.source_occurrence_id],
+    });
+
+    await expect(createFullPlanLogicalMergeWriter(localKernel, { sha256 })
+      .commitFullPlan({
+        localFingerprint: await sha256(canonicalMergeValue(local)),
+        plan,
+      }))
+      .resolves.toEqual({ state: "rebuild_pending" });
+    await expect(localKernel.queryAll(
+      `SELECT request_id, request_sha256, plan_id, source_occurrence_id,
+              replacement_exercise_id, expected_plan_revision,
+              result_plan_revision, result_json, committed_at_ms
+       FROM plan_exercise_replacement_receipts`,
+    )).resolves.toEqual([{
+      request_id: command.requestId,
+      request_sha256: command.requestSha256,
+      plan_id: mappedPlanId,
+      source_occurrence_id: mappedReceipt.source_occurrence_id,
+      replacement_exercise_id: "replacement",
+      expected_plan_revision: 1,
+      result_plan_revision: 2,
+      result_json: mappedReceipt.result_json,
+      committed_at_ms: 100,
+    }]);
+    kernels.delete(localKernel);
+    await localKernel.close();
+    const reopenedKernel = await reopen(localKernel);
+    const beforeReplay = await reopenedKernel.queryAll(
+      `SELECT occurrence.id, occurrence.exercise_id, occurrence.revision,
+              plan.id AS plan_id, plan.revision AS plan_revision
+       FROM owned_plan_day_exercises occurrence
+       JOIN plan_days day ON day.id = occurrence.plan_day_id
+       JOIN plans plan ON plan.id = day.plan_id
+       WHERE occurrence.id = ?`,
+      [mappedReceipt.source_occurrence_id as string],
+    );
+    await expect(createPlanImpactRepository(reopenedKernel, {})
+      .applyExerciseReplacement(command))
+      .resolves.toEqual({
+        ...mappedResult,
+        outcome: "already_committed",
+      });
+    await expect(reopenedKernel.queryAll(
+      `SELECT occurrence.id, occurrence.exercise_id, occurrence.revision,
+              plan.id AS plan_id, plan.revision AS plan_revision
+       FROM owned_plan_day_exercises occurrence
+       JOIN plan_days day ON day.id = occurrence.plan_day_id
+       JOIN plans plan ON plan.id = day.plan_id
+       WHERE occurrence.id = ?`,
+      [mappedReceipt.source_occurrence_id as string],
+    )).resolves.toEqual(beforeReplay);
+    await expect(reopenedKernel.queryAll(
+      "SELECT COUNT(*) AS count FROM plan_exercise_replacement_receipts",
+    )).resolves.toEqual([{ count: 1 }]);
+  });
+
+  it("commits an admitted empty source graph through the source-generation transaction", async () => {
+    const kernel = await open("empty-source-graph");
+    const local = await createSqliteMergeLocalFactsPort(kernel).read();
+    const operation = {
+      aggregateClass: "source_graph" as const,
+      kind: "insert" as const,
+      portableId: "source-graph",
+      archiveId: "source-graph",
+      localId: "source-graph",
+    };
+    const plan: PortableMergePlan = {
+      ...operationPlan([operation]),
+      aggregates: [{
+        aggregateClass: "source_graph",
+        portableId: operation.portableId,
+        tables: {},
+      }],
+    };
+    await expect(createFullPlanLogicalMergeWriter(kernel, { sha256 })
+      .commitFullPlan({
+        localFingerprint: await sha256(canonicalMergeValue(local)),
+        plan,
+      }))
+      .resolves.toEqual({ state: "rebuild_pending" });
   });
 
   it("commits a keep-both Running collision as a readable remapped aggregate", async () => {

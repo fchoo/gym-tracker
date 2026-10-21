@@ -2644,6 +2644,82 @@ describe("portable merge plan", () => {
     }
   });
 
+  it("rewrites immutable exercise-replacement receipts with keep-both identities", () => {
+    const row = {
+      request_id: "replacement-request",
+      request_sha256: "a".repeat(64),
+      plan_id: "archive-plan",
+      source_occurrence_id: "archive-occurrence",
+      replacement_exercise_id: "archive-exercise",
+      expected_plan_revision: 3,
+      result_plan_revision: 4,
+      result_json: JSON.stringify({
+        outcome: "committed",
+        planId: "archive-plan",
+        planRevision: 4,
+        replacementExerciseId: "archive-exercise",
+        affectedOccurrenceIds: ["archive-occurrence"],
+        currentWorkoutUnaffected: true,
+        invalidations: ["exercise:archive-exercise"],
+      }),
+      committed_at_ms: 10,
+    };
+    const planIds = new Map([["archive-plan", "merged-plan"]]);
+    const occurrenceIds = new Map([["archive-occurrence", "merged-occurrence"]]);
+    const exerciseIds = new Map([["archive-exercise", "merged-exercise"]]);
+    const rewritten = __mergePlanTestOnly.rewriteExerciseReplacementReceipt(
+      row,
+      planIds,
+      occurrenceIds,
+      exerciseIds,
+    );
+    expect(rewritten).toMatchObject({
+      request_id: row.request_id,
+      request_sha256: row.request_sha256,
+      plan_id: "merged-plan",
+      source_occurrence_id: "merged-occurrence",
+      replacement_exercise_id: "merged-exercise",
+    });
+    expect(JSON.parse(String(rewritten.result_json))).toEqual({
+      outcome: "committed",
+      planId: "merged-plan",
+      planRevision: 4,
+      replacementExerciseId: "merged-exercise",
+      affectedOccurrenceIds: ["merged-occurrence"],
+      currentWorkoutUnaffected: true,
+      invalidations: ["exercise:archive-exercise"],
+    });
+    for (const invalidRow of [
+      { ...row, request_sha256: "bad" },
+      { ...row, result_json: JSON.stringify({}) },
+      { ...row, result_json: JSON.stringify({
+        outcome: "committed", planId: "other-plan", planRevision: 4,
+        replacementExerciseId: "archive-exercise",
+        affectedOccurrenceIds: ["archive-occurrence"],
+        currentWorkoutUnaffected: true, invalidations: [],
+      }) },
+      { ...row, result_json: JSON.stringify({
+        outcome: "committed", planId: "archive-plan", planRevision: 4,
+        replacementExerciseId: "archive-exercise",
+        affectedOccurrenceIds: [],
+        currentWorkoutUnaffected: true, invalidations: [],
+      }) },
+      { ...row, result_json: JSON.stringify({
+        outcome: "committed", planId: "archive-plan", planRevision: 5,
+        replacementExerciseId: "archive-exercise",
+        affectedOccurrenceIds: ["archive-occurrence"],
+        currentWorkoutUnaffected: true, invalidations: [],
+      }) },
+    ]) {
+      expect(() => __mergePlanTestOnly.rewriteExerciseReplacementReceipt(
+        invalidRow,
+        planIds,
+        occurrenceIds,
+        exerciseIds,
+      )).toThrow(new MergePlanError("merge_plan_invalid"));
+    }
+  });
+
   it("fails closed or classifies conflicts for malformed source graph mappings", async () => {
     const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 });
     const collision = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {

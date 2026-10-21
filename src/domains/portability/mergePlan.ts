@@ -565,6 +565,66 @@ function rewriteRecommendationDecisionReceipt(
   });
 }
 
+function rewriteExerciseReplacementReceipt(
+  row: LogicalBackupRow,
+  planIds: ReadonlyMap<string, string>,
+  occurrenceIds: ReadonlyMap<string, string>,
+  exerciseIds: ReadonlyMap<string, string>,
+): LogicalBackupRow {
+  const requestSha256 = textId(row.request_sha256);
+  if (!/^[a-f0-9]{64}$/u.test(requestSha256)) invalid();
+  const result = parseJsonObject(row.result_json);
+  const archivePlanId = textId(row.plan_id);
+  const planId = mappedIdentifier(planIds, result.planId);
+  const sourceOccurrenceId = mappedIdentifier(
+    occurrenceIds,
+    row.source_occurrence_id,
+  );
+  const archiveReplacementExerciseId = textId(row.replacement_exercise_id);
+  const sourceReplacementExerciseId = textId(result.replacementExerciseId);
+  const replacementExerciseId = exerciseIds.get(archiveReplacementExerciseId)
+    ?? archiveReplacementExerciseId;
+  const affectedOccurrenceIds = result.affectedOccurrenceIds;
+  if (result.planId !== archivePlanId
+    || sourceReplacementExerciseId !== archiveReplacementExerciseId
+    || !Array.isArray(affectedOccurrenceIds)
+    || affectedOccurrenceIds.length === 0
+    || !affectedOccurrenceIds.every((id) => typeof id === "string")) {
+    invalid();
+  }
+  const rewrittenOccurrenceIds = affectedOccurrenceIds.map((id) =>
+    mappedIdentifier(occurrenceIds, id)
+  );
+  if (!rewrittenOccurrenceIds.includes(sourceOccurrenceId)
+    || !Number.isSafeInteger(row.expected_plan_revision)
+    || !Number.isSafeInteger(row.result_plan_revision)
+    || row.expected_plan_revision < 1
+    || row.result_plan_revision !== row.expected_plan_revision + 1
+    || typeof row.committed_at_ms !== "number"
+    || !Number.isSafeInteger(row.committed_at_ms)
+    || row.committed_at_ms < 0
+    || result.outcome !== "committed"
+    || typeof result.planRevision !== "number"
+    || result.planRevision !== row.result_plan_revision
+    || typeof result.currentWorkoutUnaffected !== "boolean"
+    || !Array.isArray(result.invalidations)
+    || !result.invalidations.every((value) => typeof value === "string")) {
+    invalid();
+  }
+  return Object.freeze({
+    ...row,
+    plan_id: planId,
+    source_occurrence_id: sourceOccurrenceId,
+    replacement_exercise_id: replacementExerciseId,
+    result_json: encodeJson({
+      ...result,
+      planId,
+      replacementExerciseId,
+      affectedOccurrenceIds: rewrittenOccurrenceIds,
+    }),
+  });
+}
+
 function rewriteReorderReceipt(
   serialized: unknown,
   exerciseIds: ReadonlyMap<string, string>,
@@ -1644,6 +1704,30 @@ function planAggregate(
     tables.owned_plan_day_exercises = mappedOwnedDayExercises.rows;
   }
 
+  const replacementReceipts = rowsFor(snapshot, "plan_exercise_replacement_receipts")
+    .filter((row) => row.plan_id === archivePlanId);
+  const mappedReplacementReceipts = mappedRows(
+    local,
+    "plan_exercise_replacement_receipts",
+    replacementReceipts,
+    [],
+    operation.kind === "keep_both",
+    operation.portableId,
+    "request_id",
+  );
+  if (mappedReplacementReceipts.rows.length > 0) {
+    tables.plan_exercise_replacement_receipts = Object.freeze(
+      mappedReplacementReceipts.rows.map((row) =>
+        rewriteExerciseReplacementReceipt(
+          row,
+          planMap,
+          mappedOwnedDayExercises.ids,
+          exerciseMappings,
+        )
+      ),
+    );
+  }
+
   const ownedWarmups = rowsFor(snapshot, "owned_plan_warmup_sets")
     .filter((row) => mappedOwnedDayExercises.ids.has(textId(row.plan_day_exercise_id)));
   const mappedOwnedWarmups = mappedRows(local, "owned_plan_warmup_sets", ownedWarmups, [
@@ -2589,6 +2673,7 @@ export const __mergePlanTestOnly = Object.freeze({
   replaceScalar,
   requiredMappedRow,
   rewriteEditReceiptResult,
+  rewriteExerciseReplacementReceipt,
   rewriteRecommendationDecisionReceipt,
   rewriteRunningAggregateValue,
   rewriteRunningGoalValue,
