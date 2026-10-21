@@ -477,10 +477,13 @@ describe("Phase 18 deterministic acceptance harness", () => {
 
   it("sources process, artifact, Python, and memory facts from native runtime identity", () => {
     const bridge = readFileSync("modules/garmin-connect/src/index.ts", "utf8");
-    const native = readFileSync(
-      "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminConnectModule.kt",
+    const native = [
+      "GarminConnectModule.kt",
+      "GarminConnectPlatformBindings.kt",
+    ].map((file) => readFileSync(
+      `modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/${file}`,
       "utf8",
-    );
+    )).join("\n");
 
     for (const field of [
       "processId",
