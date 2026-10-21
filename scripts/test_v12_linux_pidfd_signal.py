@@ -15,8 +15,11 @@ import os
 from pathlib import Path
 import runpy
 import sys
+import tempfile
 import time
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 
 HELPER_PATH = Path(__file__).with_name("v12-linux-pidfd-signal.py")
@@ -266,6 +269,37 @@ class PidfdSignalTests(unittest.TestCase):
                 os.pidfd_open = original_pidfd_open
             sys.argv = original_argv
             sys.stdin = original_stdin
+
+
+class PidfdCoverageAcceptanceTests(unittest.TestCase):
+    def test_skipped_test_blocks_an_otherwise_complete_coverage_report(self):
+        runner_path = HELPER_PATH.with_name("run-phase20-pidfd-coverage.py")
+        spec = importlib.util.spec_from_file_location("pidfd_coverage_acceptance", runner_path)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        complete = SimpleNamespace(
+            analysis2=lambda _path: (str(HELPER_PATH), [1, 2], [], [], ""),
+            branch_stats=lambda _path: {1: (2, 2)},
+        )
+        coverage_lib = SimpleNamespace(
+            __version__=runner.REQUIRED_COVERAGE_VERSION,
+            Coverage=lambda **_options: complete,
+        )
+        with tempfile.TemporaryDirectory(prefix="phase20-pidfd-skip-") as directory:
+            output = Path(directory) / "report.json"
+            for skipped in [[], [("synthetic-test", "intentional skipped fixture")]]:
+                result = SimpleNamespace(
+                    wasSuccessful=lambda: True, testsRun=1, failures=[], errors=[], skipped=skipped,
+                )
+                with patch.object(runner, "_load_coverage_module", return_value=coverage_lib), \
+                        patch.object(runner, "_run_tests", return_value=(result, runner._defined_functions())), \
+                        patch.object(sys, "argv", [str(runner_path), "--output", str(output)]):
+                    status = runner.main()
+                report = runner.json.loads(output.read_text())
+                self.assertTrue(all(value["percent"] == 100 for value in report["coverage"].values()))
+                self.assertEqual(report["skipped"], len(skipped))
+                self.assertEqual(status, 1 if skipped else 0)
+                self.assertEqual(report["status"], "failed" if skipped else "passed")
 
 
 if __name__ == "__main__":

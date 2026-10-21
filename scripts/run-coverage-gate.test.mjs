@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 const require = createRequire(import.meta.url);
@@ -219,6 +221,56 @@ test("the exact Phase 18 evidence subprocess owns a local timeout", () => {
     phase18EvidenceCall.timeoutProperty.initializer.getText(phase18EvidenceCall.sourceFile),
     "PHASE18_EVIDENCE_TIMEOUT_MS",
   );
+});
+
+test("the Phase 20 coverage CLI rejects a skipped pidfd report before dequeuing projects", () => {
+  const root = process.cwd();
+  const fixture = mkdtempSync(path.join(tmpdir(), "phase20-pidfd-skip-cli-"));
+  try {
+    execFileSync("git", ["init", "--quiet", fixture], { timeout: 5_000 });
+    execFileSync("git", ["-C", fixture, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+      "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--quiet", "--allow-empty",
+      "-m", "test: initialize isolated coverage fixture", "-m", "Co-authored-by: TRAE CLI <noreply@users.noreply.github.com>"], { timeout: 5_000 });
+    for (const entry of readdirSync(root)) {
+      if (entry === "scripts" || entry === ".git" || entry === ".venv" || entry === "artifacts"
+        || entry === ".coverage" || entry.startsWith("coverage") || entry.startsWith(".native-")) continue;
+      symlinkSync(path.join(root, entry), path.join(fixture, entry));
+    }
+    mkdirSync(path.join(fixture, "scripts"));
+    for (const entry of readdirSync(path.join(root, "scripts"))) {
+      const source = path.join(root, "scripts", entry);
+      const target = path.join(fixture, "scripts", entry);
+      if (entry === "run-coverage-gate.mjs") writeFileSync(target, readFileSync(source));
+      else symlinkSync(source, target);
+    }
+    mkdirSync(path.join(fixture, ".venv", "bin"), { recursive: true });
+    writeFileSync(path.join(fixture, ".venv", "bin", "python"), `#!${process.execPath}
+const fs = require("node:fs");
+const path = require("node:path");
+const output = process.argv[process.argv.indexOf("--output") + 1];
+const metrics = ["statements", "branches", "functions", "lines"];
+fs.mkdirSync(path.dirname(output), { recursive: true });
+fs.writeFileSync(output, JSON.stringify({
+  status: "passed", suite: "phase20-linux-pidfd-signal", metrics,
+  tests_run: 9, failures: 0, errors: 0, skipped: 1,
+  coverage: Object.fromEntries(metrics.map(key => [key, { covered: 1, missed: 0, total: 1, percent: 100 }])),
+  missing_lines: [], missing_branches: [], missing_functions: [],
+  sources: [{ path: "scripts/v12-linux-pidfd-signal.py" }],
+  tests: [{ path: "scripts/test_v12_linux_pidfd_signal.py" }],
+}));
+`, { mode: 0o755 });
+    // The retained marker also prevents project execution on the pre-fix path.
+    const projects = path.join(fixture, "coverage", "phase20-node");
+    mkdirSync(projects, { recursive: true });
+    const ownership = path.join(projects, ".process-ownership");
+    writeFileSync(ownership, "b".repeat(64));
+    const result = spawnSync(process.execPath, ["scripts/run-coverage-gate.mjs", "--all-evidence-only"], {
+      cwd: fixture, encoding: "utf8", timeout: 10_000,
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /phase20_pidfd_coverage_invalid/u);
+    assert.equal(readFileSync(ownership, "utf8"), "b".repeat(64));
+  } finally { rmSync(fixture, { recursive: true, force: true }); }
 });
 
 test("the Linux pidfd helper is a normal source-bound Phase 20 exact coverage gate", () => {

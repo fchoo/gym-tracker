@@ -105,7 +105,7 @@ def main() -> int:
         "lines": _counter(len(set(statements) - set(missing_lines)), len(statements)),
     }
     missing_functions = sorted(defined_functions - executed_functions)
-    passed = result.wasSuccessful() and all(metric["percent"] == 100 for metric in coverage_metrics.values())
+    passed = result.wasSuccessful() and not result.skipped and all(metric["percent"] == 100 for metric in coverage_metrics.values())
     report = {
         "schema_version": 1,
         "suite": "phase20-linux-pidfd-signal",

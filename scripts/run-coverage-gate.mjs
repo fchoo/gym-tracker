@@ -570,6 +570,8 @@ function runPhase20PidfdCoverage() {
     && counter?.percent === 100;
   if (report?.status !== "passed"
     || report?.suite !== "phase20-linux-pidfd-signal"
+    || report?.skipped !== 0 || report?.failures !== 0 || report?.errors !== 0
+    || !Number.isSafeInteger(report?.tests_run) || report.tests_run < 1
     || JSON.stringify(report?.metrics) !== JSON.stringify(phase20PidfdCoverage.metrics)
     || !phase20PidfdCoverage.metrics.every((metric) => exact(report?.coverage?.[metric]))
     || report?.missing_lines?.length !== 0
