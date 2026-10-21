@@ -26,6 +26,15 @@ const projectRoot = process.cwd();
 const coverageDirectory = path.join(projectRoot, "coverage");
 const summaryPath = path.join(coverageDirectory, "coverage-summary.json");
 const PHASE18_EVIDENCE_TIMEOUT_MS = 30 * 60_000;
+const PHASE20_PIDFD_COVERAGE_TIMEOUT_MS = 2 * 60_000;
+const phase20PidfdCoverage = Object.freeze({
+  executable: ".venv/bin/python",
+  runner: "scripts/run-phase20-pidfd-coverage.py",
+  report: "coverage/phase20/pidfd-coverage.json",
+  source: "scripts/v12-linux-pidfd-signal.py",
+  test: "scripts/test_v12_linux_pidfd_signal.py",
+  metrics: Object.freeze(["statements", "branches", "functions", "lines"]),
+});
 const phase19CoverageManifest = JSON.parse(readFileSync(
   path.join(projectRoot, "scripts/phase19-integrity-coverage.json"),
   "utf8",
@@ -172,6 +181,7 @@ const phase20EvidenceTests = Object.freeze([
   "scripts/v12-native-execution-origin.test.mjs",
   "scripts/v12-performance-shard.test.mjs",
   "scripts/v12-phase20-cli-blackbox.test.mjs",
+  "scripts/v12-posix-process-tree.test.mjs",
   "scripts/v12-preflight-contract.test.mjs",
   "scripts/v12-production-domain-receipts.test.mjs",
   "scripts/v12-production-native-calendar-action.test.mjs",
@@ -242,6 +252,7 @@ const phase20FixtureCoverageTests = new Set([
   "scripts/v12-calendar-evidence-coverage.test.mjs",
   "scripts/v12-evidence-scripts.test.mjs",
   "scripts/v12-preflight-contract.test.mjs",
+  "scripts/v12-posix-process-tree.test.mjs",
   "scripts/verify-v12-native-evidence.security.test.mjs",
 ]);
 const phase20FixtureVisualCoverageTests = new Set([
@@ -324,6 +335,7 @@ const phase20EvidenceProjects = Object.freeze([
       "scripts/create-v12-readiness-handoff.mjs",
       "scripts/v12-blocker-row-resolver.mjs",
       "scripts/v12-rollback-evidence.mjs",
+      "scripts/v12-posix-process-tree.mjs",
       "scripts/v12-visual-streaming.mjs",
       "scripts/verify-v12-native-evidence.mjs",
     ]),
@@ -535,6 +547,38 @@ function coverageDirectoryArgument(args, fallback) {
   return index === -1
     ? fallback
     : path.resolve(projectRoot, args[index + 1] ?? "coverage");
+}
+
+function runPhase20PidfdCoverage() {
+  const output = path.join(projectRoot, phase20PidfdCoverage.report);
+  const result = spawnSync(
+    path.join(projectRoot, phase20PidfdCoverage.executable),
+    [phase20PidfdCoverage.runner, "--output", output],
+    {
+      cwd: projectRoot,
+      encoding: "utf8",
+      stdio: "inherit",
+      timeout: PHASE20_PIDFD_COVERAGE_TIMEOUT_MS,
+    },
+  );
+  if (result.error !== undefined) throw result.error;
+  if (result.status !== 0) process.exit(result.status ?? 1);
+  const report = JSON.parse(readFileSync(output, "utf8"));
+  const exact = (counter) => counter?.covered > 0
+    && counter?.missed === 0
+    && counter?.total === counter?.covered
+    && counter?.percent === 100;
+  if (report?.status !== "passed"
+    || report?.suite !== "phase20-linux-pidfd-signal"
+    || JSON.stringify(report?.metrics) !== JSON.stringify(phase20PidfdCoverage.metrics)
+    || !phase20PidfdCoverage.metrics.every((metric) => exact(report?.coverage?.[metric]))
+    || report?.missing_lines?.length !== 0
+    || report?.missing_branches?.length !== 0
+    || report?.missing_functions?.length !== 0
+    || report?.sources?.[0]?.path !== phase20PidfdCoverage.source
+    || report?.tests?.[0]?.path !== phase20PidfdCoverage.test) {
+    throw new Error("phase20_pidfd_coverage_invalid");
+  }
 }
 
 function resolveJestBin() {
@@ -760,7 +804,7 @@ const registeredPhase20EvidenceTests = validateEvidenceTestManifest({
   tests: phase20EvidenceTests,
   isEvidenceTest: isPhase20EvidenceTest,
   error: "phase20_evidence_test_manifest_drift",
-  expectedCount: 49,
+  expectedCount: 50,
 });
 const expectedPhase20ProjectNames = [
   "contracts",
@@ -773,10 +817,10 @@ const expectedPhase20ProjectNames = [
 const assignedPhase20Tests = phase20EvidenceProjects.flatMap(({ tests }) => tests);
 const assignedPhase20Modules = new Set(phase20EvidenceProjects.flatMap(({ modules = [] }) => modules));
 if (JSON.stringify(phase20EvidenceProjects.map(({ name }) => name)) !== JSON.stringify(expectedPhase20ProjectNames)
-  || assignedPhase20Tests.length !== 49
-  || new Set(assignedPhase20Tests).size !== 49
+  || assignedPhase20Tests.length !== 50
+  || new Set(assignedPhase20Tests).size !== 50
   || JSON.stringify([...assignedPhase20Tests].sort()) !== JSON.stringify(registeredPhase20EvidenceTests)
-  || assignedPhase20Modules.size !== 15
+  || assignedPhase20Modules.size !== 16
   || phase20EvidenceProjects.find(({ name }) => name === "cli-blackbox")?.coverage !== false) {
   throw new Error(JSON.stringify({
     error: "phase20_coverage_project_manifest_invalid",
@@ -808,6 +852,7 @@ if (focusPhase16Evidence) {
 }
 if (!skipPhase20Evidence && (allEvidenceOnly || phase20EvidenceOnly || focusPhase20
   || (!focusPhase16Evidence && !focusPhase18 && !focusPhase19))) {
+  runPhase20PidfdCoverage();
   await runPhase20SubprocessCoverage({
     projectRoot,
     projects: phase20EvidenceProjects,

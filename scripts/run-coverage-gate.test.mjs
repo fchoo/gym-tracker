@@ -92,7 +92,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   ));
   assert.deepEqual(manifest.phase20, discoveredPhase20);
   assert.deepEqual(manifest.phase18, discoveredPhase18);
-  assert.equal(manifest.phase20.length, 49);
+  assert.equal(manifest.phase20.length, 50);
   assert.equal(manifest.phase18.length, 18);
   assert.ok(manifest.phase18.includes("scripts/phase18-garmin-proof.test.mjs"));
   assert.deepEqual(Object.keys(manifest.phase20_coverage).sort(), [
@@ -126,11 +126,11 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
     { name: "cli-blackbox", timeoutMs: 50 * 60_000 },
   ]);
   const registeredProjectTests = coverageProjects.flatMap(({ tests }) => tests);
-  assert.equal(registeredProjectTests.length, 49);
-  assert.equal(new Set(registeredProjectTests).size, 49);
+  assert.equal(registeredProjectTests.length, 50);
+  assert.equal(new Set(registeredProjectTests).size, 50);
   assert.deepEqual([...registeredProjectTests].sort(), manifest.phase20);
   const coveredModules = new Set(coverageProjects.flatMap(({ modules }) => modules));
-  assert.equal(coveredModules.size, 15);
+  assert.equal(coveredModules.size, 16);
   for (const required of [
     "scripts/v12-atomic-shard-publication.mjs",
     "scripts/v12-rollback-evidence.mjs",
@@ -143,6 +143,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
     "scripts/v12-native-execution-origin.mjs",
     "scripts/v12-native-adapter.mjs",
     "scripts/v12-native-time-budgets.mjs",
+    "scripts/v12-posix-process-tree.mjs",
     "scripts/v12-sqlite-shard.mjs",
     "scripts/v12-sqlite-producer-contract.mjs",
     "scripts/v12-blocker-row-resolver.mjs",
@@ -218,4 +219,16 @@ test("the exact Phase 18 evidence subprocess owns a local timeout", () => {
     phase18EvidenceCall.timeoutProperty.initializer.getText(phase18EvidenceCall.sourceFile),
     "PHASE18_EVIDENCE_TIMEOUT_MS",
   );
+});
+
+test("the Linux pidfd helper is a normal source-bound Phase 20 exact coverage gate", () => {
+  const source = readFileSync("scripts/run-coverage-gate.mjs", "utf8");
+
+  assert.match(source, /phase20PidfdCoverage = Object\.freeze/u);
+  assert.match(source, /source: "scripts\/v12-linux-pidfd-signal\.py"/u);
+  assert.match(source, /test: "scripts\/test_v12_linux_pidfd_signal\.py"/u);
+  assert.match(source, /metrics: Object\.freeze\(\["statements", "branches", "functions", "lines"\]\)/u);
+  assert.match(source, /runPhase20PidfdCoverage\(\);\n  await runPhase20SubprocessCoverage/u);
+  assert.match(source, /phase20_pidfd_coverage_invalid/u);
+  assert.match(source, /PHASE20_PIDFD_COVERAGE_TIMEOUT_MS = 2 \* 60_000/u);
 });
