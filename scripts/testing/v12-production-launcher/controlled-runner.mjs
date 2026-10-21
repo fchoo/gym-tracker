@@ -32,6 +32,9 @@ export function createControlledRunner() {
   ]) cpSync(path.join(project, "src/testing/contracts", source), path.join(root, "src/testing/contracts", source));
   cpSync(path.join(project, "src/testing/phase20CalendarFixture.ts"), path.join(root, "src/testing/phase20CalendarFixture.ts"));
   cpSync(path.join(project, "src/testing/phase20VisualStateRegistry.json"), path.join(root, "src/testing/phase20VisualStateRegistry.json"));
+  cpSync(path.join(project, "src/testing/phase20VisualStateRegistry.generated.ts"), path.join(root, "src/testing/phase20VisualStateRegistry.generated.ts"));
+  cpSync(path.join(project, "src/testing/package.json"), path.join(root, "src/testing/package.json"));
+  cpSync(path.join(project, "src/testing/v12NativeAcceptanceProductRegistry.ts"), path.join(root, "src/testing/v12NativeAcceptanceProductRegistry.ts"));
   mkdirSync(path.join(root, ".planning/design"), { recursive: true });
   cpSync(path.join(project, ".planning/design/v1.2-browser-evidence"), path.join(root, ".planning/design/v1.2-browser-evidence"), { recursive: true });
   mkdirSync(path.join(root, "maestro/v1.2"), { recursive: true });
