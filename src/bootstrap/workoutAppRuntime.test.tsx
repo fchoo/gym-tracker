@@ -63,12 +63,13 @@ const mockCorrectHistorySession = jest.fn();
 const mockRemoveHistorySession = jest.fn();
 const mockRestoreHistorySession = jest.fn();
 const mockCollectSourceStateProof = jest.fn();
+const mockCollectPhase20QualityWorkloadProof = jest.fn<(...args: any[]) => Promise<any>>();
 const mockPhase17SetupIdentityFactory = jest.fn();
 const mockPhase17FamilyASelectorSchema = jest.fn();
 const mockCustomExerciseRepositoryFactory = jest.fn();
 const mockConfirmRunningActivityMatch = jest.fn();
-const mockPrepareV12NativeAcceptanceProductCase = jest.fn();
-const mockReadV12NativeAcceptanceReceipt = jest.fn();
+const mockPrepareV12NativeAcceptanceProductCase = jest.fn<(...args: any[]) => Promise<any>>();
+const mockReadV12NativeAcceptanceReceipt = jest.fn<(...args: any[]) => Promise<any>>();
 
 import starterPlansAsset from "../../assets/content/starter-plans.v2.json";
 import starterPlansAcceptanceAsset from "../../artifacts/review/phase2/starter-plans-acceptance.json";
@@ -311,6 +312,13 @@ jest.mock("../testing/v12NativeAcceptanceExecutor", () => {
 jest.mock("./phase14SourceStateProof", () => ({
   collectPhase14SourceStateProof: (...args: unknown[]) => mockCollectSourceStateProof(...args),
 }));
+jest.mock("../testing/phase20QualityWorkload", () => {
+  const actual = jest.requireActual<typeof import("../testing/phase20QualityWorkload")>("../testing/phase20QualityWorkload");
+  return {
+    ...actual,
+    collectPhase20QualityWorkloadProof: (...args: unknown[]) => mockCollectPhase20QualityWorkloadProof(...args),
+  };
+});
 jest.mock("expo-sqlite", () => ({
   backupDatabaseAsync: jest.fn(async () => undefined),
   deleteDatabaseAsync: jest.fn(async () => undefined),
@@ -1651,6 +1659,8 @@ describe("WorkoutAppRuntimeProvider", () => {
     mockRestoreHistorySession.mockImplementation(actualHistoryCommands.restoreHistorySession as never);
     mockCollectSourceStateProof.mockReset();
     mockCollectSourceStateProof.mockImplementation(actualSourceStateProof.collectPhase14SourceStateProof as never);
+    mockCollectPhase20QualityWorkloadProof.mockReset();
+    mockCollectPhase20QualityWorkloadProof.mockRejectedValue(new Error("phase20_quality_fixture_unavailable"));
     mockPrepareV12NativeAcceptanceProductCase.mockReset();
     mockPrepareV12NativeAcceptanceProductCase.mockRejectedValue(new Error("v12_native_acceptance_fixture_unavailable"));
     mockReadV12NativeAcceptanceReceipt.mockReset();
@@ -6428,6 +6438,17 @@ describe("WorkoutAppRuntimeProvider", () => {
         code: "session_write_back_failed",
       },
     });
+    await expect(captured!.applyCompletedWorkoutPlanWriteBack({
+      state: "awaiting_choice",
+      preview: { ...sessionWriteBackPreview, composition: undefined } as never,
+    })).resolves.toEqual({
+      state: "save_failed",
+      preview: { ...sessionWriteBackPreview, composition: undefined },
+      failure: {
+        kind: "failed",
+        code: "session_write_back_failed",
+      },
+    });
   });
 
   it("updates the session-exercise default rest through the available repository capability", async () => {
@@ -7765,7 +7786,7 @@ describe("WorkoutAppRuntimeProvider", () => {
     const productRequest = {
       shard: "workout" as const,
       caseId: "workout.day-switch",
-      fixtureId: "v12-synthetic-fixtures-r18",
+      fixtureId: "v12-synthetic-fixtures-r18" as const,
       title: "Workout",
       source: "PHASE15_REQUIRED_CASES",
       requirement: "WRK-02",
@@ -7805,7 +7826,7 @@ describe("WorkoutAppRuntimeProvider", () => {
     const productRequest = {
       shard: "workout" as const,
       caseId: "workout.day-switch",
-      fixtureId: "v12-synthetic-fixtures-r18",
+      fixtureId: "v12-synthetic-fixtures-r18" as const,
       title: "Workout",
       source: "PHASE15_REQUIRED_CASES",
       requirement: "WRK-02",
@@ -7821,6 +7842,17 @@ describe("WorkoutAppRuntimeProvider", () => {
     mockReadV12NativeAcceptanceReceipt.mockResolvedValueOnce(readbacks);
     mockBuildProfile = "development-test";
     mockNativeContractSuite = "v1.2-acceptance";
+    mockCollectPhase20QualityWorkloadProof.mockResolvedValueOnce({
+      producer: "phase20-quality-workload-proof/v1",
+      set_count: 15_000,
+      correction_count: 200,
+      plan_count: 3,
+      plan_kinds: ["running", "strength"],
+      set_digest_sha256: "a".repeat(64),
+      correction_digest_sha256: "b".repeat(64),
+      plan_digest_sha256: "c".repeat(64),
+      workload_digest_sha256: "d".repeat(64),
+    });
 
     try {
       await render(<RuntimeCaptureHarness dependencies={dependencies(repository)} onReady={(runtime) => { captured = runtime; }} />);
@@ -7837,6 +7869,219 @@ describe("WorkoutAppRuntimeProvider", () => {
       }));
       await expect(captured.readV12NativeAcceptanceReceipt(productRequest))
         .rejects.toThrow("v12_native_acceptance_prepared_case_missing");
+    } finally {
+      mockBuildProfile = undefined;
+      mockNativeContractSuite = undefined;
+    }
+  });
+
+  it("executes v1.2 acceptance proof callbacks through the real runtime adapters", async () => {
+    const repository = runtimeRepository([noPlanView], [null]);
+    const prepared = { operation_id: "library:library.true-no-plans:create-draft", schema_version: 1 };
+    const readbacks = { source_receipt: { case_id: "library.true-no-plans" }, ui_readback: { case_id: "library.true-no-plans" } };
+    const createDraft = jest.fn(async () => ({ outcome: "committed" as const, plan: { id: "plan", revision: 1 } }));
+    mockPrepareV12NativeAcceptanceProductCase.mockImplementationOnce(async (input: any) => {
+      await input.sha256("prepare-proof");
+      const { v12NativeAcceptanceCaseContract } = require("../testing/contracts/phase15Workout.contract") as typeof import("../testing/contracts/phase15Workout.contract");
+      await input.prepareOperation({
+        contract: v12NativeAcceptanceCaseContract("library-running", "library.true-no-plans"),
+        request: input.request,
+      });
+      return prepared;
+    });
+    mockReadV12NativeAcceptanceReceipt.mockImplementationOnce(async (input: any) => {
+      await input.sha256("read-proof");
+      return readbacks;
+    });
+    mockCollectPhase20QualityWorkloadProof.mockImplementation(async (input: any) => {
+      await input.sha256("quality-proof");
+      return {
+        producer: "phase20-quality-workload-proof/v1",
+        set_count: 15_000,
+        correction_count: 200,
+        plan_count: 3,
+        plan_kinds: ["running", "strength"],
+        set_digest_sha256: "a".repeat(64),
+        correction_digest_sha256: "b".repeat(64),
+        plan_digest_sha256: "c".repeat(64),
+        workload_digest_sha256: "d".repeat(64),
+      };
+    });
+    mockedCreateOwnedPlanRuntimePort.mockReturnValueOnce({
+      ...({} as ReturnType<typeof createOwnedPlanRuntimePort>),
+      createId: (kind: string) => `production-${kind}`,
+      createDraft,
+    } as unknown as ReturnType<typeof createOwnedPlanRuntimePort>);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    const productRequest = {
+      shard: "library-running" as const,
+      caseId: "library.true-no-plans",
+      fixtureId: "v12-synthetic-fixtures-r18" as const,
+      title: "Library",
+      source: "PHASE17_CASE_ACTION_CONTRACTS",
+      requirement: "phase17",
+      action: "true-no-plans",
+      readback: "Library source contract observation",
+      sourceProbe: "phase17-family-a:library.true-no-plans",
+      authorityTables: ["plans", "owned_plan_mutation_requests"],
+      nonce: "8".repeat(48),
+    };
+    mockBuildProfile = "development-test";
+    mockNativeContractSuite = "v1.2-acceptance";
+
+    try {
+      await render(<RuntimeCaptureHarness dependencies={dependencies(repository)} onReady={(runtime) => { captured = runtime; }} />);
+      await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+      if (captured === undefined) throw new Error("runtime_not_captured");
+
+      await act(async () => {
+        await captured!.prepareV12NativeAcceptanceProductCase(productRequest);
+      });
+      await act(async () => {
+        await captured!.createOwnedPlanDraft({ name: "Plan", dayName: "Day" });
+      });
+      await expect(captured.collectPhase20QualitySourceProof()).resolves.toMatchObject({
+        producer: "phase20-quality-workload-proof/v1",
+        set_count: 15_000,
+      });
+      await expect(captured.readV12NativeAcceptanceReceipt(productRequest)).resolves.toBe(readbacks);
+
+      expect(createDraft).toHaveBeenCalledWith(expect.objectContaining({
+        requestId: `v12:owned-plan-create:library.true-no-plans:${productRequest.nonce}`,
+      }));
+    } finally {
+      mockCollectPhase20QualityWorkloadProof.mockReset();
+      mockCollectPhase20QualityWorkloadProof.mockRejectedValue(new Error("phase20_quality_fixture_unavailable"));
+      mockBuildProfile = undefined;
+      mockNativeContractSuite = undefined;
+    }
+  });
+
+  it("uses injected runtime identities and reports strict cleanup failures without masking the guard", async () => {
+    const repository = runtimeRepository([noPlanView], [null]);
+    const strictFailure = "strict_disposal_failed";
+    const lifecycle = runtimeLifecycle();
+    lifecycle.dispose = jest.fn(async () => {
+      throw strictFailure;
+    });
+    const reportDisposalFailure = jest.fn();
+    const consoleError = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    let capturedRandomUUID: (() => string) | undefined;
+    mockedCreateOwnedPlanRuntimePort.mockImplementationOnce((_kernel, input) => {
+      capturedRandomUUID = input.randomUUID;
+      return {
+        ...({} as ReturnType<typeof createOwnedPlanRuntimePort>),
+        createId: input.randomUUID,
+      } as unknown as ReturnType<typeof createOwnedPlanRuntimePort>;
+    });
+    const runtimeDependencies = dependencies(repository, {
+      createLifecycle: () => lifecycle,
+      strictDisposal: true,
+      randomUUID: () => "runtime-injected-uuid",
+      reportDisposalFailure,
+    });
+
+    const view = await render(
+      <RuntimeCaptureHarness
+        dependencies={runtimeDependencies}
+        onReady={() => undefined}
+      />,
+    );
+    await waitFor(() => expect(capturedRandomUUID?.()).toBe("runtime-injected-uuid"));
+    view.unmount();
+
+    await waitFor(() => expect(reportDisposalFailure).toHaveBeenCalledWith(strictFailure));
+    expect(consoleError).toHaveBeenCalledWith("workout_runtime_strict_disposal_failed", "unknown");
+    consoleError.mockRestore();
+  });
+
+  it.each([false, true])("contains cleanup errors from unsubscribing with strict disposal %s", async (strictDisposal) => {
+    const lifecycle = runtimeLifecycle();
+    const failure = new Error("cleanup_unsubscribe_failed");
+    lifecycle.subscribeForeground.mockReturnValueOnce(() => { throw failure; });
+    const consoleError = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    const view = await render(<RuntimeHarness dependencies={dependencies(runtimeRepository([noPlanView], [null]), {
+      createLifecycle: () => lifecycle,
+      strictDisposal,
+    })} />);
+    try {
+      await waitFor(() => expect(screen.getByTestId("runtime-state")).toHaveTextContent("trusted"));
+      await view.unmount();
+      await act(async () => { await Promise.resolve(); });
+      if (strictDisposal) {
+        expect(consoleError).toHaveBeenCalledWith("workout_runtime_strict_disposal_failed", "cleanup_unsubscribe_failed");
+      } else {
+        expect(consoleError).not.toHaveBeenCalled();
+      }
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("keeps prepared plan-increment callback ownership on the real recommendation command path", async () => {
+    const repository = runtimeRepository([activeView], [activation]);
+    const outcomeRepository = runtimeOutcomeRepository();
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    const productRequest = {
+      shard: "workout" as const,
+      caseId: "workout.plan-increment",
+      fixtureId: "v12-synthetic-fixtures-r18" as const,
+      title: "Workout",
+      source: "PHASE15_REQUIRED_CASES",
+      requirement: "WRK-27",
+      action: "plan-increment",
+      readback: "Workout source contract observation",
+      sourceProbe: "phase15-workout-ledger:workout.plan-increment",
+      authorityTables: ["workout_sessions", "session_exercises", "session_sets", "progression_recommendations", "progression_recommendation_decision_receipts"],
+      nonce: "9".repeat(48),
+    };
+    mockPrepareV12NativeAcceptanceProductCase.mockResolvedValueOnce({ operation_id: "prepared" });
+    mockBuildProfile = "development-test";
+    mockNativeContractSuite = "v1.2-acceptance";
+
+    try {
+      await render(
+        <RuntimeCaptureHarness
+          dependencies={dependencies(repository, {
+            createOutcomeRepository: () => outcomeRepository,
+            openKernel: jest.fn(async () => ({
+              close: jest.fn(async () => undefined),
+              queryAll: jest.fn(async (sql: string) => (
+                /FROM progression_recommendations/u.test(sql)
+                  ? [{
+                      evidence_version: 2,
+                      source_revision: 1,
+                      target_revision: 1,
+                      status: "pending",
+                    }]
+                  : []
+              )),
+              readSnapshot: jest.fn(async (query: (transaction: Pick<SqliteTransactionExecutor, "queryAll">) => Promise<unknown>) =>
+                query({ queryAll: jest.fn(async () => []) }),
+              ),
+              write: jest.fn(async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) =>
+                command({
+                  execute: jest.fn(async () => ({ changes: 1, lastInsertRowId: 0 })),
+                  queryAll: jest.fn(async () => []),
+                })),
+            } as unknown as SqliteKernel)),
+          })}
+          onReady={(runtime) => { captured = runtime; }}
+        />,
+      );
+      await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+      if (captured === undefined) throw new Error("runtime_not_captured");
+
+      await act(async () => {
+        await captured!.prepareV12NativeAcceptanceProductCase(productRequest);
+      });
+      await act(async () => {
+        await captured!.acceptRecommendation("recommendation-1");
+      });
+
+      expect(outcomeRepository.acceptRecommendation).toHaveBeenCalledWith(expect.objectContaining({
+        requestId: `v12:workout-plan-increment:${productRequest.nonce}`,
+      }));
     } finally {
       mockBuildProfile = undefined;
       mockNativeContractSuite = undefined;

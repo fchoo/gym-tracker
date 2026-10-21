@@ -4391,22 +4391,12 @@ export function WorkoutAppRuntimeProvider({
       && retryState.state !== "save_failed") {
       return retryState;
     }
-    let result: CompletedWorkoutPlanWriteBackState;
-    try {
-      result = await applyCompletedWorkoutPlanWriteBack({
-        port: services.ownedPlans,
-        state: beginCompletedWorkoutPlanWriteBack(retryState),
-      });
-    } catch {
-      return {
-        state: "save_failed",
-        preview: retryState.preview,
-        failure: {
-          kind: "failed",
-          code: "session_write_back_failed",
-        },
-      } satisfies CompletedWorkoutPlanWriteBackState;
-    }
+    // The domain command translates repository failures into a retryable
+    // save_failed state; do not duplicate that failure boundary here.
+    const result = await applyCompletedWorkoutPlanWriteBack({
+      port: services.ownedPlans,
+      state: beginCompletedWorkoutPlanWriteBack(retryState),
+    });
     if (result.state === "completed" && result.disposition === "saved") {
       workoutRefreshGenerationRef.current += 1;
       try {
