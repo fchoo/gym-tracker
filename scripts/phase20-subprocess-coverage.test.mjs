@@ -59,8 +59,8 @@ import {
   readV12VisualJsonHeader,
 } from "./v12-visual-streaming.mjs";
 import { loadV12VisualAuthority } from "./v12-visual-authority.mjs";
-import { createV12ShellRequirementEvidence } from "./v12-shell-requirement-evidence.mjs";
-import { phase14ShellEvidenceFixture, SYNTHETIC_PHASE14_VALIDATION_OPTIONS } from "./testing/v12-phase14-shell-evidence-fixture.mjs";
+import { createV12RetainedPhase14Closure } from "./v12-phase14-retention.mjs";
+import { phase14ShellEvidenceFixture } from "./testing/v12-phase14-shell-evidence-fixture.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import {
   V12_NATIVE_PROVENANCE_REGISTRY,
@@ -72,6 +72,37 @@ import {
 const RETAINED_CLI_TIMEOUT_MS = 10 * 60_000;
 const PHASE20_RUN_ID = "phase20-20261018T000000Z-aaaaaaaaaaaa";
 const sha256 = value => createHash("sha256").update(value).digest("hex");
+
+function copyRequiredProductionSources({ sourceRoot, targetRoot }) {
+  const source = realpathSync(sourceRoot);
+  const target = realpathSync(targetRoot);
+  assert.notEqual(source, target);
+  for (const relative of ["app", "src"]) {
+    const from = path.join(source, relative);
+    assert.ok(existsSync(from), `missing production source directory: ${relative}`);
+    const to = path.join(target, relative);
+    rmSync(to, { recursive: true, force: true });
+    fs.cpSync(from, to, { recursive: true, dereference: false });
+  }
+  for (const relative of [".planning/v1.2-OWNER-DECISIONS.md"]) {
+    const from = path.join(source, relative);
+    assert.ok(existsSync(from), `missing retained authority file: ${relative}`);
+    const to = path.join(target, relative);
+    mkdirSync(path.dirname(to), { recursive: true });
+    copyFileSync(from, to);
+  }
+  const sourceHash = (relative) => sha256(readFileSync(path.join(source, relative)));
+  const targetHash = (relative) => sha256(readFileSync(path.join(target, relative)));
+  for (const relative of [
+    "src/testing/contracts/multiPlanRunning.contract.ts",
+    "src/testing/contracts/phase15Workout.contract.ts",
+    "src/testing/contracts/phase17LibraryRunning.contract.ts",
+    "src/ui/theme/index.ts",
+    ".planning/v1.2-OWNER-DECISIONS.md",
+  ]) {
+    assert.equal(targetHash(relative), sourceHash(relative), `copied source hash mismatch: ${relative}`);
+  }
+}
 
 function executable(file, body = "#!/bin/sh\nexit 0\n") {
   mkdirSync(path.dirname(file), { recursive: true });
@@ -1560,6 +1591,7 @@ test("production-shaped retained evidence completes preseal and final readiness"
     const environment = {
       ...process.env,
       V12_PHASE20_RETAINED_PRODUCTION_CHILD: "1",
+      V12_PHASE20_COVERAGE_SOURCE_ROOT: process.cwd(),
     };
     delete environment.NODE_TEST_CONTEXT;
     const isolated = spawnSync(process.execPath, [
@@ -1577,7 +1609,10 @@ test("production-shaped retained evidence completes preseal and final readiness"
     assert.equal(isolated.status, 0, isolated.stderr || isolated.stdout);
     return;
   }
-  const root = process.env.V12_PHASE20_COVERAGE_FIXTURE;
+  const archiveRoot = realpathSync(process.env.V12_PHASE20_COVERAGE_FIXTURE);
+  const sourceRoot = realpathSync(process.env.V12_PHASE20_COVERAGE_SOURCE_ROOT ?? process.cwd());
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "v12-retained-production-")));
+  fs.cpSync(archiveRoot, root, { recursive: true, dereference: false });
   const runId = readdirSync(path.join(root, "artifacts/native/v1.2"))
     .find((entry) => entry.startsWith("phase20-"));
   assert.ok(runId);
@@ -1615,6 +1650,7 @@ test("production-shaped retained evidence completes preseal and final readiness"
   ].map((key) => [key, process.env[key]]));
   try {
     for (const helper of ["checklist.json", "identity.json", "observations.json", "test-resolution.json"]) removeSaved(helper);
+    copyRequiredProductionSources({ sourceRoot, targetRoot: root });
 
     const authority = loadV12VisualAuthority({ root, externalRoot: "" });
     if (!existsSync(path.join(root, ".planning/v1.2-OWNER-BRIEF.md"))) {
@@ -1627,6 +1663,8 @@ test("production-shaped retained evidence completes preseal and final readiness"
 
     const buildRelative = `artifacts/native/v1.2/${runId}/build.json`;
     const build = JSON.parse(readFileSync(save(buildRelative), "utf8"));
+    build.source.tree_sha256 = sourceTreeSha256(root);
+    assert.equal(build.source.tree_sha256, sourceTreeSha256(root), "transformed fixture source digest is bound to copied production sources");
     const apkRelative = "artifacts/native/v1.2-acceptance/coverage-app.apk";
     const apkFile = path.join(root, apkRelative);
     created.push(apkFile);
@@ -1833,7 +1871,17 @@ test("production-shaped retained evidence completes preseal and final readiness"
       }
     };
     const captureReceipts = new Map();
-    const reboundPhase14 = phase14ShellEvidenceFixture(build);
+    for (const legacyRetained of ["shell/phase14-build.json", "shell/phase14-evidence.json"]) {
+      removeSaved(`artifacts/native/v1.2/${runId}/${legacyRetained}`);
+    }
+    const reboundPhase14 = phase14ShellEvidenceFixture(build, { productionShape: true, root, sourceRoot, apkBytes });
+    const reboundPhase14Closure = createV12RetainedPhase14Closure({
+      root,
+      phase14Manifest: reboundPhase14.phase14Manifest,
+      phase14Evidence: reboundPhase14.evidence,
+      manifest: build,
+      validationOptions: { readArtifact: reboundPhase14.readArtifact },
+    });
     for (const shard of Object.keys(V12_NATIVE_PROVENANCE_REGISTRY)) {
       const publicationRelative = `artifacts/native/v1.2/${runId}/publication/${shard}.json`;
       const publication = JSON.parse(readFileSync(save(publicationRelative), "utf8"));
@@ -1855,7 +1903,7 @@ test("production-shaped retained evidence completes preseal and final readiness"
           }
         }
         if (member.artifact === "semantics/accessibility.json") {
-          value.shell_receipts = createV12ShellRequirementEvidence(reboundPhase14.evidence, reboundPhase14.phase14Manifest, build, SYNTHETIC_PHASE14_VALIDATION_OPTIONS);
+          value.shell_receipts = reboundPhase14Closure.receipts;
         }
         if (member.artifact === "shell/phase14/build.json") value = reboundPhase14.phase14Manifest;
         if (member.artifact === "shell/phase14/maestro/phase14-evidence.json") value = reboundPhase14.evidence;
@@ -1884,21 +1932,24 @@ test("production-shaped retained evidence completes preseal and final readiness"
         }
       }
       if (shard === "accessibility") {
-        const registryMember = publication.members.find(({ artifact }) => artifact === "shell/phase14/artifact-registry.json");
-        assert.ok(registryMember);
-        const registryRelative = `artifacts/native/v1.2/${runId}/${registryMember.artifact}`;
-        const registry = JSON.parse(readFileSync(save(registryRelative), "utf8"));
-        registry.total_size_bytes = 0;
-        for (const retained of registry.members) {
-          const bytes = readFileSync(path.join(runRoot, retained.path));
-          retained.sha256 = createHash("sha256").update(bytes).digest("hex");
-          retained.size_bytes = bytes.length;
-          registry.total_size_bytes += bytes.length;
+        for (const retained of reboundPhase14Closure.members) {
+          const retainedRelative = `artifacts/native/v1.2/${runId}/${retained.path}`;
+          save(retainedRelative);
+          mkdirSync(path.dirname(path.join(root, retainedRelative)), { recursive: true });
+          writeFileSync(path.join(root, retainedRelative), retained.bytes);
         }
-        writeJson(registryRelative, registry);
-        const bytes = readFileSync(path.join(root, registryRelative));
-        registryMember.sha256 = createHash("sha256").update(bytes).digest("hex");
-        registryMember.size_bytes = bytes.length;
+        const registryRelative = `artifacts/native/v1.2/${runId}/shell/phase14/artifact-registry.json`;
+        save(registryRelative);
+        writeJson(registryRelative, reboundPhase14Closure.registry);
+        publication.members = [
+          ...publication.members.filter(({ artifact }) => ["semantics/accessibility.json", "geometry/hit-targets.json"].includes(artifact)),
+          ...reboundPhase14Closure.members.map(({ path: artifact, sha256, size_bytes }) => ({ artifact, sha256, size_bytes })),
+          {
+            artifact: "shell/phase14/artifact-registry.json",
+            sha256: createHash("sha256").update(readFileSync(path.join(root, registryRelative))).digest("hex"),
+            size_bytes: readFileSync(path.join(root, registryRelative)).length,
+          },
+        ];
       }
       writeJson(publicationRelative, publication);
     }
@@ -2262,6 +2313,7 @@ test("production-shaped retained evidence completes preseal and final readiness"
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -2279,7 +2331,7 @@ test("retained Phase 20 fixture executes the exact coverage CLI entrypoints", {
     NODE_ENV: "test",
     V12_NATIVE_ADAPTER_TEST_MODE: "phase20-native-adapter-subprocess",
     V12_NATIVE_ADAPTER_TEST_PROCESS: "1",
-    V12_NATIVE_ADAPTER_COMMAND: path.join(root, "scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs"),
+    V12_NATIVE_ADAPTER_COMMAND: path.join(projectRoot, "scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs"),
     V12_NATIVE_ADAPTER_BATCH: "1",
     V12_DEVICE_SERIAL: "fake-device-20",
     V12_EXECUTION_ORIGIN: "test-controlled/v1",
@@ -2308,8 +2360,12 @@ test("retained Phase 20 fixture executes the exact coverage CLI entrypoints", {
   try {
     for (const [file] of rootHelpers) rmSync(path.join(root, file));
     for (const [script, args, expectedStatus] of commands) {
+      const needsFakeAdapterInputs = ["scripts/capture-v12-visual.mjs", "scripts/compare-v12-visual.mjs"].includes(script);
+      if (needsFakeAdapterInputs) {
+        for (const [file, bytes] of rootHelpers) writeFileSync(path.join(root, file), bytes);
+      }
       const commandEnvironment = { ...environment };
-      if (["scripts/capture-v12-visual.mjs", "scripts/compare-v12-visual.mjs"].includes(script) && args.includes("--all")) {
+      if (needsFakeAdapterInputs) {
         delete commandEnvironment.NODE_V8_COVERAGE;
       }
       const result = spawnSync(process.execPath, [path.join(projectRoot, script), ...args], {
@@ -2320,6 +2376,9 @@ test("retained Phase 20 fixture executes the exact coverage CLI entrypoints", {
         timeout: RETAINED_CLI_TIMEOUT_MS,
       });
       assert.equal(result.status, expectedStatus, `${script}: ${result.stderr}`);
+      if (needsFakeAdapterInputs) {
+        for (const [file] of rootHelpers) rmSync(path.join(root, file), { force: true });
+      }
     }
     rmSync(path.join(visualRunRoot, "publication/comparison.json"), { force: true });
     rmSync(path.join(visualRunRoot, "comparison"), { recursive: true, force: true });

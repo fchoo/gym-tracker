@@ -6,6 +6,7 @@ const FORBIDDEN_TEXT = /(?:authorization\s*:\s*(?:bearer|basic)|-----BEGIN (?:RS
 const PRIVATE_LOCATION = /(?:file:\/\/|content:\/\/|(?:^|[\s"'(=])(?:\/Users\/|\/home\/|[A-Za-z]:\\Users\\)|(?:^|[\s"'(=])[^\s"')]+\.(?:fit|gpx|tcx)(?:$|[\s"')?#]))/iu;
 const JWT = /(?:^|\s|["'=])eyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}(?:$|\s|["'])/u;
 const SAFE_AGGREGATE_KEY = /^(?:route_callback_receipt_sha256|route_point_count)$/u;
+const SAFE_TOKEN_MEASUREMENT_VERDICTS = new Set(["PASS", "FAIL", "N_A_REVIEWED", "REVIEW_REQUIRED", "NOT_RUN"]);
 
 function fail() {
   throw new Error("v12_artifact_privacy_invalid");
@@ -37,6 +38,10 @@ export function assertV12PrivacySafeValue(value) {
   if (value !== null && typeof value === "object") {
     for (const [key, child] of Object.entries(value)) {
       const canonical = canonicalKey(key);
+      if (canonical === "token_measurement_verdict") {
+        if (typeof child !== "string" || !SAFE_TOKEN_MEASUREMENT_VERDICTS.has(child)) fail();
+        continue;
+      }
       if (!SAFE_AGGREGATE_KEY.test(canonical) && FORBIDDEN_KEY.test(canonical)) fail();
       assertV12PrivacySafeValue(child);
     }

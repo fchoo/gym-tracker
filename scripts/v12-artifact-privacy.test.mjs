@@ -13,6 +13,7 @@ test("recursive privacy validation accepts bounded technical evidence", () => {
     run_id: "phase20-20261017T000000Z-aaaaaaaaaaaa",
     artifact: "artifacts/native/v1.2/phase20-20261017T000000Z-aaaaaaaaaaaa/proof.json",
     counts: { passed: 12, failed: 0 },
+    dev02: { token_measurement_verdict: "PASS" },
     hashes: ["a".repeat(64)],
   };
   assert.equal(assertV12PrivacySafeValue(evidence), true);
@@ -43,6 +44,21 @@ test("recursive privacy validation rejects credentials, source rows, routes, hea
     "/Users/alice/Downloads/morning-run.fit",
   ]) {
     assert.throws(() => assertV12ArtifactPrivacySafe("report.xml", Buffer.from(text)), /v12_artifact_privacy_invalid/u);
+  }
+});
+
+
+test("recursive privacy validation only accepts bounded token measurement verdict enums", () => {
+  for (const verdict of ["PASS", "FAIL", "N_A_REVIEWED", "REVIEW_REQUIRED", "NOT_RUN"]) {
+    assert.equal(assertV12PrivacySafeValue({ dev02: { token_measurement_verdict: verdict } }), true);
+  }
+  for (const attack of [
+    { token_measurement_verdict: "credential-string" },
+    { token_measurement_verdict: { access_token: "secret" } },
+    { dev02: { nested: { token_measurement_verdict: ["PASS"] } } },
+  ]) {
+    assert.throws(() => assertV12PrivacySafeValue({ dev02: attack }), /v12_artifact_privacy_invalid/u);
+    assert.throws(() => assertV12ArtifactPrivacySafe("proof.json", Buffer.from(JSON.stringify({ dev02: attack }))), /v12_artifact_privacy_invalid/u);
   }
 });
 
