@@ -200,7 +200,7 @@ test("Phase 14 Maestro action preparation is conditional and does not consume th
 
 test("Phase 14 keeps reinstall and every Maestro launch user-data preserving", () => {
   const build = readFileSync("scripts/build-current-native-test-apk.sh", "utf8");
-  assert.match(build, /adb -s "\$device_serial" install -r "\$apk_path"/u);
+  assert.match(build, /adb -s "\$device_serial" install -r "\$staged_apk_path"/u);
   assert.doesNotMatch(build, /adb[^\n]*(?:uninstall|pm clear)/u);
   for (const file of ["shell.yaml", "accessibility.yaml", "settings-recovery.yaml"]) {
     const source = readFileSync(`maestro/phase14/${file}`, "utf8");

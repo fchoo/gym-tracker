@@ -91,6 +91,7 @@ import {
   type RecommendationDecision,
   type RecommendationDecisionInput,
   type ExerciseEffort,
+  type ProgressionRepository,
   type RecommendationDecisionResult,
 } from "../domains/progression";
 import {
@@ -129,6 +130,7 @@ import type {
   SelectedStrengthOccurrence,
   SessionDetail,
   TodayView,
+  WorkoutOutcomeRepository,
   WorkoutSessionView,
 } from "../domains/workout";
 import type {
@@ -225,9 +227,6 @@ import {
 import {
   createExpoHapticsAdapter,
 } from "../platform/haptics/expoHapticsAdapter";
-import {
-  runWorkoutMutationWithTestFailure,
-} from "./workoutMutationTestControls";
 import {
   createExpoRestNotificationAdapter,
 } from "../platform/notifications/expoRestNotificationAdapter";
@@ -396,6 +395,19 @@ import {
   type Phase14SourceStateProof,
 } from "./phase14SourceStateProof";
 import {
+  collectPhase20QualityWorkloadProof,
+  type Phase20QualityWorkloadProof,
+} from "../testing/phase20QualityWorkload";
+import {
+  prepareV12NativeAcceptanceProductCase as prepareV12NativeAcceptanceProductCaseFromKernel,
+  prepareV12NativeAcceptanceProductionOperation,
+  readV12NativeAcceptanceReceipt as readV12NativeAcceptanceReceiptFromKernel,
+  v12NativeAcceptanceProductRequestId,
+  type V12NativeAcceptancePreparedProductCase,
+  type V12NativeAcceptanceReadbacks,
+  type V12NativeAcceptanceRequest,
+} from "../testing/v12NativeAcceptanceExecutor";
+import {
   createPhase17FixtureProtocol,
   type Phase17Fixture,
   type Phase17SourceProbe,
@@ -494,6 +506,31 @@ import {
   type CustomExerciseRuntimeDetail,
   type CustomExerciseRuntimeMigration,
 } from "./customExerciseRuntimeReadPort";
+import {
+  createLibrarySectionPreferencePort,
+  type LibraryRuntimeSection,
+  type LibraryRuntimeSectionPreference,
+} from "./librarySectionPreferencePort";
+import {
+  readLibraryRuntimeSnapshot,
+  type LibraryRuntimePlanSummary,
+  type LibraryRuntimeSnapshot,
+  type LibraryRuntimeStarterPlanSummary,
+} from "./libraryRuntimeReadPort";
+export {
+  createLibrarySectionPreferencePort,
+  type LibraryRuntimeSection,
+  type LibraryRuntimeSectionPreference,
+  type LibrarySectionPreferencePort,
+} from "./librarySectionPreferencePort";
+export {
+  LIBRARY_ACCESSIBILITY_RECOVERY_PROFILE,
+  LIBRARY_ACTION_SHEET_CONFIGURATION,
+  readLibraryRuntimeSnapshot,
+  type LibraryRuntimePlanSummary,
+  type LibraryRuntimeSnapshot,
+  type LibraryRuntimeStarterPlanSummary,
+} from "./libraryRuntimeReadPort";
 export {
   createCustomExerciseRuntimeReadPort,
   type CustomExerciseRuntimeDetail,
@@ -516,30 +553,10 @@ function progressSnapshotKernel(kernel: SqliteKernel): SqliteSnapshotKernel {
     },
   }) as SqliteSnapshotKernel;
 }
-const LIBRARY_SECTION_SETTING_KEY = "library.section";
 const LATEST_BACKUP_METADATA_SETTING_KEY = "backup.latest";
 const PHASE17_ACTION_ENVELOPE_SETTING_KEY = "development-test.phase17.action-envelope.v1";
 const phase17FixtureActionReceiptId = (caseId: string, fixtureToken: string) => `phase17:${caseId}:${fixtureToken.slice("phase17:".length)}:action`;
 
-export type LibraryRuntimeSection = "plans" | "exercises";
-
-export type LibraryRuntimeSectionPreference = Readonly<{
-  section: LibraryRuntimeSection;
-  revision: number;
-}>;
-
-export type LibraryRuntimePlanSummary = Readonly<{
-  id: string;
-  name: string;
-  sport: "Running" | "Strength";
-  daysPerWeek: number;
-  status?: "Active" | "Draft" | "Archived" | "Inactive";
-  scheduleSummary?: string;
-  missingRequirement?: string | null;
-  templateUpdateTemplateId?: string;
-}>;
-
-export type LibraryRuntimeStarterPlanSummary = StarterPlanRuntimeSummary;
 export type RuntimeSecureBackupArchive = SecureBackupArchiveHandle;
 export type RuntimeCsvExport = CsvExportHandle;
 
@@ -566,46 +583,6 @@ export type RuntimeBackupMetadata = Readonly<{
   displayName: string;
 }>;
 
-export type LibraryRuntimeSnapshot = Readonly<{
-  sectionPreference: LibraryRuntimeSectionPreference;
-  plans: Readonly<{
-    active: LibraryRuntimePlanSummary | null;
-    activePlans: readonly LibraryRuntimePlanSummary[];
-    owned: readonly LibraryRuntimePlanSummary[];
-    starters: readonly LibraryRuntimeStarterPlanSummary[];
-  }>;
-  exerciseFilterOptions: Readonly<{
-    exerciseTypes: readonly string[];
-    muscles: readonly string[];
-    equipment: readonly string[];
-  }>;
-}>;
-
-type LibrarySectionSettingRow = Readonly<{
-  value_version: number;
-  value_json: string;
-  revision: number;
-}>;
-
-type LibraryPlanRow = Readonly<{
-  id: string;
-  name: string;
-  days_per_week: number;
-  is_active: number;
-  lifecycle: "draft" | "ready" | "archived" | null;
-  missing_requirement: string | null;
-  schedule_lifecycle: "active" | "inactive" | null;
-  legacy_schedule_id: string | null;
-  source_namespace: string | null;
-  upstream_id: string | null;
-  source_revision: number | null;
-  plan_kind: "running" | "strength";
-}>;
-
-type LibraryTaxonomyRow = Readonly<{
-  kind: "exercise_type" | "muscle" | "equipment";
-  slug: string;
-}>;
 
 type StarterCopyRow = Readonly<{
   plan_id: string;
@@ -749,8 +726,14 @@ function revisionDisplayValue(value: unknown): string {
 }
 
 type RuntimeValue = RuntimeState & Readonly<{
+  nowMs(): number;
+  runningPlanRuntime: RunningPlanRuntimePort | null;
   garminImport: GarminImportApplicationPort;
   collectPhase14SourceStateProof(): Promise<Phase14SourceStateProof>;
+  collectPhase20QualitySourceProof(): Promise<Phase20QualityWorkloadProof>;
+  prepareV12NativeAcceptanceProductCase(request: V12NativeAcceptanceRequest): Promise<V12NativeAcceptancePreparedProductCase>;
+  readV12NativeAcceptanceReceipt(request: V12NativeAcceptanceRequest): Promise<V12NativeAcceptanceReadbacks>;
+  triggerPhase20ProgressRebuild(): Promise<void>;
   collectPhase17SourceStateProof(): Promise<Phase14SourceStateProof>;
   setupPhase17Fixture(caseId: string): Promise<Phase17Fixture>;
   probePhase17Fixture(input: Readonly<{ caseId: string; fixtureToken: string; sourceTable: string }>): Promise<Phase17SourceProbe>;
@@ -1156,6 +1139,10 @@ type LocalContext = Readonly<{
   weekday: number;
 }>;
 
+type RuntimeOutcomeRepository = WorkoutOutcomeRepository
+  & ProgressionRepository
+  & Pick<ReturnType<typeof createWorkoutOutcomeRepository>, "getCalendarSessionDetail">;
+
 type RuntimeServices = Readonly<{
   automaticBackupRuntime?: AutomaticBackupRuntime;
   backupCommands: SecureBackupCommands;
@@ -1182,7 +1169,7 @@ type RuntimeServices = Readonly<{
   repository: ReturnType<typeof createPlansWorkoutRepository>;
   restRepository: ReturnType<typeof createRestRepository>;
   runningActivityMatches: ReturnType<typeof createRunningActivityMatchRepository>;
-  outcomeRepository: ReturnType<typeof createWorkoutOutcomeRepository>;
+  outcomeRepository: RuntimeOutcomeRepository;
   workoutRepository: ReturnType<typeof createWorkoutRepository>;
   workoutPreferenceRepository: ReturnType<typeof createWorkoutPreferenceRepository>;
 }>;
@@ -1221,7 +1208,7 @@ export type WorkoutAppRuntimeDependencies = Readonly<{
   ): ReturnType<typeof createRestRepository>;
   createOutcomeRepository(
     kernel: SqliteKernel,
-  ): ReturnType<typeof createWorkoutOutcomeRepository>;
+  ): RuntimeOutcomeRepository;
   createWorkoutRepository(
     kernel: SqliteKernel,
   ): ReturnType<typeof createWorkoutRepository>;
@@ -1240,6 +1227,14 @@ export type WorkoutAppRuntimeDependencies = Readonly<{
   ): ScheduleRuntimeAdapter;
   now(): Date;
   nowMs(): number;
+  randomUUID?(): string;
+  prepareRuntime?(input: Readonly<{
+    kernel: SqliteKernel;
+    starterPlans?: StarterPlanRuntimeCatalog;
+  }>): Promise<void>;
+  disposeRuntime?(): Promise<void>;
+  strictDisposal?: boolean;
+  reportDisposalFailure?(error: unknown): void;
 }>;
 
 export type WorkoutAppRuntimeAdapters = Readonly<{
@@ -1274,7 +1269,7 @@ export type WorkoutAppRuntimeAdapters = Readonly<{
   ): ReturnType<typeof createRestRepository>;
   createOutcomeRepository(
     kernel: SqliteKernel,
-  ): ReturnType<typeof createWorkoutOutcomeRepository>;
+  ): RuntimeOutcomeRepository;
   createWorkoutRepository(
     kernel: SqliteKernel,
   ): ReturnType<typeof createWorkoutRepository>;
@@ -1351,13 +1346,22 @@ const CalendarSessionReadContext = createContext<CalendarSessionReadPort | null>
 const CalendarStrengthOccurrenceReadContext = createContext<CalendarStrengthOccurrenceReadPort | null>(null);
 const CalendarActivityReadContext = createContext<CalendarActivityReadPort | null>(null);
 
+/** Transient pre-action evidence may cross a devtest route remount. It never
+ * authorizes replay: the post-action receipt is still re-read from SQLite. */
+const v12NativeAcceptancePreparedProductCases = new Map<
+  string,
+  V12NativeAcceptancePreparedProductCase
+>();
+
 export function createWorkoutAppRuntimeDependencies(
   adapters: WorkoutAppRuntimeAdapters,
+  options: Readonly<{ databaseName?: string }> = {},
 ): WorkoutAppRuntimeDependencies {
+  const databaseName = options.databaseName ?? DATABASE_NAME;
   return {
-    openKernel: () => adapters.openKernel(DATABASE_NAME),
+    openKernel: () => adapters.openKernel(databaseName),
     migrate: (kernel) => adapters.runMigrations({
-      databaseName: DATABASE_NAME,
+      databaseName,
       kernel,
     }),
     activateInitialStarter: adapters.activateInitialStarter,
@@ -1490,6 +1494,13 @@ function phase17NativeContractEnabled(): boolean {
     && Constants.expoConfig.extra.nativeContractSuite === "phase17";
 }
 
+function phase20QualitySourceProofEnabled(): boolean {
+  const { default: Constants } = require("expo-constants") as typeof import("expo-constants");
+  return Constants.expoConfig?.extra?.buildProfile === "development-test"
+    && Constants.expoConfig.extra.nativeContractsEnabled === true
+    && Constants.expoConfig.extra.nativeContractSuite === "v1.2-acceptance";
+}
+
 function phase12NativeFixtureViewModel(): AutomaticBackupViewModel | null {
   const { default: Constants } = require("expo-constants") as typeof import("expo-constants");
   const fixture = phase12BackupFixtureFromNativeContract({
@@ -1501,8 +1512,7 @@ function phase12NativeFixtureViewModel(): AutomaticBackupViewModel | null {
   return fixture === null ? null : phase12BackupFixtureViewModel(fixture);
 }
 
-export const productionWorkoutAppRuntimeDependencies =
-  createWorkoutAppRuntimeDependencies({
+const productionWorkoutAppRuntimeAdapters: WorkoutAppRuntimeAdapters = {
     openKernel: openSqliteKernel,
     runMigrations: async ({ databaseName, kernel }) => {
       const recoveryOpenOptions = {
@@ -1728,7 +1738,19 @@ export const productionWorkoutAppRuntimeDependencies =
       }),
     now: () => new Date(),
     nowMs: () => Date.now(),
-  });
+  };
+
+export function createProductionWorkoutAppRuntimeDependencies(
+  databaseName = DATABASE_NAME,
+): WorkoutAppRuntimeDependencies {
+  return createWorkoutAppRuntimeDependencies(
+    productionWorkoutAppRuntimeAdapters,
+    { databaseName },
+  );
+}
+
+export const productionWorkoutAppRuntimeDependencies =
+  createProductionWorkoutAppRuntimeDependencies();
 
 function localContext(now: Date): LocalContext {
   const localDate = [
@@ -1760,36 +1782,6 @@ function failedState(
       retryable: true,
     },
   };
-}
-
-function parseLibrarySectionPreference(
-  row: LibrarySectionSettingRow | undefined,
-): LibraryRuntimeSectionPreference {
-  if (row === undefined) {
-    return { section: "plans", revision: 0 };
-  }
-  if (row.value_version !== 1 || !Number.isSafeInteger(row.revision)) {
-    throw new Error("library_section_preference_invalid");
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(row.value_json);
-  } catch {
-    throw new Error("library_section_preference_invalid");
-  }
-  if (
-    typeof parsed !== "object"
-    || parsed === null
-    || Array.isArray(parsed)
-    || Object.keys(parsed).length !== 1
-  ) {
-    throw new Error("library_section_preference_invalid");
-  }
-  const section = (parsed as { section?: unknown }).section;
-  if (section !== "plans" && section !== "exercises") {
-    throw new Error("library_section_preference_invalid");
-  }
-  return { section, revision: row.revision };
 }
 
 type BackupMetadataSettingRow = Readonly<{
@@ -1863,200 +1855,6 @@ async function writeLatestBackupMetadata(
         nowMs,
       ],
     );
-  });
-}
-
-async function readLibrarySectionPreference(
-  kernel: SqliteKernel,
-): Promise<LibraryRuntimeSectionPreference> {
-  const [row] = await kernel.queryAll<LibrarySectionSettingRow>(
-    `SELECT value_version, value_json, revision
-     FROM app_settings
-     WHERE key = ?`,
-    [LIBRARY_SECTION_SETTING_KEY],
-  );
-  return parseLibrarySectionPreference(row);
-}
-
-export type LibrarySectionPreferencePort = Readonly<{
-  read(): Promise<LibraryRuntimeSectionPreference>;
-  write(
-    section: LibraryRuntimeSection,
-    expectedRevision: number,
-  ): Promise<LibraryRuntimeSectionPreference>;
-}>;
-
-export function createLibrarySectionPreferencePort(
-  kernel: SqliteKernel,
-  nowMs: () => number,
-): LibrarySectionPreferencePort {
-  return Object.freeze({
-    read: () => readLibrarySectionPreference(kernel),
-    async write(section, expectedRevision) {
-      if (
-        (section !== "plans" && section !== "exercises")
-        || !Number.isSafeInteger(expectedRevision)
-        || expectedRevision < 0
-      ) {
-        throw new Error("library_section_preference_invalid");
-      }
-      return kernel.write(async (transaction) => {
-        const [row] = await transaction.queryAll<LibrarySectionSettingRow>(
-          `SELECT value_version, value_json, revision
-           FROM app_settings
-           WHERE key = ?`,
-          [LIBRARY_SECTION_SETTING_KEY],
-        );
-        const current = parseLibrarySectionPreference(row);
-        if (current.section === section) {
-          return current;
-        }
-        if (current.revision !== expectedRevision) {
-          throw new Error("library_section_preference_conflict");
-        }
-        const next: LibraryRuntimeSectionPreference = {
-          section,
-          revision: current.revision + 1,
-        };
-        if (row === undefined) {
-          await transaction.execute(
-            `INSERT INTO app_settings
-              (key, value_version, value_json, revision, updated_at_ms)
-             VALUES (?, 1, ?, ?, ?)`,
-            [
-              LIBRARY_SECTION_SETTING_KEY,
-              JSON.stringify({ section }),
-              next.revision,
-              nowMs(),
-            ],
-          );
-        } else {
-          const result = await transaction.execute(
-            `UPDATE app_settings
-             SET value_json = ?, revision = ?, updated_at_ms = ?
-             WHERE key = ? AND revision = ?`,
-            [
-              JSON.stringify({ section }),
-              next.revision,
-              nowMs(),
-              LIBRARY_SECTION_SETTING_KEY,
-              expectedRevision,
-            ],
-          );
-          if (result.changes !== 1) {
-            throw new Error("library_section_preference_conflict");
-          }
-        }
-        return Object.freeze(next);
-      });
-    },
-  });
-}
-
-function libraryPlanStatus(
-  row: LibraryPlanRow,
-): LibraryRuntimePlanSummary["status"] {
-  if (row.is_active === 1 || row.schedule_lifecycle === "active") {
-    return "Active";
-  }
-  if (row.lifecycle === "archived") {
-    return "Archived";
-  }
-  if (row.lifecycle === "draft") {
-    return "Draft";
-  }
-  return "Inactive";
-}
-
-async function readLibraryPlans(
-  kernel: SqliteKernel,
-  starterPlans: readonly LibraryRuntimeStarterPlanSummary[],
-  templates: readonly AcceptedStarterTemplate[],
-): Promise<LibraryRuntimeSnapshot["plans"]> {
-  const rows = await kernel.queryAll<LibraryPlanRow>(
-    `SELECT plan.id,
-            plan.name,
-            plan.days_per_week,
-            plan.is_active,
-            state.lifecycle,
-            state.missing_requirement,
-            schedule.lifecycle AS schedule_lifecycle,
-            legacy_schedule.id AS legacy_schedule_id,
-            plan.source_namespace,
-            plan.upstream_id,
-            source.source_revision,
-            plan.plan_kind
-     FROM plans plan
-     LEFT JOIN owned_plan_aggregate_states state ON state.plan_id = plan.id
-     LEFT JOIN owned_plan_schedules schedule ON schedule.plan_id = plan.id
-     LEFT JOIN plan_schedules legacy_schedule
-       ON legacy_schedule.plan_id = plan.id
-     LEFT JOIN owned_plan_starter_sources source ON source.plan_id = plan.id
-     WHERE plan.origin IN ('custom', 'copied')
-     ORDER BY plan.name COLLATE NOCASE, plan.id`,
-  );
-  const summaries = rows.map((row) => {
-    const template = templates.find(({ id }) => id === row.upstream_id);
-    const sourceRevision = row.source_revision
-      ?? (row.source_namespace === "gym-tracker.original" ? 1 : null);
-    return Object.freeze({
-      id: row.id,
-      name: row.name,
-      sport: row.plan_kind === "running" ? "Running" : "Strength",
-      daysPerWeek: row.days_per_week,
-      status: libraryPlanStatus(row)!,
-      scheduleSummary: row.schedule_lifecycle === "active"
-        ? "Active schedule"
-        : row.schedule_lifecycle === "inactive"
-          ? "Inactive schedule"
-          : row.legacy_schedule_id !== null
-            ? row.is_active === 1
-              ? "Active Weekday schedule"
-              : "Inactive Weekday schedule"
-          : "Not scheduled",
-      missingRequirement: row.missing_requirement,
-      ...(template !== undefined
-          && sourceRevision !== null
-          && sourceRevision < template.revision
-        ? { templateUpdateTemplateId: template.id }
-        : {}),
-    });
-  });
-  const activePlans = summaries.filter(({ status }) => status === "Active");
-  const activeSports = new Set<string>();
-  for (const activePlan of activePlans) {
-    if (activeSports.has(activePlan.sport)) {
-      throw new Error("library_active_plan_contract_invalid");
-    }
-    activeSports.add(activePlan.sport);
-  }
-  return Object.freeze({
-    active: activePlans[0] ?? null,
-    activePlans: Object.freeze(activePlans),
-    owned: Object.freeze(summaries),
-    starters: starterPlans,
-  });
-}
-
-async function readLibraryFilterOptions(
-  kernel: SqliteKernel,
-): Promise<LibraryRuntimeSnapshot["exerciseFilterOptions"]> {
-  const rows = await kernel.queryAll<LibraryTaxonomyRow>(
-    `SELECT kind, slug
-     FROM taxonomy_terms
-     WHERE kind IN ('exercise_type', 'muscle', 'equipment')
-     ORDER BY kind, display_name COLLATE NOCASE, slug`,
-  );
-  return Object.freeze({
-    exerciseTypes: Object.freeze(rows
-      .filter(({ kind }) => kind === "exercise_type")
-      .map(({ slug }) => slug)),
-    muscles: Object.freeze(rows
-      .filter(({ kind }) => kind === "muscle")
-      .map(({ slug }) => slug)),
-    equipment: Object.freeze(rows
-      .filter(({ kind }) => kind === "equipment")
-      .map(({ slug }) => slug)),
   });
 }
 
@@ -2287,7 +2085,17 @@ export function WorkoutAppRuntimeProvider({
   const progressBodyweightCommandsRef = useRef(new Map<string, BodyweightCommand>());
   const phase17FixtureProtocolRef = useRef<ReturnType<typeof createPhase17FixtureProtocol> | null>(null);
   const phase17ActionEnvelopeSourceRef = useRef<ReturnType<typeof createPhase17ActionEnvelopeSource> | null>(null);
+  const v12NativeAcceptanceProductRequestRef = useRef<V12NativeAcceptanceRequest | null>(null);
+  const runtimeRandomUUID = useCallback(() => {
+    if (dependencies.randomUUID !== undefined) return dependencies.randomUUID();
+    const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
+    return randomUUID();
+  }, [dependencies]);
   const phase17RequestId = useCallback(async (label: string, productionRequestId: string) => {
+    const acceptanceRequest = v12NativeAcceptanceProductRequestRef.current;
+    if (acceptanceRequest !== null) {
+      return v12NativeAcceptanceProductRequestId(acceptanceRequest, label);
+    }
     if (!phase17NativeContractEnabled()) return productionRequestId;
     const source = phase17ActionEnvelopeSourceRef.current;
     if (source === null) throw new Error("phase17_action_envelope_missing");
@@ -2320,10 +2128,22 @@ export function WorkoutAppRuntimeProvider({
     servicesRef.current = null;
     pendingActivityMatchRef.current = null;
     progressBodyweightCommandsRef.current.clear();
-    await services?.lifecycle.dispose?.().catch(() => undefined);
-    services?.automaticBackupRuntime?.dispose();
-    await services?.kernel.close().catch(() => undefined);
-  }, []);
+    try {
+      if (dependencies.strictDisposal) await services?.lifecycle.dispose?.();
+      else await services?.lifecycle.dispose?.().catch(() => undefined);
+      services?.automaticBackupRuntime?.dispose();
+      if (dependencies.strictDisposal) {
+        await services?.kernel.close();
+        await dependencies.disposeRuntime?.();
+      } else {
+        await services?.kernel.close().catch(() => undefined);
+        await dependencies.disposeRuntime?.().catch(() => undefined);
+      }
+    } catch (error) {
+      dependencies.reportDisposalFailure?.(error);
+      throw error;
+    }
+  }, [dependencies]);
 
   const trustedRead = useCallback(async (
     services: RuntimeServices,
@@ -2420,12 +2240,7 @@ export function WorkoutAppRuntimeProvider({
     });
     const ownedPlans = createOwnedPlanRuntimePort(kernel, {
       nowMs: dependencies.nowMs,
-      randomUUID: () => {
-        const {
-          randomUUID,
-        } = require("expo-crypto") as typeof import("expo-crypto");
-        return randomUUID();
-      },
+      randomUUID: runtimeRandomUUID,
       sha256: (value) => {
         const {
           CryptoDigestAlgorithm,
@@ -2436,10 +2251,7 @@ export function WorkoutAppRuntimeProvider({
     });
     const runningPlans = createRunningPlanRuntimePort(kernel, {
       nowMs: dependencies.nowMs,
-      randomUUID: () => {
-        const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
-        return randomUUID();
-      },
+      randomUUID: runtimeRandomUUID,
       sha256: (value) => {
         const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
         return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
@@ -2600,6 +2412,12 @@ export function WorkoutAppRuntimeProvider({
     }
 
     try {
+      await dependencies.prepareRuntime?.({
+        kernel,
+        ...(starterPlansRef.current === undefined
+          ? {}
+          : { starterPlans: starterPlansRef.current }),
+      });
       await lifecycle.trigger("launch").catch(() => undefined);
       if (services.automaticBackupRuntime !== undefined) {
         automaticBackupUnsubscribeRef.current = services.automaticBackupRuntime.subscribe((automaticBackup) => {
@@ -2651,13 +2469,16 @@ export function WorkoutAppRuntimeProvider({
         ));
       }
     }
-  }, [closeServices, dependencies, trustedRead]);
+  }, [closeServices, dependencies, runtimeRandomUUID, trustedRead]);
 
   useEffect(() => {
     void initialize();
     return () => {
       generationRef.current += 1;
-      void closeServices();
+      void closeServices().catch((error: unknown) => {
+        if (!dependencies.strictDisposal) return;
+        console.error("workout_runtime_strict_disposal_failed", error instanceof Error ? error.message : "unknown");
+      });
     };
   }, [closeServices, initialize]);
 
@@ -3255,8 +3076,13 @@ export function WorkoutAppRuntimeProvider({
       requireServices().runningPlans.saveRunningTarget(input),
   }), [requireServices]);
 
-  const createProgressId = useCallback((kind: string) =>
-    requireServices().runningPlans.createId(kind), [requireServices]);
+  const createProgressId = useCallback((kind: string) => {
+    const acceptanceRequest = v12NativeAcceptanceProductRequestRef.current;
+    if (acceptanceRequest?.caseId === "workout.plan-increment" && kind === "recommendation-use") {
+      return v12NativeAcceptanceProductRequestId(acceptanceRequest, kind);
+    }
+    return requireServices().runningPlans.createId(kind);
+  }, [requireServices]);
 
   const loadProgressBodyweightHistory = useCallback(async (): Promise<readonly ProgressBodyweightEntry[]> => {
     const services = requireServices();
@@ -3351,19 +3177,11 @@ export function WorkoutAppRuntimeProvider({
 
   const loadLibrary = useCallback(async (): Promise<LibraryRuntimeSnapshot> => {
     const services = requireServices();
-    const [sectionPreference, plans, exerciseFilterOptions] = await Promise.all([
-      readLibrarySectionPreference(services.kernel),
-      readLibraryPlans(
-        services.kernel,
-        starterPlansRef.current?.summaries ?? [],
-        starterPlansRef.current?.templates ?? [],
-      ),
-      readLibraryFilterOptions(services.kernel),
-    ]);
-    return Object.freeze({
-      sectionPreference,
-      plans,
-      exerciseFilterOptions,
+    return readLibraryRuntimeSnapshot({
+      kernel: services.kernel,
+      nowMs: dependencies.nowMs,
+      starterPlans: starterPlansRef.current?.summaries ?? [],
+      templates: starterPlansRef.current?.templates ?? [],
     });
   }, [requireServices]);
 
@@ -4506,7 +4324,7 @@ export function WorkoutAppRuntimeProvider({
 
   const runOutcomeMutation = useCallback(async <Result,>(
     mutation: (
-      repository: ReturnType<typeof createWorkoutOutcomeRepository>,
+      repository: RuntimeOutcomeRepository,
     ) => Promise<Result>,
   ): Promise<Result> => {
     const services = requireServices();
@@ -4575,13 +4393,10 @@ export function WorkoutAppRuntimeProvider({
     }
     let result: CompletedWorkoutPlanWriteBackState;
     try {
-      result = await runWorkoutMutationWithTestFailure(
-        "plan_write_back",
-        () => applyCompletedWorkoutPlanWriteBack({
-          port: services.ownedPlans,
-          state: beginCompletedWorkoutPlanWriteBack(retryState),
-        }),
-      );
+      result = await applyCompletedWorkoutPlanWriteBack({
+        port: services.ownedPlans,
+        state: beginCompletedWorkoutPlanWriteBack(retryState),
+      });
     } catch {
       return {
         state: "save_failed",
@@ -5145,6 +4960,10 @@ export function WorkoutAppRuntimeProvider({
 
   const value = useMemo<RuntimeValue>(() => ({
     ...state,
+    nowMs: dependencies.nowMs,
+    runningPlanRuntime: state.launchState === "trusted"
+      ? requireServices().runningPlans
+      : null,
     garminImport,
     actOnToday: (action) => requireServices().schedules.actOnToday(action),
     acceptRecommendation: acceptWorkoutRecommendation,
@@ -5173,6 +4992,79 @@ export function WorkoutAppRuntimeProvider({
         sha256: (value) =>
           digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
       });
+    },
+    collectPhase20QualitySourceProof: () => {
+      if (!phase20QualitySourceProofEnabled()) {
+        return Promise.reject(new Error("phase20_quality_source_proof_unavailable"));
+      }
+      const {
+        CryptoDigestAlgorithm,
+        digestStringAsync,
+      } = require("expo-crypto") as typeof import("expo-crypto");
+      return collectPhase20QualityWorkloadProof({
+        kernel: requireServices().kernel,
+        sha256: (value) =>
+          digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+      });
+    },
+    prepareV12NativeAcceptanceProductCase: async (request) => {
+      if (!phase20QualitySourceProofEnabled()) {
+        throw new Error("v12_native_acceptance_executor_unavailable");
+      }
+      const services = requireServices();
+      v12NativeAcceptanceProductRequestRef.current = request;
+      const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+      const prepared = await prepareV12NativeAcceptanceProductCaseFromKernel({
+        kernel: services.kernel,
+        request,
+        sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+        prepareOperation: ({ contract, request: operationRequest }) =>
+          prepareV12NativeAcceptanceProductionOperation({
+            kernel: services.kernel,
+            contract,
+            request: operationRequest,
+            runtime: {
+              running: services.runningPlans,
+              ownedPlans: services.ownedPlans,
+              customExercises: services.customExerciseRepository,
+            },
+          }),
+      });
+      v12NativeAcceptancePreparedProductCases.set(
+        `${request.shard}:${request.caseId}:${request.nonce}`,
+        prepared,
+      );
+      setState(await trustedRead(services));
+      return prepared;
+    },
+    readV12NativeAcceptanceReceipt: async (request) => {
+      if (!phase20QualitySourceProofEnabled()) {
+        throw new Error("v12_native_acceptance_executor_unavailable");
+      }
+      const key = `${request.shard}:${request.caseId}:${request.nonce}`;
+      const preparedProductCase = v12NativeAcceptancePreparedProductCases.get(key);
+      if (preparedProductCase === undefined) {
+        throw new Error("v12_native_acceptance_prepared_case_missing");
+      }
+      const services = requireServices();
+      const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+      const readbacks = await readV12NativeAcceptanceReceiptFromKernel({
+        kernel: services.kernel,
+        request,
+        preparedProductCase,
+        sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+      });
+      v12NativeAcceptancePreparedProductCases.delete(key);
+      v12NativeAcceptanceProductRequestRef.current = null;
+      return readbacks;
+    },
+    triggerPhase20ProgressRebuild: async () => {
+      if (!phase20QualitySourceProofEnabled()) {
+        throw new Error("phase20_quality_progress_rebuild_unavailable");
+      }
+      await requireServices().kernel.write((transaction) => transaction.execute(
+        "UPDATE history_projection_freshness SET applied_revision = applied_revision - 1 WHERE applied_revision > 0",
+      ));
     },
     collectPhase17SourceStateProof: () => {
       if (!phase17NativeContractEnabled()) {

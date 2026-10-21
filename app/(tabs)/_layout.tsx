@@ -27,7 +27,7 @@ const DEFAULT_REST_ALERT_PREFERENCES: RestAlertPreferences = Object.freeze({
   vibrationEnabled: true,
 });
 
-function RootSettingsContent({
+export function RootSettingsContent({
   onNavigate,
   onRegisterOrigin,
   removedSessionsTriggerRef,

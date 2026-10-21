@@ -1177,14 +1177,32 @@ export async function replacePlanExercise(
   if (!validTime(committedAtMs)) {
     throw new PlanImpactInputError("plan_impact_date_invalid");
   }
-  const replay = await context.repository.readCommittedExerciseReplacement({
-    planId: value.planId,
-    expectedPlanRevision: value.expectedPlanRevision,
-    replacementExerciseId: value.replacementExerciseId,
-    occurrences: value.occurrences,
+  const canonical = Object.freeze({
+    operation: "replace_plan_exercise" as const,
+    ...value,
+    review: Object.freeze({ ...value.review }),
+    occurrences: Object.freeze(value.occurrences),
   });
-  if (replay !== null) {
-    return replay;
+  const requestSha256 = await digest(context.sha256, canonical);
+  const receiptReplay = context.repository.readExerciseReplacementCommandResult === undefined
+    ? null
+    : await context.repository.readExerciseReplacementCommandResult({
+        requestId: value.requestId,
+        requestSha256,
+      });
+  if (receiptReplay !== null) {
+    return receiptReplay;
+  }
+  // Legacy in-memory ports predate durable command receipts. Production
+  // repositories expose the receipt path above; this preserves their test seam.
+  if (context.repository.readExerciseReplacementCommandResult === undefined) {
+    const legacyReplay = await context.repository.readCommittedExerciseReplacement({
+      planId: value.planId,
+      expectedPlanRevision: value.expectedPlanRevision,
+      replacementExerciseId: value.replacementExerciseId,
+      occurrences: value.occurrences,
+    });
+    if (legacyReplay !== null) return legacyReplay;
   }
   const facts = await context.repository.readExerciseReplacement({
     planId: value.planId,
@@ -1222,15 +1240,9 @@ export async function replacePlanExercise(
       "plan_impact_occurrences_incomplete",
     );
   }
-  const canonical = Object.freeze({
-    operation: "replace_plan_exercise" as const,
-    ...value,
-    review: Object.freeze({ ...value.review }),
-    occurrences: Object.freeze(value.occurrences),
-  });
   const result = await context.repository.applyExerciseReplacement({
     ...canonical,
-    requestSha256: await digest(context.sha256, canonical),
+    requestSha256,
     sourceExerciseId: preview.sourceExerciseId,
     expectedPreview: replacementPreviewFacts(facts),
     committedAtMs,

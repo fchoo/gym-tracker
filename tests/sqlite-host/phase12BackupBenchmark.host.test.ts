@@ -148,9 +148,9 @@ async function migratedKernel(): Promise<SqliteKernel> {
     recoveryBackup,
   }).run();
   expect(migrationResult).toEqual(expect.objectContaining({
-    currentVersion: 45,
+    currentVersion: 46,
   }));
-  expect(CURRENT_SCHEMA_VERSION).toBe(45);
+  expect(CURRENT_SCHEMA_VERSION).toBe(46);
   kernels.push(kernel);
   return kernel;
 }
@@ -171,7 +171,7 @@ it("seeds a maximum fixture accepted by the fully migrated schema", async () => 
     snapshotId: "phase12-writer-00",
     createdAtMs: 100,
   });
-  expect(snapshot.schemaVersion).toBe(45);
+  expect(snapshot.schemaVersion).toBe(46);
   expect({
     rows: snapshot.manifest.totalRows,
     bytes: phase12EncodedDriveObjectBytes(snapshot),

@@ -103,3 +103,63 @@ export type GarminAcceptanceNativePrerequisiteId =
     typeof GARMIN_ACCEPTANCE_CASES[number],
     Readonly<{ disposition: "require-native-artifact" }>
   >["id"];
+
+/**
+ * Real-SQLite Garmin source facts reused by the aggregate v1.2 contract.
+ * These are deliberately the existing Phase 13/portable case identities,
+ * rather than a second set of labels which could pass without executing the
+ * concrete import, match, replay, restore, and merge boundaries.
+ */
+export const GARMIN_SQLITE_ACCEPTANCE_CASE_IDS = [
+  "phase13-import-normalized-identity",
+  "phase13-import-remove-restore",
+  "phase13-match-invalidation",
+  "phase13-stale-replay-no-resurrection",
+  "portable-merge-garmin-clean-restore",
+  "portable-merge-garmin-exact-repeat-noop",
+  "portable-merge-garmin-conflict-isolation",
+  "portable-merge-garmin-remap-tombstone-match",
+  "portable-merge-garmin-tamper-capacity-rollback",
+] as const;
+
+type GarminSqliteSourceResult = Readonly<{
+  status: "passed" | "failed";
+  cases: readonly Readonly<{ id: string; status: "passed" | "failed" }>[];
+}>;
+
+export type GarminSqliteAcceptanceContractResult = Readonly<{
+  status: "passed" | "failed";
+  total: number;
+  passed: number;
+  failed: number;
+  skipped: 0;
+  cases: readonly Readonly<{
+    id: typeof GARMIN_SQLITE_ACCEPTANCE_CASE_IDS[number];
+    status: "passed" | "failed";
+  }>[];
+}>;
+
+export function runGarminSqliteAcceptanceContract(input: Readonly<{
+  multiPlanRunning: GarminSqliteSourceResult;
+  portableMerge: GarminSqliteSourceResult;
+}>): GarminSqliteAcceptanceContractResult {
+  const sources = [input.multiPlanRunning, input.portableMerge];
+  const cases = GARMIN_SQLITE_ACCEPTANCE_CASE_IDS.map((id) => {
+    const matches = sources.flatMap((source) => source.cases).filter((entry) => entry.id === id);
+    if (matches.length !== 1 || matches[0]!.status !== "passed") {
+      throw new Error("garmin_sqlite_acceptance_source_invalid");
+    }
+    return Object.freeze({ id, status: "passed" as const });
+  });
+  if (sources.some(({ status }) => status !== "passed")) {
+    throw new Error("garmin_sqlite_acceptance_source_invalid");
+  }
+  return Object.freeze({
+    status: "passed",
+    total: cases.length,
+    passed: cases.length,
+    failed: 0,
+    skipped: 0,
+    cases: Object.freeze(cases),
+  });
+}

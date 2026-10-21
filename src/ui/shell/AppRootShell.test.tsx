@@ -124,11 +124,13 @@ describe("AppRootShell", () => {
 
   it("opens one App Settings sheet and restores the exact shell trigger on close", async () => {
     const trigger = { current: { focus: jest.fn() } };
+    const onSettingsVisibilityChange = jest.fn();
     await render(
       <AppearanceProvider>
         <AppRootShell
           activeRoot="index"
           requestNativeFocus={mockRequestAndroidViewFocus}
+          onSettingsVisibilityChange={onSettingsVisibilityChange}
           settingsContent={(
             <AppSettingsContent
               notificationPermission="granted"
@@ -148,6 +150,7 @@ describe("AppRootShell", () => {
     );
 
     await fireEvent.press(screen.getByRole("button", { name: "Open App Settings" }));
+    expect(onSettingsVisibilityChange).toHaveBeenCalledWith(true);
     expect(screen.getByRole("header", { name: "App Settings" })).toBeOnTheScreen();
     expect(screen.getByText("Appearance applies to all four destinations, Active Workout, Garmin, sheets, dialogs, and recovery routes.")).toBeOnTheScreen();
 
@@ -158,6 +161,7 @@ describe("AppRootShell", () => {
     await waitFor(() => expect(mockRequestAndroidViewFocus).toHaveBeenCalledWith(
       "root-settings-trigger-index",
     ));
+    expect(onSettingsVisibilityChange).toHaveBeenCalledWith(false);
   });
 
   it("dismisses root App Settings before a retained deep-route callback runs", async () => {

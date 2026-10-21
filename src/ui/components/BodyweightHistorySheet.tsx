@@ -105,6 +105,7 @@ export function BodyweightHistorySheet({ visible, entries, editorRestoreFocusRef
       onCancel={close}
       restoreFocusRef={restoreFocusRef}
       scrollTestID="bodyweight-history-sheet-content"
+      testID="bodyweight-history-sheet"
       visible={visible}
     >
       <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>

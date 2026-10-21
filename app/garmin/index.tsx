@@ -17,6 +17,8 @@ import {
 import { useWorkoutAppRuntime } from "../../src/bootstrap/workoutAppRuntime";
 import { GarminRouteShell } from "../../src/ui/garmin/GarminRouteShell";
 import { GarminSyncScreen } from "../../src/ui/screens/GarminSyncScreen";
+import { usePhase20VisualRequest } from "../../src/testing/phase20VisualContext";
+import { createPhase20VisualGarminSource } from "../../src/testing/phase20VisualGarminSource";
 
 function scalar(value: string | readonly string[] | undefined): string | undefined {
   return typeof value === "string" ? value : undefined;
@@ -35,7 +37,12 @@ export default function GarminRootRoute() {
   }>;
   const origin = parseGarminRootOrigin(scalar(params.origin));
   const application = useWorkoutAppRuntime().garminImport;
-  const runtime = useGarminImportRuntime({ application });
+  const visualRequest = usePhase20VisualRequest();
+  const visualSource = useMemo(
+    () => visualRequest === null ? undefined : createPhase20VisualGarminSource(visualRequest),
+    [visualRequest],
+  );
+  const runtime = useGarminImportRuntime({ application, ...(visualSource === undefined ? {} : { source: visualSource }) });
   const [returnFocusActivityId, setReturnFocusActivityId] = useState<string>();
   const [returnFocusVersion, setReturnFocusVersion] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);

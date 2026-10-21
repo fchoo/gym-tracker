@@ -16,6 +16,17 @@ export type InstalledContentRevision = Readonly<{
   packSha256: string;
 }>;
 
+export type BundledExerciseInstructionSet = Readonly<{
+  exerciseId: string;
+  sourceNamespace: string;
+  sourceRevision: string;
+  upstreamId: string | null;
+  license: string;
+  attribution: string;
+  steps: readonly string[];
+  revision: number;
+}>;
+
 export type ImportAcceptedCatalogInput = Readonly<{
   catalog: ExerciseCatalog;
   expectedInstalled?: InstalledContentRevision | null;
@@ -25,6 +36,9 @@ export interface ContentRepository {
   importAcceptedCatalog(
     input: ImportAcceptedCatalogInput,
   ): Promise<ContentUpdateResult>;
+  readBundledExerciseInstructions(
+    exerciseId: string,
+  ): Promise<BundledExerciseInstructionSet | null>;
 }
 
 export type ContentRepositoryTestObserver = Readonly<{
@@ -895,6 +909,51 @@ export function createContentRepository(
   observer: ContentRepositoryTestObserver = {},
 ): ContentRepository {
   return Object.freeze({
+    async readBundledExerciseInstructions(exerciseId: string) {
+      const [row] = await kernel.queryAll<Readonly<{
+        exercise_id: string;
+        source_namespace: string;
+        source_revision: string;
+        upstream_id: string | null;
+        source_license: string;
+        source_attribution: string;
+        steps_json: string;
+        revision: number;
+      }>>(
+        `SELECT instruction.exercise_id, instruction.source_namespace,
+                instruction.source_revision, instruction.upstream_id,
+                instruction.source_license, instruction.source_attribution,
+                instruction.steps_json, instruction.revision
+         FROM exercise_instruction_sets instruction
+         JOIN exercise_library_entries library
+           ON library.exercise_id = instruction.exercise_id
+         WHERE instruction.exercise_id = ?
+           AND library.origin = 'bundled'
+           AND library.availability = 'available'`,
+        [exerciseId],
+      );
+      if (row === undefined) return null;
+      let parsedSteps: unknown;
+      try {
+        parsedSteps = JSON.parse(row.steps_json);
+      } catch {
+        throw new ContentImportError("content_revision_conflict");
+      }
+      if (!Array.isArray(parsedSteps) || parsedSteps.length === 0
+        || parsedSteps.some((step) => typeof step !== "string" || step.trim() !== step || step.length === 0)) {
+        throw new ContentImportError("content_revision_conflict");
+      }
+      return Object.freeze({
+        exerciseId: row.exercise_id,
+        sourceNamespace: row.source_namespace,
+        sourceRevision: row.source_revision,
+        upstreamId: row.upstream_id,
+        license: row.source_license,
+        attribution: row.source_attribution,
+        steps: Object.freeze([...parsedSteps]),
+        revision: row.revision,
+      });
+    },
     async importAcceptedCatalog(
       input: ImportAcceptedCatalogInput,
     ): Promise<ContentUpdateResult> {

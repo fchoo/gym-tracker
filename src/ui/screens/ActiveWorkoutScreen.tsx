@@ -115,6 +115,9 @@ import {
   workoutTypeScale,
   useAppTheme,
 } from "../theme";
+import type {
+  V12AcceptanceBenchmarkPort,
+} from "../../bootstrap/v12AcceptanceBenchmark";
 
 export interface ActiveWorkoutCommands {
   addExercise?(input: AddExerciseInput): Promise<import("../../domains/workout").AddExerciseResult>;
@@ -438,10 +441,11 @@ type SectionGlyphActionProps = Readonly<{
   disabled?: boolean;
   icon: LucideIcon;
   onPress: () => void;
+  testID?: string;
 }>;
 
 const SectionGlyphAction = React.forwardRef<View, SectionGlyphActionProps>(function SectionGlyphAction(
-  { accessibilityLabel, busy = false, disabled = false, icon: Icon, onPress },
+  { accessibilityLabel, busy = false, disabled = false, icon: Icon, onPress, testID },
   ref,
 ) {
   const { colors, reduceMotion } = useAppTheme();
@@ -455,6 +459,7 @@ const SectionGlyphAction = React.forwardRef<View, SectionGlyphActionProps>(funct
       focusable={!unavailable}
       onPress={onPress}
       ref={ref}
+      testID={testID}
       style={({ pressed }) => [
         styles.sectionGlyphAction,
         {
@@ -496,7 +501,10 @@ export type ActiveWorkoutScreenProps = Readonly<{
   onResolveUnknownOutcome?: (sessionId: string) => Promise<Pick<SessionDetail, "id" | "status">>;
   onRequestPlanEdit?: () => void;
   onOpenPlanSettings?: () => void;
+  initialHeaderFocus?: boolean;
+  onInitialHeaderFocused?: () => void;
   loadExerciseHistory?: ((exerciseId: string) => Promise<ExerciseMetricHistory>) | undefined;
+  acceptanceBenchmark?: V12AcceptanceBenchmarkPort;
   width?: number;
 }>;
 
@@ -518,7 +526,10 @@ export function ActiveWorkoutScreen({
   },
   onRequestPlanEdit = () => undefined,
   onOpenPlanSettings = () => undefined,
+  initialHeaderFocus = false,
+  onInitialHeaderFocused,
   loadExerciseHistory,
+  acceptanceBenchmark,
   availableExercises = [],
   availableExercisesState = "ready",
   onRetryAvailableExercises,
@@ -548,6 +559,7 @@ export function ActiveWorkoutScreen({
 
   return (
     <PopulatedWorkoutOverview
+      {...(acceptanceBenchmark === undefined ? {} : { acceptanceBenchmark })}
       commands={commands}
       availableExercises={availableExercises}
       availableExercisesState={availableExercisesState}
@@ -558,6 +570,8 @@ export function ActiveWorkoutScreen({
       onDiscarded={onDiscarded}
       onRequestPlanEdit={onRequestPlanEdit}
       onOpenPlanSettings={onOpenPlanSettings}
+      initialHeaderFocus={initialHeaderFocus}
+      {...(onInitialHeaderFocused === undefined ? {} : { onInitialHeaderFocused })}
       loadExerciseHistory={loadExerciseHistory}
       onFinishLater={onFinishLater}
       onGoBack={onGoBack}
@@ -892,6 +906,7 @@ type PopulatedWorkoutOverviewProps = Omit<ActiveWorkoutScreenProps, "view"> & Re
 }>;
 
 function PopulatedWorkoutOverview({
+  acceptanceBenchmark,
   sessionId,
   initialView,
   commands,
@@ -909,6 +924,8 @@ function PopulatedWorkoutOverview({
   },
   onRequestPlanEdit = () => undefined,
   onOpenPlanSettings = () => undefined,
+  initialHeaderFocus = false,
+  onInitialHeaderFocused,
   loadExerciseHistory,
   availableExercises = [],
   availableExercisesState = "ready",
@@ -1016,8 +1033,14 @@ function PopulatedWorkoutOverview({
   const draftQueue = useRef(Promise.resolve());
   const sectionMutationRef = useRef<SectionMutation | null>(null);
   const completionInFlightRef = useRef(false);
+  const benchmarkDockPendingRef = useRef(false);
   const finishCompletedInputRef = useRef<FinishCompletedInput | null>(null);
   const finishPartialInputRef = useRef<FinishPartialInput | null>(null);
+  useEffect(() => {
+    if (!initialHeaderFocus || moreActionRef.current?.focus === undefined) return;
+    moreActionRef.current.focus();
+    onInitialHeaderFocused?.();
+  }, [initialHeaderFocus, onInitialHeaderFocused]);
   const saveZeroSetInputRef = useRef<SaveZeroSetInput | null>(null);
   const discardWorkoutInputRef = useRef<DiscardWorkoutInput | null>(null);
   const correctionSetIdRef = useRef<string | null>(null);
@@ -1134,10 +1157,12 @@ function PopulatedWorkoutOverview({
               icon="more"
               onPress={() => setMoreVisible(true)}
               ref={moreActionRef}
+              testID="workout-more-actions"
             />
           </ActionCluster>
         }
         backAction={onGoBack}
+        backActionTestID="active-workout-back"
         eyebrow={
           "WORKOUT OVERVIEW"
         }
@@ -1176,7 +1201,9 @@ function PopulatedWorkoutOverview({
     restCommandInFlightRef.current = true;
     setRestBusy(true);
     try {
+      acceptanceBenchmark?.markInputStart("rest-control");
       applyRestResult(await command());
+      requestAnimationFrame(() => acceptanceBenchmark?.markInputVisible("rest-control"));
     } finally {
       restCommandInFlightRef.current = false;
       setRestBusy(false);
@@ -1220,6 +1247,7 @@ function PopulatedWorkoutOverview({
       return;
     }
     completionInFlightRef.current = true;
+    acceptanceBenchmark?.markSetActivation();
     setWorkingBusySetId(requestedSetId);
     setSaveFailedSetId(null);
     try {
@@ -1249,6 +1277,10 @@ function PopulatedWorkoutOverview({
         observation: observationForSet(currentSet),
         completedAtMs,
       });
+      if (result.outcome === "committed") {
+        acceptanceBenchmark?.markAuthoritativeSetCommit();
+        benchmarkDockPendingRef.current = true;
+      }
       applyView(result.view);
       if (result.outcome === "committed") {
         const completedSetId = currentSet.id;
@@ -1297,6 +1329,7 @@ function PopulatedWorkoutOverview({
     observation: SetObservation,
   ) => {
     const save = draftQueue.current.then(async () => {
+      acceptanceBenchmark?.markInputStart("numeric-edit");
       const currentView = viewRef.current;
       const currentSet = resolveSetOwner(currentView, set.id)?.set ?? set;
       const nextView = set.kind === "warmup"
@@ -1318,6 +1351,7 @@ function PopulatedWorkoutOverview({
             updatedAtMs: nowMs(),
           });
       applyView(nextView);
+      requestAnimationFrame(() => acceptanceBenchmark?.markInputVisible("numeric-edit"));
       setSaveFailedSetId(null);
     });
     draftQueue.current = save.catch(() => {
@@ -2086,36 +2120,44 @@ function PopulatedWorkoutOverview({
         dock={(
           view.rest.state === "running" || view.rest.state === "paused"
         ) ? (
-          <RestDock
-            busy={restBusy}
-            exerciseName={activeExercise.name}
-            nextSetIndex={activeIndex + 1}
-            nextTarget={nextTarget}
-            notificationPermission={notificationPermission}
-            restSoundEnabled={restSoundEnabled}
-            countdownCue={countdownCue}
-            nowMs={nowMs}
-            onAdjust={(deltaMs) => {
-              void runRest(() => commands.adjustRest({
-                ...restInput(),
-                deltaMs,
-              }));
+          <View
+            onLayout={() => {
+              if (!benchmarkDockPendingRef.current) return;
+              benchmarkDockPendingRef.current = false;
+              acceptanceBenchmark?.markVisibleDock();
             }}
-            onExpired={() => {
-              void runRest(() => commands.expireRest(restInput()));
-            }}
-            onOpenSettings={onOpenNotificationSettings}
-            onPause={() => {
-              void runRest(() => commands.pauseRest(restInput()));
-            }}
-            onResume={() => {
-              void runRest(() => commands.resumeRest(restInput()));
-            }}
-            onSkip={() => {
-              void runRest(() => commands.skipRest(restInput()));
-            }}
-            state={view.rest}
-          />
+          >
+            <RestDock
+              busy={restBusy}
+              exerciseName={activeExercise.name}
+              nextSetIndex={activeIndex + 1}
+              nextTarget={nextTarget}
+              notificationPermission={notificationPermission}
+              restSoundEnabled={restSoundEnabled}
+              countdownCue={countdownCue}
+              nowMs={nowMs}
+              onAdjust={(deltaMs) => {
+                void runRest(() => commands.adjustRest({
+                  ...restInput(),
+                  deltaMs,
+                }));
+              }}
+              onExpired={() => {
+                void runRest(() => commands.expireRest(restInput()));
+              }}
+              onOpenSettings={onOpenNotificationSettings}
+              onPause={() => {
+                void runRest(() => commands.pauseRest(restInput()));
+              }}
+              onResume={() => {
+                void runRest(() => commands.resumeRest(restInput()));
+              }}
+              onSkip={() => {
+                void runRest(() => commands.skipRest(restInput()));
+              }}
+              state={view.rest}
+            />
+          </View>
         ) : activeSet === undefined ? (
           <PrimaryAction
             busy={outcomeBusy}
@@ -2169,12 +2211,15 @@ function PopulatedWorkoutOverview({
                     accessibilityLabel={`View ${exercise.name} trend`}
                     accessibilityRole="button"
                     focusable
+                    nativeID="workout-exercise-trend"
                     onPress={() => setTrendExerciseId(exercise.id)}
                     style={({ pressed }) => [styles.exerciseHeaderAction, {
                       backgroundColor: pressed ? colors.contentCardPressed : "transparent",
                       borderColor: colors.contentCardBorder,
                     }]}
-                    testID={`exercise-trend-${exercise.exerciseId}`}
+                    testID={exercise.id === activeExercise.id
+                      ? "workout-active-exercise-trend"
+                      : `exercise-trend-${exercise.exerciseId}`}
                   >
                     <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>↗</Text>
                   </FocusablePressable>
@@ -2188,6 +2233,7 @@ function PopulatedWorkoutOverview({
                     }}
                     disabled={exerciseEditBusy}
                     focusable={!exerciseEditBusy}
+                    nativeID="workout-exercise-menu"
                     onPress={() => {
                       setExerciseActionsVisibleForId(exercise.id);
                       setExerciseEditFailure(null);
@@ -2206,7 +2252,9 @@ function PopulatedWorkoutOverview({
                         opacity: exerciseEditBusy ? 0.62 : 1,
                       },
                     ]}
-                    testID={`exercise-actions-${exercise.exerciseId}`}
+                    testID={exercise.id === activeExercise.id
+                      ? "workout-active-exercise-menu"
+                      : `exercise-actions-${exercise.exerciseId}`}
                   >
                     <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>•••</Text>
                   </FocusablePressable>
@@ -2288,6 +2336,7 @@ function PopulatedWorkoutOverview({
                       onPress={() => {
                         void submitExerciseReorder(index, index + 1);
                       }}
+                      testID="workout-reorder-exercise-down"
                     />
                   </View>
                   {exerciseReorderAnnouncement?.sessionExerciseId === exercise.id
@@ -2445,6 +2494,9 @@ function PopulatedWorkoutOverview({
                         setAddSetMenuExerciseId(exercise.id);
                       }}
                       ref={workingAddRef}
+                      testID={exercise.id === activeExercise.id
+                        ? "workout-active-add-set"
+                        : `workout-add-set-${exercise.id}`}
                     />
                   </View>
                 )}
@@ -2484,8 +2536,12 @@ function PopulatedWorkoutOverview({
                   set={set}
                   tone="card"
                   {...(isMultiExerciseOverview
-                    ? { overviewTestID: `overview-${exercise.id}-${set.id}` }
-                    : {})}
+                    ? { overviewTestID: view.activeSetId === set.id
+                      ? "workout-active-set-row"
+                      : `overview-${exercise.id}-${set.id}` }
+                    : view.activeSetId === set.id
+                      ? { overviewTestID: "workout-active-set-row" }
+                      : {})}
                 />
                 </React.Fragment>
               ))}
@@ -2545,6 +2601,7 @@ function PopulatedWorkoutOverview({
         onCancel={() => setMoreVisible(false)}
         restoreFocusRef={moreActionRef}
         scrollTestID="workout-actions-sheet-content"
+        testID="workout-actions-sheet"
         visible={moreVisible}
       >
             {view.activeSetId === null ? (
@@ -2652,6 +2709,7 @@ function PopulatedWorkoutOverview({
         heading="Exercise actions"
         onCancel={closeExerciseActions}
         scrollTestID="exercise-actions-sheet-content"
+        testID="exercise-actions-sheet"
         visible={exerciseActionsVisibleForId !== null}
       >
             {exerciseActionsVisibleForId === null ? null : (
@@ -2700,6 +2758,7 @@ function PopulatedWorkoutOverview({
         onCancel={closeExerciseAddPicker}
         restoreFocusRef={exerciseAddTriggerRef}
         scrollTestID="active-workout-add-exercise-picker-content"
+        testID="add-exercise-sheet"
         visible={exerciseAddPickerVisible}
       >
         {selectedExerciseToAdd === undefined ? null : (
@@ -2709,6 +2768,7 @@ function PopulatedWorkoutOverview({
             onPress={() => {
               void submitExerciseAdd();
             }}
+            testID="workout-add-exercise-confirm"
           />
         )}
         <M3SearchField
@@ -2734,7 +2794,7 @@ function PopulatedWorkoutOverview({
           />
         ) : exerciseAddCandidates.length === 0 ? (
           <InlineNotice body="Try a different search." heading="No exercises found" tone="neutral" />
-        ) : exerciseAddCandidates.map((candidate) => (
+        ) : exerciseAddCandidates.map((candidate, index) => (
           <FocusablePressable
             accessibilityLabel={`${candidate.name}. Add exercise`}
             accessibilityRole="button"
@@ -2744,7 +2804,7 @@ function PopulatedWorkoutOverview({
               exerciseAddSearchRef.current?.blur();
               Keyboard.dismiss();
             }}
-            testID={`add-exercise-option-${candidate.id}`}
+            testID={index === 0 ? "workout-add-exercise-first-option" : `add-exercise-option-${candidate.id}`}
             style={[
               styles.exerciseOption,
               {
@@ -2796,6 +2856,7 @@ function PopulatedWorkoutOverview({
                     exerciseId: replacementPickerForId,
                   });
                 }}
+                testID="workout-replace-exercise-confirm"
               />
             )}
             <M3SearchField
@@ -2813,7 +2874,7 @@ function PopulatedWorkoutOverview({
                 tone="neutral"
               />
             )}
-            {replacementCandidates.map((candidate) => (
+            {replacementCandidates.map((candidate, index) => (
               <FocusablePressable
                 accessibilityLabel={candidate.name}
                 accessibilityRole="radio"
@@ -2824,7 +2885,7 @@ function PopulatedWorkoutOverview({
                   replacementSearchRef.current?.blur();
                   Keyboard.dismiss();
                 }}
-                testID={`replace-exercise-option-${candidate.id}`}
+                testID={index === 0 ? "workout-replace-exercise-first-option" : `replace-exercise-option-${candidate.id}`}
                 style={[
                   styles.exerciseOption,
                   {
@@ -2948,6 +3009,7 @@ function PopulatedWorkoutOverview({
             heading={`Add set · ${exercise.name}`}
             onCancel={() => setAddSetMenuExerciseId(null)}
             restoreFocusRef={workingAddRef}
+            testID="add-set-sheet"
             visible
           >
             <PrimaryAction

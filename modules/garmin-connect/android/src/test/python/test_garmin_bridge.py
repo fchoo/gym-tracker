@@ -709,6 +709,16 @@ class GarminBridgeTests(unittest.TestCase):
 
     def test_module_entrypoints_and_retry_headers_fail_closed(self):
         self.assertEqual(garmin_bridge.dispatch("runtimeInfo", {})["schemaVersion"], 1)
+        payload = '{"z":2,"a":{"distance":5000,"laps":[1,2]}}'
+        benchmark = garmin_bridge.dispatch("benchmarkDeterministicJson", {"payloadJson": payload})
+        self.assertEqual(benchmark["transport"], "chaquopy-python-garminconnect-0.3.17")
+        self.assertEqual(benchmark["normalizedJson"], '{"a":{"distance":5000,"laps":[1,2]},"z":2}')
+        self.assertEqual(benchmark["payloadSha256"], __import__("hashlib").sha256(payload.encode()).hexdigest())
+        self.assertEqual(benchmark["outputSha256"], __import__("hashlib").sha256(benchmark["normalizedJson"].encode()).hexdigest())
+        with self.assertRaisesRegex(ValueError, "garmin_bridge_arguments_rejected"):
+            garmin_bridge.dispatch("benchmarkDeterministicJson", {"payloadJson": "{}", "unexpected": True})
+        with self.assertRaisesRegex(ValueError, "garmin_bridge_arguments_rejected"):
+            garmin_bridge.dispatch("benchmarkDeterministicJson", {"payloadJson": ""})
         for arguments in (None, {"unexpected": True}):
             with self.assertRaisesRegex(ValueError, "garmin_bridge_arguments_rejected"):
                 garmin_bridge.dispatch("runtimeInfo", arguments)
@@ -741,6 +751,48 @@ class GarminBridgeTests(unittest.TestCase):
             garmin_bridge.GarminBridge._classify_error(root, "getActivity"),
             ("temporary_failure", None),
         )
+
+    def test_phase20_rejection_and_recovery_extensions_are_operation_backed(self):
+        self.assertEqual(garmin_bridge.evidence_rejections(), {
+            "operation_rejection": "operation_rejected",
+            "arguments_rejection": "arguments_rejected",
+        })
+        rows = garmin_bridge.evidence_recovery_extensions()
+        self.assertEqual([row["id"] for row in rows], [
+            "PH18-ADV-EXPIRED", "PH18-ADV-401", "PH18-ADV-TRUNCATED",
+            "PH18-ADV-UNSUPPORTED-JSON",
+        ])
+        self.assertEqual([row["code"] for row in rows], [
+            "sign_in_required", "sign_in_required", "malformed_response",
+            "malformed_response",
+        ])
+        self.assertEqual([row["call_count"] for row in rows], [2, 2, 4, 5])
+        self.assertTrue(all(row["automatic_retry_count"] == 0 for row in rows))
+
+    def test_phase20_recovery_extension_control_flow_covers_restore_rejection_and_complete_reads(self):
+        original_bridge = garmin_bridge.GarminBridge
+
+        class CoverageBridge:
+            def __init__(self):
+                self._adversarial = None
+
+            def dispatch(self, operation, _arguments):
+                mode = self._adversarial.mode
+                if operation == "restoreSession" and mode == "PH18-ADV-EXPIRED":
+                    return {"status": "error", "error": {"code": "sign_in_required"}}
+                if operation == "getActivities":
+                    return {"status": "ok", "data": {"items": [{"activityId": 42}]}}
+                return {"status": "ok", "data": {}}
+
+            def _clear_client(self):
+                return None
+
+        try:
+            garmin_bridge.GarminBridge = CoverageBridge
+            rows = garmin_bridge.evidence_recovery_extensions()
+        finally:
+            garmin_bridge.GarminBridge = original_bridge
+        self.assertEqual(len(rows), 4)
 
 
 if __name__ == "__main__":

@@ -51,9 +51,22 @@ tasks.register('phase18GarminKotlinCoverageReport', JacocoReport) {
   executionData.from(fileTree(layout.buildDirectory).include('jacoco/testDebugUnitTest.exec'))
   sourceDirectories.from(files('src/main/java'))
   classDirectories.from(files(fileTree(layout.buildDirectory.dir('tmp/kotlin-classes/debug')) {
+    include 'expo/modules/garminconnect/GarminConnectModule.class'
+    include 'expo/modules/garminconnect/GarminConnectModuleKt.class'
+    include 'expo/modules/garminconnect/GarminConnectPlatformBindings.class'
+    include 'expo/modules/garminconnect/GarminEvidenceAuthorizationController*.class'
+    include 'expo/modules/garminconnect/GarminEvidenceExecutionIdentity.class'
     include 'expo/modules/garminconnect/GarminClientWorker.class'
+    include 'expo/modules/garminconnect/ChaquopyGarminPythonDispatcher.class'
     include 'expo/modules/garminconnect/GarminAdversarialSuiteRunner*.class'
     include 'expo/modules/garminconnect/GarminTokenStore.class'
+    include 'expo/modules/garminconnect/AndroidGarminAtomicWriter.class'
+    include 'expo/modules/garminconnect/AndroidKeystoreGarminTokenCipher.class'
+    include 'expo/modules/garminconnect/GarminEvidenceArmStore.class'
+    include 'expo/modules/garminconnect/GarminStoredSessionEvidenceRunner.class'
+    include 'expo/modules/garminconnect/GarminAdversarialRotationGate.class'
+    include 'expo/modules/garminconnect/GarminRuntimeInfo*.class'
+    include 'expo/modules/garminconnect/GarminBenchmarkRuntimeInfo.class'
   }))
   reports {
     xml.required = true

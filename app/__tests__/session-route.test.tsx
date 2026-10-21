@@ -6,6 +6,7 @@ import { StyleSheet, type StyleProp, type TextStyle } from "react-native";
 import { WorkoutOutcomeConflictError, type SessionDetail } from "../../src/domains/workout";
 
 const mockBack = jest.fn();
+const mockReplace = jest.fn();
 const mockGetSessionDetail = jest.fn<() => Promise<SessionDetail>>();
 const mockGetSessionDetailAtRevision = jest.fn<() => Promise<SessionDetail>>();
 const mockLoadCalendarSessionDetail = jest.fn<() => Promise<SessionDetail | null>>();
@@ -22,14 +23,18 @@ const mockMutationCommands = {
   reviseCompletedSet: jest.fn(), saveZeroSetWorkout: jest.fn(), setWorkoutPreferences: jest.fn(), skipExercise: jest.fn(), skipRest: jest.fn(),
   startManualRest: jest.fn(), updateActiveSetDraft: jest.fn(), updateSessionExerciseDefaultRest: jest.fn(), updateWarmupDraft: jest.fn(),
 };
-let mockParams: Readonly<{ sessionId?: string | readonly string[]; origin?: string | readonly string[]; sourceRevision?: string | readonly string[] }> = {
+let mockParams: Readonly<{ sessionId?: string | readonly string[]; origin?: string | readonly string[]; sourceRevision?: string | readonly string[]; phase20CalendarFixture?: string; phase20CalendarEvidenceNonce?: string; phase20CalendarRequirementsSha256?: string }> = {
   sessionId: "calendar-session",
   origin: "calendar",
 };
 
 jest.mock("expo-router", () => ({
-  router: { back: (...args: readonly unknown[]) => mockBack(...args), push: jest.fn(), replace: jest.fn() },
+  router: { back: (...args: readonly unknown[]) => mockBack(...args), push: jest.fn(), replace: (...args: readonly unknown[]) => mockReplace(...args) },
   useLocalSearchParams: () => mockParams,
+}));
+jest.mock("expo-constants", () => ({
+  __esModule: true,
+  default: { expoConfig: { android: { package: "com.fchoo.gymtracker.devtest" }, extra: { buildProfile: "development-test", nativeContractsEnabled: true, nativeContractSuite: "v1.2-acceptance" } } },
 }));
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
   useCalendarSessionReadPort: () => ({
@@ -44,9 +49,9 @@ jest.mock("../../src/ui/calendar/CalendarReadOnlyWorkout", () => ({
   },
 }));
 jest.mock("../../src/ui/screens/SessionDetailScreen", () => ({
-  SessionDetailScreen: ({ onCorrectWorkout, onRemoveFromHistory, onResume }: { onCorrectWorkout?(): void; onRemoveFromHistory?(): void; onResume(): void }) => {
+  SessionDetailScreen: ({ onCorrectWorkout, onRemoveFromHistory, onResume }: { onCorrectWorkout?(): void; onRemoveFromHistory?(): void; onResume?(): void }) => {
     const { Pressable, Text } = require("react-native") as typeof import("react-native");
-    return <><Text>Management details</Text>{onCorrectWorkout ? <Pressable accessibilityLabel="Correct workout" onPress={onCorrectWorkout} /> : null}{onRemoveFromHistory ? <Pressable accessibilityLabel="Remove from history" onPress={onRemoveFromHistory} /> : null}<Pressable accessibilityLabel="Resume workout" onPress={onResume} /></>;
+    return <><Text>Management details</Text>{onCorrectWorkout ? <Pressable accessibilityLabel="Correct workout" onPress={onCorrectWorkout} /> : null}{onRemoveFromHistory ? <Pressable accessibilityLabel="Remove from history" onPress={onRemoveFromHistory} /> : null}{onResume ? <Pressable accessibilityLabel="Resume workout" onPress={onResume} /> : null}</>;
   },
 }));
 jest.mock("../../src/ui/components", () => {
@@ -76,7 +81,7 @@ const detail = {
 } as unknown as SessionDetail;
 
 describe("SessionDetailRoute", () => {
-  beforeEach(() => { mockBack.mockReset(); mockGetSessionDetail.mockReset(); mockGetSessionDetailAtRevision.mockReset(); mockLoadCalendarSessionDetail.mockReset(); mockUseWorkoutAppRuntime.mockClear(); Object.values(mockMutationCommands).forEach((command) => command.mockReset()); mockParams = { sessionId: "calendar-session", origin: "calendar" }; });
+  beforeEach(() => { mockBack.mockReset(); mockReplace.mockReset(); mockGetSessionDetail.mockReset(); mockGetSessionDetailAtRevision.mockReset(); mockLoadCalendarSessionDetail.mockReset(); mockUseWorkoutAppRuntime.mockClear(); Object.values(mockMutationCommands).forEach((command) => command.mockReset()); mockParams = { sessionId: "calendar-session", origin: "calendar" }; });
 
   it("opens an exact Calendar session through the query-only facts branch", async () => {
     mockLoadCalendarSessionDetail.mockResolvedValue(detail);
@@ -172,6 +177,35 @@ describe("SessionDetailRoute", () => {
     expect(screen.getByLabelText("Correct workout")).toBeOnTheScreen();
     expect(screen.getByLabelText("Remove from history")).toBeOnTheScreen();
     expect(mockUseWorkoutAppRuntime).toHaveBeenCalled();
+  });
+
+  it("keeps the partial Resume journey separate and forwards its fixture identity to Active", async () => {
+    mockParams = {
+      sessionId: "v12-strength-partial",
+      phase20CalendarFixture: "v12-calendar-isolated-facts-v1",
+      phase20CalendarEvidenceNonce: "b".repeat(32),
+      phase20CalendarRequirementsSha256: "a".repeat(64),
+    };
+    await render(<SessionDetailRoute />);
+
+    expect(screen.getByLabelText("Resume workout")).toBeOnTheScreen();
+    expect(screen.queryByLabelText("Remove from history")).toBeNull();
+    await fireEvent.press(screen.getByLabelText("Resume workout"));
+    expect(mockReplace).toHaveBeenCalledWith(expect.stringMatching(/^\/workout\/v12-strength-partial\?/u));
+    expect(mockReplace.mock.calls[0]?.[0]).toContain("phase20CalendarFixture=v12-calendar-isolated-facts-v1");
+  });
+
+  it("keeps completed Remove separate from the partial Resume journey", async () => {
+    mockParams = {
+      sessionId: "v12-strength-complete",
+      phase20CalendarFixture: "v12-calendar-isolated-facts-v1",
+      phase20CalendarEvidenceNonce: "b".repeat(32),
+      phase20CalendarRequirementsSha256: "a".repeat(64),
+    };
+    await render(<SessionDetailRoute />);
+
+    expect(screen.getByLabelText("Remove from history")).toBeOnTheScreen();
+    expect(screen.queryByLabelText("Resume workout")).toBeNull();
   });
 
   it("loads the exact Progress source revision at the destination", async () => {

@@ -4,36 +4,56 @@ import React from "react";
 import { Dimensions } from "react-native";
 
 import Phase20VisualProbeRoute from "../__phase20-visual-probe";
+import { phase20VisualTimerReceipt } from "../../src/testing/phase20VisualProbe";
 
 let mockExtra: Record<string, unknown>;
 let mockParams: Record<string, unknown>;
+const mockUseWorkoutAppRuntime = jest.fn(() => ({
+  launchState: "trusted" as const,
+  runningPlanRuntime: {},
+  getActiveWorkout: jest.fn(),
+}));
+jest.mock("expo-crypto", () => ({
+  CryptoDigestAlgorithm: { SHA256: "SHA-256" },
+  digestStringAsync: async (_algorithm: string, value: string) =>
+    require("node:crypto").createHash("sha256").update(value).digest("hex"),
+}));
 jest.mock("expo-constants", () => ({
   __esModule: true,
   default: { expoConfig: { get extra() { return mockExtra; } } },
 }));
 jest.mock("expo-router", () => ({
+  Stack: { Screen: () => null },
   useLocalSearchParams: () => mockParams,
+  useFocusEffect: jest.fn(),
+  useRouter: () => ({ push: jest.fn() }),
+  router: { back: jest.fn(), push: jest.fn(), replace: jest.fn() },
   Redirect: () => {
     const { View } = require("react-native") as typeof import("react-native");
     return <View testID="visual-probe-disabled" />;
   },
 }));
+jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
+  useWorkoutAppRuntime: () => mockUseWorkoutAppRuntime(),
+}));
+jest.mock("../../src/testing/phase20VisualFixtureRuntime", () => ({
+  phase20VisualCleanupStatus: () => "complete",
+  clearPhase20VisualCleanupStatus: jest.fn(),
+}));
 
 describe("Phase 20 visual probe", () => {
   beforeEach(() => {
+    mockUseWorkoutAppRuntime.mockClear();
     mockExtra = { buildProfile: "development-test", nativeContractsEnabled: true, nativeContractSuite: "v1.2-acceptance" };
-    mockParams = { state: "BW-054", configuration: "AP-L-C390-P-F100", fixture: "v12-synthetic-fixtures-r18", nonce: "a".repeat(32), mode: "capture" };
+    mockParams = { state: "BW-054", configuration: "AP-L-C390-P-F100", fixture: "v12-synthetic-fixtures-r18", nonce: "a".repeat(32), ready: "a".repeat(32), mode: "capture" };
   });
-  it("renders the production chooser with unselected real controls", async () => {
+  it("renders the production chooser route with unselected real controls", async () => {
     await render(<Phase20VisualProbeRoute />);
     expect(screen.getByTestId("plan-type-chooser")).toBeOnTheScreen();
     expect(screen.getByText("What are you training for?")).toBeOnTheScreen();
     expect(screen.getByRole("radio", { name: "Strength" }).props.accessibilityState).toMatchObject({ selected: false });
     expect(screen.getByRole("radio", { name: "Running" }).props.accessibilityState).toMatchObject({ selected: false });
-    await fireEvent.press(screen.getByRole("radio", { name: "Running" }));
-    // Any interaction invalidates the receipt; the host cannot capture a stale
-    // chooser receipt after a navigation-only control was activated.
-    expect(screen.getByTestId("phase20-visual-invalidated")).toBeOnTheScreen();
+    expect(screen.getByTestId("phase20-visual-capture")).toBeOnTheScreen();
   });
   for (const [key, value] of [["buildProfile", "production"], ["nativeContractsEnabled", false], ["nativeContractSuite", "phase14"]] as const) {
     it(`requires the exact ${key} gate`, async () => {
@@ -42,7 +62,7 @@ describe("Phase 20 visual probe", () => {
       expect(screen.getByTestId("visual-probe-disabled")).toBeOnTheScreen();
     });
   }
-  for (const [key, value] of [["state", "BW-002"], ["configuration", "AP-L-INVALID"], ["nonce", "private"], ["fixture", "personal"], ["mode", "arbitrary"]] as const) {
+  for (const [key, value] of [["state", "BW-000"], ["configuration", "AP-L-INVALID"], ["nonce", "private"], ["fixture", "personal"], ["mode", "arbitrary"]] as const) {
     it(`refuses an invalid ${key} without rendering a substitute screen`, async () => {
       mockParams[key] = value;
       await render(<Phase20VisualProbeRoute />);
@@ -54,13 +74,41 @@ describe("Phase 20 visual probe", () => {
     await render(<Phase20VisualProbeRoute />);
     expect(screen.queryByTestId("plan-type-chooser")).toBeNull();
     expect(screen.getByTestId("phase20-visual-reset")).toBeOnTheScreen();
+    expect(mockUseWorkoutAppRuntime).not.toHaveBeenCalled();
   });
-  it("emits actual native dimensions and provider readback, never configuration-derived measurements", async () => {
+  it("emits only after the host acknowledges the visible production state with the same nonce", async () => {
+    delete mockParams.ready;
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      const view = await render(<Phase20VisualProbeRoute />);
+      await fireEvent(screen.getByTestId("phase20-visual-capture"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 844 } },
+      });
+      await fireEvent.scroll(screen.getByTestId("plan-type-chooser-scroll"), {
+        nativeEvent: { contentOffset: { x: 0, y: 144 } },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(log).not.toHaveBeenCalled();
+
+      mockParams.ready = "b".repeat(32);
+      await view.rerender(<Phase20VisualProbeRoute />);
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(log).not.toHaveBeenCalled();
+
+      mockParams.ready = mockParams.nonce;
+      await view.rerender(<Phase20VisualProbeRoute />);
+      await waitFor(() => expect(log).toHaveBeenCalledTimes(1));
+    } finally { log.mockRestore(); }
+  });
+  it("emits actual native dimensions and opaque provider readback, never raw source metadata", async () => {
     const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
     try {
       await render(<Phase20VisualProbeRoute />);
       await fireEvent(screen.getByTestId("phase20-visual-capture"), "layout", {
         nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 844 } },
+      });
+      await fireEvent.scroll(screen.getByTestId("plan-type-chooser-scroll"), {
+        nativeEvent: { contentOffset: { x: 0, y: 144 } },
       });
       await waitFor(() => expect(log).toHaveBeenCalled());
       const line = String(log.mock.calls.at(-1)?.[0]);
@@ -74,6 +122,33 @@ describe("Phase 20 visual probe", () => {
       expect(marker.color_scheme).toBe("light");
       expect(marker.nonce).toBe(mockParams.nonce);
       expect(marker.status).toBe("ready");
+      expect(marker.schema_version).toBe(3);
+      expect(marker.registry_sha256).toMatch(/^[a-f0-9]{64}$/u);
+      expect(marker.readiness_sha256).toMatch(/^[a-f0-9]{64}$/u);
+      for (const rawField of [
+        "source_route", "source_component", "fixture_seed", "scenario",
+        "readiness_semantics", "readiness_test_ids", "readiness_actions",
+        "readiness_non_color", "evidence_scope",
+      ]) expect(marker).not.toHaveProperty(rawField);
+      expect(marker.source_receipt).toMatchObject({
+        schema_version: 3,
+        nonce: mockParams.nonce,
+        state_id: mockParams.state,
+        timer: null,
+        assertions_sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        scroll_offsets: [{ native_id_sha256: expect.stringMatching(/^[a-f0-9]{64}$/u), x: 0, y: 144 }],
+      });
+      expect((marker.source_receipt as { production_instance_id: string }).production_instance_id).toMatch(/^phase20-production-instance-/u);
+      expect((marker.source_receipt as { mount_id: string }).mount_id).toMatch(/^phase20-production-mount-/u);
     } finally { log.mockRestore(); }
+  });
+
+  it("copies authoritative rest revision, remaining and endsAt values into the source receipt", () => {
+    expect(phase20VisualTimerReceipt({ version: 1, state: "running", revision: 7, startedAtMs: 1, endsAtMs: 120_000, nextSetId: "set-2" })).toEqual({
+      state: "running", revision: 7, remaining_ms: null, ends_at_ms: 120_000,
+    });
+    expect(phase20VisualTimerReceipt({ version: 1, state: "paused", revision: 8, remainingMs: 45_000, nextSetId: "set-2" })).toEqual({
+      state: "paused", revision: 8, remaining_ms: 45_000, ends_at_ms: null,
+    });
   });
 });

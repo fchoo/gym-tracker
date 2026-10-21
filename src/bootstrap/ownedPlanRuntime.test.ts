@@ -375,7 +375,7 @@ describe("owned plan runtime port", () => {
     expect(mockedApplySessionExerciseEditsToPlan).toHaveBeenCalledWith(
       expect.objectContaining({
         input: expect.objectContaining({
-          requestId: `session-writeback:session-writeback-v1:${'a'.repeat(64)}`,
+          requestId: `session-writeback:${'b'.repeat(64)}`,
           sourceSessionId: 'session-1',
           expectedPlanRevision: 1,
         }),
@@ -473,8 +473,8 @@ describe("owned plan runtime port", () => {
       ([context]) => context.input.requestId,
     );
     expect(requestIds).toEqual([
-      `session-writeback:${previewToken}`,
-      `session-writeback:${previewToken}`,
+      `session-writeback:${"b".repeat(64)}`,
+      `session-writeback:${"b".repeat(64)}`,
     ]);
   });
 

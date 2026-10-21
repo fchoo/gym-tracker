@@ -92,6 +92,28 @@ async function renderScreen(view = workoutView(), commandOverrides: Partial<Acti
 }
 
 describe("ActiveWorkoutScreen explicit-save editor", () => {
+  it("focuses the real Active header action before publishing a resumed-route receipt", async () => {
+    const onInitialHeaderFocused = jest.fn();
+    const view = workoutView();
+    await render(
+      <AppearanceProvider>
+        <ActiveWorkoutScreen
+          commands={commands(view)}
+          initialHeaderFocus
+          nowMs={() => 3_000}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          onInitialHeaderFocused={onInitialHeaderFocused}
+          sessionId={view.id}
+          view={view}
+        />
+      </AppearanceProvider>,
+    );
+
+    await waitFor(() => expect(onInitialHeaderFocused).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "More workout actions" })).toHaveProp("hasTVPreferredFocus", true);
+  });
+
   it("sets Return to Workout on every non-confirmation Active bottom-sheet call site", () => {
     const source = readFileSync("src/ui/screens/ActiveWorkoutScreen.tsx", "utf8");
     expect([...source.matchAll(/<BottomSheet\s+cancelLabel="Return to Workout"/gu)])

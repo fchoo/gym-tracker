@@ -85,6 +85,7 @@ export function WorkoutSessionPresentation({
                   });
                 }}
                 style={styles.disclosure}
+                testID="workout-exercise-disclosure"
               >
                 <View style={styles.copy}>
                   <Text accessibilityRole="header" style={[(typography === "calendar" ? calendarTypeScale.heading : workoutTypeScale.bodyStrong) as TextStyle, { color: colors.textPrimary }]}>{exercise.name}</Text>

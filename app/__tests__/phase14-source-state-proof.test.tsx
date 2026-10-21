@@ -91,6 +91,17 @@ describe("Phase14SourceStateProofRoute", () => {
     expect(JSON.stringify(screen.toJSON())).not.toMatch(/rows|tables|sql|path|private/iu);
   });
 
+  it("exposes the same read-only source proof to the Phase 20 acceptance suite", async () => {
+    mockNativeContractSuite = "v1.2-acceptance";
+
+    await render(<Phase14SourceStateProofRoute />);
+
+    expect(await screen.findByText(
+      `PHASE14_SOURCE_STATE_PROOF digest_sha256=${"a".repeat(64)} table_count=48 row_count=321 schema_version=30`,
+    )).toBeOnTheScreen();
+    expect(mockCollectPhase14SourceStateProof).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     ["production", true, "phase14"],
     ["development-test", false, "phase14"],

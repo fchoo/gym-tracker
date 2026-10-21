@@ -10,6 +10,7 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { usePhase20VisualScrollReporter } from "../../testing/phase20VisualContext";
 
 import {
   sizes,
@@ -83,6 +84,8 @@ export function AdaptiveScreen({
   onRefresh,
 }: AdaptiveScreenProps) {
   const scrollViewRef = React.useRef<ScrollView>(null);
+  const reportVisualScroll = usePhase20VisualScrollReporter();
+  const forcedEvidenceScrollRef = React.useRef(false);
   const previousScrollRestoreKeyRef = React.useRef(scrollRestoreKey);
   const completedMeasuredScrollKeysRef = React.useRef(new Set<string>());
   const { width: windowWidth } = useWindowDimensions();
@@ -91,6 +94,21 @@ export function AdaptiveScreen({
   const widthClass = classifyWidth(width);
   const horizontalInset = horizontalInsetFor(widthClass);
   const hasTwoPanes = secondary !== undefined && widthClass !== "compact";
+  const scrollNativeID = `${testID}-scroll`;
+  const handleScroll = React.useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { x, y } = event.nativeEvent.contentOffset;
+    reportVisualScroll?.({ native_id: scrollNativeID, x, y });
+    onScroll?.(event);
+  }, [onScroll, reportVisualScroll, scrollNativeID]);
+  const initializeEvidenceScroll = React.useCallback(() => {
+    if (reportVisualScroll === null || forcedEvidenceScrollRef.current) return;
+    forcedEvidenceScrollRef.current = true;
+    scrollViewRef.current?.scrollTo({
+      animated: false,
+      x: 0,
+      y: Number.isFinite(scrollOffset) ? Math.max(0, scrollOffset) : 0,
+    });
+  }, [reportVisualScroll, scrollOffset]);
 
   React.useEffect(() => {
     if (onRequestBack === undefined) {
@@ -203,7 +221,9 @@ export function AdaptiveScreen({
               dock !== undefined && styles.scrollContentWithDock,
             ]}
             keyboardShouldPersistTaps="handled"
-            onScroll={onScroll}
+            nativeID={scrollNativeID}
+            onLayout={initializeEvidenceScroll}
+            onScroll={handleScroll}
             refreshControl={onRefresh === undefined ? undefined : (
               <RefreshControl
                 onRefresh={onRefresh}
@@ -213,7 +233,7 @@ export function AdaptiveScreen({
             )}
             ref={scrollViewRef}
             scrollEventThrottle={16}
-            testID={`${testID}-scroll`}
+            testID={scrollNativeID}
           >
             {content}
           </ScrollView>

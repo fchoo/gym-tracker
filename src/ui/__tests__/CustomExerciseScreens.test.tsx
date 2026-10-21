@@ -214,9 +214,9 @@ describe("custom exercise ordinary create and custom copy origins", () => {
     expect(screen.getByTestId("exercise-editor-primary-muscles"))
       .toBeOnTheScreen();
     expect(screen.getByTestId("exercise-editor-equipment")).toBeOnTheScreen();
-    expect(screen.getByTestId("exercise-editor-save")).toBeOnTheScreen();
+    expect(screen.getByTestId("exercise-editor-save-create")).toBeOnTheScreen();
     expect(screen.getByTestId("adaptive-dock")).toContainElement(
-      screen.getByTestId("exercise-editor-save"),
+      screen.getByTestId("exercise-editor-save-create"),
     );
     for (const option of metricOptions) {
       expect(option).toHaveProp(

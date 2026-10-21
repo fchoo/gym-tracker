@@ -3,7 +3,6 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { createDomainRunner } from './testing/v12-production-domain/controlled-domain-runner.mjs';
-import { V12_CALENDAR_SHARD_STAGE_IDS } from './v12-calendar-shard.mjs';
 import { V12_GARMIN_SHARD_CASE_IDS } from './v12-garmin-shard.mjs';
 
 const fixture = (t) => { const r = createDomainRunner(); t.after(r.cleanup); return r; };
@@ -13,39 +12,56 @@ function bounded(result, code) { assert.notEqual(result.status, 0); assert.equal
 test('unowned actions return undefined without native work', (t) => { const r = fixture(t); assert.equal(success(r.invoke('visual-capture')), null); });
 test('Garmin returns exactly 18 ordered privacy-safe native aggregates', (t) => {
   const r = fixture(t); const result = success(r.invoke('garmin'));
-  assert.deepEqual(Object.keys(result), ['cases']);
+  assert.deepEqual(Object.keys(result), ['producer', 'cases', 'execution_origin']);
+  assert.equal(result.producer, 'v12-production-garmin-host/v1');
+  assert.equal(result.execution_origin, 'test-controlled/v1');
   assert.deepEqual(result.cases.map((c) => c.id), V12_GARMIN_SHARD_CASE_IDS);
-  assert.deepEqual(result, r.readState().garmin);
+  assert.ok(result.cases.every((entry) => entry.status === 'PASS' && /^[a-f0-9]{64}$/u.test(entry.receipt_sha256)));
+  assert.ok(result.cases.every((entry) => Object.keys(entry).sort().join(',') === 'code,count,id,order,receipt_sha256,status'));
   assert.equal(existsSync(path.join(r.scratch, 'lock')), false);
+});
+test('Garmin accepts a restart with a different PID and a new process birth claim', (t) => {
+  const r = fixture(t); r.updateState({ reuseProcessId: false, reuseProcessBirth: false });
+  const result = success(r.invoke('garmin'));
+  assert.ok(result.cases.every(({ status }) => status === 'PASS'));
+  assert.equal(r.readState().processCounter, 1002);
+  assert.equal(r.readState().processStartTicks, 5200);
+});
+test('Garmin accepts same-PID reuse only when the process birth claim changes', (t) => {
+  const r = fixture(t); r.updateState({ reuseProcessId: true, reuseProcessBirth: false });
+  const result = success(r.invoke('garmin'));
+  assert.ok(result.cases.every(({ status }) => status === 'PASS'));
+  assert.equal(r.readState().processCounter, 1001);
+  assert.equal(r.readState().processStartTicks, 5200);
+});
+test('Garmin rejects the same PID with the same process birth claim', (t) => {
+  const r = fixture(t); r.updateState({ reuseProcessId: true, reuseProcessBirth: true });
+  bounded(r.invoke('garmin'), 'garmin_restart_invalid');
+});
+test('Garmin is reachable through the production adapter and checked-in default launcher subprocess', (t) => {
+  const r = fixture(t); const result = success(r.invokeDefault('garmin'));
+  assert.equal(result.producer, 'v12-production-garmin-host/v1');
+  assert.equal(result.execution_origin, 'test-controlled/v1');
+  assert.equal(result.cases.length, 18);
+  assert.ok(result.cases.every(({ status }) => status === 'PASS'));
 });
 for (const [key, code] of [['authRequired', 'auth_required'], ['missingMarker', 'marker_timeout'], ['staleMarker', 'marker_timeout']]) test(`Garmin ${key} is bounded and never emits evidence`, (t) => {
   const r = fixture(t); r.updateState({ [key]: true }); const start = Date.now(); bounded(r.invoke('garmin'), code); assert.ok(Date.now() - start < 70_000); assert.equal(existsSync(path.join(r.scratch, 'lock')), false);
 });
 for (const mutation of ['private', 'extra', 'order', 'count']) test(`Garmin rejects ${mutation}`, (t) => {
   const r = fixture(t); const garmin = r.readState().garmin;
-  if (mutation === 'private') garmin.cases[0].code = 'bearer secret';
-  if (mutation === 'extra') garmin.cases[0].account_id = 'private';
-  if (mutation === 'order') garmin.cases.reverse();
-  if (mutation === 'count') garmin.cases[0].count = -1;
-  r.updateState({ garmin }); bounded(r.invoke('garmin'), 'garmin_result_invalid');
+  if (mutation === 'private') garmin.receipts[0].code = 'bearer secret';
+  if (mutation === 'extra') garmin.receipts[0].account_id = 'private';
+  if (mutation === 'order') garmin.receipts.reverse();
+  if (mutation === 'count') garmin.receipts[0].count = -1;
+  r.updateState({ garmin }); bounded(r.invoke('garmin'), mutation === 'private' ? 'garmin_privacy_failed' : 'garmin_result_invalid');
 });
-for (const action of ['garmin', 'calendar', 'recovery']) test(`${action} validates attestation and device before actions`, (t) => {
+for (const action of ['garmin', 'recovery']) test(`${action} validates attestation and device before actions`, (t) => {
   const r = fixture(t); bounded(r.invoke(action, {}, { build_profile: 'production' }), 'attestation_invalid');
   bounded(r.invoke(action, {}, { source_tree_sha256: '0'.repeat(64) }), 'identity_mismatch');
   r.updateState({ wrongApk: true }); bounded(r.invoke(action), 'apk_identity_mismatch');
   assert.equal(r.readState().domainCalls.length, 0);
 });
-test('Calendar executes all 35 source-bound stages with exact receipts', (t) => {
-  const r = fixture(t); const result = success(r.invoke('calendar'));
-  assert.deepEqual(Object.keys(result).sort(), ['flow_revision', 'flow_sha256', 'junit_cases', 'stages']);
-  assert.equal(result.flow_sha256, r.flow); assert.equal(result.flow_revision, 'calendar-flow-r35');
-  assert.deepEqual(result.stages.map((s) => s.id), V12_CALENDAR_SHARD_STAGE_IDS);
-  assert.equal(r.readState().domainCalls.length, 35);
-  result.stages.forEach((s, i) => assert.deepEqual(result.junit_cases[i], { id: s.id, order: i, status: s.status }));
-});
-for (const [key, code] of [['noReceipt', 'calendar_receipt_invalid'], ['wrongFlow', 'calendar_flow_invalid'], ['missingJunit', 'junit_missing']]) test(`Calendar rejects ${key}`, (t) => { const r = fixture(t); r.updateState({ [key]: true }); bounded(r.invoke('calendar'), code); });
-test('Calendar binds requested flow before Maestro', (t) => { const r = fixture(t); bounded(r.invoke('calendar', { flow_sha256: '0'.repeat(64) }), 'calendar_flow_invalid'); assert.equal(r.readState().domainCalls.length, 0); });
-test('Calendar keeps real failing JUnit outcomes and no private failure text', (t) => { const r = fixture(t); r.updateState({ junitFailure: true }); const result = success(r.invoke('calendar')); assert.ok(result.stages.every((s) => s.status === 'FAIL')); assert.doesNotMatch(JSON.stringify(result), /private-native|bearer|\/Users\//u); });
 test('Recovery derives all 14 command steps by 8 cuts from durable native readback facts', (t) => {
   const r = fixture(t); const report = success(r.invoke('recovery')); const xml = report.junit_xml;
   assert.equal((xml.match(/<testcase\b/gu) ?? []).length, 112);

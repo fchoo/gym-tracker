@@ -4,6 +4,8 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   Easing,
   cancelAnimation,
+  measure,
+  useAnimatedRef,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -19,6 +21,15 @@ import {
   recordPhase16CalendarRelease,
   type Phase16CalendarStage,
 } from "../../bootstrap/phase16CalendarTestControls";
+import {
+  recordPhase20CalendarBaseline,
+  recordPhase20CalendarCallback,
+  recordPhase20CalendarInputAttempt,
+  recordPhase20CalendarPointer,
+  recordPhase20CalendarRenderedPanel,
+  recordPhase20CalendarRenderedOverlay,
+  recordPhase20CalendarViewport,
+} from "../../bootstrap/phase20CalendarObservation";
 import { addLocalMonthsClamped, startOfLocalMonth, type LocalDate } from "../../domains/scheduling/localDate";
 import {
   clampMonthDrag,
@@ -93,38 +104,38 @@ export function calendarDragDiagnosticMonths(
   });
 }
 
-function Panel({
-  children,
-  offset,
-  pointerX,
-  viewportWidth,
-}: Readonly<{
+const Panel = React.forwardRef<View, Readonly<{
   children: React.ReactNode;
   offset: PanelOffset;
   pointerX: Readonly<{ value: number }>;
   viewportWidth: Readonly<{ value: number }>;
-}>) {
+}>>(function Panel({
+  children,
+  offset,
+  pointerX,
+  viewportWidth,
+}, ref) {
   const style = useAnimatedStyle(() => ({
     transform: [{ translateX: offset * viewportWidth.value + pointerX.value }],
     width: viewportWidth.value,
   }));
 
-  return <Animated.View style={[styles.panel, style]}>{children}</Animated.View>;
-}
+  return <Animated.View ref={ref} style={[styles.panel, style]}>{children}</Animated.View>;
+});
 
-function FocusedWeekOverlay({
-  children,
-  edge,
-  geometry,
-  progress,
-  viewportHeight,
-}: Readonly<{
+const FocusedWeekOverlay = React.forwardRef<View, Readonly<{
   children: React.ReactNode;
   edge: "top" | "bottom";
   geometry: CalendarWeekGeometry;
   progress: Readonly<{ value: number }>;
   viewportHeight: Readonly<{ value: number }>;
-}>) {
+}>>(function FocusedWeekOverlay({
+  children,
+  edge,
+  geometry,
+  progress,
+  viewportHeight,
+}, ref) {
   const style = useAnimatedStyle(() => {
     const targetY = edge === "top" ? 0 : Math.max(0, viewportHeight.value - geometry.height);
     return {
@@ -135,13 +146,14 @@ function FocusedWeekOverlay({
 
   return (
     <Animated.View
+      ref={ref}
       style={[styles.focusedOverlay, style]}
       testID={edge === "top" ? "calendar-focused-selected-week" : "calendar-focused-following-week"}
     >
       {children}
     </Animated.View>
   );
-}
+});
 
 function FocusedAgenda({
   children,
@@ -179,6 +191,7 @@ export function CalendarMonthViewport({
   onRelease,
   renderMonth,
   renderWeek,
+  screenWidth = 0,
   transition,
   weekCount = 6,
 }: Readonly<{
@@ -203,6 +216,7 @@ export function CalendarMonthViewport({
   onRelease(input: Readonly<{ dx: number; dy: number; targetMonthId: string; viewportWidth: number }>): void;
   renderMonth(month: LocalDate, interactive: boolean): React.ReactNode;
   renderWeek(dates: readonly LocalDate[], interactive: boolean): React.ReactNode;
+  screenWidth?: number;
   transition: CalendarTransitionState;
   weekCount?: number;
 }>) {
@@ -218,6 +232,11 @@ export function CalendarMonthViewport({
   const diagnosticThresholdMask = useSharedValue(0);
   const touchStartX = useSharedValue(0);
   const touchStartY = useSharedValue(0);
+  const touchLastX = useSharedValue(0);
+  const touchLastY = useSharedValue(0);
+  const touchLastDx = useSharedValue(0);
+  const touchLastDy = useSharedValue(0);
+  const touchIntent = useSharedValue<"undetermined" | "horizontal" | "vertical" | "diagonal">("undetermined");
   const panEnabled = useSharedValue(!disabled && calendarMonthPanEnabled(transition.phase));
   const mounted = useRef(true);
   const monthCompletionRef = useRef<Readonly<{
@@ -225,11 +244,21 @@ export function CalendarMonthViewport({
     deliveredEpoch: number | null;
     timer: ReturnType<typeof setTimeout> | null;
   }>>({ activeEpoch: null, deliveredEpoch: null, timer: null });
+  const weekCompletionRef = useRef<Readonly<{
+    activeEpoch: number | null;
+    deliveredEpoch: number | null;
+  }>>({ activeEpoch: null, deliveredEpoch: null });
   const diagnosticSequenceStarted = useRef(false);
   const diagnosticSequenceExpanded = useRef(false);
   const diagnosticStageDriven = useRef(false);
   const lastWidth = useRef(0);
   const lastHeight = useRef(0);
+  const viewportRef = useAnimatedRef<Animated.View>();
+  const previousPanelRef = useAnimatedRef<Animated.View>();
+  const currentPanelRef = useAnimatedRef<Animated.View>();
+  const nextPanelRef = useAnimatedRef<Animated.View>();
+  const selectedOverlayRef = useAnimatedRef<Animated.View>();
+  const followingOverlayRef = useAnimatedRef<Animated.View>();
   const previousMonth = startOfLocalMonth(addLocalMonthsClamped(month, -1));
   const nextMonth = startOfLocalMonth(addLocalMonthsClamped(month, 1));
   const beginDiagnosticSequence = () => {
@@ -237,6 +266,47 @@ export function CalendarMonthViewport({
     diagnosticSequenceExpanded.current = false;
     onInteractionDiagnosticStart?.();
   };
+  const measureRenderedPanels = useCallback((callbackGeneration: number) => {
+    viewportRef.current?.measureInWindow((viewportX) => {
+      previousPanelRef.current?.measureInWindow((previousX, _previousY, previousWidth) => {
+        currentPanelRef.current?.measureInWindow((currentX, _currentY, currentWidth) => {
+          nextPanelRef.current?.measureInWindow((nextX, _nextY, nextWidth) => {
+            if (Math.min(previousWidth, currentWidth, nextWidth) <= 0) return;
+            recordPhase20CalendarRenderedPanel({
+              viewportXDp: viewportX,
+              previousXDp: previousX,
+              currentXDp: currentX,
+              nextXDp: nextX,
+              widthDp: currentWidth,
+              callbackGeneration,
+            });
+          });
+        });
+      });
+    });
+  }, []);
+  const measureRenderedOverlays = useCallback((phase: "expand" | "collapse", progress: 0 | 1, callbackGeneration: number) => {
+    const selected = calendarWeekGeometryForGeneration(focusedWeek?.selectedGeometry, layoutGeneration);
+    const following = calendarWeekGeometryForGeneration(focusedWeek?.followingGeometry, layoutGeneration);
+    if (selected === null || following === null) return;
+    viewportRef.current?.measureInWindow((_viewportX, viewportY, _viewportWidth, measuredViewportHeight) => {
+      selectedOverlayRef.current?.measureInWindow((_selectedX, selectedY) => {
+        followingOverlayRef.current?.measureInWindow((_followingX, followingY) => {
+          recordPhase20CalendarRenderedOverlay({
+            phase,
+            progress,
+            reducedMotion: transition.reducedMotion,
+            selectedYDp: selectedY - viewportY,
+            followingYDp: followingY - viewportY,
+            selectedMonthYDp: selected.y,
+            followingMonthYDp: following.y,
+            viewportHeightDp: measuredViewportHeight,
+            callbackGeneration,
+          });
+        });
+      });
+    });
+  }, [focusedWeek?.followingGeometry, focusedWeek?.selectedGeometry, layoutGeneration, transition.reducedMotion]);
 
   const cancelMonthCompletion = useCallback(() => {
     const current = monthCompletionRef.current;
@@ -257,14 +327,31 @@ export function CalendarMonthViewport({
       deliveredEpoch: epoch,
       timer: null,
     });
+    recordPhase20CalendarCallback({ callback: "month-settle", epoch, callbackGeneration: epoch });
+    onComplete(epoch);
+  }, [onComplete]);
+
+  const cancelWeekCompletion = useCallback(() => {
+    weekCompletionRef.current = Object.freeze({
+      activeEpoch: null,
+      deliveredEpoch: weekCompletionRef.current.deliveredEpoch,
+    });
+  }, []);
+
+  const publishWeekCompletion = useCallback((epoch: number) => {
+    const current = weekCompletionRef.current;
+    if (current.activeEpoch !== epoch || current.deliveredEpoch === epoch) return;
+    weekCompletionRef.current = Object.freeze({ activeEpoch: epoch, deliveredEpoch: epoch });
+    recordPhase20CalendarCallback({ callback: "week-settle", epoch, callbackGeneration: epoch });
     onComplete(epoch);
   }, [onComplete]);
 
   useEffect(() => () => {
     mounted.current = false;
     cancelMonthCompletion();
+    cancelWeekCompletion();
     cancelAnimation(pointerX);
-  }, [cancelMonthCompletion, pointerX]);
+  }, [cancelMonthCompletion, cancelWeekCompletion, pointerX]);
 
   useEffect(() => {
     cancelMonthCompletion();
@@ -298,6 +385,7 @@ export function CalendarMonthViewport({
   }, [cancelMonthCompletion, command, completionEpoch, pointerX, publishMonthCompletion, viewportWidth]);
 
   useEffect(() => {
+    cancelWeekCompletion();
     if (command?.kind !== "settle-week") return;
     if (command.phase === "expand" && diagnosticSequenceStarted.current) diagnosticSequenceExpanded.current = true;
     const agendaMotion = calendarAgendaMotion(command);
@@ -310,7 +398,12 @@ export function CalendarMonthViewport({
     if (selectedGeometry === null || followingGeometry === null) {
       return;
     }
+    weekCompletionRef.current = Object.freeze({
+      activeEpoch: command.epoch,
+      deliveredEpoch: weekCompletionRef.current.deliveredEpoch,
+    });
     weekCompletionEpoch.value = command.epoch;
+    setTimeout(() => measureRenderedOverlays(command.phase, command.phase === "expand" ? 0 : 1, command.epoch), 0);
     recordPhase16CalendarFocus({
       selected: selectedGeometry,
       following: followingGeometry,
@@ -325,7 +418,23 @@ export function CalendarMonthViewport({
       easing: Easing.bezier(command.easing[0], command.easing[1], command.easing[2], command.easing[3]),
     }, (finished) => {
       if (finished && weekCompletionEpoch.value === command.epoch) {
-        scheduleOnRN(onComplete, command.epoch);
+        const viewportMeasurement = measure(viewportRef);
+        const selectedMeasurement = measure(selectedOverlayRef);
+        const followingMeasurement = measure(followingOverlayRef);
+        if (viewportMeasurement !== null && selectedMeasurement !== null && followingMeasurement !== null) {
+          scheduleOnRN(recordPhase20CalendarRenderedOverlay, {
+            phase: command.phase,
+            progress: command.phase === "expand" ? 1 : 0,
+            reducedMotion: transition.reducedMotion,
+            selectedYDp: selectedMeasurement.pageY - viewportMeasurement.pageY,
+            followingYDp: followingMeasurement.pageY - viewportMeasurement.pageY,
+            selectedMonthYDp: selectedGeometry.y,
+            followingMonthYDp: followingGeometry.y,
+            viewportHeightDp: viewportMeasurement.height,
+            callbackGeneration: command.epoch,
+          });
+        }
+        scheduleOnRN(publishWeekCompletion, command.epoch);
         if (command.phase === "collapse" && diagnosticSequenceExpanded.current) {
           diagnosticSequenceStarted.current = false;
           diagnosticSequenceExpanded.current = false;
@@ -333,7 +442,8 @@ export function CalendarMonthViewport({
         }
       }
     });
-  }, [agendaOpacity, command, focusProgress, focusedWeek?.followingGeometry, focusedWeek?.selectedGeometry, layoutGeneration, onCancel, onComplete, onInteractionDiagnosticComplete, viewportHeight, weekCompletionEpoch]);
+    return cancelWeekCompletion;
+  }, [agendaOpacity, cancelWeekCompletion, command, focusProgress, focusedWeek?.followingGeometry, focusedWeek?.selectedGeometry, layoutGeneration, measureRenderedOverlays, onCancel, onInteractionDiagnosticComplete, publishWeekCompletion, transition.reducedMotion, viewportHeight, viewportRef, selectedOverlayRef, followingOverlayRef, weekCompletionEpoch]);
 
   useEffect(() => {
     if (!transition.reducedMotion) return;
@@ -341,7 +451,8 @@ export function CalendarMonthViewport({
     focusProgress.value = transition.mode === "focused" ? 1 : 0;
     cancelAnimation(agendaOpacity);
     agendaOpacity.value = transition.mode === "focused" ? 1 : 0;
-  }, [agendaOpacity, focusProgress, transition.mode, transition.reducedMotion]);
+    setTimeout(() => measureRenderedOverlays(transition.mode === "focused" ? "expand" : "collapse", transition.mode === "focused" ? 1 : 0, transition.epoch), 0);
+  }, [agendaOpacity, focusProgress, measureRenderedOverlays, transition.epoch, transition.mode, transition.reducedMotion]);
 
   useEffect(() => {
     if (transition.phase !== "idle") return;
@@ -362,6 +473,23 @@ export function CalendarMonthViewport({
       if (touch === undefined) return;
       touchStartX.value = touch.absoluteX;
       touchStartY.value = touch.absoluteY;
+      touchLastX.value = touch.absoluteX;
+      touchLastY.value = touch.absoluteY;
+      touchLastDx.value = 0;
+      touchLastDy.value = 0;
+      touchIntent.value = "undetermined";
+      scheduleOnRN(recordPhase20CalendarPointer, {
+        callback: "onTouchesDown",
+        phase: "down",
+        xDp: touch.absoluteX,
+        yDp: touch.absoluteY,
+        dxDp: 0,
+        dyDp: 0,
+        viewportWidthDp: viewportWidth.value,
+        intentOwner: "undetermined",
+        callbackGeneration: completionEpoch.value,
+      });
+      scheduleOnRN(measureRenderedPanels, completionEpoch.value);
     })
     .onTouchesMove((event, manager) => {
       if (!panEnabled.value) {
@@ -372,8 +500,27 @@ export function CalendarMonthViewport({
       if (touch === undefined) return;
       const dx = touch.absoluteX - touchStartX.value;
       const dy = touch.absoluteY - touchStartY.value;
+      touchLastX.value = touch.absoluteX;
+      touchLastY.value = touch.absoluteY;
+      touchLastDx.value = dx;
+      touchLastDy.value = dy;
       if (Math.abs(dx) < SLOP_DP && Math.abs(dy) < SLOP_DP) return;
-      if (Math.abs(dx) >= Math.abs(dy) * HORIZONTAL_INTENT_RATIO) manager.activate();
+      const owner = Math.abs(dx) >= Math.abs(dy) * HORIZONTAL_INTENT_RATIO
+        ? "horizontal"
+        : Math.abs(dy) >= Math.abs(dx) * HORIZONTAL_INTENT_RATIO ? "vertical" : "diagonal";
+      touchIntent.value = owner;
+      scheduleOnRN(recordPhase20CalendarPointer, {
+        callback: "onTouchesMove",
+        phase: "intent",
+        xDp: touch.absoluteX,
+        yDp: touch.absoluteY,
+        dxDp: dx,
+        dyDp: dy,
+        viewportWidthDp: viewportWidth.value,
+        intentOwner: owner,
+        callbackGeneration: completionEpoch.value,
+      });
+      if (owner === "horizontal") manager.activate();
       else manager.fail();
     })
     .onBegin(() => {
@@ -382,12 +529,41 @@ export function CalendarMonthViewport({
       diagnosticThresholdMask.value = 0;
       completionEpoch.value += 1;
       cancelAnimation(pointerX);
+      scheduleOnRN(recordPhase20CalendarPointer, {
+        callback: "onBegin",
+        phase: "begin",
+        xDp: touchLastX.value,
+        yDp: touchLastY.value,
+        dxDp: touchLastDx.value,
+        dyDp: touchLastDy.value,
+        viewportWidthDp: viewportWidth.value,
+        intentOwner: "horizontal",
+        callbackGeneration: completionEpoch.value,
+      });
     })
     .onChange((event) => {
       const width = viewportWidth.value;
       if (width <= 0) return;
       const dx = Math.max(-width, Math.min(width, event.translationX));
+      const dy = event.translationY;
       pointerX.value = dx;
+      touchLastX.value = touchStartX.value + dx;
+      touchLastY.value = touchStartY.value + dy;
+      touchLastDx.value = dx;
+      touchLastDy.value = dy;
+      touchIntent.value = "horizontal";
+      scheduleOnRN(recordPhase20CalendarPointer, {
+        callback: "onChange",
+        phase: "change",
+        xDp: touchLastX.value,
+        yDp: touchLastY.value,
+        dxDp: dx,
+        dyDp: dy,
+        viewportWidthDp: width,
+        intentOwner: "horizontal",
+        callbackGeneration: completionEpoch.value,
+      });
+      scheduleOnRN(measureRenderedPanels, completionEpoch.value);
       const nextPanel: PanelOffset = Math.abs(dx) >= width * 0.25 ? (dx < 0 ? 1 : -1) : 0;
       const progress = Math.abs(dx) / width;
       const markers = [0.1, 0.249, 0.25, 0.251];
@@ -412,21 +588,51 @@ export function CalendarMonthViewport({
       panEnabled.value = false;
       released.value = true;
       const dx = Math.max(-width, Math.min(width, event.translationX));
+      const dy = event.translationY;
+      touchLastX.value = touchStartX.value + dx;
+      touchLastY.value = touchStartY.value + dy;
+      touchLastDx.value = dx;
+      touchLastDy.value = dy;
+      touchIntent.value = "horizontal";
       const selectedMonth = (Math.abs(dx) >= width * 0.25 ? (dx < 0 ? nextMonth : previousMonth) : month).slice(0, 7);
       if (onInteractionDiagnosticStart !== undefined) scheduleOnRN(beginDiagnosticSequence);
+      scheduleOnRN(recordPhase20CalendarPointer, {
+        callback: "onEnd",
+        phase: "release",
+        xDp: touchLastX.value,
+        yDp: touchLastY.value,
+        dxDp: dx,
+        dyDp: dy,
+        viewportWidthDp: width,
+        intentOwner: "horizontal",
+        callbackGeneration: completionEpoch.value,
+      });
       scheduleOnRN(recordPhase16CalendarRelease, { dx, viewportWidth: width, semanticMonth: selectedMonth, titleMonth: selectedMonth });
       scheduleOnRN(onRelease, {
         dx,
-        dy: event.translationY,
+        dy,
         targetMonthId: event.translationX < 0 ? nextMonth.slice(0, 7) : previousMonth.slice(0, 7),
         viewportWidth: width,
       });
     })
-    .onFinalize(() => {
+    .onFinalize((_event, success) => {
+      const finalizedAsRelease = released.value && success !== false;
+      scheduleOnRN(recordPhase20CalendarPointer, {
+        callback: "onFinalize",
+        phase: finalizedAsRelease ? "finalize-release" : "finalize-cancel",
+        xDp: touchLastX.value,
+        yDp: touchLastY.value,
+        dxDp: touchLastDx.value,
+        dyDp: touchLastDy.value,
+        viewportWidthDp: viewportWidth.value,
+        intentOwner: touchIntent.value,
+        callbackGeneration: completionEpoch.value,
+      });
       if (!released.value) {
         completionEpoch.value += 1;
         cancelAnimation(pointerX);
         pointerX.value = 0;
+        scheduleOnRN(measureRenderedPanels, completionEpoch.value);
         scheduleOnRN(recordPhase16CalendarCancel);
         scheduleOnRN(onCancel);
       }
@@ -441,6 +647,19 @@ export function CalendarMonthViewport({
     lastWidth.current = nextWidth;
     lastHeight.current = nextHeight;
     viewportWidth.value = nextWidth;
+    recordPhase20CalendarViewport({
+      widthDp: nextWidth,
+      heightDp: nextHeight,
+      orientation: nextWidth > nextHeight ? "landscape" : "portrait",
+      layoutGeneration,
+    });
+    if (screenWidth > 0) recordPhase20CalendarBaseline({
+        kind: "content-bounds",
+        screenWidthDp: screenWidth,
+        contentLeftDp: (screenWidth - nextWidth) / 2,
+        contentWidthDp: nextWidth,
+        contentRightDp: (screenWidth + nextWidth) / 2,
+      });
     cancelAnimation(pointerX);
     pointerX.value = 0;
     previewPanel.value = 0;
@@ -498,23 +717,39 @@ export function CalendarMonthViewport({
       testID="calendar-vertical-scroll"
     >
       <GestureDetector gesture={pan}>
-        <View accessibilityLabel="Calendar month panels" onLayout={onLayout} style={styles.viewport} testID="calendar-month-viewport">
-        <Panel offset={-1} pointerX={pointerX} viewportWidth={viewportWidth}>
+        <View
+          accessibilityLabel="Calendar month panels"
+          onLayout={onLayout}
+          onTouchStart={(event) => {
+            const touch = event.nativeEvent.touches[0];
+            if (touch === undefined) return;
+            recordPhase20CalendarInputAttempt({
+              xDp: touch.pageX,
+              yDp: touch.pageY,
+              transitionPhase: transition.phase,
+              callbackGeneration: transition.epoch,
+            });
+          }}
+          style={styles.viewport}
+          ref={viewportRef}
+          testID="calendar-month-viewport"
+        >
+        <Panel offset={-1} pointerX={pointerX} ref={previousPanelRef} viewportWidth={viewportWidth}>
           <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none">
             {renderMonth(previousMonth, false)}
           </View>
         </Panel>
-        <Panel offset={0} pointerX={pointerX} viewportWidth={viewportWidth}>
+        <Panel offset={0} pointerX={pointerX} ref={currentPanelRef} viewportWidth={viewportWidth}>
           {renderMonth(month, true)}
         </Panel>
-        <Panel offset={1} pointerX={pointerX} viewportWidth={viewportWidth}>
+        <Panel offset={1} pointerX={pointerX} ref={nextPanelRef} viewportWidth={viewportWidth}>
           <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none">
             {renderMonth(nextMonth, false)}
           </View>
         </Panel>
         {hasFocusedComposition ? (
           <>
-            <FocusedWeekOverlay edge="top" geometry={selectedGeometry} progress={focusProgress} viewportHeight={viewportHeight}>
+            <FocusedWeekOverlay edge="top" geometry={selectedGeometry} progress={focusProgress} ref={selectedOverlayRef} viewportHeight={viewportHeight}>
               {renderWeek(focusedWeek.selectedDates, transition.phase === "idle")}
             </FocusedWeekOverlay>
             <FocusedAgenda
@@ -524,7 +759,7 @@ export function CalendarMonthViewport({
             >
               {agenda}
             </FocusedAgenda>
-            <FocusedWeekOverlay edge="bottom" geometry={followingGeometry} progress={focusProgress} viewportHeight={viewportHeight}>
+            <FocusedWeekOverlay edge="bottom" geometry={followingGeometry} progress={focusProgress} ref={followingOverlayRef} viewportHeight={viewportHeight}>
               {renderWeek(focusedWeek.followingDates, transition.phase === "idle")}
             </FocusedWeekOverlay>
           </>

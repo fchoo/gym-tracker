@@ -162,12 +162,15 @@ export function PlannedWorkoutDetailScreen({
                   accessibilityLabel={`${exercise.exerciseName}. ${firstTarget}. 0 of ${exercise.targets.length} complete. ${expanded ? "Collapse" : "Expand"} exercise`}
                   accessibilityRole="button"
                   accessibilityState={{ expanded }}
-                  onPress={() => setExpandedExerciseIds((current) => {
-                    const next = new Set(current);
-                    if (expanded) next.delete(exercise.id); else next.add(exercise.id);
-                    return next;
-                  })}
+                  onPress={() => {
+                    setExpandedExerciseIds((current) => {
+                      const next = new Set(current);
+                      if (expanded) next.delete(exercise.id); else next.add(exercise.id);
+                      return next;
+                    });
+                  }}
                   style={styles.exerciseHeader}
+                  testID={`planned-exercise-action-${exercise.id}`}
                 >
                   <View style={styles.exerciseCopy}>
                     <Text accessibilityRole="header" style={[calendarTypeScale.heading as TextStyle, { color: colors.textPrimary }]}>{exercise.exerciseName}</Text>
@@ -179,7 +182,7 @@ export function PlannedWorkoutDetailScreen({
                     testID={`planned-exercise-disclosure-${exercise.id}`}
                   />
                 </FocusablePressable>
-                {expanded ? <View style={styles.table}>
+                {expanded ? <View style={styles.table} testID={`planned-exercise-result-${exercise.id}`}>
                   <View style={styles.tableHeader}>
                     {["Set", "Previous", "Target", "State"].map((label) => <Text key={label} style={[calendarTypeScale.metadata as TextStyle, styles.cell, { color: colors.textSecondary }]}>{label}</Text>)}
                   </View>

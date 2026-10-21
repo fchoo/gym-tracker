@@ -247,6 +247,7 @@ export {
   type CompletedWorkoutPlanWriteBackPort,
   type CompletedWorkoutPlanWriteBackSaveFailedState,
   type CompletedWorkoutPlanWriteBackState,
+  type FinishPartialResult,
   type ResumePartialWorkoutInput,
   type SaveZeroSetInput,
   type SkipExerciseInput,

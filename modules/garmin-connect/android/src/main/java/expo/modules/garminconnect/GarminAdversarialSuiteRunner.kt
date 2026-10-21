@@ -186,7 +186,7 @@ internal class GarminAdversarialSuiteRunner(
           startedAt = lateStarted,
         )
       } finally {
-        runCatching { control("releaseLate") }
+        try { control("releaseLate") } catch (_: Throwable) { /* best-effort unstick */ }
         executor.shutdownNow()
       }
 
@@ -220,8 +220,8 @@ internal class GarminAdversarialSuiteRunner(
         rows += unexpectedRow(ADVERSARIAL_CASE_IDS[rows.size])
       }
     } finally {
-      runCatching { control("finish") }
-      runCatching { sessionStore.clear() }
+      try { control("finish") } catch (_: Throwable) { /* result stays technical review */ }
+      try { sessionStore.clear() } catch (_: Throwable) { /* isolated test store only */ }
     }
     val relationshipsValid = digestAndGenerationRelationshipsValid(rows)
     val finalRows = if (relationshipsValid) rows else rows.map(::unexpectedCopy)

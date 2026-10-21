@@ -3,6 +3,7 @@ import {
   MULTI_PLAN_RUNNING_CONTRACT_CASES,
   PHASE13_STATEMENT_FAILURE_CUT,
   runMultiPlanRunningContract,
+  runMultiPlanRunningContractOnKernel,
 } from "./multiPlanRunning.contract";
 
 describe("multi-plan Running lifecycle contract", () => {
@@ -55,5 +56,28 @@ describe("multi-plan Running lifecycle contract", () => {
     expect(result.cases.map(({ id }) => id)).toEqual(MULTI_PLAN_RUNNING_CONTRACT_CASES);
     expect(JSON.stringify(result)).not.toContain("account_namespace");
     expect(JSON.stringify(result)).not.toContain("owner_request");
+  });
+
+  it("runs the canonical wrapper through a fresh kernel runtime per case and always closes it", async () => {
+    const opened: string[] = [];
+    const closed: string[] = [];
+    const result = await runMultiPlanRunningContractOnKernel(async (caseId) => {
+      opened.push(caseId);
+      return {
+        kernel: {
+          queryAll: async <Row extends Record<string, unknown>>(sql: string) => (
+            sql === "PRAGMA user_version" ? [{ user_version: 45 }] : []
+          ) as unknown as readonly Row[],
+          write: async <Result,>(command: (transaction: never) => Promise<Result>) => command({} as never),
+        } as never,
+        close: async () => { closed.push(caseId); },
+      };
+    });
+
+    expect(opened).toEqual(MULTI_PLAN_RUNNING_CONTRACT_CASES);
+    expect(closed).toEqual(MULTI_PLAN_RUNNING_CONTRACT_CASES);
+    expect(result.total).toBe(MULTI_PLAN_RUNNING_CONTRACT_CASES.length);
+    expect(result.failed).toBeGreaterThan(0);
+    expect(result.skipped).toBe(0);
   });
 });

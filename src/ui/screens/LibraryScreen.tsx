@@ -22,6 +22,12 @@ import type {
 import type {
   SearchFilters,
 } from "../../domains/library/search";
+import type {
+  V12AcceptanceBenchmarkPort,
+} from "../../bootstrap/v12AcceptanceBenchmark";
+import {
+  LIBRARY_ACTION_SHEET_CONFIGURATION,
+} from "../../bootstrap/libraryRuntimeReadPort";
 import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
@@ -178,6 +184,11 @@ type LibraryScreenProps = Readonly<{
     section: LibrarySection,
     expectedRevision: number,
   ): Promise<LibrarySectionPreference>;
+  acceptanceBenchmark?: Pick<
+    V12AcceptanceBenchmarkPort,
+    "markSearchDebounceEnded" | "markSearchResultsVisible"
+  >;
+  onUsefulContent?: () => void;
   width?: number;
   headingRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionRef?: React.RefObject<RootFocusTarget | null>;
@@ -538,7 +549,7 @@ function PlansContent({
   ) {
     return (
       <InlineNotice
-        action={<PrimaryAction label="Create plan" onPress={onCreatePlan} />}
+        action={<PrimaryAction label="Create plan" onPress={onCreatePlan} testID="library-create-plan" />}
         body="Create a strength or running plan to get started."
         heading="No plans yet"
       />
@@ -1214,6 +1225,7 @@ function StarterFilterSheet({
 }
 
 export function LibraryScreen({
+  acceptanceBenchmark,
   contentUpdateFailed,
   contentUpdateResult,
   loadLibrary,
@@ -1236,6 +1248,7 @@ export function LibraryScreen({
   headingRef,
   settingsActionRef,
   settingsActionNativeID,
+  onUsefulContent,
 }: LibraryScreenProps) {
   const [snapshot, setSnapshot] = useState<LibraryBrowseSnapshot | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -1281,6 +1294,12 @@ export function LibraryScreen({
   const exercisesResultCount = exerciseBrowse.items.length;
 
   useEffect(() => {
+    if (snapshot === null) return;
+    const frame = requestAnimationFrame(() => onUsefulContent?.());
+    return () => cancelAnimationFrame(frame);
+  }, [onUsefulContent, snapshot]);
+
+  useEffect(() => {
     mountedRef.current = true;
     const generation = loadGenerationRef.current + 1;
     loadGenerationRef.current = generation;
@@ -1314,6 +1333,9 @@ export function LibraryScreen({
       pageError: false,
     }));
     const timer = setTimeout(() => {
+      const measuredSearch = acceptanceBenchmark !== undefined
+        && processState.exercises.query.trim().length > 0;
+      if (measuredSearch) acceptanceBenchmark.markSearchDebounceEnded();
       void Promise.all([
         searchExercises({
           query: processState.exercises.query,
@@ -1353,6 +1375,9 @@ export function LibraryScreen({
           initialError: false,
           pageError: false,
         });
+        if (measuredSearch) {
+          requestAnimationFrame(() => acceptanceBenchmark.markSearchResultsVisible());
+        }
       }).catch(() => {
         if (
           mountedRef.current
@@ -1370,6 +1395,7 @@ export function LibraryScreen({
     return () => clearTimeout(timer);
   }, [
     listRecentExercises,
+    acceptanceBenchmark,
     processState.exercises.filters,
     processState.exercises.query,
     searchExercises,
@@ -1617,6 +1643,7 @@ export function LibraryScreen({
         <PrimaryAction
           label="Create plan"
           onPress={onCreatePlan}
+          testID="library-create-plan"
         />
       )
     : (
@@ -1639,7 +1666,8 @@ export function LibraryScreen({
                 headerAction,
                 (
                   <SecondaryAction
-                    label="Actions"
+                    label={LIBRARY_ACTION_SHEET_CONFIGURATION.triggerLabel}
+                    nativeID="library-actions-trigger"
                     onPress={() => setActionsVisible(true)}
                     ref={actionsActionRef}
                   />
@@ -1916,31 +1944,26 @@ export function LibraryScreen({
         />
       )}
       <BottomSheet
-        heading="Library actions"
+        heading={LIBRARY_ACTION_SHEET_CONFIGURATION.heading}
         onCancel={() => setActionsVisible(false)}
         restoreFocusRef={actionsActionRef}
         testID="library-actions-sheet-frame"
         visible={actionsVisible}
       >
-        <PrimaryAction
-          label="Create plan"
-          onPress={() => {
-            setActionsVisible(false);
-            onCreatePlan();
-          }}
-        />
-        <SecondaryAction
-          label="Create exercise"
-          onPress={() => {
-            setActionsVisible(false);
-            onCreateExercise();
-          }}
-        />
-        <SecondaryAction
-          disabled
-          label="Import plan, unavailable, Later"
-          onPress={noOp}
-        />
+        {LIBRARY_ACTION_SHEET_CONFIGURATION.actions.map((action) => {
+          const onPress = action.id === "create-plan"
+            ? () => { setActionsVisible(false); onCreatePlan(); }
+            : action.id === "create-exercise"
+              ? () => { setActionsVisible(false); onCreateExercise(); }
+              : noOp;
+          const Action = action.tone === "primary" ? PrimaryAction : SecondaryAction;
+          return <Action
+            disabled={!action.enabled}
+            key={action.id}
+            label={action.label}
+            onPress={onPress}
+          />;
+        })}
       </BottomSheet>
       <BottomSheet
         heading="Exercise library changes"

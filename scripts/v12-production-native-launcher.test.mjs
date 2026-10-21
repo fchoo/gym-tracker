@@ -1,9 +1,21 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import test from "node:test";
+import { PassThrough } from "node:stream";
+import nodeTest from "node:test";
 import { createControlledRunner } from "./testing/v12-production-launcher/controlled-runner.mjs";
+import { V12_NATIVE_ACTION_TIMEOUT_MS } from "./v12-native-adapter.mjs";
+import {
+  V12_PRODUCTION_NATIVE_MAX_REQUEST_BYTES,
+  readV12ProductionNativeRequest,
+} from "./v12-production-native-adapter-launcher.mjs";
+import { V12_NATIVE_ADAPTER_EXIT_MARGIN_MS, V12_NATIVE_COMMAND_GRAPH, V12_QUALITY_ACTION_BUDGETS } from "./v12-native-time-budgets.mjs";
+
+const TEST_TIMEOUT_MS = 2 * 60_000;
+const test = (name, optionsOrFunction, maybeFunction) => typeof optionsOrFunction === "function"
+  ? nodeTest(name, { timeout: TEST_TIMEOUT_MS }, optionsOrFunction)
+  : nodeTest(name, { timeout: TEST_TIMEOUT_MS, ...optionsOrFunction }, maybeFunction);
 
 function fixture(t) { const value = createControlledRunner(); t.after(value.cleanup); return value; }
 function bounded(result, code = "command_failed") {
@@ -12,6 +24,77 @@ function bounded(result, code = "command_failed") {
   assert.equal(result.stdout, "");
   assert.doesNotMatch(result.stderr, /bearer|\/Users\/|private-native|device-private/u);
 }
+const listenerCounts = (stream) => Object.fromEntries(
+  ["data", "end", "error", "close"].map((event) => [event, stream.listenerCount(event)]),
+);
+async function rejectedRequest(trigger, pattern) {
+  const stream = new PassThrough();
+  const before = listenerCounts(stream);
+  const controller = new AbortController();
+  const request = readV12ProductionNativeRequest(stream, { signal: controller.signal });
+  await trigger({ stream, controller });
+  await assert.rejects(request, pattern);
+  assert.deepEqual(listenerCounts(stream), before);
+}
+
+test("readRequest parses one bounded request and removes every listener", async () => {
+  const stream = new PassThrough();
+  const before = listenerCounts(stream);
+  const request = readV12ProductionNativeRequest(stream);
+  stream.end('{"ok":true}');
+  assert.deepEqual(await request, { ok: true });
+  assert.deepEqual(listenerCounts(stream), before);
+});
+
+test("readRequest handles abort, stream error, premature close, and oversize without listener leaks", async () => {
+  await rejectedRequest(({ controller }) => controller.abort(), /termination_requested/u);
+  await rejectedRequest(({ stream }) => stream.emit("error", new Error("untrusted-stream-error")), /request_read_failed/u);
+  await rejectedRequest(({ stream }) => stream.emit("close"), /request_premature_close/u);
+  await rejectedRequest(({ stream }) => stream.write("x".repeat(V12_PRODUCTION_NATIVE_MAX_REQUEST_BYTES + 1)), /request_too_large/u);
+});
+
+test("termination interrupts launcher stdin startup after a deterministic readiness handshake", { timeout: 10_000 }, async () => {
+  const launcher = new URL("./v12-production-native-adapter-launcher.mjs", import.meta.url).pathname;
+  const environment = { ...process.env, NODE_ENV: "production" };
+  for (const key of ["V12_NATIVE_ADAPTER_COMMAND", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS", "NODE_TEST_CONTEXT"]) delete environment[key];
+  const child = spawn(process.execPath, [launcher, "--action", "acquire-lease"], {
+    cwd: process.cwd(),
+    env: environment,
+    stdio: ["pipe", "pipe", "pipe", "pipe"],
+  });
+  const stdout = [];
+  const stderr = [];
+  child.stdout.on("data", (chunk) => stdout.push(chunk));
+  child.stderr.on("data", (chunk) => stderr.push(chunk));
+  await new Promise((resolve, reject) => {
+    child.stdio[3].once("data", resolve);
+    child.once("error", reject);
+    child.once("close", () => reject(new Error("launcher_closed_before_ready")));
+  });
+  child.kill("SIGTERM");
+  const result = await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (status, signal) => resolve({ status, signal }));
+  });
+  assert.deepEqual(result, { status: 1, signal: null });
+  assert.equal(Buffer.concat(stdout).toString("utf8"), "");
+  assert.equal(Buffer.concat(stderr).toString("utf8"), "v12_production_native_launcher_termination_requested\n");
+});
+
+test("controlled and fake tools use structured async exit and drain discipline", () => {
+  for (const file of [
+    "scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs",
+    "scripts/testing/v12-phase20-blackbox/fake-device-tool.mjs",
+    "scripts/testing/v12-production-domain/controlled-domain-tool.mjs",
+    "scripts/testing/v12-production-launcher/controlled-device-tool.mjs",
+  ]) {
+    const source = readFileSync(file, "utf8");
+    assert.doesNotMatch(source, /process\.exit\(/u, file);
+    assert.match(source, /async function main\(/u, file);
+    assert.match(source, /process\.exitCode\s*=\s*await main\(\)/u, file);
+    assert.match(source, /await drain\(\)/u, file);
+  }
+});
 
 test("non-test harness exercises the default launcher without the fake adapter", () => {
   const result = spawnSync(process.execPath, ["scripts/testing/v12-production-launcher/controlled-runner.mjs"], { encoding: "utf8", timeout: 70_000 });
@@ -21,6 +104,26 @@ test("non-test harness exercises the default launcher without the fake adapter",
   assert.equal(output.adapter_override, false);
   assert.equal(output.native_evidence, false);
   assert.deepEqual(output.verified_actions, ["acquire-lease", "snapshot-settings", "restore-settings", "release-lease", "sqlite"]);
+});
+test("default launcher dispatches production quality actions instead of the unavailable fallback", (t) => {
+  const runner = fixture(t);
+  assert.deepEqual(runner.success("performance", { request: "identity" }), {
+    identity: {
+      base_head: runner.build.source.head,
+      source_tree_sha256: runner.build.source.tree_sha256,
+      apk_sha256: runner.build.build.apk.sha256,
+      installed_apk_sha256: runner.build.device.installed_apk_sha256,
+      package: runner.build.build.package,
+      device_identity_sha256: runner.build.device.identity_sha256,
+      fixture_sha256: runner.build.fixtures.registry_sha256,
+    },
+  });
+  bounded(runner.invoke("accessibility"), "quality_instrumentation_missing");
+});
+test("quality adapter subprocesses use the shared command-graph deadlines", () => {
+  for (const action of ["accessibility", "performance"]) {
+    assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS[action], V12_QUALITY_ACTION_BUDGETS[action].max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS);
+  }
 });
 test("wrong lease cannot read, restore or release settings", (t) => {
   const runner = fixture(t);
@@ -41,6 +144,31 @@ test("only saved settings can be restored; absent settings are deleted", (t) => 
   assert.equal(runner.success("restore-settings", { lease, settings }), true);
   assert.equal(runner.readState().settings.transition_animation_scale, undefined);
   assert.equal(runner.success("release-lease", { lease }), true);
+});
+test("Calendar snapshots every display setting under the lease and releases only after read-back", (t) => {
+  const runner = fixture(t);
+  const result = runner.calendarSettingsScenario();
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.deepEqual(Object.keys(output.calendar), ["values", "airplane", "size", "density", "night"]);
+  assert.deepEqual(output.calendar.size, { physical: "1080x2340", override: null });
+  assert.deepEqual(output.calendar.density, { physical: "420", override: null });
+  assert.equal(output.calendar.night, "auto");
+  assert.equal(output.restore_error, null);
+  assert.equal(output.release_error, null);
+  assert.equal(existsSync(path.join(runner.scratch, "lock")), false);
+});
+test("Calendar restoration failure keeps the persisted snapshot and lease", (t) => {
+  const runner = fixture(t);
+  runner.updateState({ ignoredCalendarSetting: "night" });
+  const result = runner.calendarSettingsScenario();
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.match(output.restore_error, /settings_restore_failed/u);
+  assert.match(output.release_error, /settings_restore_failed/u);
+  const owner = JSON.parse(readFileSync(path.join(runner.scratch, "lock", "owner.json"), "utf8"));
+  assert.equal(owner.calendar_restored, false);
+  assert.deepEqual(owner.calendar_settings, output.calendar);
 });
 for (const failure of ["failedSetting", "ignoredSetting"]) test(`${failure}: restoration cannot report success or relinquish the lease`, (t) => {
   const runner = fixture(t);
@@ -75,6 +203,13 @@ for (const [name, update, code] of [
   assert.ok(Date.now() - started < 5_000);
   assert.equal(existsSync(path.join(runner.scratch, "lock")), false);
 });
+test("lease acquisition failure after owner read runs both cleanup commands", (t) => {
+  const runner = fixture(t); runner.updateState({ invalidOwnerRead: true });
+  bounded(runner.invoke("acquire-lease"), "lease_invalid");
+  assert.equal(runner.readState().commands.length,
+    V12_NATIVE_COMMAND_GRAPH.runtime_initialization.length + V12_NATIVE_COMMAND_GRAPH.acquire_lease.failure_after_owner_read.length);
+  assert.equal(existsSync(path.join(runner.scratch, "lock")), false);
+});
 test("SQLite returns exact native counts and never reconstructs them", (t) => {
   const runner = fixture(t);
   assert.deepEqual(runner.success("sqlite"), { status: "passed", contract: runner.contract });
@@ -98,9 +233,33 @@ for (const marker of ["missingMarker", "staleMarker", "routeError"]) test(`SQLit
   assert.equal(existsSync(path.join(runner.scratch, "lock")), false);
   assert.equal(runner.readState().settings.font_scale, "1.15");
 });
-for (const action of ["visual-capture", "visual-capture-batch", "visual-compare", "accessibility", "performance", "garmin", "calendar"]) {
-  test(`${action} cannot return invented native observations`, (t) => {
+for (const action of ["visual-capture", "visual-capture-batch", "visual-compare", "accessibility", "performance", "calendar", "recovery", "garmin"]) {
+  test(`${action} reaches its checked-in production action module`, (t) => {
     const runner = fixture(t);
-    bounded(runner.invoke(action), "action_contract_unavailable");
+    const result = runner.invoke(action);
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(result.stderr, /action_contract_unavailable/u);
+    assert.doesNotMatch(result.stderr, /bearer|\/Users\/|private-native|device-private/u);
   });
 }
+test("performance identity dispatches through the production quality module", (t) => {
+  const runner = fixture(t);
+  const result = runner.success("performance", { request: "identity" });
+  assert.equal(result.identity.source_tree_sha256, runner.build.source.tree_sha256);
+  assert.equal(result.identity.apk_sha256, runner.build.build.apk.sha256);
+});
+test("unknown actions fail closed before a module can run", (t) => {
+  const runner = fixture(t);
+  bounded(runner.invoke("unknown-action"), "action_invalid");
+});
+test("the launcher itself rejects undeclared actions before reading a request", () => {
+  const launcher = path.join(process.cwd(), "scripts/v12-production-native-adapter-launcher.mjs");
+  const environment = { ...process.env, NODE_ENV: "production" };
+  for (const key of ["V12_NATIVE_ADAPTER_COMMAND", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS", "NODE_TEST_CONTEXT"]) delete environment[key];
+  const result = spawnSync(process.execPath, [launcher, "--action", "unknown-action"], {
+    cwd: process.cwd(), env: environment, input: "{}", encoding: "utf8", timeout: 5_000,
+  });
+  assert.notEqual(result.status, 0);
+  assert.equal(result.stdout, "");
+  assert.equal(result.stderr, "v12_production_native_launcher_action_invalid\n");
+});

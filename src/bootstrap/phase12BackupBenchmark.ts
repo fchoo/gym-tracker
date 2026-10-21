@@ -56,6 +56,21 @@ export const PHASE12_DIRTY_SAMPLES = 100;
 export const PHASE12_WRITER_SAMPLES = 20;
 export const PHASE12_MERGE_SAMPLES = 10;
 
+export type Phase12BackupBenchmarkControls = Readonly<{
+  signal?: Readonly<{ aborted: boolean }>;
+  yieldControl?: () => Promise<void>;
+}>;
+
+function assertPhase12BenchmarkActive(controls: Phase12BackupBenchmarkControls | undefined): void {
+  if (controls?.signal?.aborted === true) throw new Error("phase12_benchmark_cancelled");
+}
+
+async function phase12BenchmarkCheckpoint(controls: Phase12BackupBenchmarkControls | undefined): Promise<void> {
+  assertPhase12BenchmarkActive(controls);
+  await (controls?.yieldControl ?? (() => new Promise<void>((resolve) => setTimeout(resolve, 0))))();
+  assertPhase12BenchmarkActive(controls);
+}
+
 const DATABASE_PREFIX = "gym-tracker-phase12-benchmark";
 
 export function phase12BenchmarkDatabaseName(uuid: string): string {
@@ -261,14 +276,19 @@ export function buildPhase12SyntheticSnapshot(
   return fixture;
 }
 
-export async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
+export async function seedMaximumHistory(
+  kernel: SqliteKernel,
+  controls?: Phase12BackupBenchmarkControls,
+): Promise<void> {
   const totalRows = Object.values(PHASE12_SQLITE_FIXTURE_ROW_COUNTS)
     .reduce((total, count) => total + count, 0);
   if (totalRows !== PHASE12_MAX_SNAPSHOT_ROWS
     || Math.max(...Object.values(PHASE12_SQLITE_FIXTURE_ROW_COUNTS)) > ROWS_PER_TABLE) {
     throw new Error("phase12_sqlite_fixture_distribution_invalid");
   }
+  await phase12BenchmarkCheckpoint(controls);
   await kernel.write(async (transaction) => {
+    assertPhase12BenchmarkActive(controls);
     await transaction.execute(
       `INSERT INTO exercises
         (id, content_pack_id, origin, source_namespace, upstream_id, name,
@@ -278,6 +298,7 @@ export async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
                'load_reps', 1, 1, 'Unspecified', 90, 1, ?)`,
       [PHASE12_BENCHMARK_EXERCISE_PORTABLE_ID],
     );
+    assertPhase12BenchmarkActive(controls);
     await transaction.execute(
       `INSERT INTO exercise_library_entries
         (exercise_id, origin, canonical_name, exercise_type, movement_class,
@@ -286,6 +307,7 @@ export async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
        VALUES ('benchmark-exercise', 'custom', 'Benchmark', 'strength', 'compound',
                'load_reps', 1, 1, 'available', 1)`,
     );
+    assertPhase12BenchmarkActive(controls);
     await transaction.execute(
       `WITH RECURSIVE sequence(value) AS (
          VALUES(0) UNION ALL SELECT value + 1 FROM sequence WHERE value + 1 < ?
@@ -297,6 +319,7 @@ export async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
        FROM sequence`,
       [ALIAS_ROWS],
     );
+    assertPhase12BenchmarkActive(controls);
     await transaction.execute(
       `INSERT INTO workout_sessions
         (id, plan_id, plan_day_id, source, status, local_date, timezone,
@@ -307,6 +330,7 @@ export async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
                0, 0, 0, 0, 0, ?, 0)`,
       [portableId(1)],
     );
+    assertPhase12BenchmarkActive(controls);
     await transaction.execute(
       `INSERT INTO session_exercises
         (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal, origin,
@@ -316,6 +340,7 @@ export async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
        VALUES ('e', 's', NULL, 'benchmark-exercise', 0, 'added', 0, 'Benchmark',
                'load_reps', 1, 1, '{"version":1,"mode":"off"}', 90, 1, 'completed', 1)`,
     );
+    assertPhase12BenchmarkActive(controls);
     await transaction.execute(
       `WITH RECURSIVE sequence(value) AS (
          VALUES(0) UNION ALL SELECT value + 1 FROM sequence WHERE value + 1 < ?
@@ -325,6 +350,7 @@ export async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
        FROM sequence`,
       [SQLITE_APP_SETTING_ROWS],
     );
+    assertPhase12BenchmarkActive(controls);
     await transaction.execute(
       `WITH RECURSIVE sequence(value) AS (
          VALUES(0) UNION ALL SELECT value + 1 FROM sequence WHERE value + 1 < ?
@@ -336,6 +362,7 @@ export async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
        FROM sequence`,
       [ROWS_PER_TABLE],
     );
+    assertPhase12BenchmarkActive(controls);
     await transaction.execute(
       `WITH RECURSIVE sequence(value) AS (
          VALUES(0) UNION ALL SELECT value + 1 FROM sequence WHERE value + 1 < ?
@@ -351,6 +378,7 @@ export async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
        FROM sequence`,
       [ROWS_PER_TABLE],
     );
+    assertPhase12BenchmarkActive(controls);
     await transaction.execute(
       `WITH RECURSIVE sequence(value) AS (
          VALUES(0) UNION ALL SELECT value + 1 FROM sequence WHERE value + 1 < ?
@@ -367,6 +395,7 @@ export async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
       [REORDER_RECEIPT_ROWS],
     );
   });
+  assertPhase12BenchmarkActive(controls);
   const collector = createLogicalBackupRepository(kernel);
   const baseline = await collector.collect({ snapshotId: "phase12-writer-00", createdAtMs: 100 });
   const baselineBytes = encodedBytes(baseline);
@@ -384,12 +413,15 @@ export async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
   if (encodedBytes(maximumPaddedValue) > BACKUP_LIMITS.maxStringBytes) {
     throw new Error("phase12_sqlite_fixture_padding_invalid");
   }
+  await phase12BenchmarkCheckpoint(controls);
   await kernel.write(async (transaction) => {
+    assertPhase12BenchmarkActive(controls);
     await transaction.execute(
       "UPDATE app_settings SET value_json = ?",
       [JSON.stringify({ padding: "x".repeat(each) })],
     );
     if (remainder > 0) {
+      assertPhase12BenchmarkActive(controls);
       await transaction.execute(
         "UPDATE app_settings SET value_json = ? WHERE key < ?",
         [
@@ -407,18 +439,22 @@ export async function measureReaderSnapshotWithConcurrentMutation(input: Readonl
   mutate(): Promise<void>;
   now(): number;
   sample: number;
+  controls?: Phase12BackupBenchmarkControls;
 }>): Promise<Readonly<{
   snapshot: Awaited<ReturnType<AutomaticSnapshotCapturePort["capture"]>>["snapshot"];
   writerOccupancyMs: number;
   captureTotalMs: number;
 }>> {
+  assertPhase12BenchmarkActive(input.controls);
   const captureStarted = input.now();
   const capturePromise = input.capture.capture({
     snapshotId: `phase12-writer-${input.sample.toString().padStart(2, "0")}`,
     createdAtMs: 100 + input.sample,
   });
   await input.waitForCopyStart;
+  assertPhase12BenchmarkActive(input.controls);
   const writerStarted = input.now();
+  assertPhase12BenchmarkActive(input.controls);
   await input.mutate();
   const writerOccupancyMs = input.now() - writerStarted;
   const captured = await capturePromise;
@@ -429,20 +465,36 @@ export async function measureReaderSnapshotWithConcurrentMutation(input: Readonl
   });
 }
 
-export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenchmarkResult> {
+export type Phase12BackupBenchmarkObserver = (sample: Readonly<{
+  operation: "dirty-trigger" | "writer-occupancy" | "merge-preflight" | "merge-materialization";
+  sequence: number;
+  startMs: number;
+  endMs: number;
+}>) => void;
+
+export async function performPhase12BackupBenchmark(
+  observeSample?: Phase12BackupBenchmarkObserver,
+  observeDatabaseName?: (databaseName: string) => void,
+  controls: Phase12BackupBenchmarkControls = {},
+): Promise<Phase12BackupBenchmarkResult> {
+  await phase12BenchmarkCheckpoint(controls);
   const startedAt = new Date().toISOString();
   const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
   const databaseName = phase12BenchmarkDatabaseName(randomUUID());
+  observeDatabaseName?.(databaseName);
+  assertPhase12BenchmarkActive(controls);
   const kernel = await openSqliteKernel(databaseName);
   try {
+    await phase12BenchmarkCheckpoint(controls);
     await migrateBenchmarkDatabase("phase12", databaseName, kernel);
     const sqliteMaxVariableNumber = await phase12SqliteVariableLimit(kernel);
-    await seedMaximumHistory(kernel);
+    await seedMaximumHistory(kernel, controls);
     const writerOccupancyMs: number[] = [];
     const captureTotalMs: number[] = [];
     let snapshotBytes: number | undefined;
     let totalRows: number | undefined;
     for (let index = 0; index < PHASE12_WRITER_SAMPLES; index += 1) {
+      await phase12BenchmarkCheckpoint(controls);
       console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({ stage: "capture", sample: index })}`);
       let signalCopyStarted: (() => void) | undefined;
       const waitForCopyStart = new Promise<void>((resolve) => { signalCopyStarted = resolve; });
@@ -454,6 +506,7 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
         capture,
         waitForCopyStart,
         mutate: async () => {
+          assertPhase12BenchmarkActive(controls);
           const mutation = await kernel.write((transaction) => transaction.execute(
             "UPDATE app_settings SET value_json = value_json WHERE key = ?",
             ["k000000"],
@@ -462,8 +515,12 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
         },
         now: () => performance.now(),
         sample: index,
+        controls,
       });
       writerOccupancyMs.push(measured.writerOccupancyMs);
+      const writerObservedAt = performance.now();
+      observeSample?.({ operation: "writer-occupancy", sequence: index + 1,
+        startMs: writerObservedAt - measured.writerOccupancyMs, endMs: writerObservedAt });
       captureTotalMs.push(measured.captureTotalMs);
       if (snapshotBytes === undefined) {
         snapshotBytes = phase12EncodedDriveObjectBytes(measured.snapshot);
@@ -476,13 +533,17 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
     }
     const dirtyTriggerMs: number[] = [];
     for (let index = 0; index < PHASE12_DIRTY_SAMPLES; index += 1) {
+      await phase12BenchmarkCheckpoint(controls);
       const started = performance.now();
+      assertPhase12BenchmarkActive(controls);
       const mutation = await kernel.write((transaction) => transaction.execute(
         "UPDATE app_settings SET revision = revision + 1, updated_at_ms = ? WHERE key = ?",
         [index + 1_000_000, "k000000"],
       ));
       if (mutation.changes !== 1) throw new Error("phase12_dirty_trigger_mutation_missing");
-      dirtyTriggerMs.push(performance.now() - started);
+      const ended = performance.now();
+      dirtyTriggerMs.push(ended - started);
+      observeSample?.({ operation: "dirty-trigger", sequence: index + 1, startMs: started, endMs: ended });
     }
     const mergePreflightMs: number[] = [];
     const mergeSerializationMs: number[] = [];
@@ -493,6 +554,7 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
       const archive = buildPhase12SyntheticSnapshot(2);
       const local = buildPhase12SyntheticSnapshot(1);
       for (let index = 0; index < PHASE12_MERGE_SAMPLES; index += 1) {
+        await phase12BenchmarkCheckpoint(controls);
         console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({ stage: "merge", sample: index })}`);
         const started = performance.now();
         const plan = await buildPortableMergePlan({
@@ -503,7 +565,9 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
             return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
           },
         });
-        mergePreflightMs.push(performance.now() - started);
+        const ended = performance.now();
+        mergePreflightMs.push(ended - started);
+        observeSample?.({ operation: "merge-preflight", sequence: index + 1, startMs: started, endMs: ended });
         if (shouldMaterializePhase12MergeSample(index)) materializationSampleCount += 1;
         if (shouldSerializePhase12MergeSample(index)) {
           const serializationStarted = performance.now();
@@ -554,6 +618,7 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
       },
     });
     for (let index = 0; index < materializationSampleCount; index += 1) {
+      await phase12BenchmarkCheckpoint(controls);
       materializationSample = index;
       const planningStarted = performance.now();
       console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({
@@ -595,6 +660,7 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
         event: "started",
       })}`);
       try {
+        assertPhase12BenchmarkActive(controls);
         await mergeWriter.commitFullPlan({
           localFingerprint,
           plan,
@@ -602,6 +668,8 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
       } catch (error) { throw phase12BenchmarkError(error, index, mergeStage); }
       const materializationElapsedMs = performance.now() - materializationStarted;
       mergeMaterializationMs.push(materializationElapsedMs);
+      observeSample?.({ operation: "merge-materialization", sequence: index + 1,
+        startMs: materializationStarted, endMs: materializationStarted + materializationElapsedMs });
       console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({
         stage: "materialization",
         sample: index,

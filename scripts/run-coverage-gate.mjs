@@ -5,6 +5,7 @@ import {
   spawnSync,
 } from "node:child_process";
 import {
+  readdirSync,
   readFileSync,
   rmSync,
 } from "node:fs";
@@ -13,10 +14,18 @@ import process from "node:process";
 import { createRequire } from "node:module";
 
 import { loadPhase18LanguageCoverageReports } from "./phase18-language-coverage.mjs";
+import { runPhase20SubprocessCoverage } from "./phase20-subprocess-coverage.mjs";
+
+const REQUIRED_NODE_VERSION = "24.19.0";
+if (process.versions.node !== REQUIRED_NODE_VERSION) {
+  console.error(`phase20_node_version_invalid:${REQUIRED_NODE_VERSION}:${process.versions.node}`);
+  process.exit(1);
+}
 
 const projectRoot = process.cwd();
 const coverageDirectory = path.join(projectRoot, "coverage");
 const summaryPath = path.join(coverageDirectory, "coverage-summary.json");
+const PHASE18_EVIDENCE_TIMEOUT_MS = 30 * 60_000;
 const phase19CoverageManifest = JSON.parse(readFileSync(
   path.join(projectRoot, "scripts/phase19-integrity-coverage.json"),
   "utf8",
@@ -84,6 +93,7 @@ const phase18EvidenceTests = [
   "scripts/phase18-verifier-cli.test.mjs",
   "scripts/run-phase18-python-coverage.test.mjs",
   "scripts/run-phase18-kotlin-coverage.test.mjs",
+  "scripts/verify-phase18-plan-coverage.test.mjs",
 ];
 const phase18EvidenceFiles = [
   "scripts/acceptance-runner-evidence.mjs",
@@ -125,20 +135,230 @@ const phase16EvidenceFiles = [
   "scripts/v12-calendar-case-evidence.mjs",
   "scripts/v12-calendar-case-registry.mjs",
 ];
-const phase20EvidenceTests = [
+const phase20EvidenceTests = Object.freeze([
+  "scripts/benchmark-v12-interactions.test.mjs",
+  "scripts/build-current-native-test-apk.test.mjs",
+  "scripts/capture-v12-visual.test.mjs",
+  "scripts/compare-v12-visual.test.mjs",
+  "scripts/create-v12-readiness-handoff.test.mjs",
+  "scripts/create-v12-run-manifest.test.mjs",
+  "scripts/doctor-android.test.mjs",
+  "scripts/generate-phase20-visual-state-registry.test.mjs",
+  "scripts/generate-v12-attended-checklist.test.mjs",
   "scripts/native-device-selection.test.mjs",
-];
-const phase20EvidenceFiles = [
-  "scripts/native-device-selection.mjs",
-];
+  "scripts/phase20-integrity-coverage.test.mjs",
+  "scripts/phase20-subprocess-coverage.test.mjs",
+  "scripts/phase20-visual-integrity-coverage.test.mjs",
+  "scripts/run-coverage-gate.test.mjs",
+  "scripts/run-v12-maestro.test.mjs",
+  "scripts/source-tree-digest.test.mjs",
+  "scripts/v12-accessibility-shard.test.mjs",
+  "scripts/v12-artifact-privacy.test.mjs",
+  "scripts/v12-atomic-publication.integration.test.mjs",
+  "scripts/v12-atomic-shard-publication.test.mjs",
+  "scripts/v12-blocker-row-resolver.test.mjs",
+  "scripts/v12-calendar-artifact-transport.test.mjs",
+  "scripts/v12-calendar-cli-blackbox.test.mjs",
+  "scripts/v12-calendar-comparison.test.mjs",
+  "scripts/v12-calendar-evidence-coverage.test.mjs",
+  "scripts/v12-calendar-observation-contract.test.mjs",
+  "scripts/v12-calendar-shard.test.mjs",
+  "scripts/v12-device-settings-contract.test.mjs",
+  "scripts/v12-evidence-contract.test.mjs",
+  "scripts/v12-evidence-scripts.test.mjs",
+  "scripts/v12-garmin-shard.test.mjs",
+  "scripts/v12-maestro-route-contract.test.mjs",
+  "scripts/v12-native-adapter-attestation.test.mjs",
+  "scripts/v12-native-execution-origin.test.mjs",
+  "scripts/v12-performance-shard.test.mjs",
+  "scripts/v12-phase20-cli-blackbox.test.mjs",
+  "scripts/v12-preflight-contract.test.mjs",
+  "scripts/v12-production-domain-receipts.test.mjs",
+  "scripts/v12-production-native-calendar-action.test.mjs",
+  "scripts/v12-production-native-domain-actions.test.mjs",
+  "scripts/v12-production-native-launcher.test.mjs",
+  "scripts/v12-production-native-quality-actions.test.mjs",
+  "scripts/v12-production-native-visual-actions.test.mjs",
+  "scripts/v12-quality-evidence-contract.test.mjs",
+  "scripts/v12-quality-maestro-contract.test.mjs",
+  "scripts/v12-recovery-shard.test.mjs",
+  "scripts/v12-sqlite-shard.test.mjs",
+  "scripts/validate-v12-prebuild-predecessors.test.mjs",
+  "scripts/verify-v12-native-evidence.security.test.mjs",
+]);
+const phase20SupportTests = new Set([
+  "build-current-native-test-apk.test.mjs",
+  "doctor-android.test.mjs",
+  "native-device-selection.test.mjs",
+  "run-coverage-gate.test.mjs",
+  "source-tree-digest.test.mjs",
+  "validate-v12-prebuild-predecessors.test.mjs",
+]);
+const isPhase20EvidenceTest = (file) => file.endsWith(".test.mjs")
+  && (file.includes("v12") || file.includes("phase20") || phase20SupportTests.has(file));
+function validateEvidenceTestManifest({ tests, isEvidenceTest, error, expectedCount }) {
+  const discovered = readdirSync(path.join(projectRoot, "scripts"))
+    .filter(isEvidenceTest)
+    .map((file) => `scripts/${file}`)
+    .sort();
+  const registered = [...tests].sort();
+  const missing = discovered.filter((file) => !registered.includes(file));
+  const stale = registered.filter((file) => !discovered.includes(file));
+  if (missing.length > 0 || stale.length > 0 || registered.length !== expectedCount) {
+    throw new Error(JSON.stringify({
+      error,
+      expected_count: expectedCount,
+      registered_count: registered.length,
+      discovered_count: discovered.length,
+      missing,
+      stale,
+    }));
+  }
+  return registered;
+}
+const phase20NativeActionTests = new Set([
+  "scripts/v12-native-adapter-attestation.test.mjs",
+  "scripts/v12-native-execution-origin.test.mjs",
+  "scripts/v12-production-native-domain-actions.test.mjs",
+  "scripts/v12-production-native-launcher.test.mjs",
+  "scripts/v12-production-native-quality-actions.test.mjs",
+  "scripts/v12-production-native-visual-actions.test.mjs",
+]);
+const phase20NativeCoverageTests = new Set([
+  "scripts/v12-native-adapter-attestation.test.mjs",
+  "scripts/v12-native-execution-origin.test.mjs",
+]);
+const phase20BlackBoxTests = new Set([
+  "scripts/v12-phase20-cli-blackbox.test.mjs",
+]);
+const phase20CliCoverageTests = new Set([
+  "scripts/phase20-subprocess-coverage.test.mjs",
+]);
+const phase20FixtureCoverageTests = new Set([
+  "scripts/create-v12-readiness-handoff.test.mjs",
+  "scripts/phase20-integrity-coverage.test.mjs",
+  "scripts/run-v12-maestro.test.mjs",
+  "scripts/v12-blocker-row-resolver.test.mjs",
+  "scripts/v12-calendar-evidence-coverage.test.mjs",
+  "scripts/v12-evidence-scripts.test.mjs",
+  "scripts/v12-preflight-contract.test.mjs",
+  "scripts/verify-v12-native-evidence.security.test.mjs",
+]);
+const phase20FixtureVisualCoverageTests = new Set([
+  "scripts/capture-v12-visual.test.mjs",
+  "scripts/compare-v12-visual.test.mjs",
+  "scripts/phase20-visual-integrity-coverage.test.mjs",
+]);
+const phase20CoverageFixture = path.join(coverageDirectory, "phase20-node/blackbox-fixture");
+const phase20EvidenceProjects = Object.freeze([
+  Object.freeze({
+    name: "contracts",
+    concurrency: 2,
+    modules: Object.freeze([
+      "scripts/v12-artifact-privacy.mjs",
+      "scripts/v12-atomic-shard-publication.mjs",
+      "scripts/v12-calendar-artifact-transport.mjs",
+      "scripts/v12-sqlite-producer-contract.mjs",
+      "scripts/v12-sqlite-shard.mjs",
+    ]),
+    tests: phase20EvidenceTests.filter((file) =>
+      !phase20NativeActionTests.has(file)
+      && !phase20BlackBoxTests.has(file)
+      && !phase20CliCoverageTests.has(file)
+      && !phase20FixtureCoverageTests.has(file)
+      && !phase20FixtureVisualCoverageTests.has(file)),
+  }),
+  Object.freeze({
+    name: "native-actions",
+    concurrency: 2,
+    modules: Object.freeze([
+      "scripts/v12-native-adapter.mjs",
+      "scripts/v12-native-execution-origin.mjs",
+      "scripts/v12-native-time-budgets.mjs",
+    ]),
+    tests: [...phase20NativeCoverageTests],
+  }),
+  Object.freeze({
+    name: "native-fixtures",
+    concurrency: 1,
+    coverage: false,
+    tests: [...phase20NativeActionTests].filter((file) => !phase20NativeCoverageTests.has(file)),
+  }),
+  Object.freeze({
+    name: "cli-blackbox",
+    concurrency: 1,
+    coverage: false,
+    timeoutMs: 50 * 60_000,
+    tests: [...phase20BlackBoxTests],
+    env: Object.freeze({ V12_PHASE20_COVERAGE_FIXTURE: phase20CoverageFixture }),
+  }),
+  Object.freeze({
+    name: "cli-coverage",
+    concurrency: 1,
+    tests: [...phase20CliCoverageTests],
+    modules: Object.freeze([
+      "scripts/capture-v12-visual.mjs",
+      "scripts/compare-v12-visual.mjs",
+      "scripts/create-v12-readiness-handoff.mjs",
+      "scripts/v12-artifact-privacy.mjs",
+      "scripts/v12-atomic-shard-publication.mjs",
+      "scripts/v12-blocker-row-resolver.mjs",
+      "scripts/v12-calendar-artifact-transport.mjs",
+      "scripts/v12-native-adapter.mjs",
+      "scripts/v12-native-execution-origin.mjs",
+      "scripts/v12-native-time-budgets.mjs",
+      "scripts/v12-rollback-evidence.mjs",
+      "scripts/v12-sqlite-producer-contract.mjs",
+      "scripts/v12-sqlite-shard.mjs",
+      "scripts/v12-visual-streaming.mjs",
+      "scripts/verify-v12-native-evidence.mjs",
+    ]),
+    env: Object.freeze({ V12_PHASE20_COVERAGE_FIXTURE: phase20CoverageFixture }),
+  }),
+  Object.freeze({
+    name: "fixture-coverage",
+    concurrency: 1,
+    modules: Object.freeze([
+      "scripts/capture-v12-visual.mjs",
+      "scripts/compare-v12-visual.mjs",
+      "scripts/create-v12-readiness-handoff.mjs",
+      "scripts/v12-blocker-row-resolver.mjs",
+      "scripts/v12-rollback-evidence.mjs",
+      "scripts/v12-visual-streaming.mjs",
+      "scripts/verify-v12-native-evidence.mjs",
+    ]),
+    tests: [...phase20FixtureCoverageTests, ...phase20FixtureVisualCoverageTests],
+    env: Object.freeze({
+      NODE_ENV: "test",
+      V12_NATIVE_ADAPTER_TEST_MODE: "phase20-native-adapter-subprocess",
+      V12_NATIVE_ADAPTER_TEST_PROCESS: "1",
+      V12_PHASE20_COVERAGE_FIXTURE: phase20CoverageFixture,
+    }),
+  }),
+]);
 const phase20IntegrityCriticalFiles = [
   "src/bootstrap/v12AcceptanceBenchmark.ts",
+  "src/testing/v12NativeAcceptanceExecutor.ts",
+  "src/testing/contracts/phase15Workout.contract.ts",
   "src/testing/contracts/v12Acceptance.contract.ts",
   "src/testing/contracts/v12Accessibility.contract.ts",
   "src/testing/contracts/v12CalendarAcceptance.contract.ts",
   "src/testing/contracts/v12GarminAcceptance.contract.ts",
   "src/testing/contracts/v12Recovery.contract.ts",
 ];
+const phase20CoverageClassifications = Object.freeze({
+  required_percent: 100,
+  metrics: Object.freeze(["statements", "branches", "functions", "lines"]),
+  node_v8_projects: Object.freeze(phase20EvidenceProjects
+    .map(({ name, coverage, modules = [], tests, timeoutMs }) => Object.freeze({
+      name,
+      coverage: coverage !== false,
+      modules: Object.freeze([...modules]),
+      tests: Object.freeze([...tests]),
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    }))),
+  jest_istanbul_modules: Object.freeze([...phase20IntegrityCriticalFiles]),
+});
 const phase19IntegrityCriticalFiles = phase19CoverageManifest.required_files;
 const integrityCriticalFiles = [
   "src/domains/content/catalog.ts",
@@ -501,6 +721,10 @@ let focusPhase18 = false;
 let focusPhase16Evidence = false;
 let focusPhase19 = false;
 let focusPhase20 = false;
+let phase20EvidenceOnly = false;
+let allEvidenceOnly = false;
+let listEvidenceTests = false;
+let skipPhase20Evidence = false;
 for (let index = 0; index < forwarded.length; index += 1) {
   const argument = forwarded[index];
   if (argument === "--focus-phase18") {
@@ -511,6 +735,15 @@ for (let index = 0; index < forwarded.length; index += 1) {
     focusPhase19 = true;
   } else if (argument === "--focus-phase20") {
     focusPhase20 = true;
+  } else if (argument === "--phase20-evidence-only") {
+    phase20EvidenceOnly = true;
+  } else if (argument === "--all-evidence-only") {
+    allEvidenceOnly = true;
+  } else if (argument === "--list-phase20-evidence-tests"
+    || argument === "--list-evidence-tests") {
+    listEvidenceTests = true;
+  } else if (argument === "--skip-phase20-evidence") {
+    skipPhase20Evidence = true;
   } else if (argument.startsWith("--focus-integrity=")) {
     focusedIntegrityFiles.push(...argument.slice("--focus-integrity=".length).split(",").filter(Boolean));
   } else if (argument.startsWith("--focus-project=")) {
@@ -523,29 +756,65 @@ for (let index = 0; index < forwarded.length; index += 1) {
     jestForwarded.push(argument);
   }
 }
+const registeredPhase20EvidenceTests = validateEvidenceTestManifest({
+  tests: phase20EvidenceTests,
+  isEvidenceTest: isPhase20EvidenceTest,
+  error: "phase20_evidence_test_manifest_drift",
+  expectedCount: 49,
+});
+const expectedPhase20ProjectNames = [
+  "contracts",
+  "native-actions",
+  "native-fixtures",
+  "cli-blackbox",
+  "cli-coverage",
+  "fixture-coverage",
+];
+const assignedPhase20Tests = phase20EvidenceProjects.flatMap(({ tests }) => tests);
+const assignedPhase20Modules = new Set(phase20EvidenceProjects.flatMap(({ modules = [] }) => modules));
+if (JSON.stringify(phase20EvidenceProjects.map(({ name }) => name)) !== JSON.stringify(expectedPhase20ProjectNames)
+  || assignedPhase20Tests.length !== 49
+  || new Set(assignedPhase20Tests).size !== 49
+  || JSON.stringify([...assignedPhase20Tests].sort()) !== JSON.stringify(registeredPhase20EvidenceTests)
+  || assignedPhase20Modules.size !== 15
+  || phase20EvidenceProjects.find(({ name }) => name === "cli-blackbox")?.coverage !== false) {
+  throw new Error(JSON.stringify({
+    error: "phase20_coverage_project_manifest_invalid",
+    project_count: phase20EvidenceProjects.length,
+    test_count: assignedPhase20Tests.length,
+    unique_test_count: new Set(assignedPhase20Tests).size,
+    integrity_module_count: assignedPhase20Modules.size,
+  }));
+}
+const registeredPhase18EvidenceTests = validateEvidenceTestManifest({
+  tests: phase18EvidenceTests,
+  isEvidenceTest: (file) => file.endsWith(".test.mjs") && file.includes("phase18"),
+  error: "phase18_evidence_test_manifest_drift",
+  expectedCount: 18,
+});
+if (listEvidenceTests) {
+  console.log(JSON.stringify({
+    ok: true,
+    phase20: registeredPhase20EvidenceTests,
+    phase18: registeredPhase18EvidenceTests,
+    phase20_coverage: phase20CoverageClassifications,
+  }));
+  process.exit(0);
+}
 if (focusPhase16Evidence) {
   focusedIntegrityFiles.push("src/bootstrap/phase16CalendarTestControls.ts");
   focusedProjects.push("unit");
   jestForwarded.push("src/bootstrap/phase16CalendarTestControls.test.ts");
 }
-if (!focusPhase16Evidence && !focusPhase18) {
-  const evidence = spawnSync(
-    process.execPath,
-    [
-      "--experimental-test-coverage",
-      "--test-concurrency=1",
-      ...phase20EvidenceFiles.map((file) => `--test-coverage-include=${file}`),
-      "--test-coverage-lines=100",
-      "--test-coverage-branches=100",
-      "--test-coverage-functions=100",
-      "--test",
-      ...phase20EvidenceTests,
-    ],
-    { cwd: projectRoot, encoding: "utf8", stdio: "inherit" },
-  );
-  if (evidence.error !== undefined) throw evidence.error;
-  if (evidence.status !== 0) process.exit(evidence.status ?? 1);
+if (!skipPhase20Evidence && (allEvidenceOnly || phase20EvidenceOnly || focusPhase20
+  || (!focusPhase16Evidence && !focusPhase18 && !focusPhase19))) {
+  await runPhase20SubprocessCoverage({
+    projectRoot,
+    projects: phase20EvidenceProjects,
+    maxParallel: 1,
+  });
 }
+if (phase20EvidenceOnly) process.exit(0);
 if (focusPhase18) {
   focusedIntegrityFiles.push(...phase18IntegrityCriticalFiles);
   focusedProjects.push("unit", "components", "sqlite-host", "integration");
@@ -558,14 +827,17 @@ if (focusPhase19) {
 }
 if (focusPhase20) {
   focusedIntegrityFiles.push(...phase20IntegrityCriticalFiles);
-  focusedProjects.push("unit", "components");
+  focusedProjects.push("unit", "sqlite-host");
   jestForwarded.push(
     "src/bootstrap/v12AcceptanceBenchmark.test.ts",
+    "src/testing/v12NativeAcceptanceExecutor.test.ts",
+    "tests/sqlite-host/v12NativeAcceptanceOperations.test.ts",
     "src/testing/contracts/v12Acceptance.contract.test.ts",
     "src/testing/contracts/v12Accessibility.contract.test.ts",
     "src/testing/contracts/v12CalendarAcceptance.contract.test.ts",
     "src/testing/contracts/v12GarminAcceptance.contract.test.ts",
     "src/testing/contracts/v12Recovery.contract.test.ts",
+    "src/testing/contracts/phase20CoverageGate.test.ts",
   );
 }
 if (focusedIntegrityFiles.length > 0) {
@@ -609,6 +881,8 @@ if (focusPhase18) {
     }, null, 2));
     process.exit(1);
   }
+}
+if (allEvidenceOnly || focusPhase18) {
   const evidenceEnvironment = { ...process.env };
   delete evidenceEnvironment.ANDROID_HOME;
   delete evidenceEnvironment.ANDROID_SDK_ROOT;
@@ -625,11 +899,18 @@ if (focusPhase18) {
       "--test",
       ...phase18EvidenceTests,
     ],
-    { cwd: projectRoot, encoding: "utf8", env: evidenceEnvironment, stdio: "inherit" },
+    {
+      cwd: projectRoot,
+      encoding: "utf8",
+      env: evidenceEnvironment,
+      stdio: "inherit",
+      timeout: PHASE18_EVIDENCE_TIMEOUT_MS,
+    },
   );
   if (evidence.error !== undefined) throw evidence.error;
   if (evidence.status !== 0) process.exit(evidence.status ?? 1);
 }
+if (allEvidenceOnly) process.exit(0);
 const outputDirectory = coverageDirectoryArgument(
   forwarded,
   focusPhase18

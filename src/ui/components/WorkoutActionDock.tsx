@@ -41,6 +41,7 @@ export function WorkoutActionDock({
           label={completeLabel}
           onPress={onComplete}
           style={styles.compactAction}
+          testID="workout-complete-set"
         />
       </View>
     </View>

@@ -631,6 +631,7 @@ export function ExerciseDetailScreen({
           : archivePreviewBody(snapshot, archivePreview)}
         cancelLabel="Keep exercise"
         confirmLabel="Archive exercise"
+        confirmTestID="exercise-archive-confirm"
         destructive
         heading={`Archive ${snapshot.name}?`}
         onCancel={() => setArchivePreview(null)}

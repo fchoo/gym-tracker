@@ -11,6 +11,7 @@ import type {
   SqliteKernel,
   SqliteReadTransactionExecutor,
 } from "../sqliteKernel";
+import { runtimeSha256 } from "../../crypto/runtimeSha256";
 
 type LogicalTableName = keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS;
 
@@ -21,15 +22,102 @@ export type LogicalBackupRepository = Readonly<{
   }>): Promise<LogicalBackupSnapshot>;
 }>;
 
+export type LogicalBackupReceipt = Readonly<{
+  requestId: string;
+  requestSha256: string;
+  snapshotId: string;
+  snapshotSha256: string;
+  totalRows: number;
+  committedAtMs: number;
+}>;
+
 export class LogicalBackupRepositoryError extends Error {
   readonly kind = "storage" as const;
   readonly retryable = true;
   readonly correlationCode = "GT-BACKUP02" as const;
 
-  constructor(readonly code: "logical_backup_collection_failed") {
+  constructor(readonly code: "logical_backup_collection_failed" | "logical_backup_request_identity_conflict") {
     super(code);
     this.name = "LogicalBackupRepositoryError";
   }
+}
+
+const SHA256 = /^[a-f0-9]{64}$/u;
+
+type LogicalBackupCollectionInput = Readonly<{
+  snapshotId: string;
+  createdAtMs: number;
+}>;
+
+function collectionInputValid(input: LogicalBackupCollectionInput): boolean {
+  return input.snapshotId.trim().length > 0 && input.snapshotId.length <= 128
+    && Number.isSafeInteger(input.createdAtMs) && input.createdAtMs >= 0;
+}
+
+export async function logicalBackupCollectionIdentity(
+  input: LogicalBackupCollectionInput,
+): Promise<Readonly<{ requestId: string; requestSha256: string }>> {
+  if (!collectionInputValid(input)) {
+    throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
+  }
+  const requestId = `logical-backup:${await runtimeSha256(JSON.stringify({
+    operation: "logical_backup_collection",
+    snapshotId: input.snapshotId,
+  }))}`;
+  const requestSha256 = await runtimeSha256(JSON.stringify({
+    operation: "logical_backup_collection",
+    requestId,
+    snapshotId: input.snapshotId,
+    createdAtMs: input.createdAtMs,
+  }));
+  return Object.freeze({ requestId, requestSha256 });
+}
+
+function nestedLogicalBackupError(error: unknown): LogicalBackupRepositoryError | null {
+  let current: unknown = error;
+  const visited = new Set<unknown>();
+  while (typeof current === "object" && current !== null && !visited.has(current)) {
+    if (current instanceof LogicalBackupRepositoryError) return current;
+    visited.add(current);
+    current = "cause" in current ? current.cause : null;
+  }
+  return null;
+}
+
+async function readReceipt(
+  transaction: SqliteReadTransactionExecutor,
+  requestId: string,
+): Promise<LogicalBackupReceipt | null> {
+  const rows = await transaction.queryAll<Readonly<{
+    request_id: string;
+    request_sha256: string;
+    snapshot_id: string;
+    snapshot_sha256: string;
+    total_rows: number;
+    committed_at_ms: number;
+  }>>(
+    `SELECT request_id, request_sha256, snapshot_id, snapshot_sha256,
+            total_rows, committed_at_ms
+       FROM logical_backup_receipts
+      WHERE request_id = ?`,
+    [requestId],
+  );
+  const row = rows[0];
+  if (rows.length === 0) return null;
+  if (rows.length !== 1 || row === undefined || !SHA256.test(row.request_sha256)
+    || !SHA256.test(row.snapshot_sha256) || !Number.isSafeInteger(row.total_rows)
+    || row.total_rows < 1 || !Number.isSafeInteger(row.committed_at_ms)
+    || row.committed_at_ms < 0) {
+    throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
+  }
+  return Object.freeze({
+    requestId: row.request_id,
+    requestSha256: row.request_sha256,
+    snapshotId: row.snapshot_id,
+    snapshotSha256: row.snapshot_sha256,
+    totalRows: row.total_rows,
+    committedAtMs: row.committed_at_ms,
+  });
 }
 
 function identifier(value: string): string {
@@ -245,10 +333,48 @@ export function createLogicalBackupRepository(
 ): LogicalBackupRepository {
   return Object.freeze({
     async collect(input) {
+      const identity = await logicalBackupCollectionIdentity(input);
       try {
-        return await kernel.write((transaction) =>
-          collectLogicalBackupSnapshot(transaction, input));
-      } catch {
+        return await kernel.write(async (transaction) => {
+          const existing = await readReceipt(transaction, identity.requestId);
+          if (existing !== null && (existing.requestSha256 !== identity.requestSha256
+            || existing.snapshotId !== input.snapshotId)) {
+            throw new LogicalBackupRepositoryError("logical_backup_request_identity_conflict");
+          }
+          const snapshot = await collectLogicalBackupSnapshot(transaction, input);
+          const snapshotSha256 = await runtimeSha256(JSON.stringify(snapshot));
+          if (!SHA256.test(snapshotSha256)) {
+            throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
+          }
+          if (existing !== null) {
+            if (existing.snapshotSha256 !== snapshotSha256 || existing.totalRows !== snapshot.manifest.totalRows) {
+              throw new LogicalBackupRepositoryError("logical_backup_request_identity_conflict");
+            }
+            return snapshot;
+          }
+          const receipt: LogicalBackupReceipt = Object.freeze({
+            requestId: identity.requestId,
+            requestSha256: identity.requestSha256,
+            snapshotId: input.snapshotId,
+            snapshotSha256,
+            totalRows: snapshot.manifest.totalRows,
+            committedAtMs: input.createdAtMs,
+          });
+          const inserted = await transaction.execute(
+            `INSERT INTO logical_backup_receipts
+              (request_id, request_sha256, snapshot_id, snapshot_sha256, total_rows, committed_at_ms)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [receipt.requestId, receipt.requestSha256, receipt.snapshotId,
+              receipt.snapshotSha256, receipt.totalRows, receipt.committedAtMs],
+          );
+          if (inserted.changes !== 1) {
+            throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
+          }
+          return snapshot;
+        });
+      } catch (error) {
+        const nested = nestedLogicalBackupError(error);
+        if (nested !== null) throw nested;
         throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
       }
     },

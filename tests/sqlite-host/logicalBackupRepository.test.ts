@@ -200,6 +200,55 @@ function collect(kernel: SqliteKernel): Promise<LogicalBackupSnapshot> {
 }
 
 describe("logical backup repository", () => {
+  it("persists a request-bound snapshot receipt and replays only the exact source digest", async () => {
+    const kernel = await open();
+    const repository = createLogicalBackupRepository(kernel);
+    const input = Object.freeze({
+      snapshotId: "logical-backup-snapshot",
+      createdAtMs: 1_786_853_900_000,
+    });
+
+    const first = await repository.collect(input);
+    const [firstReceipt] = await kernel.queryAll<Readonly<{
+      request_id: string;
+      request_sha256: string;
+      snapshot_id: string;
+      snapshot_sha256: string;
+      total_rows: number;
+      committed_at_ms: number;
+    }>>(
+      `SELECT request_id, request_sha256, snapshot_id, snapshot_sha256,
+              total_rows, committed_at_ms
+         FROM logical_backup_receipts
+        WHERE snapshot_id = ?`,
+      [input.snapshotId],
+    );
+    const replay = await repository.collect(input);
+
+    if (firstReceipt === undefined) {
+      throw new Error("logical_backup_receipt_missing");
+    }
+    expect(firstReceipt).toMatchObject({
+      request_id: expect.stringMatching(/^logical-backup:[a-f0-9]{64}$/u),
+      request_sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      snapshot_id: input.snapshotId,
+      total_rows: first.manifest.totalRows,
+      committed_at_ms: input.createdAtMs,
+    });
+    expect(replay).toEqual(first);
+    await expect(repository.collect({ ...input, createdAtMs: input.createdAtMs + 1 }))
+      .rejects.toThrow("logical_backup_request_identity_conflict");
+    await expect(kernel.queryAll(
+      "SELECT request_id, snapshot_id, snapshot_sha256, total_rows FROM logical_backup_receipts WHERE request_id = ?",
+      [firstReceipt.request_id],
+    )).resolves.toEqual([{
+      request_id: firstReceipt.request_id,
+      snapshot_id: input.snapshotId,
+      snapshot_sha256: firstReceipt.snapshot_sha256,
+      total_rows: first.manifest.totalRows,
+    }]);
+  });
+
   it("keeps every logical-table foreign key represented by the restore reference registry", async () => {
     const kernel = await open();
     const actual: string[] = [];

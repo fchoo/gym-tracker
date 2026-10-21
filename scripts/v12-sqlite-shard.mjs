@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -41,10 +40,71 @@ function privacySafe(value, path = 'observation') {
   }
 }
 function validateCase(entry, index) {
-  if (!exactKeys(entry, ['id', 'status', 'order', 'digests'])
+  if (!exactKeys(entry, ['id', 'status', 'order', 'digests', 'source_facts'])
     || entry.id !== V12_SQLITE_SHARD_CASE_IDS[index] || entry.status !== 'passed'
     || entry.order !== index || !exactKeys(entry.digests, ['pre', 'post', 'reopen', 'rebuild'])
-    || !Object.values(entry.digests).every(hash)) fail('case_invalid');
+    || !Object.values(entry.digests).every(hash) || !Array.isArray(entry.source_facts)
+    || entry.source_facts.length === 0) fail('case_invalid');
+  let sourceCount = 0;
+  const registries = new Set();
+  for (const source of entry.source_facts) {
+    if (!exactKeys(source, ['registry', 'cases']) || typeof source.registry !== 'string'
+      || registries.has(source.registry) || !Array.isArray(source.cases) || source.cases.length === 0) fail('case_invalid');
+    registries.add(source.registry);
+    const ids = new Set();
+    for (const sourceCase of source.cases) {
+      if (!exactKeys(sourceCase, ['id', 'status']) || typeof sourceCase.id !== 'string'
+        || sourceCase.status !== 'passed' || ids.has(sourceCase.id)) fail('case_invalid');
+      ids.add(sourceCase.id); sourceCount += 1;
+    }
+  }
+  if (sourceCount < 1) fail('case_invalid');
+}
+
+const GROUP_BOUNDS = Object.freeze({
+  migration: Object.freeze([0, 4]),
+  portability: Object.freeze([4, 8]),
+  history: Object.freeze([8, 10]),
+});
+
+function caseFacts(cases, [start, end]) {
+  return Object.freeze(cases.slice(start, end).map((entry) => Object.freeze({
+    id: entry.id,
+    order: entry.order,
+    status: entry.status,
+    source_facts: entry.source_facts,
+    digest: digest(entry.digests),
+  })));
+}
+
+function retainedObservation(observation, cases, group) {
+  const facts = caseFacts(cases, GROUP_BOUNDS[group]);
+  return Object.freeze({
+    ...observation,
+    cases: facts.length,
+    case_facts: facts,
+    all_passed: facts.every(({ status }) => status === 'passed'),
+    digest: digest(facts),
+  });
+}
+
+function validateRetainedObservation(value, group) {
+  const bounds = GROUP_BOUNDS[group];
+  const expectedIds = V12_SQLITE_SHARD_CASE_IDS.slice(...bounds);
+  if (!exactKeys(value, ['schema_version', 'producer', 'identity', 'cases', 'case_facts', 'all_passed', 'digest'])
+    || value.schema_version !== 1 || value.producer !== 'v12-sqlite-shard'
+    || !exactKeys(value.identity, ['source_digest', 'fixture_digest', 'apk_digest', 'installed_apk_digest', 'device_digest'])
+    || !Object.values(value.identity).every(hash) || value.identity.apk_digest !== value.identity.installed_apk_digest
+    || value.cases !== expectedIds.length || !Array.isArray(value.case_facts)
+    || value.case_facts.length !== expectedIds.length || value.all_passed !== true) fail('observation_invalid');
+  value.case_facts.forEach((entry, index) => {
+    if (!exactKeys(entry, ['id', 'order', 'status', 'source_facts', 'digest'])
+      || entry.id !== expectedIds[index] || entry.order !== bounds[0] + index
+      || entry.status !== 'passed' || !Array.isArray(entry.source_facts)
+      || entry.source_facts.length === 0 || !hash(entry.digest)) fail('observation_invalid');
+  });
+  if (value.digest !== digest(value.case_facts)) fail('observation_invalid');
+  return value;
 }
 
 export function validateV12SqliteShard(input) {
@@ -70,9 +130,9 @@ export function validateV12SqliteShard(input) {
   return Object.freeze({
     ok: true,
     observations: Object.freeze({
-      migration: Object.freeze({ ...observation, cases: 4, digest: input.cases[3].digests.reopen }),
-      portability: Object.freeze({ ...observation, cases: 4, digest: input.cases[7].digests.rebuild }),
-      history: Object.freeze({ ...observation, cases: 2, digest: input.cases[9].digests.post }),
+      migration: retainedObservation(observation, input.cases, 'migration'),
+      portability: retainedObservation(observation, input.cases, 'portability'),
+      history: retainedObservation(observation, input.cases, 'history'),
     }),
   });
 }
@@ -108,8 +168,8 @@ function nativeResultToInput(manifest, result) {
     producer: 'v12-sqlite-shard',
     identity,
     cases: result.contract.cases.map((entry, order) => {
-      const base = { identity, id: entry.id, order, code: entry.code, counts: entry.counts };
-      return { id: entry.id, status: 'passed', order, digests: {
+      const base = { identity, id: entry.id, order, code: entry.code, counts: entry.counts, sourceFacts: entry.sourceFacts };
+      return { id: entry.id, status: 'passed', order, source_facts: entry.sourceFacts, digests: {
         pre: digest({ ...base, cut: 'pre' }), post: digest({ ...base, cut: 'post' }),
         reopen: digest({ ...base, cut: 'reopen' }), rebuild: digest({ ...base, cut: 'rebuild' }),
       } };
@@ -143,31 +203,18 @@ export async function executeV12SqliteShardCli(args = process.argv.slice(2), dep
     const expected = ['migration', 'portability', 'history'];
     for (const [index, file] of outputPaths.entries()) {
       const observation = readJson(file);
-      if (observation?.producer !== 'v12-sqlite-shard' || observation?.identity?.source_digest !== manifest.source.tree_sha256
+      try { validateRetainedObservation(observation, expected[index]); } catch { fail(`verify_${expected[index]}_invalid`); }
+      if (observation.identity.source_digest !== manifest.source.tree_sha256
         || observation?.identity?.fixture_digest !== manifest.fixtures.registry_sha256 || observation?.identity?.apk_digest !== manifest.build.apk.sha256
         || observation?.identity?.installed_apk_digest !== manifest.device.installed_apk_sha256 || observation?.identity?.device_digest !== manifest.device.identity_sha256
-        || observation?.cases !== [4, 4, 2][index] || !hash(observation?.digest) || Object.hasOwn(observation, 'verdict')) fail(`verify_${expected[index]}_invalid`);
+        || Object.hasOwn(observation, 'verdict')) fail(`verify_${expected[index]}_invalid`);
     }
     return Object.freeze({ ok: true, mode, run_id: runId });
   }
-  const executeNative = dependencies.executeNative ?? (async (ephemeralDevice) => {
-    if (process.env.V12_NATIVE_ADAPTER_COMMAND) {
-      return createV12NativeAdapter({ root }).executeSqlite({ run_id: runId });
-    }
-    const command = ['scripts/run-native-sqlite-contracts.mjs', '--suite', 'v1.2-acceptance', '--manifest', 'artifacts/native/v1.2-acceptance/build.json'];
-    if (ephemeralDevice !== undefined) command.push('--device', ephemeralDevice);
-    try { (dependencies.execFileSync ?? execFileSync)(process.execPath, command, { cwd: root, stdio: 'pipe', encoding: 'utf8' }); }
-    catch (error) {
-      const boundedOutput = [error?.stdout, error?.stderr]
-        .filter((value) => typeof value === 'string' || Buffer.isBuffer(value))
-        .map((value) => Buffer.isBuffer(value) ? value.toString('utf8') : value)
-        .join('');
-      const code = /"failure_code":"(marker_timeout|route_error|malformed_result|native_runner_failed)"/u.exec(boundedOutput)?.[1]
-        ?? 'native_runner_failed';
-      throw new Error(`v12_sqlite_native_${code}`);
-    }
-    return readJson(path.join(root, 'artifacts/native/v1.2-acceptance/v1.2-acceptance.json'));
-  });
+  const executeNative = dependencies.executeNative ?? (async (requestedDevice) => (
+    createV12NativeAdapter({ root, environment: requestedDevice === undefined
+      ? process.env : { ...process.env, V12_DEVICE_SERIAL: requestedDevice } }).executeSqlite({ run_id: runId })
+  ));
   const ephemeralDevice = device ?? dependencies.device ?? process.env.ANDROID_SERIAL;
   const writeObservation = dependencies.writeObservation ?? (async (name, value) => {
     const file = path.join(root, outputDirectory, name);
@@ -218,12 +265,15 @@ export async function executeV12SqliteShardCli(args = process.argv.slice(2), dep
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const args = process.argv.slice(2); const runId = args[1]; const writes = [];
+  const args = process.argv.slice(2); const runId = args[1]; const requestedDevice = args[3] === '--device' ? args[4] : undefined;
+  const writes = []; const adapter = createV12NativeAdapter({ environment: requestedDevice === undefined
+    ? process.env : { ...process.env, V12_DEVICE_SERIAL: requestedDevice } });
   executeV12SqliteShardCli(args, {
+    executeNative: async () => adapter.executeSqlite({ run_id: runId }),
     writeObservation: async (name, value) => writes.push([`sqlite/${name}`, value]),
     writeFailureReceipt: async () => {},
   }).then((result) => {
-    if (args[2] === '--execute') publishV12AtomicShard({ runId, shard: 'sqlite', produce: ({ write }) => writes.forEach(([file, value]) => write(file, value)) });
+    if (args[2] === '--execute') publishV12AtomicShard({ runId, shard: 'sqlite', executionOrigin: () => adapter.executionOrigin('sqlite'), produce: ({ write }) => writes.forEach(([file, value]) => write(file, value)) });
     process.stdout.write(`${JSON.stringify(result)}\n`);
   }).catch((error) => {
     if (RUN_ID.test(runId ?? '')) { try { recordV12AtomicFailure({ runId, shard: 'sqlite', error }); } catch { /* first receipt wins */ } }

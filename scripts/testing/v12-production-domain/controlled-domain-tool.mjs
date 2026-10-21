@@ -1,4 +1,5 @@
 // Deliberately independent subprocess stand-ins for ADB and Maestro.
+import { once } from 'node:events';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -9,7 +10,13 @@ const file = path.join(process.env.V12_CONTROLLED_STATE, 'state.json');
 const state = JSON.parse(readFileSync(file, 'utf8'));
 const save = () => writeFileSync(file, JSON.stringify(state));
 const hash = (value) => createHash('sha256').update(value).digest('hex');
-const out = (value) => process.stdout.write(value);
+const stdout = [];
+const out = (value) => stdout.push(value);
+async function drain() {
+  if (stdout.length > 0 && !process.stdout.write(Buffer.concat(stdout.map((value) => Buffer.isBuffer(value) ? value : Buffer.from(String(value)))))) {
+    await once(process.stdout, 'drain');
+  }
+}
 const shell = args[2] === 'shell' ? [...args[3].matchAll(/'([^']*)'/gu)].map((m) => m[1]) : [];
 const scenarios = Object.fromEntries(V12_RECOVERY_SCENARIOS.map((scenario) => [scenario.id, scenario]));
 const cuts = Object.fromEntries(V12_RECOVERY_CUT_DEFINITIONS.map(({ id, ...cut }) => [id, { ...cut, first_attempt_code: cut.barrier_id }]));
@@ -43,13 +50,15 @@ function recoverySnapshot(committed, phase) {
     history_facts: history, restore_facts: restore, merge_receipt_facts: mergeReceipts,
   };
 }
+async function main() {
+try {
 if (tool === 'unzip') {
   if (args[0] === '-Z1') out(state.missingBundle ? 'assets/app.config\n' : 'assets/app.config\nassets/index.android.bundle\n');
   else out(JSON.stringify({ android: { package: 'com.fchoo.gymtracker.devtest' }, scheme: 'gymtracker-devtest', extra: { buildProfile: 'development-test', nativeContractsEnabled: true, nativeContractSuite: state.wrongSuite ? 'phase16-calendar' : 'v1.2-acceptance' } }));
-  process.exit();
+  return 0;
 }
 if (tool === 'maestro') {
-  if (args[0] === '--version') { out('2.8.0'); process.exit(); }
+  if (args[0] === '--version') { out('2.8.0'); return 0; }
   const values = Object.fromEntries(args.filter((_, i) => args[i - 1] === '-e').map((v) => { const i = v.indexOf('='); return [v.slice(0, i), v.slice(i + 1)]; }));
   state.domainCalls.push(values);
   state.nonce = values.V12_DOMAIN_NONCE;
@@ -64,23 +73,55 @@ if (tool === 'maestro') {
     const status = state.junitFailure ? '<failure message="private-native /Users/private bearer credential"/>' : state.junitSkip ? '<skipped/>' : '';
     writeFileSync(args[args.indexOf('--output') + 1], `<testsuite tests="1"><testcase name="controlled">${status}</testcase></testsuite>`);
   }
-  process.exit(state.junitFailure ? 1 : 0);
+  return state.junitFailure ? 1 : 0;
 }
 if (shell[0] === 'cmd' && shell[1] === 'connectivity') {
   if (shell[3]) {
-    if (state.failAirplaneRestore && shell[3] === 'disable' && state.domainCalls.length > 0) process.exit(1);
+    if (state.failAirplaneRestore && shell[3] === 'disable' && state.domainCalls.length > 0) return 1;
     state.airplane = shell[3] === 'enable'; state.settings.airplane_mode_on = state.airplane ? '1' : '0'; save();
   }
-  out(`Airplane mode is ${state.airplane ? 'enabled' : 'disabled'}`); process.exit();
+  out(`Airplane mode is ${state.airplane ? 'enabled' : 'disabled'}`); return 0;
+}
+if (shell[0] === 'date' && shell[1] === '+%s') { out('2000000'); return 0; }
+if (shell[0] === 'run-as') {
+  const script = shell.at(-1) ?? '';
+  if (shell[2] === 'sh' && shell[3] === '-c' && script.includes('base64 -d')) {
+    if (state.arm) return 1;
+    state.arm = true; save(); return 0;
+  }
+  if (shell[2] === 'sh' && shell[3] === '-c') {
+    if (state.arm || state.databasesPresent || (script.includes('garmin-di-session.bin') && state.authRequired)) return 1;
+    return 0;
+  }
+  if (shell[2] === 'rm') { state.arm = false; save(); return 0; }
 }
 if (shell[0] === 'am' && shell[1] === 'start') {
   const link = new URL(shell[shell.indexOf('-d') + 1]);
   state.nonce = link.searchParams.get('nonce');
-  save(); out('Status: ok'); process.exit();
+  state.garminPhase = link.searchParams.get('mode');
+  state.arm = false;
+  if (!state.reuseProcessId || !state.lastProcessId) {
+    state.processCounter += 1;
+    state.lastProcessId = state.processCounter;
+  }
+  state.currentPid = state.lastProcessId;
+  if (!state.reuseProcessBirth || !state.lastProcessStartTicks) {
+    state.processStartTicks += 100;
+    state.lastProcessStartTicks = state.processStartTicks;
+  }
+  save(); out('Status: ok'); return 0;
 }
-if (tool === 'adb' && args[2] === 'exec-out') { out(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1EAAAAASUVORK5CYII=', 'base64')); process.exit(); }
+if (shell[0] === 'am' && shell[1] === 'force-stop') { state.currentPid = null; save(); return 0; }
+if (shell[0] === 'pidof') { if (state.currentPid) out(String(state.currentPid)); return state.currentPid ? 0 : 1; }
+if (shell[0] === 'cat' && /^\/proc\/\d+\/stat$/u.test(shell[1] ?? '')) {
+  const pid = Number(shell[1].split('/')[2]);
+  if (pid !== state.currentPid) return 1;
+  out(`${pid} (controlled) S ${Array(18).fill('0').join(' ')} ${state.lastProcessStartTicks}`);
+  return 0;
+}
+if (tool === 'adb' && args[2] === 'exec-out') { out(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1EAAAAASUVORK5CYII=', 'base64')); return 0; }
 if (tool === 'adb' && args[2] === 'logcat') {
-  if (state.missingMarker) process.exit();
+  if (state.missingMarker) return 0;
   const nonce = state.staleMarker ? 'stale' : state.nonce;
   let value;
   if (state.stage) value = { kind: 'calendar', flow_sha256: state.wrongFlow ? '0'.repeat(64) : state.flow, flow_revision: 'calendar-flow-r35', stage: state.calendar.find((entry) => entry.id === state.stage) };
@@ -113,13 +154,29 @@ if (tool === 'adb' && args[2] === 'logcat') {
       };
     }
   }
-  else value = state.authRequired ? { kind: 'error', code: 'auth_required' } : { kind: 'garmin', ...state.garmin };
+  else if (state.authRequired) value = { kind: 'error', code: 'auth_required' };
+  else if (state.garminPhase === 'preflight') value = { schema_version: 2, kind: 'garmin-preflight', session_sha256: hash('controlled-session') };
+  else value = { schema_version: 2, kind: 'garmin', ...state.garmin, cleanup: { arm: 'cleared', databases_deleted: 3 } };
   if (state.noReceipt && value.stage) delete value.stage.receipt;
   if (value.stage?.receipt) { delete value.stage.receipt.screenshot_sha256; delete value.stage.receipt.trace_sha256; }
-  const prefix = value?.kind === 'ARMED' ? 'GYM_TRACKER_V12_DOMAIN_PROGRESS:' : 'GYM_TRACKER_V12_DOMAIN_RESULT:';
-  out(`${prefix}${JSON.stringify({ schema_version: value?.schema_version ?? 1, nonce, ...value })}\n`);
-  process.exit();
+  const payload = { schema_version: value?.schema_version ?? 1, nonce, ...value };
+  if (value?.kind === 'garmin') {
+    const serialized = JSON.stringify(payload); const chunks = Array.from({ length: Math.ceil(serialized.length / 1500) }, (_, index) => serialized.slice(index * 1500, (index + 1) * 1500));
+    chunks.forEach((data, index) => out(`GYM_TRACKER_V12_DOMAIN_RESULT_CHUNK:${JSON.stringify({ schema_version: 2, nonce, kind: 'chunk', sequence: index + 1, total: chunks.length, data })}\n`));
+    out(`GYM_TRACKER_V12_DOMAIN_RESULT:${JSON.stringify({ schema_version: 2, nonce, kind: 'chunked', total: chunks.length, sha256: hash(serialized) })}\n`);
+  } else {
+    const prefix = value?.kind === 'ARMED' ? 'GYM_TRACKER_V12_DOMAIN_PROGRESS:' : 'GYM_TRACKER_V12_DOMAIN_RESULT:';
+    out(`${prefix}${JSON.stringify(payload)}\n`);
+  }
+  return 0;
 }
 const fallback = new URL('../v12-production-launcher/controlled-device-tool.mjs', import.meta.url);
 process.argv = [process.execPath, fallback.pathname, ...args];
 await import(fallback);
+return process.exitCode ?? 0;
+} finally {
+  await drain();
+}
+}
+
+process.exitCode = await main();

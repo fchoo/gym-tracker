@@ -83,6 +83,13 @@ const reviewLabels: readonly Readonly<{
   { key: "progression", label: "Progression reviewed" },
   { key: "historyImmutable", label: "History remains unchanged" },
 ];
+const reviewTestIds: Readonly<Record<ReviewKey, string>> = Object.freeze({
+  targets: "exercise-replacement-review-targets",
+  warmups: "exercise-replacement-review-warmups",
+  rest: "exercise-replacement-review-rest",
+  progression: "exercise-replacement-review-progression",
+  historyImmutable: "exercise-replacement-review-historyImmutable",
+});
 
 function targetSummary(target: MetricTarget): string {
   switch (target.profile) {
@@ -138,6 +145,7 @@ function SelectionRow({
   supportingText,
   role,
   onPress,
+  testID,
 }: Readonly<{
   checked: boolean;
   disabled?: boolean;
@@ -145,6 +153,7 @@ function SelectionRow({
   supportingText?: string;
   role: "checkbox" | "radio";
   onPress(): void;
+  testID?: string;
 }>) {
   const { colors } = useAppTheme();
   return (
@@ -167,6 +176,7 @@ function SelectionRow({
           opacity: disabled ? 0.62 : 1,
         },
       ]}
+      testID={testID}
     >
       <Text style={[
         typeScale.bodyStrong as TextStyle,
@@ -477,7 +487,7 @@ export function ExerciseReplacementScreen({
                 accessibilityRole="radiogroup"
                 style={styles.selectionGroup}
               >
-                {compatible.map((candidate) => (
+                {compatible.map((candidate, index) => (
                   <SelectionRow
                     checked={candidate.exerciseId === replacementExerciseId}
                     key={candidate.exerciseId}
@@ -488,6 +498,9 @@ export function ExerciseReplacementScreen({
                     }}
                     role="radio"
                     supportingText={`${candidate.metricIdentity.profile} · contract ${candidate.metricIdentity.contractVersion} · generation ${candidate.metricIdentity.exerciseMetricGeneration}`}
+                    {...(index === 0
+                      ? { testID: "exercise-replacement-first-compatible" }
+                      : {})}
                   />
                 ))}
               </View>
@@ -558,6 +571,7 @@ export function ExerciseReplacementScreen({
                   setSaveError(null);
                 }}
                 role="checkbox"
+                testID={reviewTestIds[key]}
               />
             ))}
           </View>

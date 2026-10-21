@@ -1,11 +1,20 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createV12NativeAdapter } from "./v12-native-adapter.mjs";
 import { publishV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
+import { validateV12AccessibilityProducer } from "./v12-quality-evidence-contract.mjs";
+import { validateV12ShellRequirementEvidence } from "./v12-shell-requirement-evidence.mjs";
+import {
+  createV12RetainedPhase14Closure,
+  expectedV12AccessibilityMembers,
+  verifyV12RetainedPhase14Closure,
+  V12_PHASE14_CLOSURE_REGISTRY,
+} from "./v12-phase14-retention.mjs";
 
-const SHA256 = /^[a-f0-9]{64}$/u;
 const V12_RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const REQUIRED_INPUTS = Object.freeze(["touch", "software-keyboard", "hardware-keyboard", "dpad"]);
+const jsonSha256 = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 function fail(code) { throw new Error(`v12_accessibility_${code}`); }
 
@@ -14,34 +23,12 @@ export function executeV12AccessibilityShard({ mode = "plan" } = {}) {
   return Object.freeze({ schema_version: 1, producer: "v12-accessibility-shard/v1", mode, required_inputs: REQUIRED_INPUTS, font_scale: 2, focus_ring_dp: 3, focus_offset_dp: 3, scope: "semantics-geometry-input-observation", excludes: Object.freeze(["live-talkback", "switch-scanning", "native-execution", "final-verdict"]) });
 }
 
-export function validateV12AccessibilityShard(shard) {
-  if (!shard || shard.schema_version !== 1 || !Array.isArray(shard.observations) || shard.observations.length === 0) fail("shard_invalid");
-  for (const observation of shard.observations) {
-    const configuration = observation?.configuration;
-    if (!configuration || configuration.font_scale !== 2 || !Number.isFinite(configuration.density)
-      || !Number.isFinite(configuration.content_bounds?.width) || !Number.isFinite(configuration.content_bounds?.height)
-      || !Number.isFinite(configuration.insets?.top) || !Number.isFinite(configuration.insets?.bottom)
-      || !Number.isFinite(configuration.ime_bounds?.top) || !Number.isFinite(configuration.ime_bounds?.bottom)) fail("font_scale_invalid");
-    if (!Array.isArray(observation.targets) || observation.targets.length === 0 || observation.targets.some((target) =>
-      typeof target.id !== "string" || typeof target.name !== "string" || typeof target.role !== "string"
-      || typeof target.state !== "string" || target.non_color_cue !== true || target.bounds_dp?.width < 48
-      || target.bounds_dp?.height < 48 || (target.overlap !== false && target.bounds_dp?.overlap !== false))) fail("target_invalid");
-    const targetIds = new Set();
-    for (const target of observation.targets) {
-      if (targetIds.has(target.id)) fail("target_invalid");
-      targetIds.add(target.id);
-    }
-    if (!Array.isArray(observation.interactions) || observation.interactions.length !== REQUIRED_INPUTS.length
-      || observation.interactions.some((entry, index) => entry?.input !== REQUIRED_INPUTS[index]
-        || typeof entry.focus_before !== "string" || typeof entry.focus_after !== "string"
-        || entry.action !== "activate" || entry.command_count !== 1 || !SHA256.test(entry.image_hash))) fail("interaction_invalid");
-    const modal = observation.modal;
-    if (!modal || modal.focus_ring_dp !== 3 || modal.focus_offset_dp !== 3 || modal.back !== "closes-modal"
-      || modal.escape !== "closes-modal" || modal.restores_invoker !== true) fail("modal_invalid");
-    const normal = observation.motion?.normal; const reduced = observation.motion?.reduced;
-    if (!normal || !reduced || normal.destination !== reduced.destination || normal.callbacks !== reduced.callbacks
-      || normal.source_facts !== reduced.source_facts) fail("motion_invalid");
-  }
+export function validateV12AccessibilityShard(shard, identity, manifest = undefined) {
+  if (!shard || shard.schema_version !== 1 || !Array.isArray(shard.observations)) fail("shard_invalid");
+  const receipts = shard.observations[0]?.source_receipts;
+  const expected = identity ?? { source_tree_sha256: receipts?.source_tree_sha256, fixture_sha256: receipts?.fixture_sha256 };
+  validateV12AccessibilityProducer(shard.observations, expected, fail);
+  if (manifest !== undefined) validateV12ShellRequirementEvidence(shard.shell_receipts, manifest);
   return true;
 }
 
@@ -50,39 +37,98 @@ function immutableWrite(root, relativePath, value, write = undefined) {
   const absolute = path.resolve(root, relativePath);
   if (!absolute.startsWith(`${path.resolve(root)}${path.sep}`) || existsSync(absolute)) fail("immutable_output_invalid");
   mkdirSync(path.dirname(absolute), { recursive: true });
-  writeFileSync(absolute, `${JSON.stringify(value)}\n`, { flag: "wx" });
+  writeFileSync(absolute, Buffer.isBuffer(value) ? value : `${JSON.stringify(value)}\n`, { flag: "wx" });
+}
+
+function retainedArtifactReader(root, runId, relative) {
+  const runRoot = realpathSync(path.resolve(root, `artifacts/native/v1.2/${runId}`));
+  const absolute = path.resolve(runRoot, relative);
+  if (!absolute.startsWith(`${runRoot}${path.sep}`)) fail("shell_retained_path_invalid");
+  let cursor = runRoot;
+  for (const part of path.relative(runRoot, absolute).split(path.sep).filter(Boolean)) {
+    cursor = path.join(cursor, part);
+    const stat = lstatSync(cursor, { throwIfNoEntry: false });
+    if (stat === undefined || stat.isSymbolicLink()) fail("shell_retained_path_invalid");
+  }
+  const real = realpathSync(absolute);
+  if (!real.startsWith(`${runRoot}${path.sep}`) || !lstatSync(real).isFile()) fail("shell_retained_path_invalid");
+  return readFileSync(real);
 }
 
 /** Collects measured semantics and geometry only; TalkBack and switch scanning remain attended gates. */
-export function executeLiveV12AccessibilityShard({ runId, root = process.cwd(), observe, write } = {}) {
+export function executeLiveV12AccessibilityShard({ runId, root = process.cwd(), observe, write, manifest: suppliedManifest,
+  phase14Manifest: suppliedPhase14Manifest, phase14Evidence: suppliedPhase14Evidence,
+  phase14ValidationOptions } = {}) {
   if (!V12_RUN_ID.test(runId ?? "") || typeof observe !== "function") fail("adapter_invalid");
   const observations = observe(Object.freeze({ run_id: runId, required_inputs: REQUIRED_INPUTS, font_scale: 2, focus_ring_dp: 3, excludes: Object.freeze(["live-talkback", "switch-scanning"]) }));
   validateV12AccessibilityShard({ schema_version: 1, observations });
+  const manifest = suppliedManifest ?? JSON.parse(readFileSync(path.join(root, `artifacts/native/v1.2/${runId}/build.json`), "utf8"));
   const bounded = observations.map((observation) => {
-    if (observation.fixture_id !== "v12-synthetic-fixtures-r18" || observation.native_execution !== "EXECUTED"
+    if (observation.native_execution !== "EXECUTED"
       || observation.talkback !== undefined || observation.switch_scanning !== undefined || observation.restored_settings !== true) fail("observation_invalid");
     return Object.freeze(structuredClone(observation));
   });
-  const semantic = Object.freeze({ schema_version: 1, producer: "v12-accessibility-native-observation/v1", run_id: runId, scope: "semantics-input-focus-motion", excludes: Object.freeze(["live-talkback", "switch-scanning", "final-verdict"]), observations: Object.freeze(bounded) });
-  const geometry = Object.freeze({ schema_version: 1, producer: "v12-accessibility-geometry/v1", run_id: runId, targets: Object.freeze(bounded.flatMap((entry) => entry.targets.map((target) => Object.freeze({ configuration: entry.configuration, id: target.id, bounds_dp: target.bounds_dp, overlap: target.overlap })))) });
+  const phase14Manifest = suppliedPhase14Manifest ?? JSON.parse(readFileSync(path.join(root, "artifacts/native/phase14/build.json"), "utf8"));
+  const phase14Evidence = suppliedPhase14Evidence ?? JSON.parse(readFileSync(path.join(root, "artifacts/native/phase14/maestro/phase14-evidence.json"), "utf8"));
+  const retained = createV12RetainedPhase14Closure({ root, phase14Manifest, phase14Evidence, manifest,
+    validationOptions: typeof phase14ValidationOptions === "function" ? phase14ValidationOptions() : phase14ValidationOptions });
+  const shellReceipts = retained.receipts;
+  const semantic = Object.freeze({ schema_version: 2, producer: "v12-accessibility-native-observation/v2", run_id: runId, scope: "semantics-input-focus-motion-and-shell-requirements", excludes: Object.freeze(["live-talkback", "switch-scanning", "final-verdict"]), observations: Object.freeze(bounded), shell_receipts: shellReceipts });
+  const geometry = Object.freeze({ schema_version: 1, producer: "v12-accessibility-geometry/v1", run_id: runId, targets: Object.freeze(bounded.flatMap((entry) => entry.targets.map((target) => Object.freeze({ root: entry.root, state_id: entry.state_id, configuration_id: entry.configuration.id, id: target.id, bounds_dp: target.bounds_dp, overlap: target.overlap })))) });
   immutableWrite(root, `artifacts/native/v1.2/${runId}/semantics/accessibility.json`, semantic, write);
   immutableWrite(root, `artifacts/native/v1.2/${runId}/geometry/hit-targets.json`, geometry, write);
+  for (const member of retained.members) immutableWrite(root, `artifacts/native/v1.2/${runId}/${member.path}`, member.bytes, write);
+  immutableWrite(root, `artifacts/native/v1.2/${runId}/${V12_PHASE14_CLOSURE_REGISTRY}`, retained.registry, write);
   return Object.freeze({ semantic, geometry });
 }
 
-export function verifyV12AccessibilityShard({ runId, root = process.cwd(), readJson } = {}) {
+export function verifyV12AccessibilityShard({ runId, root = process.cwd(), readJson, readArtifact, phase14ValidationOptions } = {}) {
   if (!V12_RUN_ID.test(runId ?? "")) fail("arguments_invalid");
   const read = readJson ?? ((file) => JSON.parse(readFileSync(path.join(root, file), "utf8")));
   const semantic = read(`artifacts/native/v1.2/${runId}/semantics/accessibility.json`);
-  if (!semantic || semantic.run_id !== runId || semantic.producer !== "v12-accessibility-native-observation/v1" || semantic.scope !== "semantics-input-focus-motion" || !Array.isArray(semantic.excludes) || !semantic.excludes.includes("live-talkback") || !semantic.excludes.includes("switch-scanning")) fail("semantic_invalid");
-  return validateV12AccessibilityShard({ schema_version: 1, observations: semantic.observations });
+  if (!semantic || semantic.schema_version !== 2 || semantic.run_id !== runId || semantic.producer !== "v12-accessibility-native-observation/v2" || semantic.scope !== "semantics-input-focus-motion-and-shell-requirements" || !Array.isArray(semantic.excludes) || !semantic.excludes.includes("live-talkback") || !semantic.excludes.includes("switch-scanning")) fail("semantic_invalid");
+  const manifest = read(`artifacts/native/v1.2/${runId}/build.json`);
+  const registry = read(`artifacts/native/v1.2/${runId}/${V12_PHASE14_CLOSURE_REGISTRY}`);
+  const retainedRead = readArtifact ?? ((file) => retainedArtifactReader(root, runId, file));
+  const retainedValidation = phase14ValidationOptions ?? (manifest?.evidence_origin === "test"
+    ? { validatePhase14Evidence: () => true }
+    : undefined);
+  const { phase14Manifest, phase14Evidence } = verifyV12RetainedPhase14Closure({ registry, readArtifact: retainedRead,
+    manifest, shellReceipts: semantic.shell_receipts, validationOptions: retainedValidation });
+  if (!semantic.shell_receipts.every((receipt) => receipt.phase14_manifest_sha256 === jsonSha256(phase14Manifest)
+    && receipt.phase14_evidence_sha256 === jsonSha256(phase14Evidence))) fail("shell_retained_source_invalid");
+  return validateV12AccessibilityShard({ schema_version: 1, observations: semantic.observations, shell_receipts: semantic.shell_receipts }, {
+    source_tree_sha256: manifest?.source?.tree_sha256,
+    fixture_sha256: manifest?.fixtures?.registry_sha256,
+  }, manifest);
+}
+
+export function validateV12AccessibilityPublicationMembers(members, stageRoot) {
+  if (!Array.isArray(members) || typeof stageRoot !== "string") fail("publication_invalid");
+  let registry;
+  try { registry = JSON.parse(readFileSync(path.join(stageRoot, V12_PHASE14_CLOSURE_REGISTRY), "utf8")); }
+  catch { fail("publication_invalid"); }
+  const actual = members.map(({ artifact }) => artifact).sort();
+  const expected = [...expectedV12AccessibilityMembers(registry)].sort();
+  if (actual.length !== expected.length || actual.some((item, index) => item !== expected[index])) fail("publication_invalid");
+  return true;
 }
 
 export function runV12AccessibilityCli(args = process.argv.slice(2), io = process) {
   try {
     if (args.length !== 3 || args[0] !== "--run" || !V12_RUN_ID.test(args[1] ?? "") || !["--execute", "--verify"].includes(args[2])) fail("arguments_invalid");
     if (args[2] === "--verify") verifyV12AccessibilityShard({ runId: args[1] });
-    else publishV12AtomicShard({ runId: args[1], shard: "accessibility", produce: ({ write }) => executeLiveV12AccessibilityShard({ runId: args[1], observe: createV12NativeAdapter().observeAccessibility, write: (file, value) => write(file.replace(`artifacts/native/v1.2/${args[1]}/`, ""), value) }) });
+    else {
+      const adapter = createV12NativeAdapter();
+      let executionOrigin;
+      publishV12AtomicShard({ runId: args[1], shard: "accessibility", executionOrigin: () => executionOrigin, produce: ({ write }) => executeLiveV12AccessibilityShard({ runId: args[1], observe: (request) => {
+        const value = adapter.observeAccessibility(request);
+        executionOrigin = adapter.executionOrigin("accessibility");
+        return value;
+      }, phase14ValidationOptions: () => executionOrigin?.test_only === true ? { validatePhase14Evidence: () => true } : undefined,
+      write: (file, value) => write(file.replace(`artifacts/native/v1.2/${args[1]}/`, ""), value) }),
+      validate: validateV12AccessibilityPublicationMembers });
+    }
     io.stdout.write(`${JSON.stringify({ run_id: args[1], command: args[2], ok: true })}\n`);
     return 0;
   } catch (error) { io.stderr.write(`${error.message}\n`); return 1; }

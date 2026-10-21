@@ -412,9 +412,6 @@ import type {
   TrainingCalendarRange,
 } from "../platform/sqlite/repositories/trainingCalendarRepository";
 import {
-  applyWorkoutMutationTestControl,
-} from "./workoutMutationTestControls";
-import {
   createStarterPlanRuntimeCatalog,
 } from "./starterPlanRuntime";
 import type {
@@ -1644,7 +1641,77 @@ describe("WorkoutAppRuntimeProvider", () => {
     mockRestoreHistorySession.mockImplementation(actualHistoryCommands.restoreHistorySession as never);
     mockCollectSourceStateProof.mockReset();
     mockCollectSourceStateProof.mockImplementation(actualSourceStateProof.collectPhase14SourceStateProof as never);
-    applyWorkoutMutationTestControl("reset_workout_failures");
+  });
+
+  it("prepares an isolated runtime after migration and disposes it after the kernel closes", async () => {
+    const order: string[] = [];
+    const repository = runtimeRepository([noPlanView], [null]);
+    const originalRead = repository.getTodayView;
+    repository.getTodayView = jest.fn(async (input) => {
+      order.push("read");
+      return originalRead(input);
+    });
+    const prepareRuntime = jest.fn<NonNullable<WorkoutAppRuntimeDependencies["prepareRuntime"]>>(async ({ starterPlans }) => {
+      expect(starterPlans).toEqual({ pack: {}, templates: [] });
+      order.push("prepare");
+    });
+    const runtimeDependencies = dependencies(repository, {
+      migrate: jest.fn(async () => { order.push("migrate"); }),
+      loadStarterPlans: jest.fn(async () => ({ pack: {}, templates: [] }) as never),
+      prepareRuntime,
+      disposeRuntime: jest.fn(async () => {
+        order.push("dispose");
+        throw new Error("fixture cleanup is best effort");
+      }),
+    });
+    const view = await render(<RuntimeHarness dependencies={runtimeDependencies} />);
+
+    await waitFor(() => expect(screen.getByTestId("runtime-state")).toHaveTextContent("trusted"));
+    expect(order.indexOf("migrate")).toBeLessThan(order.indexOf("prepare"));
+    expect(order.indexOf("prepare")).toBeLessThan(order.indexOf("read"));
+
+    view.unmount();
+    await waitFor(() => expect(runtimeDependencies.disposeRuntime).toHaveBeenCalledTimes(1));
+  });
+
+  it("prepares a runtime without inventing a starter catalog when no loader exists", async () => {
+    const prepareRuntime = jest.fn<NonNullable<WorkoutAppRuntimeDependencies["prepareRuntime"]>>(async () => undefined);
+    const view = await render(
+      <RuntimeHarness
+        dependencies={dependencies(runtimeRepository([noPlanView], [null]), {
+          prepareRuntime,
+        })}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("runtime-state")).toHaveTextContent("trusted"));
+    expect(prepareRuntime).toHaveBeenCalledWith(expect.objectContaining({ kernel: expect.any(Object) }));
+    expect(prepareRuntime.mock.calls[0]?.[0]).not.toHaveProperty("starterPlans");
+    view.unmount();
+  });
+
+  it("checks cancellation after migration and before fixture mutation", async () => {
+    let releaseMigration: (() => void) | undefined;
+    const migration = new Promise<void>((resolve) => {
+      releaseMigration = resolve;
+    });
+    const close = jest.fn(async () => undefined);
+    const prepareRuntime = jest.fn<
+      NonNullable<WorkoutAppRuntimeDependencies["prepareRuntime"]>
+    >(async () => undefined);
+    const runtimeDependencies = dependencies(runtimeRepository([noPlanView], [null]), {
+      openKernel: jest.fn(async () => ({ close } as unknown as SqliteKernel)),
+      migrate: jest.fn(() => migration),
+      prepareRuntime,
+      strictDisposal: true,
+    });
+    const view = await render(<RuntimeHarness dependencies={runtimeDependencies} />);
+
+    await waitFor(() => expect(runtimeDependencies.migrate).toHaveBeenCalledTimes(1));
+    view.unmount();
+    releaseMigration?.();
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(2));
+
+    expect(prepareRuntime).not.toHaveBeenCalled();
   });
 
   it("delegates bounded Calendar range reads through the query-only foundation port", async () => {
@@ -4911,6 +4978,10 @@ describe("WorkoutAppRuntimeProvider", () => {
       if (sql === "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?") {
         return parameters.map((name) => ({ name }));
       }
+      if (sql.includes("FROM sqlite_master")
+        && sql.includes("WHERE name IN (?, ?, ?, ?)")) {
+        return parameters.map((name) => ({ name }));
+      }
       if (sql.includes("FROM sqlite_master WHERE type = 'trigger' AND name = ?")) {
         return parameters.map((name) => ({ name }));
       }
@@ -6300,48 +6371,6 @@ describe("WorkoutAppRuntimeProvider", () => {
       failure: {
         kind: "failed",
         code: "session_write_back_preview_failed",
-      },
-    });
-    expect(applySessionExerciseEdits).not.toHaveBeenCalled();
-  });
-
-  it("keeps the completed workout safe when the development-test write-back hook fails", async () => {
-    const repository = runtimeRepository([activeView], [activation]);
-    const previewSessionExerciseEdits = jest.fn(async () =>
-      sessionWriteBackPreview
-    );
-    const applySessionExerciseEdits = jest.fn();
-    mockedCreateOwnedPlanRuntimePort.mockReturnValueOnce({
-      ...({} as ReturnType<typeof createOwnedPlanRuntimePort>),
-      previewSessionExerciseEdits,
-      applySessionExerciseEdits,
-    } as unknown as ReturnType<typeof createOwnedPlanRuntimePort>);
-    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
-    await render(
-      <RuntimeCaptureHarness
-        dependencies={dependencies(repository)}
-        onReady={(runtime) => {
-          captured = runtime;
-        }}
-      />,
-    );
-    await waitFor(() => {
-      expect(captured?.launchState).toBe("trusted");
-    });
-    if (captured === undefined) {
-      throw new Error("runtime_not_captured");
-    }
-
-    applyWorkoutMutationTestControl("arm_plan_write_back_failure");
-    await expect(captured.applyCompletedWorkoutPlanWriteBack({
-      state: "awaiting_choice",
-      preview: sessionWriteBackPreview,
-    })).resolves.toEqual({
-      state: "save_failed",
-      preview: sessionWriteBackPreview,
-      failure: {
-        kind: "failed",
-        code: "session_write_back_failed",
       },
     });
     expect(applySessionExerciseEdits).not.toHaveBeenCalled();

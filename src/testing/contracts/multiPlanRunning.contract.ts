@@ -72,6 +72,13 @@ export type MultiPlanRunningContractAdapter = Readonly<{
   cleanup?(): Promise<void>;
 }>;
 
+export type MultiPlanRunningContractRuntimeDependencies = Readonly<{
+  runPortableMergeContract?(): Promise<Readonly<{
+    status: "passed" | "failed";
+    failed: number;
+  }>>;
+}>;
+
 export type MultiPlanRunningContractResult = Readonly<{
   schemaVersion: 1; contractVersion: 1; status: "passed" | "failed"; total: number;
   passed: number; failed: number; skipped: 0;
@@ -504,7 +511,10 @@ async function setupActiveWorkout(kernel: SqliteKernel) {
 
 const caseAssertions: Record<
   MultiPlanRunningContractCaseId,
-  (kernel: SqliteKernel) => Promise<void>
+  (
+    kernel: SqliteKernel,
+    dependencies: MultiPlanRunningContractRuntimeDependencies,
+  ) => Promise<void>
 > = {
   async "phase13-migration-failure-cuts"(kernel) {
     const [row] = await kernel.queryAll<{ user_version: number }>("PRAGMA user_version");
@@ -817,9 +827,11 @@ const caseAssertions: Record<
       "phase13_backup_restore_replacement_invalid",
     );
   },
-  async "phase13-merge-rebuild"(kernel) {
+  async "phase13-merge-rebuild"(kernel, dependencies) {
     void kernel;
-    const result = await runPortableMergeContract(await createExpoPortableMergeContractAdapter("phase13-merge-rebuild"));
+    const result = await (dependencies.runPortableMergeContract === undefined
+      ? runPortableMergeContract(await createExpoPortableMergeContractAdapter("phase13-merge-rebuild"))
+      : dependencies.runPortableMergeContract());
     invariant(result.status === "passed" && result.failed === 0, "phase13_merge_rebuild_invalid");
   },
   async "phase13-source-generation-neutrality"(kernel) {
@@ -849,8 +861,36 @@ const caseAssertions: Record<
 export function runMultiPlanRunningContractCase(
   caseId: MultiPlanRunningContractCaseId,
   kernel: SqliteKernel,
+  dependencies: MultiPlanRunningContractRuntimeDependencies = {},
 ): Promise<void> {
-  return caseAssertions[caseId](kernel);
+  return caseAssertions[caseId](kernel, dependencies);
+}
+
+/**
+ * Run the canonical 13-case wrapper against a caller-owned real SQLite
+ * runtime factory.  This is intentionally an adapter for the existing
+ * wrapper, rather than a parallel loop in a consumer: it preserves the
+ * wrapper's status, count, failure isolation, and cleanup semantics while
+ * allowing host tests to provide a freshly migrated kernel per case.
+ */
+export async function runMultiPlanRunningContractOnKernel(
+  createRuntime: (
+    caseId: MultiPlanRunningContractCaseId,
+  ) => Promise<Readonly<{
+    kernel: SqliteKernel;
+    close(): Promise<void>;
+  } & MultiPlanRunningContractRuntimeDependencies>>,
+): Promise<MultiPlanRunningContractResult> {
+  return runMultiPlanRunningContract(Object.freeze({
+    async runCase(caseId) {
+      const runtime = await createRuntime(caseId);
+      try {
+        await runMultiPlanRunningContractCase(caseId, runtime.kernel, runtime);
+      } finally {
+        await runtime.close();
+      }
+    },
+  }));
 }
 
 export async function createExpoMultiPlanRunningContractAdapter(

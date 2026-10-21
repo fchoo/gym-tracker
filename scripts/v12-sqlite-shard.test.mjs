@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -27,7 +28,11 @@ const valid = () => ({
   schema_version: 1,
   producer: 'v12-sqlite-shard',
   identity: { source_digest: digest, fixture_digest: digest, apk_digest: digest, installed_apk_digest: digest, device_digest: digest },
-  cases: caseIds.map((id, index) => ({ id, status: 'passed', order: index, digests: { pre: digest, post: digest, reopen: digest, rebuild: digest } })),
+  cases: caseIds.map((id, index) => ({
+    id, status: 'passed', order: index,
+    source_facts: [{ registry: 'sqlite-kernel', cases: [{ id: 'connection-configuration', status: 'passed' }] }],
+    digests: { pre: digest, post: digest, reopen: digest, rebuild: digest },
+  })),
 });
 
 const nativeV12Result = () => ({
@@ -43,6 +48,7 @@ const nativeV12Result = () => ({
     status: 'passed',
     code: 'v12_acceptance_case_passed',
     counts: { sourceCases: 1 },
+    sourceFacts: [{ registry: 'sqlite-kernel', cases: [{ id: 'connection-configuration', status: 'passed' }] }],
   })),
 });
 
@@ -52,6 +58,15 @@ test('validates the complete ordered privacy-safe SQLite observation set', () =>
   assert.equal(result.observations.migration.cases, 4);
   assert.equal(result.observations.portability.cases, 4);
   assert.equal(result.observations.history.cases, 2);
+  assert.deepEqual(
+    Object.values(result.observations).flatMap(({ case_facts: caseFacts }) => caseFacts.map(({ id }) => id)),
+    caseIds,
+  );
+  assert.ok(Object.values(result.observations).every((observation) => (
+    observation.all_passed === true
+      && observation.case_facts.length === observation.cases
+      && observation.case_facts.every((entry) => entry.status === 'passed' && entry.source_facts.length > 0)
+  )));
 });
 
 test('rejects duplicate, skipped, stale, out-of-order, raw, and impossible downgrade observations', () => {
@@ -74,6 +89,20 @@ test('writes observations only and never a verdict', async () => {
   await executeV12SqliteShard(valid(), async (path, value) => writes.push({ path, value }));
   assert.deepEqual(writes.map(({ path }) => path), ['migration.json', 'portability.json', 'history.json']);
   assert.equal(JSON.stringify(writes).includes('verdict'), false);
+});
+
+test('binds each bounded group digest to its exact ordered passed case facts', () => {
+  const { observations } = validateV12SqliteShard(valid());
+  for (const observation of Object.values(observations)) {
+    assert.equal(
+      observation.digest,
+      createHash('sha256').update(JSON.stringify(observation.case_facts)).digest('hex'),
+    );
+    assert.deepEqual(
+      observation.case_facts.map(({ order }) => order),
+      observation.case_facts.map((_, index) => observation.case_facts[0].order + index),
+    );
+  }
 });
 
 test('requires an explicit immutable run command instead of silently succeeding as a no-op', () => {
@@ -122,6 +151,9 @@ test('accepts only the exact V12 native envelope and rejects legacy cross-suite 
   const malformed = nativeV12Result();
   malformed.cases[2].counts = { sourceCases: 1, raw_rows: 1 };
   assert.throws(() => assertV12AcceptanceNativeContractResult(malformed, caseIds), /v12_sqlite_producer_v12_result_invalid/u);
+  const missingSourceFacts = nativeV12Result();
+  delete missingSourceFacts.cases[0].sourceFacts;
+  assert.throws(() => assertV12AcceptanceNativeContractResult(missingSourceFacts, caseIds), /v12_sqlite_producer_v12_result_invalid/u);
   const verdictInjected = nativeV12Result();
   verdictInjected.verdict = 'PASS';
   assert.throws(() => assertV12AcceptanceNativeContractResult(verdictInjected, caseIds), /v12_sqlite_producer_v12_result_invalid/u);
@@ -167,7 +199,7 @@ test('classifies every bounded native failure and rejects unsafe receipt input',
   }
 });
 
-test('gives the V12 three-registry execution a finite source-derived polling budget and emits progress markers', () => {
+test('gives all seven V12 source registries a finite source-derived polling budget and emits progress markers', () => {
   const runner = readFileSync('scripts/run-native-sqlite-contracts.mjs', 'utf8');
   const route = readFileSync('app/__native-contracts.tsx', 'utf8');
 
@@ -177,7 +209,7 @@ test('gives the V12 three-registry execution a finite source-derived polling bud
   assert.match(route, /emitAggregateProgress\(runId, `v1\.2-acceptance:\$\{stage\}`\)/u);
   assert.match(
     readFileSync('src/testing/contracts/v12Acceptance.contract.ts', 'utf8'),
-    /onProgress\?\.\("migrations"\)[\s\S]*onProgress\?\.\("portable-merge"\)[\s\S]*onProgress\?\.\("multi-plan-running"\)/u,
+    /onProgress\?\.\("sqlite-kernel"\)[\s\S]*onProgress\?\.\("migrations"\)[\s\S]*onProgress\?\.\("portable-merge"\)[\s\S]*onProgress\?\.\("multi-plan-running"\)[\s\S]*onProgress\?\.\("google-drive-backup"\)[\s\S]*onProgress\?\.\("garmin-acceptance"\)[\s\S]*onProgress\?\.\("progress-parity"\)/u,
   );
   assert.equal(
     classifyV12SqliteNativeFailure(new Error('Native contract result was not logged within 300000 ms.')),
@@ -272,7 +304,7 @@ test('uses filesystem write-once producers for a valid V12 result, verifier read
     writeFileSync(path.join(runDirectory, 'build.json'), JSON.stringify(manifest));
     writeFileSync(path.join(activeDirectory, 'v1.2-acceptance.json'), JSON.stringify({ status: 'passed', contract: nativeV12Result() }));
     const executed = await executeV12SqliteShardCli(['--run', runId, '--execute'], {
-      root, sourceDigest: digest, execFileSync: () => '',
+      root, sourceDigest: digest, executeNative: async () => ({ status: 'passed', contract: nativeV12Result() }),
     });
     assert.equal(executed.ok, true);
     const verified = await executeV12SqliteShardCli(['--run', runId, '--verify'], { root, sourceDigest: digest });
@@ -290,7 +322,7 @@ test('uses filesystem write-once producers for a valid V12 result, verifier read
     await assert.rejects(
       executeV12SqliteShardCli(['--run', runId, '--execute'], {
         root: failureRoot, sourceDigest: digest,
-        execFileSync: () => { throw { stderr: '{"failure_code":"marker_timeout"}' }; },
+        executeNative: async () => { throw new Error('v12_native_adapter_command_failed:marker_timeout'); },
       }),
       /v12_sqlite_marker_timeout/u,
     );

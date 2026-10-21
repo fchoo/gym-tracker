@@ -1,3 +1,9 @@
+import {
+  PHASE20_CALENDAR_STAGE_GROUPS,
+  type Phase20CalendarStage,
+  type Phase20CalendarStageGroup,
+} from "../../bootstrap/phase20CalendarObservation";
+
 export type V12CalendarNativeExecution = "NOT_RUN" | "REVIEW_REQUIRED" | "FAIL";
 
 export type V12CalendarAcceptanceCase = Readonly<{
@@ -18,71 +24,80 @@ export const V12_CALENDAR_ACCEPTANCE_CASES = Object.freeze([
   { id: "NV-CAL-09", concern: "normal/reduced motion, DEV-01, and DEV-02", disposition: "observe-only" },
 ] as const satisfies readonly V12CalendarAcceptanceCase[]);
 
-type CalendarSample = Readonly<Record<string, unknown>>;
-export type V12CalendarAcceptanceObservation = Readonly<{
+export type V12CalendarObservationSchema = Readonly<{
+  stageId: Phase20CalendarStage;
+  group: Phase20CalendarStageGroup;
+  schemaVersion: 1;
+  requiredCollections: readonly string[];
+}>;
+
+const REQUIRED = Object.freeze({
+  pointer: Object.freeze(["viewport", "pointer_events", "rendered_panel_samples", "transition_events", "semantic_samples", "callback_events", "focus_events", "motion"]),
+  "input-interrupt": Object.freeze(["viewport", "pointer_events", "rendered_panel_samples", "input_attempts", "transition_events", "semantic_samples", "callback_events", "motion"]),
+  "row-geometry": Object.freeze(["viewport", "row_measurements", "rendered_overlay_samples", "transition_events", "semantic_samples", "callback_events", "focus_events", "motion"]),
+  "month-geometry": Object.freeze(["viewport", "row_measurements", "transition_events", "semantic_samples", "motion"]),
+  lifecycle: Object.freeze(["viewport_events", "lifecycle_events", "transition_events", "semantic_samples", "callback_events", "motion_events"]),
+  "reduced-motion": Object.freeze(["viewport", "row_measurements", "rendered_overlay_samples", "transition_events", "semantic_samples", "callback_events", "focus_events", "motion_events"]),
+  baseline: Object.freeze(["viewport", "row_measurements", "baseline_measurements", "semantic_samples", "motion"]),
+} satisfies Record<Phase20CalendarStageGroup, readonly string[]>);
+
+function schemas(
+  stages: readonly Phase20CalendarStage[],
+  group: Phase20CalendarStageGroup,
+): readonly V12CalendarObservationSchema[] {
+  return stages.map((stageId) => Object.freeze({
+    stageId,
+    group,
+    schemaVersion: 1 as const,
+    requiredCollections: REQUIRED[group],
+  }));
+}
+
+export const V12_CALENDAR_OBSERVATION_SCHEMAS = Object.freeze([
+  ...schemas(PHASE20_CALENDAR_STAGE_GROUPS.pointer, "pointer"),
+  ...schemas(PHASE20_CALENDAR_STAGE_GROUPS.inputInterrupt, "input-interrupt"),
+  ...schemas(PHASE20_CALENDAR_STAGE_GROUPS.rowGeometry, "row-geometry"),
+  ...schemas(PHASE20_CALENDAR_STAGE_GROUPS.monthGeometry, "month-geometry"),
+  ...schemas(PHASE20_CALENDAR_STAGE_GROUPS.lifecycle, "lifecycle"),
+  ...schemas(PHASE20_CALENDAR_STAGE_GROUPS.reducedMotion, "reduced-motion"),
+  ...schemas(PHASE20_CALENDAR_STAGE_GROUPS.baseline, "baseline"),
+]);
+
+export type V12CalendarAcceptanceObservationPlan = Readonly<{
   sourceDigest: string;
   nativeExecution: V12CalendarNativeExecution;
-  samples: readonly CalendarSample[];
+  stages: readonly V12CalendarObservationSchema[];
 }>;
 
 const SHA256 = /^[a-f0-9]{64}$/u;
-const DATE = /^\d{4}-\d{2}-\d{2}$/u;
 
-function record(value: unknown, code: string): asserts value is CalendarSample {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error(code);
+function exactRecord(value: unknown, keys: readonly string[]): value is Readonly<Record<string, unknown>> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    && Object.keys(value).length === keys.length
+    && keys.every((key) => Object.hasOwn(value, key));
 }
 
-function finite(value: unknown, code: string): asserts value is number {
-  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(code);
-}
-
-function nonEmpty(value: unknown, code: string): asserts value is string {
-  if (typeof value !== "string" || value.trim().length === 0) throw new Error(code);
-}
-
-function execution(value: unknown): asserts value is V12CalendarNativeExecution {
-  if (value !== "NOT_RUN" && value !== "REVIEW_REQUIRED" && value !== "FAIL") throw new Error("calendar_execution_invalid");
-}
-
-function sample(value: CalendarSample, previous: CalendarSample | undefined): void {
-  finite(value.timestampMs, "calendar_timestamp_invalid");
-  finite(value.widthDp, "calendar_width_invalid");
-  finite(value.dxDp, "calendar_dx_invalid");
-  finite(value.dyDp, "calendar_dy_invalid");
-  finite(value.translationDp, "calendar_translation_invalid");
-  if ((value.widthDp as number) <= 0 || Math.abs((value.translationDp as number) - (value.dxDp as number)) > 2) throw new Error("calendar_translation_invalid");
-  if (value.intentOwner !== "horizontal" && value.intentOwner !== "vertical" && value.intentOwner !== "diagonal") throw new Error("calendar_intent_invalid");
-  nonEmpty(value.title, "calendar_title_invalid");
-  if (typeof value.selectedCivilDate !== "string" || !DATE.test(value.selectedCivilDate)) throw new Error("calendar_date_invalid");
-  if (!Number.isInteger(value.generation) || (value.generation as number) < 1) throw new Error("calendar_generation_invalid");
-  nonEmpty(value.focusedWeek, "calendar_focused_week_invalid");
-  if (!Array.isArray(value.rowBounds) || value.rowBounds.length !== 2 || !value.rowBounds.every(Number.isFinite)
-    || value.rowBounds[1] <= value.rowBounds[0]) throw new Error("calendar_row_bounds_invalid");
-  if (!Number.isInteger(value.callbackCount) || (value.callbackCount as number) < 1) throw new Error("calendar_callback_invalid");
-  nonEmpty(value.focusIdentity, "calendar_focus_identity_invalid");
-  if (value.motion !== "normal" && value.motion !== "reduced") throw new Error("calendar_motion_invalid");
-  if (previous !== undefined) {
-    if ((value.timestampMs as number) <= (previous.timestampMs as number)) throw new Error("calendar_timestamp_non_monotonic");
-    if ((value.generation as number) < (previous.generation as number)) throw new Error("calendar_generation_stale");
-    if ((value.callbackCount as number) < (previous.callbackCount as number)) throw new Error("calendar_callback_stale");
-  }
-}
-
-/** Validates source-derived intermediate samples; no source-freeze path may emit PASS. */
-export function runV12CalendarAcceptanceContract(input: V12CalendarAcceptanceObservation): Readonly<{
-  status: V12CalendarNativeExecution;
+/**
+ * Validates the source-freeze plan only. Native observations and PASS/FAIL are
+ * validated and derived by the host-side stage-specific contract.
+ */
+export function runV12CalendarAcceptanceContract(input: V12CalendarAcceptanceObservationPlan): Readonly<{
+  nativeExecution: V12CalendarNativeExecution;
   caseCount: number;
+  stageCount: number;
 }> {
-  record(input, "calendar_observation_invalid");
+  if (!exactRecord(input, ["sourceDigest", "nativeExecution", "stages"])) throw new Error("calendar_observation_invalid");
   if (!SHA256.test(input.sourceDigest)) throw new Error("calendar_source_digest_invalid");
-  execution(input.nativeExecution);
-  if (!Array.isArray(input.samples) || input.samples.length < 2) throw new Error("calendar_intermediate_samples_required");
-  input.samples.forEach((entry, index) => {
-    record(entry, "calendar_sample_invalid");
-    sample(entry, index === 0 ? undefined : input.samples[index - 1]);
+  if (!(["NOT_RUN", "REVIEW_REQUIRED", "FAIL"] as readonly unknown[]).includes(input.nativeExecution)) throw new Error("calendar_execution_invalid");
+  if (!Array.isArray(input.stages) || input.stages.length !== V12_CALENDAR_OBSERVATION_SCHEMAS.length) throw new Error("calendar_stage_plan_invalid");
+  input.stages.forEach((stage, index) => {
+    const expected = V12_CALENDAR_OBSERVATION_SCHEMAS[index];
+    if (!exactRecord(stage, ["stageId", "group", "schemaVersion", "requiredCollections"])
+      || JSON.stringify(stage) !== JSON.stringify(expected)) throw new Error("calendar_stage_plan_invalid");
   });
-  const exactBoundary = input.samples.some(({ intentOwner, widthDp, dxDp }) => intentOwner === "horizontal"
-    && Math.abs(Math.abs(dxDp as number) / (widthDp as number) - 0.25) < 0.0001);
-  if (!exactBoundary) throw new Error("calendar_threshold_boundary_invalid");
-  return Object.freeze({ status: input.nativeExecution, caseCount: V12_CALENDAR_ACCEPTANCE_CASES.length });
+  return Object.freeze({
+    nativeExecution: input.nativeExecution,
+    caseCount: V12_CALENDAR_ACCEPTANCE_CASES.length,
+    stageCount: V12_CALENDAR_OBSERVATION_SCHEMAS.length,
+  });
 }

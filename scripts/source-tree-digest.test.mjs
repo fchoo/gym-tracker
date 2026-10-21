@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -10,7 +11,9 @@ import {
   sourceTreeSha256,
   sourceTreeUntrackedPaths,
   sourceTreeSha256AtHead,
+  v12ContractSourceDigests,
 } from "./source-tree-digest.mjs";
+import { resolveV12GitExecution, V12_TEST_EXECUTION_ORIGIN } from "./v12-native-execution-origin.mjs";
 
 function git(root, ...args) {
   return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
@@ -117,5 +120,94 @@ test("ignores only the generated root .coverage database while retaining similar
     assert.throws(() => assertCleanCommittedTree(head, root), /coverage-source\.ts|coverage-example\.ts/u);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("recomputes planning, prototype, and fixture authority outside the implementation-tree exclusion", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "gym-v12-contract-digest-"));
+  const approved = mkdtempSync(path.join(tmpdir(), "gym-v12-approved-"));
+  try {
+    const files = {
+      ".planning/design/v1.2-prototype-parity-matrix.json": "{}\n",
+      ".planning/REQUIREMENTS.md": "# Requirements\n",
+      ".planning/v1.2-OWNER-BRIEF.md": "# Owner\n",
+      ".planning/phases/20-native-acceptance/20-UI-SPEC.md": "# UI\n",
+      ".planning/design/v1.2-DEVIATIONS.md": "# Deviations\n",
+      ".planning/design/v1.2-browser-evidence/serial-walk.json": "[]\n",
+    };
+    writeFileSync(path.join(root, "app.ts"), "export const source = 1;\n");
+    for (const [relative, bytes] of Object.entries(files)) {
+      mkdirSync(path.join(root, path.dirname(relative)), { recursive: true });
+      writeFileSync(path.join(root, relative), bytes);
+    }
+    writeFileSync(path.join(approved, "approved.json"), "{\"revision\":18}\n");
+    writeFileSync(path.join(approved, "approved-hybrid.html"), "<main>approved</main>\n");
+    const sourceManifest = {
+      schema_version: 2,
+      revision: 18,
+      sources: [
+        { id: "approved-json", filename: "approved.json", sha256: createHash("sha256").update(readFileSync(path.join(approved, "approved.json"))).digest("hex") },
+        { id: "approved-hybrid-html", filename: "approved-hybrid.html", sha256: createHash("sha256").update(readFileSync(path.join(approved, "approved-hybrid.html"))).digest("hex") },
+      ],
+    };
+    writeFileSync(path.join(root, ".planning/design/v1.2-browser-evidence/source-manifest.json"), JSON.stringify(sourceManifest));
+    git(root, "init", "--quiet"); git(root, "config", "user.email", "test@example.invalid"); git(root, "config", "user.name", "Source Digest Test");
+    git(root, "add", "."); git(root, "commit", "--quiet", "-m", "initial");
+    const implementation = sourceTreeSha256(root);
+    const first = v12ContractSourceDigests(root, { approvedSourceRoot: approved });
+    writeFileSync(path.join(root, ".planning/REQUIREMENTS.md"), "# Changed requirements\n");
+    const second = v12ContractSourceDigests(root, { approvedSourceRoot: approved });
+    assert.equal(sourceTreeSha256(root), implementation, ".planning remains excluded from the implementation digest");
+    assert.notEqual(second.planning.requirements_sha256, first.planning.requirements_sha256);
+    writeFileSync(path.join(approved, "approved.json"), "{\"revision\":19}\n");
+    assert.throws(() => v12ContractSourceDigests(root, { approvedSourceRoot: approved }), /prototype|approved/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(approved, { recursive: true, force: true });
+  }
+});
+
+test("resolves the checked-in hash-matched prototype authority without an external root", () => {
+  const manifest = JSON.parse(readFileSync(
+    ".planning/design/v1.2-browser-evidence/source-manifest.json",
+    "utf8",
+  ));
+  const sources = Object.fromEntries(manifest.sources.map(({ id, sha256 }) => [id, sha256]));
+  const digests = v12ContractSourceDigests(process.cwd(), { approvedSourceRoot: null });
+  assert.deepEqual(digests.prototype, {
+    revision: 18,
+    approval_sha256: sources["approved-json"],
+    html_sha256: sources["approved-hybrid-html"],
+  });
+});
+
+test("source operations use one explicitly attested absolute Git executable", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "gym-source-tree-git-origin-"));
+  const tools = mkdtempSync(path.join(tmpdir(), "gym-source-tree-git-tools-"));
+  try {
+    const systemGit = realpathSync("/usr/bin/git");
+    const controlledGit = path.join(tools, "git");
+    writeFileSync(controlledGit, `#!/bin/sh\nexec ${JSON.stringify(systemGit)} "$@"\n`, { mode: 0o755 });
+    const gitExecution = resolveV12GitExecution({
+      env: { V12_EXECUTION_ORIGIN: V12_TEST_EXECUTION_ORIGIN, V12_GIT_PATH: controlledGit },
+    });
+    git(root, "init", "--quiet");
+    git(root, "config", "user.email", "test@example.invalid");
+    git(root, "config", "user.name", "Source Digest Test");
+    writeFileSync(path.join(root, "app.ts"), "export const source = 1;\n");
+    git(root, "add", "app.ts");
+    git(root, "commit", "--quiet", "-m", "initial");
+    const head = git(root, "rev-parse", "HEAD");
+
+    const digest = sourceTreeSha256AtHead(head, root, { gitExecution, expectedGitAttestation: gitExecution.attestation });
+    assert.match(digest, /^[a-f0-9]{64}$/u);
+    assert.doesNotThrow(() => assertCleanCommittedTree(head, root, { gitExecution, expectedGitAttestation: gitExecution.attestation }));
+    assert.throws(
+      () => sourceTreeSha256(root, { gitExecution, expectedGitAttestation: { ...gitExecution.attestation, action: "tampered" } }),
+      /git_attestation_invalid/u,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(tools, { recursive: true, force: true });
   }
 });

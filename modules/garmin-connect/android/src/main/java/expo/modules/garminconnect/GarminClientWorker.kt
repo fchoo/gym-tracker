@@ -34,37 +34,90 @@ private val URL_RESULT_VALUE = Regex("^(?:https?|ftp)://", RegexOption.IGNORE_CA
 internal interface GarminPythonDispatcher {
   fun dispatch(operation: String, arguments: MutableMap<String, Any>): Map<String, Any?>
   fun takePersistableTokens(): ByteArray?
+  fun evidenceSource(): String = "test-only"
+  fun evidenceRejections(): Map<String, String> = mapOf(
+    "operation_rejection" to "operation_rejected",
+    "arguments_rejection" to "arguments_rejected",
+  )
+  fun evidenceRecoveryExtensions(): List<Map<String, Any?>> = listOf(
+    mapOf("id" to "PH18-ADV-EXPIRED", "code" to "sign_in_required", "call_count" to 2, "automatic_retry_count" to 0, "retry_after_ms" to 0),
+    mapOf("id" to "PH18-ADV-401", "code" to "sign_in_required", "call_count" to 2, "automatic_retry_count" to 0, "retry_after_ms" to 0),
+    mapOf("id" to "PH18-ADV-TRUNCATED", "code" to "malformed_response", "call_count" to 4, "automatic_retry_count" to 0, "retry_after_ms" to 0),
+    mapOf("id" to "PH18-ADV-UNSUPPORTED-JSON", "code" to "malformed_response", "call_count" to 5, "automatic_retry_count" to 0, "retry_after_ms" to 0),
+  )
 }
 
+internal fun productionGarminPythonDispatcher(context: Context): ChaquopyGarminPythonDispatcher =
+  ChaquopyGarminPythonDispatcher(
+    ensurePythonStarted = {
+      synchronized(Python::class.java) {
+        if (!Python.isStarted()) {
+          Python.start(AndroidPlatform(context.applicationContext))
+        }
+      }
+    },
+    dispatchBridge = { operation, arguments ->
+      @Suppress("UNCHECKED_CAST")
+      Python.getInstance().getModule("garmin_bridge")
+        .callAttr("dispatch", operation, arguments)
+        .toJava(Map::class.java) as Map<String, Any?>
+    },
+    takeTokens = {
+      Python.getInstance().getModule("garmin_bridge")
+        .callAttr("take_persistable_tokens").toJava(ByteArray::class.java)
+    },
+    rejectionEvidence = {
+      @Suppress("UNCHECKED_CAST")
+      Python.getInstance().getModule("garmin_bridge")
+        .callAttr("evidence_rejections")
+        .toJava(Map::class.java) as Map<String, String>
+    },
+    recoveryEvidence = {
+      @Suppress("UNCHECKED_CAST")
+      Python.getInstance().getModule("garmin_bridge")
+        .callAttr("evidence_recovery_extensions")
+        .toJava(List::class.java) as List<Map<String, Any?>>
+    },
+  )
+
 internal class ChaquopyGarminPythonDispatcher(
-  private val context: Context
+  private val ensurePythonStarted: () -> Unit,
+  private val dispatchBridge: (String, MutableMap<String, Any>) -> Map<String, Any?>,
+  private val takeTokens: () -> ByteArray?,
+  private val rejectionEvidence: () -> Map<String, String>,
+  private val recoveryEvidence: () -> List<Map<String, Any?>>,
 ) : GarminPythonDispatcher {
+  override fun evidenceSource(): String = "installed-chaquopy"
   override fun dispatch(
     operation: String,
     arguments: MutableMap<String, Any>
   ): Map<String, Any?> {
-    synchronized(Python::class.java) {
-      if (!Python.isStarted()) {
-        Python.start(AndroidPlatform(context.applicationContext))
-      }
-    }
     return try {
-      @Suppress("UNCHECKED_CAST")
-      module()
-        .callAttr("dispatch", operation, arguments)
-        .toJava(Map::class.java) as Map<String, Any?>
+      ensurePythonStarted()
+      dispatchBridge(operation, arguments)
     } catch (_: Throwable) {
       throw GarminWorkerException("temporary_failure")
     }
   }
 
   override fun takePersistableTokens(): ByteArray? = try {
-    module().callAttr("take_persistable_tokens").toJava(ByteArray::class.java)
+    takeTokens()
   } catch (_: Throwable) {
     throw GarminWorkerException("temporary_failure")
   }
 
-  private fun module() = Python.getInstance().getModule("garmin_bridge")
+  override fun evidenceRejections(): Map<String, String> = try {
+    rejectionEvidence()
+  } catch (_: Throwable) {
+    throw GarminWorkerException("temporary_failure")
+  }
+
+  override fun evidenceRecoveryExtensions(): List<Map<String, Any?>> = try {
+    recoveryEvidence()
+  } catch (_: Throwable) {
+    throw GarminWorkerException("temporary_failure")
+  }
+
 }
 
 internal class GarminClientWorker(

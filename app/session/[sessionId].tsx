@@ -7,6 +7,7 @@ import React, {
   useEffect,
   useState,
 } from "react";
+import Constants from "expo-constants";
 
 import {
   useWorkoutAppRuntime,
@@ -28,12 +29,14 @@ import {
 import {
   CalendarSessionDetailRouteAdapter,
 } from "../../src/ui/calendar/CalendarRouteAdapters";
+import { CalendarReadOnlyWorkout } from "../../src/ui/calendar/CalendarReadOnlyWorkout";
 import {
   AdaptiveScreen,
 } from "../../src/ui/layout/AdaptiveScreen";
 import {
   SessionDetailScreen,
 } from "../../src/ui/screens/SessionDetailScreen";
+import { phase20CalendarFixtureRequestFromNativeContract, phase20CalendarSessionDetail } from "../../src/testing/phase20CalendarFixture";
 
 function exactRouteParam(value: RouteParam): string | null {
   const parsed = parseScalarRouteParam(value);
@@ -180,10 +183,18 @@ function ManagementSessionDetailRoute({ expectedSourceRevision, sessionId }: Rea
 }
 
 export default function SessionDetailRoute() {
-  const { sessionId, origin: rawOrigin, sourceRevision: rawSourceRevision } = useLocalSearchParams() as Readonly<{
+  const { sessionId, origin: rawOrigin, sourceRevision: rawSourceRevision, phase20CalendarFixture, phase20CalendarEvidenceNonce, phase20CalendarRequirementsSha256, phase20CalendarFixtureSourceSha256, phase20CalendarRequirement, phase20CalendarEvidenceId, phase20CalendarProbe, phase20CalendarProbeReceipt } = useLocalSearchParams() as Readonly<{
     sessionId?: RouteParam;
     origin?: RouteParam;
     sourceRevision?: RouteParam;
+    phase20CalendarFixture?: RouteParam;
+    phase20CalendarEvidenceNonce?: RouteParam;
+    phase20CalendarRequirementsSha256?: RouteParam;
+    phase20CalendarFixtureSourceSha256?: RouteParam;
+    phase20CalendarRequirement?: RouteParam;
+    phase20CalendarEvidenceId?: RouteParam;
+    phase20CalendarProbe?: RouteParam;
+    phase20CalendarProbeReceipt?: RouteParam;
   }>;
   const resolvedSessionId = exactRouteParam(sessionId);
   const origin = parseCalendarRouteOrigin(rawOrigin, {
@@ -198,15 +209,47 @@ export default function SessionDetailRoute() {
     || (parsedSourceRevision.kind === "value"
       && Number.isSafeInteger(sourceRevision)
       && sourceRevision! > 0);
+  const extra = Constants.expoConfig?.extra;
+  const fixtureEnabled = phase20CalendarFixtureRequestFromNativeContract({
+    packageName: Constants.expoConfig?.android?.package,
+    buildProfile: extra?.buildProfile,
+    nativeContractsEnabled: extra?.nativeContractsEnabled,
+    suite: extra?.nativeContractSuite,
+    fixtureId: exactRouteParam(phase20CalendarFixture),
+    nonce: exactRouteParam(phase20CalendarEvidenceNonce),
+    requirementsSha256: exactRouteParam(phase20CalendarRequirementsSha256),
+  });
+  const fixtureDetail = fixtureEnabled && resolvedSessionId !== null ? phase20CalendarSessionDetail(resolvedSessionId) : null;
 
   if (origin.kind === "invalid" || !progressSourceValid) return <SessionRouteUnavailable />;
   if (origin.kind === "calendar") {
+    if (fixtureDetail !== null) return <CalendarReadOnlyWorkout detail={fixtureDetail} onGoBack={() => router.back()} />;
     return (
       <CalendarSessionDetailRouteAdapter
         onBack={() => router.back()}
         sessionId={resolvedSessionId}
       />
     );
+  }
+  if (fixtureDetail !== null) {
+    const fixtureQuery = new URLSearchParams({
+      phase20CalendarFixture: exactRouteParam(phase20CalendarFixture)!,
+      phase20CalendarEvidenceNonce: exactRouteParam(phase20CalendarEvidenceNonce)!,
+      phase20CalendarRequirementsSha256: exactRouteParam(phase20CalendarRequirementsSha256)!,
+      ...(exactRouteParam(phase20CalendarFixtureSourceSha256) === null ? {} : { phase20CalendarFixtureSourceSha256: exactRouteParam(phase20CalendarFixtureSourceSha256)! }),
+      ...(exactRouteParam(phase20CalendarRequirement) === null ? {} : { phase20CalendarRequirement: exactRouteParam(phase20CalendarRequirement)! }),
+      ...(exactRouteParam(phase20CalendarEvidenceId) === null ? {} : { phase20CalendarEvidenceId: exactRouteParam(phase20CalendarEvidenceId)! }),
+      ...(exactRouteParam(phase20CalendarProbe) === null ? {} : { phase20CalendarProbe: exactRouteParam(phase20CalendarProbe)! }),
+      ...(exactRouteParam(phase20CalendarProbeReceipt) === null ? {} : { phase20CalendarProbeReceipt: exactRouteParam(phase20CalendarProbeReceipt)! }),
+    }).toString();
+    return <SessionDetailScreen
+      detail={fixtureDetail}
+      onGoBack={() => router.back()}
+      onCorrectWorkout={() => router.push(`/session/${fixtureDetail.id}/correct?${fixtureQuery}` as Href)}
+      {...(fixtureDetail.status === "completed" ? { onRemoveFromHistory: () => Promise.resolve() } : {})}
+      onOpenExerciseHistory={() => undefined}
+      {...(fixtureDetail.resumable ? { onResume: () => router.replace(`/workout/${fixtureDetail.id}?${fixtureQuery}` as Href) } : {})}
+    />;
   }
   return resolvedSessionId === null
     ? <SessionRouteUnavailable />

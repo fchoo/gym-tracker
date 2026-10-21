@@ -274,12 +274,13 @@ export async function executeV12RecoveryShardCli(args = process.argv.slice(2), d
   return Object.freeze({ ok: true, mode, run_id: runId, observation });
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const args = process.argv.slice(2); const runId = args[1]; const writes = [];
+  const args = process.argv.slice(2); const runId = args[1]; const writes = []; const adapter = createV12NativeAdapter();
   executeV12RecoveryShardCli(args, {
+    executeNative: async () => adapter.executeRecovery({ run_id: runId }),
     writeLifecycle: async (value) => writes.push(['recovery/lifecycle.json', value]),
     writeReport: async (value) => writes.push(['maestro/recovery.xml', value]),
   }).then((result) => {
-    if (args[2] === '--execute') publishV12AtomicShard({ runId, shard: 'recovery', produce: ({ write }) => writes.forEach(([file, value]) => write(file, value)) });
+    if (args[2] === '--execute') publishV12AtomicShard({ runId, shard: 'recovery', executionOrigin: () => adapter.executionOrigin('recovery'), produce: ({ write }) => writes.forEach(([file, value]) => write(file, value)) });
     process.stdout.write(`${JSON.stringify(result)}\n`);
   }).catch((error) => {
     if (RUN_ID.test(runId ?? '')) { try { recordV12AtomicFailure({ runId, shard: 'recovery', error }); } catch { /* first receipt wins */ } }

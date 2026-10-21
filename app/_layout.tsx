@@ -1,7 +1,7 @@
 import React from "react";
 import Constants from "expo-constants";
 import { useFonts } from "expo-font";
-import { Stack, usePathname } from "expo-router";
+import { Redirect, Stack, useLocalSearchParams, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import {
   Keyboard,
@@ -28,6 +28,7 @@ import {
   useWorkoutAppRuntime,
   WorkoutAppRuntimeProvider,
 } from "../src/bootstrap/workoutAppRuntime";
+import { RunningPlanRuntimeProvider } from "../src/bootstrap/runningPlanRuntime";
 import {
   productionAppearanceStore,
 } from "../src/bootstrap/appearancePreference";
@@ -40,10 +41,32 @@ import {
 import {
   SemanticToastProvider,
 } from "../src/ui/components/SemanticToast";
+import {
+  createPhase20VisualRuntimeDependencies,
+} from "../src/testing/phase20VisualFixtureRuntime";
+import {
+  PHASE20_VISUAL_ROUTE,
+  phase20VisualGate,
+} from "../src/testing/phase20VisualRequest";
+import {
+  createPhase20CalendarRuntimeDependencies,
+  phase20CalendarEvidencePathRequested,
+  resolvePhase20CalendarIsolatedRuntime,
+} from "../src/testing/phase20CalendarRuntime";
+import {
+  createStrictIsolatedWorkoutRuntimeDependencies,
+  resolveV12RecoveryIsolatedRuntime,
+} from "../src/testing/isolatedWorkoutRuntime";
+import {
+  resolveV12NativeAcceptanceProductRequest,
+  createV12NativeAcceptanceAppearanceStore,
+  V12NativeAcceptanceProductGate,
+  type V12NativeAcceptanceProductPreparer,
+} from "../src/testing/v12NativeAcceptanceFixture";
 
 const attendedPreviewAppearanceStore = createMemoryAppearanceStore();
 const phase6GestureSmokeAppearanceStore = createMemoryAppearanceStore();
-const phase12CleanupAppearanceStore = createMemoryAppearanceStore();
+const isolatedNativeAppearanceStore = createMemoryAppearanceStore();
 const APPROVED_ROOT_HEADER_HEIGHT = 56;
 const APPROVED_ROOT_NAVIGATION_HEIGHT = 74;
 
@@ -116,7 +139,7 @@ function RootNavigator() {
   const runtime = useWorkoutAppRuntime();
   const { colorScheme } = useAppTheme();
 
-  return (
+  const navigator = (
     <StartupReadinessGate
       launchState={runtime.launchState}
       notificationPermission={runtime.notificationPermission}
@@ -160,6 +183,11 @@ function RootNavigator() {
         <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
       </>
     </StartupReadinessGate>
+  );
+  return runtime.runningPlanRuntime === null ? navigator : (
+    <RunningPlanRuntimeProvider runtime={runtime.runningPlanRuntime}>
+      {navigator}
+    </RunningPlanRuntimeProvider>
   );
 }
 
@@ -235,6 +263,17 @@ function Phase18GarminAdversarialNavigator() {
   );
 }
 
+function V12ProductionGarminNavigator() {
+  return (
+    <Stack
+      initialRouteName="__v12-production-garmin"
+      screenOptions={{ animation: "none", headerShown: false }}
+    >
+      <Stack.Screen name="__v12-production-garmin" />
+    </Stack>
+  );
+}
+
 function NativeContractsNavigator() {
   return (
     <Stack
@@ -242,6 +281,72 @@ function NativeContractsNavigator() {
       screenOptions={{ animation: "none", headerShown: false }}
     >
       <Stack.Screen name="__native-contracts" />
+    </Stack>
+  );
+}
+
+function V12NativeAcceptanceNavigator() {
+  return (
+    <Stack
+      initialRouteName="native-acceptance/[shard]"
+      screenOptions={{ animation: "none", headerShown: false }}
+    >
+      <Stack.Screen name="native-acceptance/[shard]" />
+    </Stack>
+  );
+}
+
+function V12NativeAcceptanceProductNavigator({
+  request,
+}: Readonly<{
+  request: NonNullable<ReturnType<typeof resolveV12NativeAcceptanceProductRequest>>;
+}>) {
+  const runtime = useWorkoutAppRuntime();
+  const prepareProductCase = (runtime as typeof runtime & Readonly<{
+    prepareV12NativeAcceptanceProductCase?: V12NativeAcceptanceProductPreparer;
+  }>).prepareV12NativeAcceptanceProductCase;
+  if (prepareProductCase === undefined) return <Redirect href="/" />;
+  return (
+    <V12NativeAcceptanceProductGate
+      prepareProductCase={prepareProductCase}
+      request={request}
+    >
+      <ProductionToastBoundary>
+        <RootNavigator />
+      </ProductionToastBoundary>
+    </V12NativeAcceptanceProductGate>
+  );
+}
+
+function Phase20VisualNavigator() {
+  return (
+    <Stack
+      initialRouteName="__phase20-visual-probe"
+      screenOptions={{ animation: "none", headerShown: false }}
+    >
+      <Stack.Screen name="__phase20-visual-probe" />
+    </Stack>
+  );
+}
+
+function Phase20QualityNavigator() {
+  return (
+    <Stack
+      initialRouteName="__phase20-quality-probe"
+      screenOptions={{ animation: "none", headerShown: false }}
+    >
+      <Stack.Screen name="__phase20-quality-probe" />
+    </Stack>
+  );
+}
+
+function V12ProductionRecoveryNavigator() {
+  return (
+    <Stack
+      initialRouteName="__v12-production-recovery"
+      screenOptions={{ animation: "none", headerShown: false }}
+    >
+      <Stack.Screen name="__v12-production-recovery" />
     </Stack>
   );
 }
@@ -300,37 +405,151 @@ function RootLayoutAttempt({
   const phase14FontProofEnabled = nativeContractsEnabled
     && nativeContractSuite === "phase14-font-proof";
   const pathname = usePathname();
+  const searchParams = useLocalSearchParams() as Readonly<Record<string, unknown>>;
+  const phase20VisualPath = pathname === PHASE20_VISUAL_ROUTE;
+  const attendedPreviewPath = pathname === "/__phase2-attended-preview";
+  const phase6GestureSmokePath = pathname === "/__phase6-gesture-smoke";
+  const phase12CleanupPath = pathname === "/__phase12-google-cleanup";
+  const phase12GoogleAuthSmokePath = pathname === "/__phase12-google-auth-smoke";
+  const phase18GarminProofPath = pathname === "/__phase18-garmin-proof";
+  const phase18GarminAdversarialPath = pathname === "/__phase18-garmin-adversarial";
+  const v12ProductionGarminPath = pathname === "/__v12-production-garmin";
+  const v12ProductionRecoveryPath = pathname === "/__v12-production-recovery";
+  const v12NativeContractsPath = pathname === "/__native-contracts";
+  const v12NativeAcceptancePath = pathname.startsWith("/native-acceptance/");
+  const phase20QualityPath = pathname === "/__phase20-quality-probe";
+  const phase20CalendarEvidencePath = phase20CalendarEvidencePathRequested(searchParams);
+  const nativeIdentity = {
+    packageName: Constants.expoConfig?.android?.package,
+    buildProfile: Constants.expoConfig?.extra?.buildProfile,
+    nativeContractsEnabled,
+    suite: nativeContractSuite,
+  } as const;
+  const v12NativeAcceptanceProductRequest = React.useMemo(
+    () => resolveV12NativeAcceptanceProductRequest(nativeIdentity, searchParams),
+    [
+      nativeIdentity.buildProfile,
+      nativeIdentity.nativeContractsEnabled,
+      nativeIdentity.packageName,
+      nativeIdentity.suite,
+      searchParams.case,
+      searchParams.fixture,
+      searchParams.mode,
+      searchParams.nonce,
+      searchParams.shard,
+    ],
+  );
+  const phase20CalendarRuntime = resolvePhase20CalendarIsolatedRuntime(
+    nativeIdentity,
+    searchParams,
+  );
+  const phase20CalendarDependencies = React.useMemo(
+    () => phase20CalendarRuntime === null
+      ? null
+      : createPhase20CalendarRuntimeDependencies(phase20CalendarRuntime.databaseName),
+    [phase20CalendarRuntime?.databaseName],
+  );
+  const v12ProductionRecoveryRuntime = resolveV12RecoveryIsolatedRuntime({
+    ...nativeIdentity,
+    nonce: searchParams.nonce,
+    caseId: searchParams.caseId,
+    stepId: searchParams.stepId,
+    cutId: searchParams.cutId,
+  }, searchParams.phase);
+  const v12ProductionRecoveryDependencies = React.useMemo(
+    () => v12ProductionRecoveryRuntime === null
+      ? null
+      : createStrictIsolatedWorkoutRuntimeDependencies(v12ProductionRecoveryRuntime),
+    [v12ProductionRecoveryRuntime?.databaseName],
+  );
+  const v12NativeAcceptanceNonce = typeof searchParams.nonce === "string"
+    && /^[a-f0-9]{48}$/u.test(searchParams.nonce)
+    ? searchParams.nonce
+    : null;
+  const v12NativeAcceptanceDependencies = React.useMemo(
+    () => (!v12NativeAcceptancePath && v12NativeAcceptanceProductRequest === null) || v12NativeAcceptanceNonce === null
+      || nativeIdentity.packageName !== "com.fchoo.gymtracker.devtest"
+      || nativeIdentity.buildProfile !== "development-test"
+      || nativeIdentity.nativeContractsEnabled !== true
+      || nativeIdentity.suite !== "v1.2-acceptance"
+      ? null
+      : (() => {
+        const baseMs = 2_000_000_000_000
+          + Number.parseInt(v12NativeAcceptanceNonce.slice(0, 8), 16);
+        let identitySequence = 0;
+        return createStrictIsolatedWorkoutRuntimeDependencies({
+          databaseName: `gym-tracker-v12-native-acceptance-${v12NativeAcceptanceNonce}.db`,
+          now: () => new Date(baseMs),
+          nowMs: () => baseMs,
+          randomUUID: () => `v12-${v12NativeAcceptanceNonce.slice(0, 16)}-${identitySequence += 1}`,
+        });
+      })(),
+    [v12NativeAcceptanceNonce, v12NativeAcceptancePath, v12NativeAcceptanceProductRequest],
+  );
+  const v12NativeAcceptanceAppearanceStore = React.useMemo(
+    () => v12NativeAcceptanceNonce === null
+      ? isolatedNativeAppearanceStore
+      : createV12NativeAcceptanceAppearanceStore(
+        `gym-tracker-v12-native-acceptance-${v12NativeAcceptanceNonce}.db`,
+      ),
+    [v12NativeAcceptanceNonce],
+  );
+  const phase20VisualRequest = phase20VisualGate({
+    buildProfile: Constants.expoConfig?.extra?.buildProfile,
+    nativeContractsEnabled,
+    nativeContractSuite,
+    pathname,
+    params: searchParams,
+  });
+  const phase20VisualDependencies = React.useMemo(
+    () => phase20VisualRequest === null || phase20VisualRequest.mode === "reset"
+      ? null
+      : createPhase20VisualRuntimeDependencies(phase20VisualRequest),
+    [phase20VisualRequest?.configuration, phase20VisualRequest?.mode, phase20VisualRequest?.nonce, phase20VisualRequest?.state],
+  );
+  const phase20VisualAppearanceStore = React.useMemo(
+    () => createMemoryAppearanceStore(
+      phase20VisualRequest?.appearance === "Light" || phase20VisualRequest?.appearance === "Dark"
+        ? phase20VisualRequest.appearance
+        : null,
+    ),
+    [phase20VisualRequest?.appearance, phase20VisualRequest?.nonce],
+  );
   const { width } = useWindowDimensions();
-  const attendedPreviewEnabled = phase14FontProofEnabled
-    || nativeContractsEnabled && pathname === "/__phase2-attended-preview";
-  const phase6GestureSmokeEnabled =
-    nativeContractsEnabled && pathname === "/__phase6-gesture-smoke";
-  const phase12CleanupEnabled =
-    nativeContractsEnabled && pathname === "/__phase12-google-cleanup";
-  const phase12GoogleAuthSmokeEnabled =
-    nativeContractsEnabled && pathname === "/__phase12-google-auth-smoke";
-  const phase18GarminProofEnabled = nativeContractsEnabled
-    && nativeContractSuite === "v1.2-acceptance"
-    && pathname === "/__phase18-garmin-proof";
-  const phase18GarminAdversarialEnabled = nativeContractsEnabled
-    && nativeContractSuite === "v1.2-acceptance"
-    && pathname === "/__phase18-garmin-adversarial";
-  const v12NativeContractsEnabled = nativeContractsEnabled
-    && nativeContractSuite === "v1.2-acceptance"
-    && pathname === "/__native-contracts";
-
+  const attendedPreviewEnabled = phase14FontProofEnabled || attendedPreviewPath;
   const isolatedNativeRoute = attendedPreviewEnabled
-    || phase6GestureSmokeEnabled
-    || phase12CleanupEnabled
-    || phase12GoogleAuthSmokeEnabled
-    || phase18GarminProofEnabled
-    || phase18GarminAdversarialEnabled
-    || v12NativeContractsEnabled;
+    || phase6GestureSmokePath
+    || phase12CleanupPath
+    || phase12GoogleAuthSmokePath
+    || phase18GarminProofPath
+    || phase18GarminAdversarialPath
+    || v12NativeContractsPath
+    || v12NativeAcceptancePath
+    || phase20VisualPath
+    || phase20QualityPath
+    || v12ProductionGarminPath
+    || v12ProductionRecoveryPath
+    || phase20CalendarEvidencePath;
+  const failClosedFontRoute = phase20VisualPath
+    || phase20QualityPath
+    || v12NativeAcceptancePath
+    || v12ProductionGarminPath
+    || v12ProductionRecoveryPath
+    || phase20CalendarEvidencePath;
+  const fontLoadingAppearanceStore = attendedPreviewEnabled
+    ? attendedPreviewAppearanceStore
+    : phase6GestureSmokePath
+      ? phase6GestureSmokeAppearanceStore
+      : phase20VisualPath
+        ? phase20VisualAppearanceStore
+        : isolatedNativeRoute
+          ? isolatedNativeAppearanceStore
+          : productionAppearanceStore;
   const appearanceRead = !isolatedNativeRoute && fontsLoaded && fontError === null
     ? productionAppearanceStore.read()
     : null;
 
-  if (!isolatedNativeRoute && !fontsLoaded && fontError !== null) {
+  if ((!isolatedNativeRoute || failClosedFontRoute) && !fontsLoaded && fontError !== null) {
     return <PreRuntimeFailure category="font" onRetry={onRetryPreRuntime} />;
   }
 
@@ -348,17 +567,7 @@ function RootLayoutAttempt({
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
-          <AppearanceProvider store={attendedPreviewEnabled
-            ? attendedPreviewAppearanceStore
-            : phase6GestureSmokeEnabled
-              ? phase6GestureSmokeAppearanceStore
-              : phase12CleanupEnabled
-                  || phase12GoogleAuthSmokeEnabled
-                  || phase18GarminProofEnabled
-                  || phase18GarminAdversarialEnabled
-                ? phase12CleanupAppearanceStore
-                : productionAppearanceStore}
-          >
+          <AppearanceProvider store={fontLoadingAppearanceStore}>
             <AppLoadingShell width={width} />
           </AppearanceProvider>
         </SafeAreaProvider>
@@ -378,7 +587,7 @@ function RootLayoutAttempt({
     );
   }
 
-  if (phase6GestureSmokeEnabled) {
+  if (phase6GestureSmokePath) {
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
@@ -390,11 +599,11 @@ function RootLayoutAttempt({
     );
   }
 
-  if (phase12CleanupEnabled) {
+  if (phase12CleanupPath) {
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
-          <AppearanceProvider store={phase12CleanupAppearanceStore}>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
             <Phase12CleanupNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
@@ -402,11 +611,11 @@ function RootLayoutAttempt({
     );
   }
 
-  if (phase12GoogleAuthSmokeEnabled) {
+  if (phase12GoogleAuthSmokePath) {
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
-          <AppearanceProvider store={phase12CleanupAppearanceStore}>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
             <Phase12GoogleAuthSmokeNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
@@ -414,11 +623,11 @@ function RootLayoutAttempt({
     );
   }
 
-  if (phase18GarminProofEnabled) {
+  if (phase18GarminProofPath) {
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
-          <AppearanceProvider store={phase12CleanupAppearanceStore}>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
             <Phase18GarminProofNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
@@ -426,11 +635,11 @@ function RootLayoutAttempt({
     );
   }
 
-  if (phase18GarminAdversarialEnabled) {
+  if (phase18GarminAdversarialPath) {
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
-          <AppearanceProvider store={phase12CleanupAppearanceStore}>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
             <Phase18GarminAdversarialNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
@@ -438,12 +647,130 @@ function RootLayoutAttempt({
     );
   }
 
-  if (v12NativeContractsEnabled) {
+  if (v12ProductionGarminPath) {
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
-          <AppearanceProvider store={phase12CleanupAppearanceStore}>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
+            <V12ProductionGarminNavigator />
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (v12NativeContractsPath) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
             <NativeContractsNavigator />
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (v12NativeAcceptancePath) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={v12NativeAcceptanceAppearanceStore}>
+            {v12NativeAcceptanceDependencies === null ? (
+              <V12NativeAcceptanceNavigator />
+            ) : (
+              <WorkoutAppRuntimeProvider dependencies={v12NativeAcceptanceDependencies}>
+                <V12NativeAcceptanceNavigator />
+              </WorkoutAppRuntimeProvider>
+            )}
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (v12NativeAcceptanceProductRequest !== null) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={v12NativeAcceptanceAppearanceStore}>
+            {v12NativeAcceptanceDependencies === null ? (
+              <Redirect href="/" />
+            ) : (
+              <WorkoutAppRuntimeProvider dependencies={v12NativeAcceptanceDependencies}>
+                <V12NativeAcceptanceProductNavigator request={v12NativeAcceptanceProductRequest} />
+              </WorkoutAppRuntimeProvider>
+            )}
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (phase20VisualPath) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={phase20VisualAppearanceStore}>
+            {phase20VisualDependencies === null ? (
+              <Phase20VisualNavigator />
+            ) : (
+              <WorkoutAppRuntimeProvider dependencies={phase20VisualDependencies}>
+                <ProductionToastBoundary>
+                  <Phase20VisualNavigator />
+                </ProductionToastBoundary>
+              </WorkoutAppRuntimeProvider>
+            )}
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (phase20QualityPath) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
+            <Phase20QualityNavigator />
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (v12ProductionRecoveryPath) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
+            {v12ProductionRecoveryDependencies === null ? (
+              <Redirect href="/" />
+            ) : (
+              <WorkoutAppRuntimeProvider dependencies={v12ProductionRecoveryDependencies}>
+                <V12ProductionRecoveryNavigator />
+              </WorkoutAppRuntimeProvider>
+            )}
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (phase20CalendarEvidencePath) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
+            {phase20CalendarDependencies === null ? (
+              <Redirect href="/" />
+            ) : (
+              <WorkoutAppRuntimeProvider dependencies={phase20CalendarDependencies}>
+                <ProductionToastBoundary>
+                  <RootNavigator />
+                </ProductionToastBoundary>
+              </WorkoutAppRuntimeProvider>
+            )}
           </AppearanceProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>

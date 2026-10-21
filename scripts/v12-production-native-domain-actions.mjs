@@ -5,12 +5,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createProductionNativeRuntime } from './v12-production-native-runtime.mjs';
-import { V12_CALENDAR_SHARD_STAGE_IDS } from './v12-calendar-shard.mjs';
 import { V12_RECOVERY_CASE_IDS, V12_RECOVERY_CUT_DEFINITIONS, V12_RECOVERY_CUT_IDS, V12_RECOVERY_SCENARIOS as RECOVERY_SCENARIO_DEFINITIONS, V12_RECOVERY_UNCOMMITTED_CUT_IDS } from './v12-recovery-shard.mjs';
-import { calendarStage, exact, fail, garminCases, hash, HASH, junitOutcome, worse } from './v12-production-domain-receipts.mjs';
+import { exact, fail, garminCases, hash, HASH, junitOutcome, worse } from './v12-production-domain-receipts.mjs';
+import { executeProductionCalendarAction } from './v12-production-native-calendar-action.mjs';
+import { resolveV12NativeExecutionTools } from './v12-native-execution-origin.mjs';
 
 const PACKAGE = 'com.fchoo.gymtracker.devtest';
 const RESULT = 'GYM_TRACKER_V12_DOMAIN_RESULT:';
+const RESULT_CHUNK = 'GYM_TRACKER_V12_DOMAIN_RESULT_CHUNK:';
 const PROGRESS = 'GYM_TRACKER_V12_DOMAIN_PROGRESS:';
 const quote = (value) => `'${String(value).replaceAll("'", "'\\''")}'`;
 const SETTINGS = { font_scale: 'system', accelerometer_rotation: 'system', user_rotation: 'system', window_animation_scale: 'global', transition_animation_scale: 'global', animator_duration_scale: 'global', airplane_mode_on: 'global' };
@@ -38,21 +40,22 @@ function validate(action, payload, a, root) {
   if (process.env.NODE_ENV === 'test' || process.env.V12_NATIVE_ADAPTER_TEST_MODE !== undefined || process.env.V12_NATIVE_ADAPTER_TEST_PROCESS !== undefined || process.env.V12_NATIVE_ADAPTER_COMMAND !== undefined) fail('test_environment_forbidden');
 }
 
-function session(root, a, action) {
+function session(root, a, action, executionTools) {
   const serial = process.env.V12_DEVICE_SERIAL;
   let nonce = randomBytes(16).toString('hex');
-  // Recovery owns 224 bounded arm/recover flows. Leave five minutes for the
-  // launcher's identity/settings cleanup; shorter domain actions keep 3 minutes.
-  const deadline = Date.now() + (action === 'recovery' ? 40 : 3) * 60_000;
+  // Recovery owns 224 bounded arm/recover flows. Garmin has a real cold restart,
+  // encrypted-session lifecycle, sync, portability and matching pass. Both leave
+  // explicit cleanup headroom inside the adapter's outer deadline.
+  const deadline = Date.now() + (action === 'recovery' ? 40 : action === 'garmin' ? 12 : 3) * 60_000;
   const command = (exe, args, { timeout = 20_000, binary = false, acceptFailure = false, cleanup = false } = {}) => {
     if (!cleanup && Date.now() >= deadline) fail('domain_timeout');
     const result = spawnSync(exe, args, { cwd: root, encoding: binary ? undefined : 'utf8', timeout: cleanup ? timeout : Math.min(timeout, Math.max(1, deadline - Date.now())), maxBuffer: 8 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
     if (result.error || result.signal || (!acceptFailure && result.status !== 0)) fail('native_prerequisite_failed');
     return result;
   };
-  const adb = (...args) => command('adb', ['-s', serial, ...args]).stdout.trim();
+  const adb = (...args) => command(executionTools.adb, ['-s', serial, ...args]).stdout.trim();
   const shell = (...args) => adb('shell', args.map(quote).join(' '));
-  const cleanupShell = (...args) => command('adb', ['-s', serial, 'shell', args.map(quote).join(' ')], { cleanup: true }).stdout.trim();
+  const cleanupShell = (...args) => command(executionTools.adb, ['-s', serial, 'shell', args.map(quote).join(' ')], { cleanup: true }).stdout.trim();
   let directory;
   const retained = () => {
     if (!directory) {
@@ -68,31 +71,51 @@ function session(root, a, action) {
   };
   async function marker(kind, predicate = () => true) {
     const start = Date.now(); let progressed = start; let sequence = 0;
-    while (Date.now() - start < 180_000) {
+    const chunks = new Map();
+    while (Date.now() < deadline && Date.now() - start < (action === 'garmin' ? 11 : 3) * 60_000) {
       const logs = adb('logcat', '-d', '-v', 'raw', 'ReactNativeJS:I', '*:S');
       const found = [];
       for (const line of logs.split(/\r?\n/u)) {
-        for (const prefix of [RESULT, PROGRESS]) {
+        for (const prefix of [RESULT, RESULT_CHUNK, PROGRESS]) {
           const index = line.indexOf(prefix); if (index < 0) continue;
           let value; try { value = JSON.parse(line.slice(index + prefix.length)); } catch { continue; }
           if (value?.nonce !== nonce) continue;
           if (![1, 2].includes(value.schema_version)) fail('marker_invalid');
-          if (prefix === PROGRESS) {
+          if (prefix === RESULT_CHUNK) {
+            if (!exact(value, ['schema_version', 'nonce', 'kind', 'sequence', 'total', 'data'])
+              || value.schema_version !== 2 || value.kind !== 'chunk' || !Number.isSafeInteger(value.sequence)
+              || !Number.isSafeInteger(value.total) || value.sequence < 1 || value.total < 1 || value.total > 16
+              || value.sequence > value.total || typeof value.data !== 'string' || value.data.length > 1_500
+              || (chunks.has(value.sequence) && chunks.get(value.sequence) !== value.data)) fail('marker_invalid');
+            if (!chunks.has(value.sequence)) { chunks.set(value.sequence, value.data); progressed = Date.now(); }
+          } else if (prefix === PROGRESS) {
             if (value.kind === 'ARMED') {
               if (value.schema_version !== 2 || !Number.isSafeInteger(value.sequence) || value.sequence !== 1) fail('marker_invalid');
               if (kind === 'ARMED' && predicate(value)) found.push(value);
             } else if (!exact(value, ['schema_version', 'nonce', 'sequence']) || !Number.isSafeInteger(value.sequence) || value.sequence < 1 || value.sequence > 256) fail('marker_invalid');
             if (value.sequence > sequence) { sequence = value.sequence; progressed = Date.now(); }
-          } else if (value.kind === 'error') {
+          } else {
+            if (value.kind === 'chunked') {
+              if (!exact(value, ['schema_version', 'nonce', 'kind', 'total', 'sha256']) || value.schema_version !== 2
+                || !Number.isSafeInteger(value.total) || value.total < 1 || value.total > 16 || chunks.size !== value.total
+                || !HASH.test(value.sha256 ?? '')) fail('marker_invalid');
+              const serialized = Array.from({ length: value.total }, (_, index) => chunks.get(index + 1)).join('');
+              if (hash(serialized) !== value.sha256) fail('marker_invalid');
+              try { value = JSON.parse(serialized); } catch { fail('marker_invalid'); }
+              if (value?.nonce !== nonce || value.schema_version !== 2) fail('marker_invalid');
+            }
+            if (value.kind === 'error') {
             if (!exact(value, ['schema_version', 'nonce', 'kind', 'code'])) fail('marker_invalid');
-            fail(value.code === 'auth_required' ? 'auth_required' : 'domain_native_failed');
-          } else if (value.kind === kind && predicate(value)) found.push(value);
+            if (!/^(?:auth_required|arm_required|result_too_large|[a-z0-9]+(?:_[a-z0-9]+)*_failed)$/u.test(value.code ?? '')) fail('marker_invalid');
+            fail(value.code);
+            } else if (value.kind === kind && predicate(value)) found.push(value);
+          }
         }
       }
       // Re-reading logcat must not count the same progress as new work.
       if (found.length > 1) fail('marker_duplicate');
       if (found.length === 1) return found[0];
-      if (Date.now() - progressed >= 30_000) fail('marker_timeout');
+      if (Date.now() - progressed >= (action === 'garmin' ? 45_000 : 30_000)) fail('marker_timeout');
       await delay(250);
     }
     fail('marker_timeout');
@@ -100,7 +123,7 @@ function session(root, a, action) {
   function maestro(flow, variables, index) {
     nonce = randomBytes(16).toString('hex');
     const report = path.join(retained(), `${index}.xml`);
-    const result = command('maestro', ['test', '--device', serial, ...Object.entries({ V12_DOMAIN_NONCE: nonce, ...variables }).flatMap(([key, value]) => ['-e', `${key}=${value}`]), '--format', 'junit', '--output', report, path.join(root, flow)], { timeout: 180_000, acceptFailure: true });
+    const result = command(executionTools.maestro, ['test', '--device', serial, ...Object.entries({ V12_DOMAIN_NONCE: nonce, ...variables }).flatMap(([key, value]) => ['-e', `${key}=${value}`]), '--format', 'junit', '--output', report, path.join(root, flow)], { timeout: 180_000, acceptFailure: true });
     let xml; try { xml = readFileSync(report, 'utf8'); chmodSync(report, 0o600); } catch { fail('junit_missing'); }
     return junitOutcome(xml, result.status);
   }
@@ -109,7 +132,7 @@ function session(root, a, action) {
     chmodSync(quarantine, 0o700);
     const report = path.join(quarantine, 'raw.xml');
     try {
-      const result = command('maestro', ['test', '--device', serial,
+      const result = command(executionTools.maestro, ['test', '--device', serial,
         ...Object.entries({ V12_DOMAIN_NONCE: nonce, ...variables }).flatMap(([key, value]) => ['-e', `${key}=${value}`]),
         '--format', 'junit', '--output', report, path.join(root, flow)], { timeout: 180_000, acceptFailure: true });
       let xml; try { xml = readFileSync(report, 'utf8'); } catch { fail('junit_missing'); }
@@ -118,17 +141,68 @@ function session(root, a, action) {
       rmSync(quarantine, { recursive: true, force: true });
     }
   }
-  function version() { if (command('maestro', ['--version']).stdout.trim() !== '2.8.0') fail('maestro_version_invalid'); }
+  function version() { if (command(executionTools.maestro, ['--version']).stdout.trim() !== '2.8.0') fail('maestro_version_invalid'); }
   function standalone() {
     // withLease has already checked this manifest path and the retained APK hash.
     const manifest = JSON.parse(readFileSync(path.join(root, 'artifacts/native/v1.2', a.run_id, 'build.json'), 'utf8'));
     const apk = path.join(root, manifest.build.apk.path);
-    const entries = command('unzip', ['-Z1', apk]).stdout.split(/\r?\n/u);
+    const entries = command(executionTools.unzip, ['-Z1', apk]).stdout.split(/\r?\n/u);
     if (['assets/index.android.bundle', 'assets/app.config'].some((name) => entries.filter((entry) => entry === name).length !== 1)) fail('standalone_required');
-    let config; try { config = JSON.parse(command('unzip', ['-p', apk, 'assets/app.config']).stdout); } catch { fail('standalone_required'); }
+    let config; try { config = JSON.parse(command(executionTools.unzip, ['-p', apk, 'assets/app.config']).stdout); } catch { fail('standalone_required'); }
     if (config?.android?.package !== PACKAGE || config?.scheme !== 'gymtracker-devtest'
       || config?.extra?.buildProfile !== 'development-test' || config?.extra?.nativeContractsEnabled !== true
       || config?.extra?.nativeContractSuite !== 'v1.2-acceptance') fail('standalone_required');
+  }
+  function garminArm(phase, lease) {
+    if (!['preflight', 'execute'].includes(phase) || !exact(lease, ['lease_id', 'native_execution'])
+      || !/^[a-f0-9]{48}$/u.test(lease.lease_id ?? '') || lease.native_execution !== 'EXECUTED') fail('garmin_arm_invalid');
+    const runIdSha256 = hash(a.run_id); const leaseIdSha256 = hash(lease.lease_id);
+    const deviceSeconds = Number(shell('date', '+%s'));
+    if (!Number.isSafeInteger(deviceSeconds) || deviceSeconds <= 0) fail('garmin_arm_invalid');
+    const properties = [
+      'schema_version=1', 'route_id=v12-production-garmin', `phase=${phase}`, `nonce=${nonce}`,
+      `run_id_sha256=${runIdSha256}`, `device_identity_sha256=${a.device_identity_sha256}`,
+      `lease_id_sha256=${leaseIdSha256}`, `expires_at_ms=${deviceSeconds * 1_000 + 8 * 60_000}`,
+    ].join('\n') + '\n';
+    const encoded = Buffer.from(properties).toString('base64');
+    shell('run-as', PACKAGE, 'sh', '-c', `umask 077; d=no_backup/v12-evidence; f=$d/garmin-arm.properties; t=$d/.garmin-arm.tmp; mkdir -p "$d"; test ! -e "$f"; printf %s ${encoded} | base64 -d > "$t"; chmod 600 "$t"; mv "$t" "$f"`);
+    return Object.freeze({ runIdSha256, leaseIdSha256, deviceIdentitySha256: a.device_identity_sha256 });
+  }
+  function launchGarmin(phase, arm) {
+    shell('am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d',
+      `gymtracker-devtest://__v12-production-garmin?nonce=${nonce}&confirmation=VERIFY-V12-DOMAIN&mode=${phase}`,
+      '--es', 'v12RunIdSha256', arm.runIdSha256,
+      '--es', 'v12DeviceIdentitySha256', arm.deviceIdentitySha256,
+      '--es', 'v12LeaseIdSha256', arm.leaseIdSha256, PACKAGE);
+  }
+  function garminCleanup(runNonce, requireSession) {
+    const commandText = `test ! -e no_backup/v12-evidence/garmin-arm.properties && { test ! -d databases || test -z "$(find databases -maxdepth 1 -type f -name 'v12-production-garmin-${runNonce}*' -print -quit)"; }${requireSession ? ' && test -f no_backup/garmin-session/garmin-di-session.bin' : ''}`;
+    try { cleanupShell('run-as', PACKAGE, 'sh', '-c', commandText); }
+    catch {
+      try { cleanupShell('run-as', PACKAGE, 'rm', '-f', 'no_backup/v12-evidence/garmin-arm.properties', 'no_backup/v12-evidence/.garmin-arm.tmp'); } catch { /* bounded failure below */ }
+      fail('garmin_cleanup_failed');
+    }
+  }
+  function garminProcessClaim() {
+    const pid = Number(shell('pidof', PACKAGE));
+    if (!Number.isSafeInteger(pid) || pid <= 0) fail('garmin_restart_invalid');
+    const stat = shell('cat', `/proc/${pid}/stat`);
+    const commandEnd = stat.lastIndexOf(')');
+    const fields = commandEnd > 0 ? stat.slice(commandEnd + 1).trim().split(/\s+/u) : [];
+    const startTicks = Number(fields[19]);
+    if (!Number.isSafeInteger(startTicks) || startTicks <= 0) fail('garmin_restart_invalid');
+    return Object.freeze({ pid, startTicks });
+  }
+  function garminPrivacy(processClaims) {
+    if (!Array.isArray(processClaims) || processClaims.length !== 2
+      || new Set(processClaims.map(({ pid, startTicks }) => `${pid}:${startTicks}`)).size !== 2
+      || processClaims.some(({ pid, startTicks }) => !Number.isSafeInteger(pid) || pid <= 0
+        || !Number.isSafeInteger(startTicks) || startTicks <= 0)) fail('garmin_privacy_failed');
+    const retained = processClaims.flatMap(({ pid }) => adb('logcat', '-d', '--pid', String(pid), '-v', 'raw', 'ReactNativeJS:I', '*:S').split(/\r?\n/u));
+    const bytes = Buffer.byteLength(retained.join('\n'));
+    if (bytes > 1024 * 1024 || retained.length > 2_048
+      || /(?:authorization|bearer|credential|password|secret|@|\/Users\/|\/home\/|heart.?rate|latitude|longitude|filename)/iu.test(retained.join('\n'))) fail('garmin_privacy_failed');
+    return Object.freeze({ lines: retained.length, bytes, digest: hash(retained.join('\n')) });
   }
   function settings() {
     return Object.fromEntries(Object.entries(SETTINGS).map(([key, ns]) => {
@@ -158,43 +232,42 @@ function session(root, a, action) {
   }
   return { get nonce() { return nonce; }, renewNonce: () => { nonce = randomBytes(16).toString('hex'); return nonce; },
     shell, marker, maestro, recoveryMaestro, version, standalone, restoreAround, retained,
+    garminArm, launchGarmin, garminCleanup, garminProcessClaim, garminPrivacy,
+    executionOrigin: executionTools.execution_origin,
     stop: () => cleanupShell('am', 'force-stop', PACKAGE),
-    screenshot: () => command('adb', ['-s', serial, 'exec-out', 'screencap', '-p'], { binary: true }).stdout };
+    screenshot: () => command(executionTools.adb, ['-s', serial, 'exec-out', 'screencap', '-p'], { binary: true }).stdout };
 }
 
-async function garmin(io) {
+async function garmin(io, payload) {
+  const nonces = [];
   io.shell('am', 'force-stop', PACKAGE);
-  io.shell('am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', `gymtracker-devtest://__v12-production-garmin?nonce=${io.nonce}&confirmation=VERIFY-V12-DOMAIN`, PACKAGE);
   try {
+    nonces.push(io.nonce);
+    io.launchGarmin('preflight', io.garminArm('preflight', payload.lease));
+    const preflight = await io.marker('garmin-preflight');
+    if (!exact(preflight, ['schema_version', 'nonce', 'kind', 'session_sha256'])
+      || preflight.schema_version !== 2 || !HASH.test(preflight.session_sha256 ?? '')) fail('garmin_preflight_invalid');
+    const firstProcess = io.garminProcessClaim();
+    io.stop(); io.garminCleanup(io.nonce, true);
+    io.renewNonce(); nonces.push(io.nonce);
+    io.launchGarmin('execute', io.garminArm('execute', payload.lease));
     const value = await io.marker('garmin');
-    if (!exact(value, ['schema_version', 'nonce', 'kind', 'cases'])) fail('garmin_result_invalid');
-    return garminCases({ cases: value.cases });
-  } finally { io.stop(); }
-}
-
-async function calendar(io, root, payload) {
-  const flow = 'maestro/v1.2/calendar.yaml';
-  // This deliberately matches v12-calendar-shard's JSON-encoded Buffer digest.
-  const flowSha = hash(JSON.stringify(readFileSync(path.join(root, flow))));
-  if (payload.flow_sha256 !== flowSha || payload.flow_revision !== 'calendar-flow-r35') fail('calendar_flow_invalid');
-  io.version(); const stages = []; const junit = [];
-  for (const [order, id] of V12_CALENDAR_SHARD_STAGE_IDS.entries()) {
-    const status = io.maestro(flow, { PHASE16_CALENDAR_STAGE: id, PHASE16_CALENDAR_FIXTURE_ID: 'synthetic-calendar-v1', V12_DOMAIN_FLOW_SHA256: flowSha, V12_DOMAIN_FLOW_REVISION: payload.flow_revision }, order);
-    const value = await io.marker('calendar', (entry) => entry.stage?.id === id);
-    if (!exact(value, ['schema_version', 'nonce', 'kind', 'flow_sha256', 'flow_revision', 'stage']) || value.flow_sha256 !== flowSha || value.flow_revision !== payload.flow_revision) fail('calendar_flow_invalid');
-    const receipt = value.stage?.receipt;
-    if (!exact(receipt, ['content_width_dp', 'start_dp', 'end_dp', 'dx_dp', 'dy_dp', 'event_sequence', 'cancelled', 'settled', 'callback_count', 'semantic_transition', 'expected_outcome'])) fail('calendar_receipt_invalid');
-    const png = io.screenshot();
-    if (png.length < 33 || !png.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
-      || png.toString('ascii', 12, 16) !== 'IHDR' || png.readUInt32BE(16) < 1 || png.readUInt32BE(20) < 1) fail('calendar_screenshot_invalid');
-    const stage = calendarStage({ ...value.stage, receipt: { ...receipt, screenshot_sha256: hash(png), trace_sha256: hash(JSON.stringify(value.stage.samples)) } }, id, order);
-    writeFileSync(path.join(io.retained(), `${order}.png`), png, { flag: 'wx', mode: 0o600 });
-    writeFileSync(path.join(io.retained(), `${order}.trace.json`), JSON.stringify(stage.samples), { flag: 'wx', mode: 0o600 });
-    stage.status = worse(status, stage.status);
-    stages.push(stage); junit.push({ id, order, status: stage.status });
+    if (!exact(value, ['schema_version', 'nonce', 'kind', 'receipts', 'host_observations', 'cleanup']) || value.schema_version !== 2
+      || !exact(value.cleanup, ['arm', 'databases_deleted']) || value.cleanup.arm !== 'cleared'
+      || value.cleanup.databases_deleted !== 3) fail('garmin_result_invalid');
+    const secondProcess = io.garminProcessClaim();
+    const processChanged = firstProcess.pid !== secondProcess.pid || firstProcess.startTicks !== secondProcess.startTicks;
+    if (!processChanged) fail('garmin_restart_invalid');
+    io.stop(); io.garminCleanup(io.nonce, true);
+    const privacy = io.garminPrivacy([firstProcess, secondProcess]);
+    const privacyReceipt = Object.freeze({ id: 'privacy', order: 17, code: 'privacy-observed', count: 6,
+      receipt_sha256: hash(JSON.stringify({ ...privacy, preflight: preflight.session_sha256, processChanged })) });
+    return Object.freeze({ ...garminCases({ receipts: value.receipts, host_observations: { ...value.host_observations,
+      restart: { process_changed: processChanged, session_consistent: value.host_observations?.lifecycle?.before_sha256 === preflight.session_sha256 } } }, privacyReceipt),
+    execution_origin: io.executionOrigin });
+  } finally {
+    try { io.stop(); } finally { for (const runNonce of nonces) io.garminCleanup(runNonce, false); }
   }
-  if (!stages.some((s) => s.samples.some((v) => v.intentOwner === 'horizontal' && Math.abs(Math.abs(v.dxDp) / v.widthDp - 0.25) < 0.0001))) fail('calendar_boundary_missing');
-  return { flow_sha256: flowSha, flow_revision: payload.flow_revision, stages, junit_cases: junit };
 }
 
 function recoverySnapshot(value) {
@@ -361,21 +434,27 @@ async function recovery(io) {
  * Unknown actions return undefined. No injected runtime, command, result, or test
  * mode is accepted. Throws bounded launcher errors; never publishes a verdict.
  */
-export async function executeProductionDomainAction(action, payload, attestation) {
+export async function executeProductionDomainAction(action, payload, attestation, { executionTools } = {}) {
   if (!['garmin', 'calendar', 'recovery'].includes(action)) return undefined;
+  const resolvedExecutionTools = executionTools ?? resolveV12NativeExecutionTools({ domain: true });
+  if (action === 'calendar') return executeProductionCalendarAction(payload, attestation, { executionTools: resolvedExecutionTools });
   try {
     const root = process.cwd(); validate(action, payload, attestation, root);
-    const runtime = createProductionNativeRuntime(attestation, { root });
+    const runtime = createProductionNativeRuntime(attestation, { root, executionTools: resolvedExecutionTools });
     const owned = payload.lease === undefined;
     const lease = owned ? runtime.acquireLease() : payload.lease;
     let settings; let restoreFailed = false;
     try {
       if (owned) settings = runtime.snapshotSettings(lease);
-      return await runtime.withLease({ ...payload, lease }, async () => {
-        const io = session(root, attestation, action);
+      const leasedPayload = { ...payload, lease };
+      return await runtime.withLease(leasedPayload, async () => {
+        const io = session(root, attestation, action, resolvedExecutionTools);
         io.standalone();
         try {
-          return await io.restoreAround(() => action === 'garmin' ? garmin(io) : action === 'calendar' ? calendar(io, root, payload) : recovery(io));
+          return await io.restoreAround(() => action === 'garmin' ? garmin(io, leasedPayload) : (async () => {
+            try { return await recovery(io); }
+            finally { io.stop(); }
+          })());
         } catch (error) {
           restoreFailed = error?.message === 'v12_production_native_launcher_settings_restore_failed';
           throw error;

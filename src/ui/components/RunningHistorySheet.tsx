@@ -110,6 +110,7 @@ export function RunningHistorySheet({
     requestNativeFocus={requestNativeFocus}
     restoreFocusNativeID={restoreFocusNativeID}
     restoreFocusRef={restoreFocusRef}
+    testID="running-history-sheet"
     visible={visible}
   >
     <View style={styles.container}>

@@ -2,6 +2,9 @@ import {
   OWNED_PLAN_MISSING_VALID_TARGET_CODE,
   OWNED_PLAN_MISSING_VALID_TARGET_REASON,
 } from "../migrations/0009_owned_plans";
+import {
+  PLAN_EXERCISE_REPLACEMENT_RECEIPTS_TABLE,
+} from "../migrations/0047_plan_exercise_replacement_receipts";
 import type {
   MetricIdentity,
   MetricTarget,
@@ -67,6 +70,8 @@ export type ApplyDayRemovalRepositoryInput = Readonly<{
   dayId: string;
   expectedPlanRevision: number;
   expectedScheduleRevision: number;
+  /** Original domain preview token retained for exact durable replay. */
+  previewToken?: string;
   expectedPreview: DayRemovalRepositoryPreview;
   effectiveLocalDate: string;
   choice:
@@ -146,6 +151,8 @@ export type ApplyExerciseReplacementRepositoryInput = Readonly<{
   sourceOccurrenceId: string;
   sourceExerciseId: string;
   expectedPlanRevision: number;
+  /** Original domain preview token retained for exact durable replay. */
+  previewToken?: string;
   expectedPreview: ExerciseReplacementRepositoryPreview;
   scope: "this_occurrence" | "all_occurrences";
   replacementExerciseId: string;
@@ -184,6 +191,11 @@ export type PlanImpactRepository = Readonly<{
     expectedPlanRevision: number;
     replacementExerciseId: string;
     occurrences: readonly ExerciseReplacementOccurrenceFacts[];
+  }>): Promise<ExerciseReplacementCommittedResult | null>;
+  /** Replays the request-bound durable command receipt, never inferred state. */
+  readExerciseReplacementCommandResult?(input: Readonly<{
+    requestId: string;
+    requestSha256: string;
   }>): Promise<ExerciseReplacementCommittedResult | null>;
   applyExerciseReplacement(
     input: ApplyExerciseReplacementRepositoryInput,
@@ -1039,12 +1051,12 @@ async function updateGraphState(
   );
 }
 
-async function readReceipt(
+async function readScheduleEventReceipt(
   executor: QueryExecutor,
   requestId: string,
 ): Promise<Readonly<{
   requestSha256: string;
-  result: PlanImpactCommittedResult;
+  result: PlanImpactCommittedResult | ExerciseReplacementCommittedResult;
 }> | null> {
   const [row] = await executor.queryAll<{ payload_json: string }>(
     `SELECT payload_json
@@ -1057,17 +1069,19 @@ async function readReceipt(
   }
   const parsed = JSON.parse(row.payload_json) as {
     requestSha256?: unknown;
-    result?: PlanImpactCommittedResult;
+    result?: unknown;
   };
   if (
     typeof parsed.requestSha256 !== "string"
-    || parsed.result?.outcome !== "committed"
+    || typeof parsed.result !== "object"
+    || parsed.result === null
+    || (parsed.result as { outcome?: unknown }).outcome !== "committed"
   ) {
     throw new Error("plan_impact_receipt_invalid");
   }
   return {
     requestSha256: parsed.requestSha256,
-    result: parsed.result,
+    result: parsed.result as PlanImpactCommittedResult | ExerciseReplacementCommittedResult,
   };
 }
 
@@ -1078,7 +1092,7 @@ async function replayReceipt(
     requestSha256: string;
   }>,
 ): Promise<PlanImpactCommittedResult | null> {
-  const receipt = await readReceipt(executor, input.requestId);
+  const receipt = await readScheduleEventReceipt(executor, input.requestId);
   if (receipt === null) {
     return null;
   }
@@ -1086,6 +1100,43 @@ async function replayReceipt(
     throw new PlanImpactRepositoryError(
       "plan_impact_idempotency_conflict",
     );
+  }
+  if (!("scheduleRevision" in receipt.result)) {
+    throw new Error("plan_impact_receipt_kind_invalid");
+  }
+  return Object.freeze({
+    ...receipt.result,
+    outcome: "already_committed",
+  });
+}
+
+async function replayExerciseReplacementReceipt(
+  executor: QueryExecutor,
+  input: Readonly<{ requestId: string; requestSha256: string }>,
+): Promise<ExerciseReplacementCommittedResult | null> {
+  const [durableReceipt] = await executor.queryAll<Readonly<{
+    request_sha256: string;
+    result_json: string;
+  }>>(
+    `SELECT request_sha256, result_json
+     FROM ${PLAN_EXERCISE_REPLACEMENT_RECEIPTS_TABLE}
+     WHERE request_id = ?`,
+    [input.requestId],
+  );
+  const receipt = durableReceipt === undefined
+    ? await readScheduleEventReceipt(executor, input.requestId)
+    : {
+        requestSha256: durableReceipt.request_sha256,
+        result: JSON.parse(
+          durableReceipt.result_json,
+        ) as ExerciseReplacementCommittedResult,
+      };
+  if (receipt === null) return null;
+  if (receipt.requestSha256 !== input.requestSha256) {
+    throw new PlanImpactRepositoryError("plan_impact_idempotency_conflict");
+  }
+  if (!("replacementExerciseId" in receipt.result) || !("affectedOccurrenceIds" in receipt.result)) {
+    throw new Error("plan_impact_receipt_kind_invalid");
   }
   return Object.freeze({
     ...receipt.result,
@@ -1098,6 +1149,10 @@ async function applyExerciseReplacementTransaction(
   input: ApplyExerciseReplacementRepositoryInput,
   observer: PlanImpactRepositoryTestObserver,
 ): Promise<ExerciseReplacementCommittedResult> {
+  const replay = await replayExerciseReplacementReceipt(transaction, input);
+  if (replay !== null) {
+    return replay;
+  }
   const current = await readExerciseReplacement(transaction, {
     planId: input.planId,
     occurrenceId: input.sourceOccurrenceId,
@@ -1201,6 +1256,24 @@ async function applyExerciseReplacementTransaction(
       input.replacementExerciseId,
     ),
   });
+  await transaction.execute(
+    `INSERT INTO ${PLAN_EXERCISE_REPLACEMENT_RECEIPTS_TABLE}
+      (request_id, request_sha256, plan_id, source_occurrence_id,
+       replacement_exercise_id, expected_plan_revision,
+       result_plan_revision, result_json, committed_at_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      input.requestId,
+      input.requestSha256,
+      input.planId,
+      input.sourceOccurrenceId,
+      input.replacementExerciseId,
+      input.expectedPlanRevision,
+      result.planRevision,
+      JSON.stringify(result),
+      input.committedAtMs,
+    ],
+  );
   const [schedule] = await transaction.queryAll<Readonly<{
     id: string;
     revision: number;
@@ -1227,6 +1300,16 @@ async function applyExerciseReplacementTransaction(
         schedule.effective_local_date,
         JSON.stringify({
           requestSha256: input.requestSha256,
+          command: {
+            requestId: input.requestId,
+            planId: input.planId,
+            sourceOccurrenceId: input.sourceOccurrenceId,
+            expectedPlanRevision: input.expectedPlanRevision,
+            previewToken: input.previewToken,
+            scope: input.scope,
+            replacementExerciseId: input.replacementExerciseId,
+            occurrences: input.occurrences,
+          },
           planId: input.planId,
           sourceOccurrenceId: input.sourceOccurrenceId,
           replacementExerciseId: input.replacementExerciseId,
@@ -1362,6 +1445,15 @@ async function applyDayRemovalTransaction(
       input.effectiveLocalDate,
       JSON.stringify({
         requestSha256: input.requestSha256,
+          command: {
+            requestId: input.requestId,
+            planId: input.planId,
+            dayId: input.dayId,
+            expectedPlanRevision: input.expectedPlanRevision,
+            expectedScheduleRevision: input.expectedScheduleRevision,
+            previewToken: input.previewToken,
+            choice: input.choice,
+          },
         planId: input.planId,
         dayId: input.dayId,
         choice: input.choice,
@@ -1393,6 +1485,8 @@ export function createPlanImpactRepository(
       readExerciseReplacement(kernel, input),
     readCommittedExerciseReplacement: (input) =>
       readCommittedExerciseReplacement(kernel, input),
+    readExerciseReplacementCommandResult: (input) =>
+      replayExerciseReplacementReceipt(kernel, input),
     async applyDayRemoval(input) {
       try {
         return await kernel.write((transaction) =>

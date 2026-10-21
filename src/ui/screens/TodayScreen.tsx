@@ -1,4 +1,5 @@
 import React, {
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -93,6 +94,7 @@ export type TodayScreenProps = Readonly<{
   headingRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionNativeID?: string;
+  onUsefulContent?: () => void;
 }>;
 
 export type WorkoutOccurrencePreview = Readonly<{
@@ -280,8 +282,9 @@ function ScheduledContent({
           onPress={() => selectedPreview === undefined || onStartOccurrence === undefined
             ? onStart(selectedView.dayId, "scheduled")
             : onStartOccurrence(selectedPreview.occurrence)}
+          testID="today-start-workout"
         />
-        <SecondaryAction label="Choose another day" onPress={() => setStartSheetVisible(true)} ref={startSheetActionRef} />
+        <SecondaryAction label="Choose another day" onPress={() => setStartSheetVisible(true)} ref={startSheetActionRef} testID="today-choose-plan-day" />
       </ContentCard>
       <View style={styles.section}>
         <Text
@@ -385,6 +388,7 @@ function RestDayContent({
           label={hasNextPlanDay ? "Train anyway" : "Choose another day"}
           onPress={() => setStartSheetVisible(true)}
           ref={startSheetActionRef}
+          testID="today-choose-plan-day"
         />
       </ContentCard>
       <WorkoutStartSheet
@@ -441,11 +445,18 @@ export function TodayScreen({
   headingRef,
   settingsActionRef,
   settingsActionNativeID,
+  onUsefulContent,
 }: TodayScreenProps) {
   const [activationPreview, setActivationPreview] = useState(false);
   const { colors } = useAppTheme();
   const trusted = launchState === "trusted";
   const adaptiveWidth = width === undefined ? {} : { width };
+
+  useEffect(() => {
+    if (!trusted || view === undefined) return;
+    const frame = requestAnimationFrame(() => onUsefulContent?.());
+    return () => cancelAnimationFrame(frame);
+  }, [onUsefulContent, trusted, view]);
 
   let content: React.ReactNode;
   if (launchState === "failed") {

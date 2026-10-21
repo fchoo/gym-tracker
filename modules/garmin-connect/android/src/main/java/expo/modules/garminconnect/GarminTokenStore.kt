@@ -53,12 +53,24 @@ internal interface GarminAtomicWriter {
   fun remove(target: File)
 }
 
+private fun renameGarminFile(source: File, destination: File) {
+  Os.rename(source.absolutePath, destination.absolutePath)
+}
+
+private fun deleteGarminFile(file: File): Boolean = file.delete()
+
+private fun writeGarminFile(file: File, bytes: ByteArray) {
+  FileOutputStream(file).use { output ->
+    output.write(bytes)
+    output.fd.sync()
+  }
+}
+
 internal class AndroidGarminAtomicWriter(
-  private val renameFile: (File, File) -> Unit = { source, destination ->
-    Os.rename(source.absolutePath, destination.absolutePath)
-  },
-  private val deleteFile: (File) -> Boolean = { file -> file.delete() },
+  private val renameFile: (File, File) -> Unit = ::renameGarminFile,
+  private val deleteFile: (File) -> Boolean = ::deleteGarminFile,
   private val syncDirectory: (File) -> Unit = ::fsyncGarminDirectory,
+  private val writeFile: (File, ByteArray) -> Unit = ::writeGarminFile,
 ) : GarminAtomicWriter {
   override fun replace(target: File, bytes: ByteArray, verify: (File) -> Unit) {
     val parent = target.parentFile ?: throw GarminTokenStoreException("garmin_token_write_failed")
@@ -72,10 +84,7 @@ internal class AndroidGarminAtomicWriter(
     try {
       temporary.setReadable(true, true)
       temporary.setWritable(true, true)
-      FileOutputStream(temporary).use { output ->
-        output.write(bytes)
-        output.fd.sync()
-      }
+      writeFile(temporary, bytes)
       verify(temporary)
       renameFile(temporary, target)
       target.setReadable(true, true)
@@ -136,11 +145,38 @@ private fun fsyncGarminDirectory(directory: File) {
   }
 }
 
-internal class AndroidKeystoreGarminTokenCipher : GarminTokenCipher {
+private fun androidGarminKeystoreKey(): SecretKey {
+  val keyStore = KeyStore.getInstance(GARMIN_KEYSTORE_PROVIDER).apply { load(null) }
+  (keyStore.getKey(GARMIN_KEY_ALIAS, null) as? SecretKey)?.let { return it }
+  val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, GARMIN_KEYSTORE_PROVIDER)
+  generator.init(
+    KeyGenParameterSpec.Builder(
+      GARMIN_KEY_ALIAS,
+      KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+    )
+      .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+      .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+      .setKeySize(256)
+      .setRandomizedEncryptionRequired(true)
+      .build()
+  )
+  return generator.generateKey()
+}
+
+private fun productionGarminTokenCipher(): AndroidKeystoreGarminTokenCipher =
+  AndroidKeystoreGarminTokenCipher(
+    cipherFactory = { Cipher.getInstance(GARMIN_TOKEN_TRANSFORMATION) },
+    keyProvider = ::androidGarminKeystoreKey,
+  )
+
+internal class AndroidKeystoreGarminTokenCipher(
+  private val cipherFactory: () -> Cipher,
+  private val keyProvider: () -> SecretKey,
+) : GarminTokenCipher {
   override fun encrypt(plaintext: ByteArray, associatedData: ByteArray): EncryptedGarminTokens {
     return try {
-      val cipher = Cipher.getInstance(GARMIN_TOKEN_TRANSFORMATION)
-      cipher.init(Cipher.ENCRYPT_MODE, key())
+      val cipher = cipherFactory()
+      cipher.init(Cipher.ENCRYPT_MODE, keyProvider())
       cipher.updateAAD(associatedData)
       EncryptedGarminTokens(cipher.iv.copyOf(), cipher.doFinal(plaintext))
     } catch (_: Throwable) {
@@ -154,37 +190,19 @@ internal class AndroidKeystoreGarminTokenCipher : GarminTokenCipher {
     associatedData: ByteArray
   ): ByteArray {
     return try {
-      val cipher = Cipher.getInstance(GARMIN_TOKEN_TRANSFORMATION)
-      cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, nonce))
+      val cipher = cipherFactory()
+      cipher.init(Cipher.DECRYPT_MODE, keyProvider(), GCMParameterSpec(128, nonce))
       cipher.updateAAD(associatedData)
       cipher.doFinal(ciphertext)
     } catch (_: Throwable) {
       throw GarminTokenStoreException("sign_in_required")
     }
   }
-
-  private fun key(): SecretKey {
-    val keyStore = KeyStore.getInstance(GARMIN_KEYSTORE_PROVIDER).apply { load(null) }
-    (keyStore.getKey(GARMIN_KEY_ALIAS, null) as? SecretKey)?.let { return it }
-    val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, GARMIN_KEYSTORE_PROVIDER)
-    generator.init(
-      KeyGenParameterSpec.Builder(
-        GARMIN_KEY_ALIAS,
-        KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-      )
-        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-        .setKeySize(256)
-        .setRandomizedEncryptionRequired(true)
-        .build()
-    )
-    return generator.generateKey()
-  }
 }
 
 internal class GarminTokenStore(
   root: File,
-  private val cipher: GarminTokenCipher = AndroidKeystoreGarminTokenCipher(),
+  private val cipher: GarminTokenCipher = productionGarminTokenCipher(),
   private val atomicWriter: GarminAtomicWriter = AndroidGarminAtomicWriter(),
   private val beforeCommit: () -> Unit = {},
   private val readFileBytes: (File) -> ByteArray = { file -> file.readBytes() },
@@ -311,14 +329,14 @@ internal class GarminTokenStore(
 
   private fun encode(encrypted: EncryptedGarminTokens): ByteArray {
     val output = ByteArrayOutputStream()
-    DataOutputStream(output).use { data ->
-      data.write(RECORD_MAGIC)
-      data.writeInt(RECORD_VERSION)
-      data.writeByte(encrypted.nonce.size)
-      data.writeInt(encrypted.ciphertext.size)
-      data.write(encrypted.nonce)
-      data.write(encrypted.ciphertext)
-    }
+    val data = DataOutputStream(output)
+    data.write(RECORD_MAGIC)
+    data.writeInt(RECORD_VERSION)
+    data.writeByte(encrypted.nonce.size)
+    data.writeInt(encrypted.ciphertext.size)
+    data.write(encrypted.nonce)
+    data.write(encrypted.ciphertext)
+    data.flush()
     return output.toByteArray()
   }
 }

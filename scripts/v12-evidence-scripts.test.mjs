@@ -82,6 +82,7 @@ function v12LiveManifest(runId = "phase20-20261014T000000Z-aaaaaaaaaaaa") {
     schema_version: 1,
     run_id: runId,
     mode: "live",
+    evidence_origin: "native",
     created_at: "2026-10-14T00:00:00Z",
     source: {
       head: "a".repeat(40), tree_sha256: "b".repeat(64), dirty: false,
@@ -112,8 +113,8 @@ function manifest() {
     js_bundle: { embedded: true },
     base_head: "a".repeat(40),
     source_tree_sha256: "b".repeat(64),
-    source_manifest_sha256: "90de9f6040f36dc029b97ad3687d0e3569fd9bc33ad3eaab2cafc649ae1196a4",
-    reference_map_sha256: "513c8f5798c1010eb370d35d259ea9c5e805c80a2786101a2ed732b588167c33",
+    source_manifest_sha256: "ab954ba93d08751a6d2619a7336259467f02c065ce9dd5ffaaa7634cb7e7abfd",
+    reference_map_sha256: "9903fe7cb8cb8b8b612f32727697db3b361a8851ceca97e14acb04a52d98ae86",
     apk: { path: "artifacts/native/v1.2-calendar/app.apk", sha256: "c".repeat(64), size_bytes: 1 },
     installed_apk: { sha256: "c".repeat(64), matches_retained_apk: true },
     device: { identity_sha256: "d".repeat(64) },
@@ -1496,6 +1497,7 @@ test("the sole v1.2 validator rejects untyped row claims and seals only a valida
   const normal = Object.freeze({
     schema_version: 1,
     run_id: manifest.run_id,
+    evidence_origin: "native",
     rows: sealedRows,
     verdict_counts: Object.freeze({ PASS: 172, FAIL: 0, NOT_RUN: 0, REVIEW_REQUIRED: 0, N_A_REVIEWED: 0, ACCEPTED_EXCEPTION: 0 }),
     readiness: "READY",
@@ -1512,4 +1514,8 @@ test("the sole v1.2 validator rejects untyped row claims and seals only a valida
   assert.equal(writes.size, 2);
   assert.equal(final.release_authorized, false);
   assert.match(generateV12ParityReport({ ledger: normal }), /READY/u);
+  const testWrites = new Map();
+  assert.throws(() => sealV12FinalEvidence({ mode: "final", run_id: manifest.run_id,
+    ledger: { ...normal, evidence_origin: "test" }, writeImmutableJson: (file, value) => testWrites.set(file, value) }), /v12_final_test_origin_forbidden/u);
+  assert.equal(testWrites.size, 0);
 });

@@ -13,6 +13,7 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type NativeScrollEvent,
   type StyleProp,
   type TextStyle,
   type NativeSyntheticEvent,
@@ -27,6 +28,7 @@ import {
   useFocusClearance,
 } from "./bottomSheetFocus";
 import { AndroidEscapeBoundary } from "./AndroidEscapeBoundary";
+import { usePhase20VisualScrollReporter } from "../../testing/phase20VisualContext";
 import { radius, sizes, space, typeScale, useAppTheme } from "../theme";
 
 type FocusTarget = Readonly<{
@@ -192,6 +194,10 @@ export function BottomSheet({
   };
   const depth = React.useContext(BottomSheetDepthContext);
   const headingRef = useRef<View>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const reportVisualScroll = usePhase20VisualScrollReporter();
+  const forcedEvidenceScrollRef = useRef(false);
+  const scrollNativeID = scrollTestID ?? "bottom-sheet-scroll";
   const registeredFocusablesRef = useRef<BottomSheetFocusableRef[]>([]);
   const currentFocusedRef = useRef<BottomSheetFocusableRef | null>(null);
   const wasVisibleRef = useRef(false);
@@ -205,6 +211,11 @@ export function BottomSheet({
   const horizontalInsetStyle = horizontalInset === undefined
     ? undefined
     : { paddingHorizontal: horizontalInset };
+  const initializeEvidenceScroll = React.useCallback(() => {
+    if (reportVisualScroll === null || forcedEvidenceScrollRef.current) return;
+    forcedEvidenceScrollRef.current = true;
+    scrollRef.current?.scrollTo({ animated: false, x: 0, y: 0 });
+  }, [reportVisualScroll]);
 
   if (visible && depth > 0) {
     throw new Error("BottomSheet cannot be nested");
@@ -445,6 +456,14 @@ export function BottomSheet({
                         contentContainerStyle={[styles.content, horizontalInsetStyle, contentStyle]}
                         horizontal={false}
                         keyboardShouldPersistTaps="handled"
+                        nativeID={scrollNativeID}
+                        onLayout={initializeEvidenceScroll}
+                        onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
+                          const { x, y } = event.nativeEvent.contentOffset;
+                          reportVisualScroll?.({ native_id: scrollNativeID, x, y });
+                        }}
+                        ref={scrollRef}
+                        scrollEventThrottle={16}
                         showsVerticalScrollIndicator
                         style={[
                           styles.scroll,
@@ -453,7 +472,7 @@ export function BottomSheet({
                             { maxHeight: compactScrollMaxHeight },
                           ] : null,
                         ]}
-                        testID={scrollTestID ?? "bottom-sheet-scroll"}
+                        testID={scrollNativeID}
                       >
                         {children}
                       </ScrollView>

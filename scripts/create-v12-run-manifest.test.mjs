@@ -17,6 +17,7 @@ import { sourceTreeSha256AtHead } from "./source-tree-digest.mjs";
 const HASH = "a".repeat(64);
 const HEAD = "b".repeat(40);
 const buildInput = (overrides = {}) => ({
+  evidence_origin: "native",
   created_at: "2026-10-14T12:34:56Z",
   source: {
     head: HEAD,
@@ -134,6 +135,7 @@ test("creates a canonical identity-bound live run manifest with a UTC run ID", (
   const manifest = createV12RunManifest({ input: buildInput() });
   assert.equal(manifest.run_id, `phase20-20261014T123456Z-${HEAD.slice(0, 12)}`);
   assert.equal(manifest.mode, "live");
+  assert.equal(manifest.evidence_origin, "native");
   assert.equal(manifest.build.apk.sha256, manifest.device.installed_apk_sha256);
   assert.equal(JSON.stringify(manifest), JSON.stringify(createV12RunManifest({ input: buildInput() })));
   assert.deepEqual(validateV12RunManifest(manifest), manifest);
@@ -172,6 +174,7 @@ test("fails closed on substituted, private, hostile, or incomplete identity valu
   assert.throws(() => validateV12RunManifest({ ...createV12RunManifest({ input: buildInput() }), unexpected: true }), /v12_run_manifest_exact_keys_invalid/u);
   assert.throws(() => createV12RunManifest({ input: buildInput({ source: { ...buildInput().source, dirty: true } }) }), /v12_run_manifest_source_invalid/u);
   assert.throws(() => createV12RunManifest({ input: buildInput({ created_at: "2026-10-14T12:34:56.789Z" }) }), /v12_run_manifest_timestamp_invalid/u);
+  assert.throws(() => createV12RunManifest({ input: buildInput({ evidence_origin: "test" }) }), /v12_run_manifest_origin_invalid/u);
 });
 
 test("accepts only the explicit create and build-only verification CLI modes", () => {

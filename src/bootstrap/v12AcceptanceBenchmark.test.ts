@@ -22,6 +22,9 @@ describe("v1.2 acceptance benchmark marker bridge", () => {
       marker: V12_ACCEPTANCE_BENCHMARK_MARKER,
       root_switch_ms: [{ root: "workout", duration_ms: 27 }],
       committed_set_to_dock_ms: [49],
+      input_response_ms: { "numeric-edit": [], "rest-control": [] },
+      search_after_debounce_ms: [],
+      progress_ms: { "useful-content": [], "review-open": [], "targeted-rebuild": [] },
     });
   });
 
@@ -35,6 +38,9 @@ describe("v1.2 acceptance benchmark marker bridge", () => {
       marker: V12_ACCEPTANCE_BENCHMARK_MARKER,
       root_switch_ms: [],
       committed_set_to_dock_ms: [],
+      input_response_ms: { "numeric-edit": [], "rest-control": [] },
+      search_after_debounce_ms: [],
+      progress_ms: { "useful-content": [], "review-open": [], "targeted-rebuild": [] },
     });
 
     const enabled = createV12AcceptanceBenchmark({ enabled: true, now: () => 1 });
@@ -59,5 +65,40 @@ describe("v1.2 acceptance benchmark marker bridge", () => {
     const duplicateCommit = createV12AcceptanceBenchmark({ enabled: true, now: () => 1 });
     duplicateCommit.markAuthoritativeSetCommit();
     expect(() => duplicateCommit.markAuthoritativeSetCommit()).toThrow("v12_benchmark_authoritative_commit_duplicate");
+  });
+
+  it("publishes operation markers only after the matching real boundary executes", () => {
+    const events: string[] = [];
+    const benchmark = createV12AcceptanceBenchmark({
+      enabled: true,
+      now: (() => { let value = 10; return () => value += 5; })(),
+      onMarker: (event) => events.push(`${event.kind}:${event.operation}:${event.at_ms}`),
+    });
+    benchmark.markRootSwitchStart("calendar");
+    benchmark.markUsefulContent("calendar");
+    benchmark.markAuthoritativeSetCommit();
+    benchmark.markVisibleDock();
+    expect(events).toEqual([
+      "start:root-switch-calendar:15",
+      "ready:root-switch-calendar:20",
+      "commit:committed-set-visible-dock:25",
+      "ready:committed-set-visible-dock:30",
+    ]);
+  });
+
+  it("binds input, post-debounce search, and Progress timings to their visible endpoints", () => {
+    const values = [1, 3, 5, 8, 13, 21];
+    const benchmark = createV12AcceptanceBenchmark({ enabled: true, now: () => values.shift()! });
+    benchmark.markInputStart("numeric-edit");
+    benchmark.markInputVisible("numeric-edit");
+    benchmark.markSearchDebounceEnded();
+    benchmark.markSearchResultsVisible();
+    benchmark.markProgressStart("review-open");
+    benchmark.markProgressVisible("review-open");
+    expect(benchmark.result()).toMatchObject({
+      input_response_ms: { "numeric-edit": [2], "rest-control": [] },
+      search_after_debounce_ms: [3],
+      progress_ms: { "review-open": [8] },
+    });
   });
 });

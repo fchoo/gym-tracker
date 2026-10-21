@@ -18,6 +18,7 @@ type AppRootShellProps = Readonly<{
   origin?: RootOrigin;
   onConsumeOrigin?: () => void;
   onOpenSettings?: () => void;
+  onSettingsVisibilityChange?: (visible: boolean) => void;
   requestNativeFocus?: (nativeID: string) => void | Promise<boolean>;
   settingsContent?: React.ReactNode | ((closeSettings: () => void) => React.ReactNode);
   settingsTriggerNativeID?: string;
@@ -54,6 +55,7 @@ export function AppRootShell({
   origin,
   onConsumeOrigin,
   onOpenSettings,
+  onSettingsVisibilityChange,
   requestNativeFocus,
   settingsContent,
   settingsTriggerNativeID,
@@ -68,7 +70,10 @@ export function AppRootShell({
   >(settingsTriggerNativeID);
   const previousActiveRootRef = React.useRef<RootRouteKey | undefined>(activeRoot);
   const previousPathRef = React.useRef(currentPath);
-  const closeSettings = React.useCallback(() => setSettingsVisible(false), []);
+  const closeSettings = React.useCallback(() => {
+    setSettingsVisible(false);
+    onSettingsVisibilityChange?.(false);
+  }, [onSettingsVisibilityChange]);
   const openRootSettings = React.useCallback((input: Readonly<{
     root: RootRouteKey;
     triggerNativeID?: string;
@@ -80,10 +85,11 @@ export function AppRootShell({
     );
     if (settingsContent !== undefined) {
       setSettingsVisible(true);
+      onSettingsVisibilityChange?.(true);
       return;
     }
     onOpenSettings?.();
-  }, [onOpenSettings, settingsContent]);
+  }, [onOpenSettings, onSettingsVisibilityChange, settingsContent]);
   const resolvedSettingsContent = typeof settingsContent === "function"
     ? settingsContent(closeSettings)
     : settingsContent;
@@ -142,6 +148,7 @@ export function AppRootShell({
             requestNativeFocus={requestNativeFocus}
             restoreFocusNativeID={activeSettingsTriggerNativeID}
             restoreFocusRef={activeSettingsTriggerRef}
+            testID="app-settings-sheet"
             visible={settingsVisible}
           >
             {resolvedSettingsContent}

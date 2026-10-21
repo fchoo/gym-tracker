@@ -2,7 +2,7 @@
   "schema_version": 1,
   "prototype_revision": 18,
   "source_manifest": ".planning/design/v1.2-browser-evidence/source-manifest.json",
-  "source_manifest_sha256": "90de9f6040f36dc029b97ad3687d0e3569fd9bc33ad3eaab2cafc649ae1196a4",
+  "source_manifest_sha256": "ab954ba93d08751a6d2619a7336259467f02c065ce9dd5ffaaa7634cb7e7abfd",
   "case_registry": {
     "schema_version": 2,
     "id": "v12-calendar-reference-cases/v1",

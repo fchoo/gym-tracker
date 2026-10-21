@@ -39,9 +39,18 @@ const mockListOwnedPlanExercises = jest.fn<() => Promise<readonly Readonly<{
   name: string;
 }>[]>>().mockResolvedValue([]);
 let mockParams: Readonly<{
-  sessionId: string;
+  sessionId: string | string[];
   returnTo?: string;
+  phase20CalendarFixture?: string;
+  phase20CalendarEvidenceNonce?: string;
+  phase20CalendarRequirementsSha256?: string;
 }> = { sessionId: "session-identity" };
+let mockInitialHeaderFocus = false;
+
+jest.mock("expo-constants", () => ({
+  __esModule: true,
+  default: { expoConfig: { android: { package: "com.fchoo.gymtracker.devtest" }, extra: { buildProfile: "development-test", nativeContractsEnabled: true, nativeContractSuite: "v1.2-acceptance" } } },
+}));
 
 jest.mock("expo-router", () => ({
   router: {
@@ -66,6 +75,7 @@ jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
     finishPartial: jest.fn(),
     getActiveWorkout: mockGetActiveWorkout,
     listOwnedPlanExercises: mockListOwnedPlanExercises,
+    nowMs: () => 1_786_767_200_000,
     notificationPermission: "undetermined",
     pauseRest: jest.fn(),
     readRestAlertPreferences: () => ({ soundEnabled: false }),
@@ -145,17 +155,22 @@ jest.mock("../../src/ui/layout/AdaptiveScreen", () => ({
 jest.mock("../../src/ui/screens/ActiveWorkoutScreen", () => {
   const { Pressable } = require("react-native") as typeof import("react-native");
   return {
-  ActiveWorkoutScreen: ({ onGoBack, onFinishLater, onOpenPlanSettings, onRequestPlanEdit }: Readonly<{
+    ActiveWorkoutScreen: ({ initialHeaderFocus = false, onGoBack, onFinishLater, onOpenPlanSettings, onRequestPlanEdit }: Readonly<{
+      initialHeaderFocus?: boolean;
       onGoBack(): void;
       onFinishLater(): void;
-    onOpenPlanSettings(): void;
+      onOpenPlanSettings(): void;
       onRequestPlanEdit(): void;
-    }>) => <>
-      <Pressable accessibilityRole="button" accessibilityLabel="Back to Workout" onPress={onGoBack} />
-      <Pressable accessibilityRole="button" accessibilityLabel="Edit plan after workout" onPress={onRequestPlanEdit} />
-      <Pressable accessibilityRole="button" accessibilityLabel="Open plan settings" onPress={onOpenPlanSettings} />
-      <Pressable accessibilityRole="button" accessibilityLabel="Finish workout later" onPress={onFinishLater} />
-    </>,
+    }>) => {
+      mockInitialHeaderFocus = initialHeaderFocus;
+      return <>
+        <Pressable testID="active-workout" />
+        <Pressable accessibilityRole="button" accessibilityLabel="Back to Workout" onPress={onGoBack} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Edit plan after workout" onPress={onRequestPlanEdit} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Open plan settings" onPress={onOpenPlanSettings} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Finish workout later" onPress={onFinishLater} />
+      </>;
+    },
   };
 });
 
@@ -170,6 +185,7 @@ describe("ActiveWorkoutRoute", () => {
     mockReadWorkoutPreferences.mockClear();
     mockSetWorkoutPreferences.mockReset();
     mockListOwnedPlanExercises.mockClear();
+    mockInitialHeaderFocus = false;
     mockParams = {
       sessionId: "session-identity",
       returnTo: "/(tabs)",
@@ -230,6 +246,21 @@ describe("ActiveWorkoutRoute", () => {
     rendered.unmount();
 
     expect(mockCompleteSet).not.toHaveBeenCalled();
+  });
+
+  it("loads the resumed Phase 20 partial fixture on the real Active route", async () => {
+    mockParams = {
+      sessionId: "v12-strength-partial",
+      phase20CalendarFixture: "v12-calendar-isolated-facts-v1",
+      phase20CalendarEvidenceNonce: "b".repeat(32),
+      phase20CalendarRequirementsSha256: "a".repeat(64),
+    };
+
+    await render(<ActiveWorkoutRoute />);
+
+    expect(await screen.findByTestId("active-workout")).toBeOnTheScreen();
+    expect(mockInitialHeaderFocus).toBe(true);
+    expect(mockGetActiveWorkout).not.toHaveBeenCalled();
   });
 
   it("defers editing the owning plan until Finish workout later returns from Active", async () => {

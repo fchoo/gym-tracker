@@ -607,6 +607,7 @@ export const ScreenHeader = forwardRef<View, Readonly<{
   backAction?: () => void;
   backActionLabel?: string;
   backActionRef?: React.Ref<View>;
+  backActionTestID?: string;
   titleStyle?: StyleProp<TextStyle>;
   /** Deep Library routes opt into the Phase 17 64dp header track. */
   density?: "standard" | "deep";
@@ -618,6 +619,7 @@ export const ScreenHeader = forwardRef<View, Readonly<{
   backAction,
   backActionLabel = "Go back",
   backActionRef,
+  backActionTestID,
   density = "standard",
   titleStyle,
 }, ref) {
@@ -670,6 +672,9 @@ export const ScreenHeader = forwardRef<View, Readonly<{
           icon: "back",
           onPress: backAction,
           ref: backActionRef,
+          ...(backActionTestID === undefined
+            ? {}
+            : { testID: backActionTestID }),
         }),
     h(View, { style: styles.headerCopy }, ...copy),
     action === undefined && actions === undefined

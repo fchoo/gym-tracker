@@ -124,6 +124,9 @@ function expectedRunId(createdAt, source) {
 function normalizeInput(input) {
   if (!isPlainObject(input)) fail("input_invalid");
   const mode = input.mode ?? "live";
+  const hasEvidenceOrigin = Object.hasOwn(input, "evidence_origin");
+  const evidenceOrigin = input.evidence_origin ?? "native";
+  if (!new Set(["native", "test"]).has(evidenceOrigin)) fail("origin_invalid");
   if (mode !== "live" && mode !== "prebuild_schema_fixture") fail("mode_invalid");
   assertTimestamp(input.created_at);
   const source = normalizeSource(input.source);
@@ -134,6 +137,7 @@ function normalizeInput(input) {
     schema_version: 1,
     run_id: expected,
     mode,
+    ...(hasEvidenceOrigin ? { evidence_origin: evidenceOrigin } : {}),
     created_at: input.created_at,
     source,
     planning: normalizePlanning(input.planning),
@@ -151,6 +155,7 @@ function normalizeInput(input) {
 }
 
 export function createV12RunManifest({ input, existing_run_ids = [], output_exists = false } = {}) {
+  if (input?.evidence_origin === "test") fail("origin_invalid");
   const manifest = normalizeInput(input);
   if (!Array.isArray(existing_run_ids) || existing_run_ids.some((runId) => typeof runId !== "string")) fail("run_registry_invalid");
   if (existing_run_ids.includes(manifest.run_id)) fail("run_reuse");
@@ -162,8 +167,8 @@ export function validateV12RunManifest(manifest) {
   if (!isPlainObject(manifest)) fail("exact_keys_invalid");
   const live = manifest.mode === "live";
   const expectedKeys = live
-    ? ["schema_version", "run_id", "mode", "created_at", "source", "planning", "prototype", "fixtures", "build", "device", "configuration"]
-    : ["schema_version", "run_id", "mode", "created_at", "source", "planning", "prototype", "fixtures", "build"];
+    ? ["schema_version", "run_id", "mode", ...(Object.hasOwn(manifest, "evidence_origin") ? ["evidence_origin"] : []), "created_at", "source", "planning", "prototype", "fixtures", "build", "device", "configuration"]
+    : ["schema_version", "run_id", "mode", ...(Object.hasOwn(manifest, "evidence_origin") ? ["evidence_origin"] : []), "created_at", "source", "planning", "prototype", "fixtures", "build"];
   if (!exactKeys(manifest, expectedKeys) || manifest.schema_version !== 1 || !RUN_ID.test(manifest.run_id ?? "")) fail("exact_keys_invalid");
   const normalized = normalizeInput(manifest);
   if (normalized.run_id !== manifest.run_id || JSON.stringify(normalized) !== JSON.stringify(manifest)) fail("canonical_invalid");
@@ -214,6 +219,7 @@ export function executeV12RunManifestCli(args, { root = process.cwd(), now = () 
   const createdAt = now().toISOString().replace(/\.\d{3}Z$/u, "Z");
   const input = {
     created_at: createdAt,
+    evidence_origin: "native",
     source: { head, tree_sha256: buildManifest.source_tree_sha256, dirty: false, package_json_sha256: hashFile(projectRoot, "package.json"), package_lock_sha256: hashFile(projectRoot, "package-lock.json") },
     planning: { matrix_sha256: hashFile(projectRoot, ".planning/design/v1.2-prototype-parity-matrix.json"), requirements_sha256: hashFile(projectRoot, ".planning/REQUIREMENTS.md"), source_manifest_sha256: hashFile(projectRoot, ".planning/design/v1.2-browser-evidence/source-manifest.json"), owner_brief_sha256: hashFile(projectRoot, ".planning/v1.2-OWNER-BRIEF.md"), ui_spec_sha256: hashFile(projectRoot, ".planning/phases/20-native-acceptance/20-UI-SPEC.md"), deviations_sha256: hashFile(projectRoot, ".planning/design/v1.2-DEVIATIONS.md") },
     prototype: { revision: 18, approval_sha256: sources[0]?.sha256, html_sha256: sources[1]?.sha256 },

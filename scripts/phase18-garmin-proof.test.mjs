@@ -775,10 +775,12 @@ test("Phase 18 route is guarded, uses the real adapter/module, and keeps secrets
   assert.match(bootstrap, /createGarminActivityAdapter/u);
   assert.match(bootstrap, /getGarminConnectNativeModule/u);
   assert.match(route, /secureTextEntry/u);
+  assert.match(route, /suite: extra\?\.nativeContractSuite/u);
+  assert.match(route, /if \(!enabled \|\| \(operation !== "login" && operation !== "restore"\)\)/u);
+  assert.match(route, /return <Redirect href="\/" \/>/u);
   assert.doesNotMatch(route, /fetch\(|axios|child_process|python-shell|localhost|http:\/\//u);
   assert.doesNotMatch(route, /final-evidence\.json/u);
   assert.match(layout, /Phase18GarminProofNavigator/u);
-  assert.match(layout, /nativeContractSuite === "v1\.2-acceptance"/u);
   assert.match(layout, /pathname === "\/__phase18-garmin-proof"/u);
 });
 

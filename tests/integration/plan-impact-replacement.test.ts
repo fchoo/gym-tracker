@@ -62,6 +62,9 @@ import {
   advancedSetTimingMigration,
 } from "../../src/platform/sqlite/migrations/0021_advanced_set_timing";
 import {
+  planExerciseReplacementReceiptsMigration,
+} from "../../src/platform/sqlite/migrations/0047_plan_exercise_replacement_receipts";
+import {
   scheduleActivationMigration,
 } from "../../src/platform/sqlite/migrations/0008_schedule_activation";
 import {
@@ -222,6 +225,7 @@ async function setupRuntime(
       sessionExerciseEditingMigration,
       sessionExerciseEditReceiptsMigration,
       ...(options.advancedTiming === false ? [] : [advancedSetTimingMigration]),
+      planExerciseReplacementReceiptsMigration,
     ],
     recoveryBackup: validatedRecoveryBackup(),
   }).run();
@@ -536,6 +540,19 @@ async function setupRuntime(
         await options.beforeRepositoryWrite.run(transaction);
       },
     }),
+  };
+}
+
+async function reopenPlanImpactRuntime(databasePath: string) {
+  const writer = new NodeSqliteConnection(new DatabaseSync(databasePath));
+  const reader = new NodeSqliteConnection(new DatabaseSync(databasePath));
+  await configureSqliteConnection(writer, { enableWal: true });
+  await configureSqliteConnection(reader, { enableWal: false });
+  const kernel = createSqliteKernel({ reader, writer });
+  kernels.add(kernel);
+  return {
+    kernel,
+    repository: createPlanImpactRepository(kernel, {}),
   };
 }
 
@@ -2018,12 +2035,8 @@ describe("plan impact exercise replacement", () => {
     })).resolves.toBeNull();
   });
 
-  it("commits a reviewed replacement without a schedule event when the owner plan is unscheduled", async () => {
+  it("replays an unscheduled inactive-plan replacement exactly after reopen without a second mutation", async () => {
     const runtime = await setupRuntime();
-    const input = await replacementRepositoryInput(runtime, {
-      requestId: "repository-replace-unscheduled",
-      requestSha256: "c".repeat(64),
-    });
     await runtime.kernel.write(async (transaction) => {
       await transaction.execute(
         `INSERT INTO plans
@@ -2038,15 +2051,124 @@ describe("plan impact exercise replacement", () => {
       await transaction.execute(
         "UPDATE owned_plan_schedules SET plan_id = 'schedule-holder' WHERE id = 'retained-schedule'",
       );
+      await transaction.execute(
+        "UPDATE plans SET is_active = 0 WHERE id = 'retained-plan'",
+      );
     });
+    const preview = await previewExerciseReplacement({
+      repository: runtime.repository,
+      sha256,
+      input: {
+        planId: "retained-plan",
+        occurrenceId: "retained-occurrence",
+      },
+    });
+    const input = {
+      requestId: "replace-unscheduled",
+      planId: preview.planId,
+      sourceOccurrenceId: preview.sourceOccurrenceId,
+      expectedPlanRevision: preview.planRevision,
+      previewToken: preview.previewToken,
+      scope: "this_occurrence" as const,
+      replacementExerciseId: "exercise-incline",
+      review: {
+        targets: true,
+        warmups: true,
+        rest: true,
+        progression: true,
+        historyImmutable: true,
+      },
+      occurrences: [preview.occurrences[0]!],
+    };
 
-    await expect(runtime.repository.applyExerciseReplacement(input)).resolves.toMatchObject({
+    const committed = await replacePlanExercise({
+      repository: runtime.repository,
+      sha256,
+      nowMs: () => 500,
+      invalidate: async () => undefined,
+      input,
+    });
+    expect(committed).toMatchObject({
       outcome: "committed",
       planId: "retained-plan",
     });
     await expect(runtime.kernel.queryAll(
       "SELECT id FROM owned_plan_schedule_events WHERE event_type = 'plan_exercise_replaced'",
     )).resolves.toEqual([]);
+
+    kernels.delete(runtime.kernel);
+    await runtime.kernel.close();
+    const reopened = await reopenPlanImpactRuntime(runtime.databasePath);
+    const afterFirstCommit = await reopened.kernel.queryAll(
+      `SELECT occurrence.exercise_id, occurrence.revision AS occurrence_revision,
+              plan.revision AS plan_revision
+       FROM owned_plan_day_exercises occurrence
+       JOIN plan_days day ON day.id = occurrence.plan_day_id
+       JOIN plans plan ON plan.id = day.plan_id
+       WHERE occurrence.id = 'retained-occurrence'`,
+    );
+    await expect(reopened.kernel.queryAll(
+      `SELECT request_id, plan_id, expected_plan_revision,
+              result_plan_revision
+       FROM plan_exercise_replacement_receipts`,
+    )).resolves.toEqual([{
+      request_id: input.requestId,
+      plan_id: input.planId,
+      expected_plan_revision: input.expectedPlanRevision,
+      result_plan_revision: committed.planRevision,
+    }]);
+
+    await expect(replacePlanExercise({
+      repository: reopened.repository,
+      sha256,
+      nowMs: () => 9_999,
+      invalidate: async () => {
+        throw new Error("replay_must_not_invalidate");
+      },
+      input,
+    })).resolves.toEqual({
+      ...committed,
+      outcome: "already_committed",
+    });
+    await expect(reopened.kernel.queryAll(
+      `SELECT occurrence.exercise_id, occurrence.revision AS occurrence_revision,
+              plan.revision AS plan_revision
+       FROM owned_plan_day_exercises occurrence
+       JOIN plan_days day ON day.id = occurrence.plan_day_id
+       JOIN plans plan ON plan.id = day.plan_id
+       WHERE occurrence.id = 'retained-occurrence'`,
+    )).resolves.toEqual(afterFirstCommit);
+    await expect(reopened.kernel.queryAll(
+      "SELECT COUNT(*) AS count FROM plan_exercise_replacement_receipts",
+    )).resolves.toEqual([{ count: 1 }]);
+    await expect(replacePlanExercise({
+      repository: reopened.repository,
+      sha256,
+      nowMs: () => 10_000,
+      invalidate: async () => undefined,
+      input: {
+        ...input,
+        replacementExerciseId: "exercise-bodyweight",
+      },
+    })).rejects.toMatchObject({ code: "plan_impact_idempotency_conflict" });
+    await expect(replacePlanExercise({
+      repository: reopened.repository,
+      sha256,
+      nowMs: () => 10_001,
+      invalidate: async () => undefined,
+      input: {
+        ...input,
+        requestId: "replace-unscheduled-stale",
+      },
+    })).rejects.toMatchObject({ code: "plan_impact_preview_stale" });
+    await expect(reopened.kernel.queryAll(
+      `SELECT occurrence.exercise_id, occurrence.revision AS occurrence_revision,
+              plan.revision AS plan_revision
+       FROM owned_plan_day_exercises occurrence
+       JOIN plan_days day ON day.id = occurrence.plan_day_id
+       JOIN plans plan ON plan.id = day.plan_id
+       WHERE occurrence.id = 'retained-occurrence'`,
+    )).resolves.toEqual(afterFirstCommit);
   });
 
   it("rejects repository-level stale previews, incompatible candidates, and incomplete scopes", async () => {
@@ -2269,8 +2391,22 @@ describe("plan impact exercise replacement", () => {
       })).resolves.toEqual({
         ...result,
         outcome: "already_committed",
-        invalidations: [],
       });
+      await expect(runtime.kernel.queryAll(
+        `SELECT id, event_type
+         FROM owned_plan_schedule_events
+         WHERE id = ?`,
+        [`plan-impact-command:replace-${scope}`],
+      )).resolves.toEqual([{
+        id: `plan-impact-command:replace-${scope}`,
+        event_type: "plan_exercise_replaced",
+      }]);
+      await expect(runtime.kernel.queryAll(
+        `SELECT request_id
+         FROM plan_exercise_replacement_receipts
+         WHERE request_id = ?`,
+        [`replace-${scope}`],
+      )).resolves.toEqual([{ request_id: `replace-${scope}` }]);
       await expect(runtime.kernel.queryAll(
         `SELECT id, exercise_id, revision
          FROM owned_plan_day_exercises
