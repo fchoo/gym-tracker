@@ -49,9 +49,22 @@ test('failure parsing ignores malformed and foreign markers and keeps the newest
 test('legacy result parsing keeps supported raw forms without mistaking absent or broken JSON for a result', () => {
   assert.equal(parseNativeContractLogOutput('plain\n' + RESULT + '{', runId), undefined);
   for (const result of [null, 3, 'legacy_result', { schemaVersion: 1 }, { runId }, { summary: { total: 0 } }]) {
-    assert.deepEqual(parseNativeContractLogOutput(line(RESULT, result), runId), result);
+    assert.deepEqual(parseNativeContractLogOutput(line(RESULT, result), 'legacy-phase2'), result);
   }
   assert.equal(parseNativeContractLogOutput(line(RESULT, { runId: 'other', summary: { total: 0 } }), runId), undefined);
+});
+
+test('fresh v1.2 requests cannot consume unbound legacy output or malformed summaries', () => {
+  for (const result of [null, 3, 'legacy_result', { schemaVersion: 1 }, { runId }, { summary: { total: 0 } }]) {
+    assert.equal(parseNativeContractLogOutput(line(RESULT, result), runId), undefined);
+  }
+  for (const summary of [null, 3, [], {}, { total: -1 }, { total: 0.5 }, { total: 513 }]) {
+    assert.equal(parseNativeContractLogOutput(line(RESULT, { runId, summary }), runId), undefined);
+  }
+  for (const value of [null, 3, {}]) {
+    assert.equal(parseNativeContractLogOutput(line(CASE, { runId, case: value }) + '\n'
+      + line(RESULT, { runId, summary: { total: 1 } }), runId), undefined);
+  }
 });
 
 test('nonce-bound split results require complete unique cases and never combine foreign records', () => {
