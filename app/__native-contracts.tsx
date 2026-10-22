@@ -103,7 +103,12 @@ import {
   V12_ACCEPTANCE_SQLITE_CASE_IDS,
   type V12AcceptanceSqliteContractResult,
 } from "../src/testing/contracts/v12Acceptance.contract";
+import {
+  createV12NativeContractExecutionRegistry,
+  createV12NativeContractLogFrames,
+} from "../src/testing/v12NativeContractLogTransport";
 
+const v12NativeExecutions = createV12NativeContractExecutionRegistry();
 const RESULT_MARKER = "GYM_TRACKER_SQLITE_CONTRACT_RESULT:";
 const CASE_MARKER = "GYM_TRACKER_SQLITE_CONTRACT_CASE:";
 const ERROR_MARKER = "GYM_TRACKER_SQLITE_CONTRACT_ERROR:";
@@ -534,13 +539,18 @@ export default function NativeSqliteContractsScreen() {
         }
 
         if (selectedSuite === "v1.2-acceptance") {
-          const result = await verifyV12AcceptanceSqliteContracts(
-            await createExpoV12AcceptanceSqliteContractAdapter(
-              runId,
-              (stage) => emitAggregateProgress(runId, `v1.2-acceptance:${stage}`),
-            ),
-          );
-          console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
+          const result = await v12NativeExecutions.onceForNonce(runId, async () => {
+            const completed = await verifyV12AcceptanceSqliteContracts(
+              await createExpoV12AcceptanceSqliteContractAdapter(
+                runId,
+                (stage) => emitAggregateProgress(runId, `v1.2-acceptance:${stage}`),
+              ),
+            );
+            for (const frame of createV12NativeContractLogFrames(runId, completed)) {
+              console.log(frame);
+            }
+            return completed;
+          });
           setState({ status: "finished", result });
           return;
         }
@@ -716,7 +726,7 @@ export default function NativeSqliteContractsScreen() {
             ))}
           </View>
           <Text style={styles.machineResult}>
-            {`${RESULT_MARKER}${encodeURIComponent(JSON.stringify(result))}`}
+            {`${RESULT_MARKER}${encodeURIComponent(JSON.stringify(selectedSuite === "v1.2-acceptance" ? { runId, result } : result))}`}
           </Text>
         </>
       )}
