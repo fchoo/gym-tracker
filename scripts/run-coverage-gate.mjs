@@ -361,6 +361,7 @@ const phase20IntegrityCriticalFiles = [
   "src/bootstrap/v12AcceptanceBenchmark.ts",
   "src/testing/v12NativeAcceptanceExecutor.ts",
   "src/testing/v12NativeContractLogTransport.ts",
+  "src/testing/contracts/contractProgress.ts",
   "src/testing/contracts/phase15Workout.contract.ts",
   "src/testing/contracts/v12Acceptance.contract.ts",
   "src/testing/contracts/v12Accessibility.contract.ts",
@@ -889,6 +890,8 @@ if (focusPhase20) {
   jestForwarded.push(
     "src/bootstrap/v12AcceptanceBenchmark.test.ts",
     "src/testing/v12NativeAcceptanceExecutor.test.ts",
+    "src/testing/v12NativeContractLogTransport.test.ts",
+    "src/testing/contracts/contractProgress.test.ts",
     "tests/sqlite-host/v12NativeAcceptanceOperations.test.ts",
     "src/testing/contracts/v12Acceptance.contract.test.ts",
     "src/testing/contracts/v12Accessibility.contract.test.ts",
