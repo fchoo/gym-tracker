@@ -379,6 +379,12 @@ if ! EXPO_PUBLIC_NATIVE_CONTRACT_SUITE="$suite" \
   fail 'embedded development-test config is invalid.'
 fi
 
+# Validate the binary manifest's run-as prerequisite without enabling release DEBUG.
+# Fail before retaining/installing bytes or publishing any acceptance build manifest.
+if ! "$node_executable" scripts/validate-development-test-native-access.mjs "$generated_apk" "$project_root/android"; then
+  fail 'compiled development-test native access capability is invalid.'
+fi
+
 zipalign_path="$ANDROID_HOME/build-tools/36.0.0/zipalign"
 [ -x "$zipalign_path" ] ||
   fail "pinned zipalign is missing: $zipalign_path"

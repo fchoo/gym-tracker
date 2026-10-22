@@ -30,6 +30,8 @@ case "$1 $2" in
   "scripts/v12-native-execution-origin.mjs --git-attestation") printf '%s\\n' '{"schema_version":1}' ;;
   "scripts/validate-v12-prebuild-predecessors.mjs ") exit 0 ;;
   "scripts/source-tree-digest.mjs --head") printf '%s\\n' '${"a".repeat(64)}' ;;
+  "scripts/assert-generated-android.mjs "*) exit 0 ;;
+  "scripts/validate-development-test-native-access.mjs "*) exec "$REAL_NODE" "$@" ;;
   *) printf 'unexpected fake node command: %s\\n' "$*" >&2; exit 97 ;;
 esac
 `);
@@ -66,6 +68,53 @@ function waitForActiveClaim(claimsRoot, timeoutMs = 5_000) {
   }
   assert.fail(`timed out waiting for an active claim under ${claimsRoot}`);
 }
+
+test("the native test APK build gates compiled debug capability before retaining, installing, or publishing", () => {
+  const source = readFileSync(new URL("./build-current-native-test-apk.sh", import.meta.url), "utf8");
+  const gate = source.indexOf('scripts/validate-development-test-native-access.mjs');
+  const retain = source.indexOf('cp "$generated_apk" "$staged_apk_path.tmp"');
+  const install = source.indexOf('adb -s "$device_serial" install -r');
+  const publish = source.indexOf('ln "$staged_apk_path" "$apk_path"');
+  assert.ok(gate > source.indexOf(':app:assembleRelease'));
+  assert.ok(gate < retain && retain < install && install < publish);
+  assert.match(source, /"\$node_executable" scripts\/validate-development-test-native-access\.mjs "\$generated_apk" "\$project_root\/android"/u);
+});
+
+test("compiled capability failure stops the builder before install and publication", (t) => {
+  for (const failure of ['missing-debug-flag', 'release-debug-true', 'tool-failure']) {
+    const f = claimFixture(t);
+    cpSync(new URL('./validate-development-test-native-access.mjs', import.meta.url), path.join(f.root, 'scripts/validate-development-test-native-access.mjs'));
+    const npx = path.join(f.env.ANDROID_HOME, 'npx');
+    writeFileSync(npx, `#!/bin/sh
+mkdir -p android/app/build/outputs/apk/release android/app/build/generated/source/buildConfig/release/com/fchoo/gymtracker/devtest
+printf 'fixture APK' > android/app/build/outputs/apk/release/app-release.apk
+printf '%s\\n' 'package com.fchoo.gymtracker.devtest;' 'public final class BuildConfig {' 'public static final boolean DEBUG = ${failure === 'release-debug-true' ? 'true' : 'false'};' 'public static final String APPLICATION_ID = "com.fchoo.gymtracker.devtest";' 'public static final String BUILD_TYPE = "release";' '}' > android/app/build/generated/source/buildConfig/release/com/fchoo/gymtracker/devtest/BuildConfig.java
+printf '#!/bin/sh\\nexit 0\\n' > android/gradlew
+chmod +x android/gradlew
+`);
+    chmodSync(npx, 0o755);
+    const validator = path.join(f.root, 'scripts/validate-development-test-app-config.mjs');
+    writeFileSync(validator, '#!/bin/sh\nexit 0\n'); chmodSync(validator, 0o755);
+    const aapt = path.join(f.env.ANDROID_HOME, 'build-tools/36.0.0/aapt');
+    mkdirSync(path.dirname(aapt), { recursive: true });
+    writeFileSync(aapt, `#!/bin/sh\nprintf '%s\\n' "package: name='com.fchoo.gymtracker.devtest' versionCode='1' versionName='0.1.0'" "application: label='Gym Tracker Dev Test' icon=''"\n${failure === 'missing-debug-flag' ? '' : "printf 'application-debuggable\\n'"}\nexit ${failure === 'tool-failure' ? 7 : 0}\n`);
+    chmodSync(aapt, 0o755);
+    const adb = path.join(f.env.ANDROID_HOME, 'platform-tools/adb');
+    writeFileSync(adb, `#!/bin/sh
+if [ "$1" = -s ] && [ "$3 $4 $5" = 'shell getprop sys.boot_completed' ]; then printf '1\\n'; exit 0; fi
+printf 'unexpected device mutation\\n' > ${JSON.stringify(path.join(f.root, 'device-mutation.txt'))}
+exit 96
+`);
+    chmodSync(adb, 0o755);
+    const result = spawnSync('sh', [f.script, '--suite', 'phase14-access-fixture'], {
+      cwd: f.root, encoding: 'utf8', env: f.env,
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /compiled development-test native access capability is invalid/u);
+    assert.equal(existsSync(path.join(f.root, 'device-mutation.txt')), false);
+    assert.equal(existsSync(path.join(f.root, 'artifacts/native/phase14-access-fixture')), false);
+  }
+});
 
 test("the native test APK build retries launcher resolution after install", () => {
   const source = readFileSync(

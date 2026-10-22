@@ -141,6 +141,11 @@ describe("Plan 01-03 test and boundary tooling", () => {
     expect(buildScript).toContain("build_variant: 'release'");
     expect(buildScript).toContain("embedded: true");
     expect(buildScript).not.toContain(":app:assembleDebug");
+    expect(buildScript).toContain('scripts/validate-development-test-native-access.mjs');
+    const capabilityGate = buildScript.indexOf('scripts/validate-development-test-native-access.mjs');
+    expect(capabilityGate).toBeGreaterThan(buildScript.indexOf(':app:assembleRelease'));
+    expect(capabilityGate).toBeLessThan(buildScript.indexOf('adb -s "$device_serial" install -r'));
+    expect(buildScript).not.toMatch(/release\.debuggable|debuggableVariants/u);
   });
 
   it("fails closed when the embedded development-test app config drifts", () => {

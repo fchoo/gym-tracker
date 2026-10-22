@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import { AndroidConfig } from 'expo/config-plugins';
+import { AndroidConfig, type ExportedConfig } from 'expo/config-plugins';
 import type { ExpoConfig } from 'expo/config';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -20,7 +20,7 @@ function manifest() {
 
 describe('devtest physical native access', () => {
   it('sets only the main application manifest flag and reapplies idempotently', async () => {
-    const config = withAndroidPhysicalTestService(devtestConfig());
+    const config: ExportedConfig = withAndroidPhysicalTestService(devtestConfig());
     const action = config.mods!.android!.manifest!;
     const input = { ...config, modResults: manifest(), modRequest: { platform: 'android' } };
     const first = await action(input as never);
@@ -53,7 +53,7 @@ describe('devtest physical native access', () => {
   it('retains the protected headless service implementation in the devtest package only', async () => {
     const root = mkdtempSync(path.join(tmpdir(), 'p20-physical-plugin-'));
     try {
-      const config = withAndroidPhysicalTestService(devtestConfig());
+      const config: ExportedConfig = withAndroidPhysicalTestService(devtestConfig());
       await config.mods!.android!.dangerous!({ ...config, modRequest: { platform: 'android',
         platformProjectRoot: root } } as never);
       const source = readFileSync(path.join(root, 'app/src/main/java/com/fchoo/gymtracker/devtest/GymTrackerPhysicalTestService.kt'), 'utf8');
