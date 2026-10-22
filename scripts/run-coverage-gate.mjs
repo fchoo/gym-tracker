@@ -145,6 +145,9 @@ const phase16EvidenceFiles = [
   "scripts/v12-calendar-case-registry.mjs",
 ];
 const phase20EvidenceTests = Object.freeze([
+  "scripts/assert-generated-android.test.mjs",
+  "scripts/assert-generated-production-android.test.mjs",
+  "scripts/validate-development-test-native-access.test.mjs",
   "scripts/benchmark-v12-interactions.test.mjs",
   "scripts/build-current-native-test-apk.test.mjs",
   "scripts/capture-v12-visual.test.mjs",
@@ -198,6 +201,9 @@ const phase20EvidenceTests = Object.freeze([
   "scripts/verify-v12-native-evidence.security.test.mjs",
 ]);
 const phase20SupportTests = new Set([
+  "assert-generated-android.test.mjs",
+  "assert-generated-production-android.test.mjs",
+  "validate-development-test-native-access.test.mjs",
   "build-current-native-test-apk.test.mjs",
   "doctor-android.test.mjs",
   "native-device-selection.test.mjs",
@@ -268,6 +274,7 @@ const phase20EvidenceProjects = Object.freeze([
     concurrency: 2,
     modules: Object.freeze([
       "scripts/native-contract-log-transport.mjs",
+      "scripts/validate-development-test-native-access.mjs",
       "scripts/v12-artifact-privacy.mjs",
       "scripts/v12-atomic-shard-publication.mjs",
       "scripts/v12-calendar-artifact-transport.mjs",
@@ -817,7 +824,7 @@ const registeredPhase20EvidenceTests = validateEvidenceTestManifest({
   tests: phase20EvidenceTests,
   isEvidenceTest: isPhase20EvidenceTest,
   error: "phase20_evidence_test_manifest_drift",
-  expectedCount: 51,
+  expectedCount: 54,
 });
 const expectedPhase20ProjectNames = [
   "contracts",
@@ -831,10 +838,10 @@ const expectedPhase20ProjectNames = [
 const assignedPhase20Tests = phase20EvidenceProjects.flatMap(({ tests }) => tests);
 const assignedPhase20Modules = new Set(phase20EvidenceProjects.flatMap(({ modules = [] }) => modules));
 if (JSON.stringify(phase20EvidenceProjects.map(({ name }) => name)) !== JSON.stringify(expectedPhase20ProjectNames)
-  || assignedPhase20Tests.length !== 51
-  || new Set(assignedPhase20Tests).size !== 51
+  || assignedPhase20Tests.length !== 54
+  || new Set(assignedPhase20Tests).size !== 54
   || JSON.stringify([...assignedPhase20Tests].sort()) !== JSON.stringify(registeredPhase20EvidenceTests)
-  || assignedPhase20Modules.size !== 18
+  || assignedPhase20Modules.size !== 19
   || phase20EvidenceProjects.find(({ name }) => name === "cli-blackbox")?.coverage !== false) {
   throw new Error(JSON.stringify({
     error: "phase20_coverage_project_manifest_invalid",

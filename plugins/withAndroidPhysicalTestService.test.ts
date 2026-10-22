@@ -36,14 +36,18 @@ describe('devtest physical native access', () => {
   });
 
   it('does not register manifest or source mods for any wrong identity or disabled hooks', () => {
+    const missingExtra = devtestConfig();
+    delete missingExtra.extra;
+    const missingAndroid = devtestConfig();
+    delete missingAndroid.android;
     for (const config of [
-      { ...devtestConfig(), extra: undefined },
+      missingExtra,
       { ...devtestConfig(), extra: { nativeContractsEnabled: true } },
       { ...devtestConfig(), extra: { buildProfile: 'production', nativeContractsEnabled: true } },
       { ...devtestConfig(), extra: { buildProfile: 'development-test', nativeContractsEnabled: false } },
       { ...devtestConfig(), extra: { buildProfile: 'development-test', nativeContractsEnabled: 'true' } },
       { ...devtestConfig(), android: { package: 'com.fchoo.gymtracker' } },
-      { ...devtestConfig(), android: undefined },
+      missingAndroid,
     ]) {
       expect(withAndroidPhysicalTestService(config)).toBe(config);
       expect(config).not.toHaveProperty('mods');
