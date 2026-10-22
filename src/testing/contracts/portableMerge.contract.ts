@@ -1,3 +1,4 @@
+import { reportContractProgress, type ContractProgressObserver } from "./contractProgress";
 import {
   canonicalMergeValue,
   type MergeLocalFacts,
@@ -1283,12 +1284,14 @@ async function assertRollback(
 
 export async function runPortableMergeContract(
   adapter: PortableMergeContractAdapter,
+  onProgress?: ContractProgressObserver,
 ): Promise<PortableMergeContractResult> {
   const startedAt = new Date().toISOString();
   const cases: PortableMergeContractCaseResult[] = [];
   try {
-    for (const id of PORTABLE_MERGE_CONTRACT_CASES) {
+    for (const [index, id] of PORTABLE_MERGE_CONTRACT_CASES.entries()) {
       const started = Date.now();
+      reportContractProgress(onProgress, `case-${index + 1}:start`);
       try {
         await contractCases[id](adapter, id);
         cases.push({ id, status: "passed", durationMs: Date.now() - started });
@@ -1300,6 +1303,7 @@ export async function runPortableMergeContract(
           errorCode: safeErrorCode(error),
         });
       }
+      reportContractProgress(onProgress, `case-${index + 1}:${cases[cases.length - 1]!.status}`);
     }
   } finally {
     await adapter.cleanup?.().catch(() => undefined);

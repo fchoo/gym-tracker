@@ -8,6 +8,7 @@ import { createMigrationRunner } from "../../platform/sqlite/migrationRunner";
 import { migrations } from "../../platform/sqlite/migrations";
 import { CURRENT_SCHEMA_VERSION } from "../../platform/sqlite/migrations";
 import { createExpoMigrationsEffectsContractAdapter } from "./migrationsEffects.contract";
+import { observeContractOperation, reportContractProgress, type ContractProgressObserver } from "./contractProgress";
 
 /** Source-owned registry used by Jest and the packaged Expo fake-port route. */
 /**
@@ -149,15 +150,17 @@ export async function createExpoGoogleDriveBackupContractAdapter(
   };
 }
 
-export async function runGoogleDriveBackupContract(adapter?: GoogleDriveBackupContractAdapter): Promise<GoogleDriveBackupContractResult> {
+export async function runGoogleDriveBackupContract(adapter?: GoogleDriveBackupContractAdapter, onProgress?: ContractProgressObserver): Promise<GoogleDriveBackupContractResult> {
   const cases: Array<Readonly<{ id: GoogleDriveBackupContractCaseId; status: "passed" | "failed"; durationMs: number }>> = [];
   const run = async (id: GoogleDriveBackupContractCaseId, work: () => Promise<void> | void) => {
     const started = Date.now();
+    const stage = `case-${GOOGLE_DRIVE_BACKUP_REQUIRED_CASE_IDS.indexOf(id) + 1}`;
+    reportContractProgress(onProgress, `${stage}:start`);
     try {
-      await work();
+      await observeContractOperation(onProgress, `${stage}:check`, async () => { await work(); });
       if (adapter !== undefined) {
         const scenario = adapter.scenarios[id];
-        const assertions = scenario === undefined ? 1 : await scenario();
+        const assertions = scenario === undefined ? 1 : await observeContractOperation(onProgress, `${stage}:durable`, scenario);
         if (!Number.isSafeInteger(assertions) || assertions < 1) {
           throw new Error("google_drive_native_boundary_missing");
         }
@@ -165,6 +168,7 @@ export async function runGoogleDriveBackupContract(adapter?: GoogleDriveBackupCo
       cases.push({ id, status: "passed", durationMs: Date.now() - started });
     }
     catch { cases.push({ id, status: "failed", durationMs: Date.now() - started }); }
+    reportContractProgress(onProgress, `${stage}:${cases[cases.length - 1]!.status}`);
   };
   const checks: Readonly<Record<GoogleDriveBackupContractCaseId, () => Promise<void> | void>> = {
     "generation-receipt-fence": () => {

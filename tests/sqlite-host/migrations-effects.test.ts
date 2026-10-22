@@ -3066,7 +3066,8 @@ describe("Plan 01-06 native migration suite selection", () => {
   it("executes all shared migration and effect cases in the aggregate suite", async () => {
     const runtimes = new Map<string, HostRuntime>();
     const databasePaths = new Map<string, string>();
-    const cleanup = jest.fn(async () => undefined);
+    const events: string[] = [];
+    const cleanup = jest.fn(async () => { events.push("cleanup"); throw new Error("cleanup_suppressed"); });
     const openKeyedRuntime = async (
       databaseKey: string,
       observer: SqliteKernelTestObserver,
@@ -3101,7 +3102,10 @@ describe("Plan 01-06 native migration suite selection", () => {
         return {
           databaseName: databaseKey,
           kernel: runtime.kernel,
-          close: runtime.close,
+          close: async () => {
+            await runtime.close();
+            events.push(`closed:${databaseKey}`);
+          },
         };
       },
       cleanup,
@@ -3123,8 +3127,29 @@ describe("Plan 01-06 native migration suite selection", () => {
       },
     };
 
-    const result = await runMigrationsEffectsContract(adapter);
+    const result = await runMigrationsEffectsContract(adapter, (stage) => {
+      events.push(stage);
+      throw new Error("observer_is_not_work");
+    });
 
+    expect(events.filter((event) => event.startsWith("case-"))).toEqual(
+      MIGRATIONS_EFFECTS_CONTRACT_CASES.flatMap((_id, index) => [`case-${index + 1}:start`, `case-${index + 1}:passed`]),
+    );
+    expect(events.filter((event) => event.startsWith("cut-"))).toEqual(
+      INITIAL_SCHEMA_STATEMENTS.flatMap((_statement, index) => ["before", "after"].flatMap((phase) => [
+        `cut-${index + 1}-${phase}:start`, `cut-${index + 1}-${phase}:done`,
+      ])),
+    );
+    for (const [index] of INITIAL_SCHEMA_STATEMENTS.entries()) {
+      for (const phase of ["before", "after"]) {
+        const start = events.indexOf(`cut-${index + 1}-${phase}:start`);
+        const close = events.indexOf(`closed:migration-statement-rollback-${phase}-${index}`);
+        const done = events.indexOf(`cut-${index + 1}-${phase}:done`);
+        expect(close).toBeGreaterThan(start);
+        expect(done).toBe(close + 1);
+      }
+    }
+    expect(events.at(-1)).toBe("cleanup");
     expect(result.cases.filter(({ status }) => status === "failed")).toEqual([]);
     expect(result).toMatchObject({
       status: "passed",
@@ -3136,6 +3161,23 @@ describe("Plan 01-06 native migration suite selection", () => {
     expect(result.cases.map(({ id }) => id))
       .toEqual(MIGRATIONS_EFFECTS_CONTRACT_CASES);
     expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports failed canonical cases without completing a rejected statement cut", async () => {
+    const events: string[] = [];
+    const result = await runMigrationsEffectsContract({
+      createRuntime: async () => { throw new Error("runtime_open_failed"); },
+      insertForeignKeyViolation: async () => { throw new Error("runtime_open_failed"); },
+      recoveryBackup: validatedBackup(),
+      cleanup: async () => { events.push("cleanup"); throw new Error("cleanup_suppressed"); },
+    }, (stage) => { events.push(stage); throw new Error("observer_failed"); });
+    expect(result.failed).toBe(MIGRATIONS_EFFECTS_CONTRACT_CASES.length);
+    expect(result.skipped).toBe(0);
+    expect(events.filter((stage) => stage.startsWith("case-"))).toEqual(
+      MIGRATIONS_EFFECTS_CONTRACT_CASES.flatMap((_id, index) => [`case-${index + 1}:start`, `case-${index + 1}:failed`]),
+    );
+    expect(events.filter((stage) => stage.startsWith("cut-"))).toEqual(["cut-1-before:start"]);
+    expect(events.at(-1)).toBe("cleanup");
   });
 
   it("keeps a dedicated migration suite without changing the kernel ten-case contract", () => {

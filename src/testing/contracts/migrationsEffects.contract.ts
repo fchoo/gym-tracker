@@ -27,6 +27,8 @@ import {
   openSqliteKernelTestRuntime,
 } from "../../platform/sqlite/sqliteKernel";
 
+import { reportContractProgress, type ContractProgressObserver } from "./contractProgress";
+
 export const MIGRATIONS_EFFECTS_CONTRACT_VERSION = 1 as const;
 
 export const MIGRATIONS_EFFECTS_CONTRACT_CASES = [
@@ -192,6 +194,7 @@ const commitFailureMigration: Migration = {
 type ContractCase = (
   adapter: MigrationsEffectsContractAdapter,
   caseId: MigrationsEffectsContractCaseId,
+  onProgress?: ContractProgressObserver,
 ) => Promise<void>;
 
 const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
@@ -288,7 +291,7 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
     }
   },
 
-  async "migration-statement-rollback"(adapter, caseId) {
+  async "migration-statement-rollback"(adapter, caseId, onProgress) {
     for (
       let statementIndex = 0;
       statementIndex < INITIAL_SCHEMA_STATEMENTS.length;
@@ -296,6 +299,8 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
     ) {
       for (const phase of ["before", "after"] as const) {
         const databaseKey = `${caseId}-${phase}-${statementIndex}`;
+        const stage = `cut-${statementIndex + 1}-${phase}`;
+        reportContractProgress(onProgress, `${stage}:start`);
         try {
           await withFreshRuntime(adapter, databaseKey, async ({ kernel }) => {
           let failed = false;
@@ -326,6 +331,8 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
             "statement_failure_schema_changed",
           );
           });
+          // withFreshRuntime has awaited rollback assertions and native close.
+          reportContractProgress(onProgress, `${stage}:done`);
         } catch (error) {
           throw new Error(
             `migration_statement_rollback_${phase}_${statementIndex}_${safeErrorCode(error)}`,
@@ -1045,15 +1052,17 @@ export async function createExpoMigrationsEffectsContractAdapter(
 
 export async function runMigrationsEffectsContract(
   adapter: MigrationsEffectsContractAdapter,
+  onProgress?: ContractProgressObserver,
 ): Promise<MigrationsEffectsContractResult> {
   const startedAt = new Date().toISOString();
   const results: MigrationsEffectsContractCaseResult[] = [];
 
   try {
-    for (const caseId of MIGRATIONS_EFFECTS_CONTRACT_CASES) {
+    for (const [index, caseId] of MIGRATIONS_EFFECTS_CONTRACT_CASES.entries()) {
       const caseStartedAt = Date.now();
+      reportContractProgress(onProgress, `case-${index + 1}:start`);
       try {
-        await contractCases[caseId](adapter, caseId);
+        await contractCases[caseId](adapter, caseId, onProgress);
         results.push({
           id: caseId,
           status: "passed",
@@ -1067,6 +1076,7 @@ export async function runMigrationsEffectsContract(
           errorCode: safeErrorCode(error),
         });
       }
+      reportContractProgress(onProgress, `case-${index + 1}:${results[results.length - 1]!.status}`);
     }
   } finally {
     if (adapter.cleanup !== undefined) {

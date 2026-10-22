@@ -140,7 +140,25 @@ describe("Progress parity contract", () => {
         `PRO-${String(index + 1).padStart(2, "0")}`),
     );
 
-    const result = await runProgressParityContract(createHostAdapter());
+    const events: string[] = [];
+    const base = createHostAdapter();
+    const result = await runProgressParityContract({
+      ...base,
+      createRuntime: async (id) => {
+        events.push(`open:${id}`);
+        const runtime = await base.createRuntime(id);
+        return { ...runtime, close: async () => { await runtime.close(); events.push("closed"); } };
+      },
+      cleanup: async () => { events.push("cleanup"); },
+    }, (stage) => { events.push(stage); throw new Error("observer_failed"); });
+    expect(events.filter((stage) => stage.startsWith("case-"))).toEqual(
+      PROGRESS_PARITY_CONTRACT_CASES.flatMap((_id, index) => [`case-${index + 1}:start`, `case-${index + 1}:passed`]),
+    );
+    for (const [index, id] of PROGRESS_PARITY_CONTRACT_CASES.entries()) {
+      expect(events[events.indexOf(`open:${id}`) - 1]).toBe(`case-${index + 1}:start`);
+      expect(events[events.indexOf(`case-${index + 1}:passed`) - 1]).toBe("closed");
+    }
+    expect(events.at(-1)).toBe("cleanup");
     if (result.status !== "passed") {
       throw new Error(JSON.stringify(result));
     }
@@ -209,7 +227,11 @@ describe("Progress parity contract", () => {
   });
 
   it("fails the requirement-specific path instead of being masked by Running setup", async () => {
-    const result = await runProgressParityContract(createHostAdapter("progress-pro03-strength"));
+    const stages: string[] = [];
+    const result = await runProgressParityContract(createHostAdapter("progress-pro03-strength"), (stage) => { stages.push(stage); throw new Error("observer_failed"); });
+    expect(stages).toEqual(PROGRESS_PARITY_CONTRACT_CASES.flatMap((_id, index) => [
+      `case-${index + 1}:start`, `case-${index + 1}:${index === 2 ? "failed" : "passed"}`,
+    ]));
     const strength = result.cases.find(({ id }) => id === "progress-pro03-strength");
     const running = result.cases.find(({ id }) => id === "progress-pro04-running");
     expect(strength).toMatchObject({
@@ -219,6 +241,28 @@ describe("Progress parity contract", () => {
     });
     expect(running).toMatchObject({ status: "passed", counts: { runningFacts: 1 } });
     expect(result.failed).toBe(1);
+  });
+
+  it("observes before runtime creation and never suppresses close or cleanup rejection", async () => {
+    const stages: string[] = [];
+    const closeFailure = new Error("close_must_propagate");
+    const base = createHostAdapter();
+    await expect(runProgressParityContract({
+      ...base,
+      createRuntime: async () => ({
+        databaseName: "boundary-test",
+        kernel: { queryAll: async () => { throw new Error("work_failed"); } } as never,
+        close: async () => { throw closeFailure; },
+      }),
+    }, (stage) => { stages.push(stage); throw new Error("observer_failed"); })).rejects.toBe(closeFailure);
+    expect(stages).toEqual(["case-1:start"]);
+    const cleanupFailure = new Error("cleanup_must_propagate");
+    await expect(runProgressParityContract({
+      ...base,
+      createRuntime: async () => { expect(stages.at(-1)).toBe("case-1:start"); throw new Error("open_failed"); },
+      cleanup: async () => { throw cleanupFailure; },
+    }, (stage) => { stages.push(stage); throw new Error("observer_failed"); })).rejects.toBe(cleanupFailure);
+    expect(stages).toEqual(["case-1:start", "case-1:start"]);
   });
 
   it("keeps the host/native suite registration source-owned and explicit", () => {

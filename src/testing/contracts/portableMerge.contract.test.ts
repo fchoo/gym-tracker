@@ -104,7 +104,23 @@ function createHostAdapter(): PortableMergeContractAdapter {
 
 describe("portable merge contract", () => {
   it("runs every source-owned merge case against host SQLite without skips", async () => {
-    const result = await runPortableMergeContract(createHostAdapter());
+    const events: string[] = [];
+    const base = createHostAdapter();
+    const result = await runPortableMergeContract({
+      ...base,
+      createRuntime: async (...args) => {
+        const runtime = await base.createRuntime(...args);
+        return { ...runtime, close: async () => { await runtime.close(); events.push("closed"); } };
+      },
+      cleanup: async () => { events.push("cleanup"); throw new Error("cleanup_suppressed"); },
+    }, (stage) => { events.push(stage); throw new Error("observer_failed"); });
+    expect(events.filter((stage) => stage.startsWith("case-"))).toEqual(
+      PORTABLE_MERGE_CONTRACT_CASES.flatMap((_id, index) => [`case-${index + 1}:start`, `case-${index + 1}:passed`]),
+    );
+    for (const [index] of PORTABLE_MERGE_CONTRACT_CASES.entries()) {
+      expect(events[events.indexOf(`case-${index + 1}:passed`) - 1]).toBe("closed");
+    }
+    expect(events.at(-1)).toBe("cleanup");
 
     expect(PORTABLE_MERGE_CONTRACT_CASES).toEqual([
       "portable-merge-mixed-full-plan-success",
@@ -137,6 +153,22 @@ describe("portable merge contract", () => {
       PORTABLE_MERGE_CONTRACT_CASES.map((id) =>
         expect.objectContaining({ id, status: "passed" })),
     );
+  });
+
+  it("reports failed cases and retains cleanup suppression when runtime creation rejects", async () => {
+    const events: string[] = [];
+    const result = await runPortableMergeContract({
+      ...createHostAdapter(),
+      createRuntime: async () => { throw new Error("runtime_open_failed"); },
+      cleanup: async () => { events.push("cleanup"); throw new Error("cleanup_suppressed"); },
+    }, (stage) => { events.push(stage); throw new Error("observer_failed"); });
+    expect(result.failed).toBe(PORTABLE_MERGE_CONTRACT_CASES.length);
+    expect(result.skipped).toBe(0);
+    expect(events).toEqual([
+      ...PORTABLE_MERGE_CONTRACT_CASES.flatMap((_id, index) => [`case-${index + 1}:start`, `case-${index + 1}:failed`]),
+      "cleanup",
+    ]);
+    expect(result.cases.every(({ errorCode }) => errorCode === "runtime_open_failed")).toBe(true);
   });
 
   it("keeps the Phase 11 manifest-bound native route and device command registered", () => {

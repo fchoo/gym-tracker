@@ -28,6 +28,7 @@ import { createRunningPlanRepository } from "../../platform/sqlite/repositories/
 import { createWorkoutOutcomeRepository } from "../../platform/sqlite/repositories/workoutOutcomeRepository";
 import type { SqliteKernel, SqliteSnapshotKernel } from "../../platform/sqlite/sqliteKernel";
 import { createExpoMigrationsEffectsContractAdapter } from "./migrationsEffects.contract";
+import { reportContractProgress, type ContractProgressObserver } from "./contractProgress";
 
 export const PROGRESS_PARITY_CONTRACT_VERSION = 1 as const;
 export const PROGRESS_PARITY_CONTRACT_CASES = [
@@ -302,8 +303,26 @@ async function runRequirementCase(id: ProgressParityContractCaseId, runtime: Pro
 }
 
 export async function createExpoProgressParityContractAdapter(runId: string): Promise<ProgressParityContractAdapter> { const base = await createExpoMigrationsEffectsContractAdapter(`progress-parity-${runId}`); return Object.freeze({ createRuntime: base.createRuntime, recoveryBackup: base.recoveryBackup, ...(base.cleanup === undefined ? {} : { cleanup: base.cleanup }), sha256: runtimeSha256 }); }
-export async function runProgressParityContract(runIdOrAdapter: string | ProgressParityContractAdapter): Promise<ProgressParityContractResult> {
+export async function runProgressParityContract(runIdOrAdapter: string | ProgressParityContractAdapter, onProgress?: ContractProgressObserver): Promise<ProgressParityContractResult> {
   const startedAt = new Date().toISOString(); const adapter = typeof runIdOrAdapter === "string" ? await createExpoProgressParityContractAdapter(runIdOrAdapter) : runIdOrAdapter; const cases: ProgressParityContractCaseResult[] = [];
-  try { for (const id of PROGRESS_PARITY_CONTRACT_CASES) { const requirement = PROGRESS_PARITY_REQUIREMENT_BY_CASE[id]; const startedMs = Date.now(); const runtime = await adapter.createRuntime(id); try { const output = await runRequirementCase(id, runtime, adapter.recoveryBackup); cases.push(Object.freeze({ id, requirement, status: "passed", code: "progress_contract_case_passed", counts: output.counts, timings: Object.freeze({ durationMs: Date.now() - startedMs }), hashes: Object.freeze({ source: await adapter.sha256(canonicalJson({ id, requirement, source: output.source })), projection: await adapter.sha256(canonicalJson({ id, requirement, projection: output.projection })), receipt: await adapter.sha256(canonicalJson({ id, requirement, receipt: output.receipt })) }) })); } catch (error) { cases.push(Object.freeze({ id, requirement, status: "failed", code: "progress_contract_case_failed", counts: EMPTY_COUNTS, timings: Object.freeze({ durationMs: Date.now() - startedMs }), hashes: EMPTY_HASHES, errorCode: safeErrorCode(error) })); } finally { await runtime.close(); } } } finally { await adapter.cleanup?.(); }
+  try {
+    for (const [index, id] of PROGRESS_PARITY_CONTRACT_CASES.entries()) {
+      const requirement = PROGRESS_PARITY_REQUIREMENT_BY_CASE[id];
+      const startedMs = Date.now();
+      reportContractProgress(onProgress, `case-${index + 1}:start`);
+      const runtime = await adapter.createRuntime(id);
+      try {
+        const output = await runRequirementCase(id, runtime, adapter.recoveryBackup);
+        cases.push(Object.freeze({ id, requirement, status: "passed", code: "progress_contract_case_passed", counts: output.counts, timings: Object.freeze({ durationMs: Date.now() - startedMs }), hashes: Object.freeze({ source: await adapter.sha256(canonicalJson({ id, requirement, source: output.source })), projection: await adapter.sha256(canonicalJson({ id, requirement, projection: output.projection })), receipt: await adapter.sha256(canonicalJson({ id, requirement, receipt: output.receipt })) }) }));
+      } catch (error) {
+        cases.push(Object.freeze({ id, requirement, status: "failed", code: "progress_contract_case_failed", counts: EMPTY_COUNTS, timings: Object.freeze({ durationMs: Date.now() - startedMs }), hashes: EMPTY_HASHES, errorCode: safeErrorCode(error) }));
+      } finally {
+        await runtime.close();
+      }
+      reportContractProgress(onProgress, `case-${index + 1}:${cases[cases.length - 1]!.status}`);
+    }
+  } finally {
+    await adapter.cleanup?.();
+  }
   const passed = cases.filter(({ status }) => status === "passed").length; return Object.freeze({ schemaVersion: 1, contractVersion: PROGRESS_PARITY_CONTRACT_VERSION, status: passed === cases.length ? "passed" : "failed", total: cases.length, passed, failed: cases.length - passed, skipped: 0, cases: Object.freeze(cases), startedAt, finishedAt: new Date().toISOString() });
 }
