@@ -98,7 +98,7 @@ export function parseNativeContractLogProgress(output, runId) {
       && typeof payload === "object"
       && payload.runId === runId
       && typeof payload.stage === "string"
-      && /^[a-z0-9_:-]{3,80}$/iu.test(payload.stage)
+      && /^(?:v1\.2-acceptance:)?[a-z0-9_:-]{3,80}$/iu.test(payload.stage)
     ));
   return progress.at(-1)?.stage;
 }

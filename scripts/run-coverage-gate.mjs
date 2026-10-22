@@ -155,6 +155,7 @@ const phase20EvidenceTests = Object.freeze([
   "scripts/generate-phase20-visual-state-registry.test.mjs",
   "scripts/generate-v12-attended-checklist.test.mjs",
   "scripts/native-device-selection.test.mjs",
+  "scripts/v12-native-contract-log-transport.test.mjs",
   "scripts/phase20-integrity-coverage.test.mjs",
   "scripts/phase20-subprocess-coverage.test.mjs",
   "scripts/phase20-visual-integrity-coverage.test.mjs",
@@ -266,6 +267,7 @@ const phase20EvidenceProjects = Object.freeze([
     name: "contracts",
     concurrency: 2,
     modules: Object.freeze([
+      "scripts/native-contract-log-transport.mjs",
       "scripts/v12-artifact-privacy.mjs",
       "scripts/v12-atomic-shard-publication.mjs",
       "scripts/v12-calendar-artifact-transport.mjs",
@@ -813,7 +815,7 @@ const registeredPhase20EvidenceTests = validateEvidenceTestManifest({
   tests: phase20EvidenceTests,
   isEvidenceTest: isPhase20EvidenceTest,
   error: "phase20_evidence_test_manifest_drift",
-  expectedCount: 50,
+  expectedCount: 51,
 });
 const expectedPhase20ProjectNames = [
   "contracts",
@@ -827,10 +829,10 @@ const expectedPhase20ProjectNames = [
 const assignedPhase20Tests = phase20EvidenceProjects.flatMap(({ tests }) => tests);
 const assignedPhase20Modules = new Set(phase20EvidenceProjects.flatMap(({ modules = [] }) => modules));
 if (JSON.stringify(phase20EvidenceProjects.map(({ name }) => name)) !== JSON.stringify(expectedPhase20ProjectNames)
-  || assignedPhase20Tests.length !== 50
-  || new Set(assignedPhase20Tests).size !== 50
+  || assignedPhase20Tests.length !== 51
+  || new Set(assignedPhase20Tests).size !== 51
   || JSON.stringify([...assignedPhase20Tests].sort()) !== JSON.stringify(registeredPhase20EvidenceTests)
-  || assignedPhase20Modules.size !== 17
+  || assignedPhase20Modules.size !== 18
   || phase20EvidenceProjects.find(({ name }) => name === "cli-blackbox")?.coverage !== false) {
   throw new Error(JSON.stringify({
     error: "phase20_coverage_project_manifest_invalid",
