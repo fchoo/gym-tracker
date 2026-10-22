@@ -31,6 +31,7 @@ import {
   runGarminSqliteAcceptanceContract,
 } from "./garminImport.contract";
 import { CURRENT_SCHEMA_VERSION } from "../../platform/sqlite/migrations";
+import { reportContractProgress } from "./contractProgress";
 
 export const V12_ACCEPTANCE_SQLITE_CASE_IDS = [
   "fresh-migration", "schema27-upgrade", "supported-legacy-upgrade", "failure-reopen",
@@ -154,7 +155,8 @@ export type V12AcceptanceSqliteContractResult = Readonly<{
 export type V12AcceptanceSqliteContractAdapter = Readonly<{
   runMixedUpgrade(definition: V12AcceptanceSqliteCase): Promise<V12AcceptanceCaseResult>;
 }>;
-export type V12AcceptanceProgressReporter = (stage: typeof V12_ACCEPTANCE_SOURCE_REGISTRIES[number]) => void;
+export type V12AcceptanceProgressStage = SourceRegistry | `${SourceRegistry}:${string}`;
+export type V12AcceptanceProgressReporter = (stage: V12AcceptanceProgressStage) => void;
 
 type SourceCaseResult = Readonly<{ id: string; status: SourceCaseStatus; errorCode?: string }>;
 type SourceRegistryResult = Readonly<{
@@ -276,27 +278,35 @@ export async function createExpoV12AcceptanceSqliteContractAdapter(
   runId: string,
   onProgress?: V12AcceptanceProgressReporter,
 ): Promise<V12AcceptanceSqliteContractAdapter> {
+  const report = (stage: V12AcceptanceProgressStage) => reportContractProgress(onProgress, stage);
+  const registryProgress = (registry: SourceRegistry) => (stage: string) => report(`${registry}:${stage}`);
   const sourceResults: Promise<SourceRegistryResults> = (async () => {
-    onProgress?.("sqlite-kernel");
-    const kernel = await runSqliteKernelContract(await createExpoSqliteContractAdapter(`${runId}-v12-kernel`));
-    onProgress?.("migrations");
+    report("sqlite-kernel");
+    const kernel = await runSqliteKernelContract(await createExpoSqliteContractAdapter(
+      `${runId}-v12-kernel`,
+      (caseId) => registryProgress("sqlite-kernel")(`case-${SQLITE_KERNEL_CONTRACT_CASES.indexOf(caseId) + 1}:start`),
+    ));
+    report("migrations");
     const migrations = await runMigrationsEffectsContract(
       await createExpoMigrationsEffectsContractAdapter(`${runId}-v12-migrations`),
+      registryProgress("migrations"),
     );
-    onProgress?.("portable-merge");
+    report("portable-merge");
     const merge = await runPortableMergeContract(
       await createExpoPortableMergeContractAdapter(`${runId}-v12-portable-merge`),
+      registryProgress("portable-merge"),
     );
-    onProgress?.("multi-plan-running");
-    const running = await runMultiPlanRunningContract(`${runId}-v12-multi-plan-running`);
-    onProgress?.("google-drive-backup");
+    report("multi-plan-running");
+    const running = await runMultiPlanRunningContract(`${runId}-v12-multi-plan-running`, registryProgress("multi-plan-running"));
+    report("google-drive-backup");
     const drive = await runGoogleDriveBackupContract(
       await createExpoGoogleDriveBackupContractAdapter(`${runId}-v12-google-drive-backup`),
+      registryProgress("google-drive-backup"),
     );
-    onProgress?.("garmin-acceptance");
+    report("garmin-acceptance");
     const garmin = runGarminSqliteAcceptanceContract({ multiPlanRunning: running, portableMerge: merge });
-    onProgress?.("progress-parity");
-    const progress = await runProgressParityContract(`${runId}-v12-progress-parity`);
+    report("progress-parity");
+    const progress = await runProgressParityContract(`${runId}-v12-progress-parity`, registryProgress("progress-parity"));
     return Object.freeze({
       "sqlite-kernel": kernel,
       migrations,

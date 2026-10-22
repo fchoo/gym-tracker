@@ -121,10 +121,28 @@ describe("v1.2 aggregate SQLite acceptance contract", () => {
     const running = jest.spyOn(multiPlanContracts, "runMultiPlanRunningContract").mockResolvedValue(
       passedRegistryResult(multiPlanContracts.MULTI_PLAN_RUNNING_CONTRACT_CASES) as never,
     );
+    additional.kernelAdapter.mockImplementation(async (_runId, onCaseStart) => ({ onCaseStart }) as never);
+    additional.kernelRun.mockImplementation(async (adapter) => {
+      adapter.onCaseStart?.(kernelContracts.SQLITE_KERNEL_CONTRACT_CASES[0]);
+      return passedRegistryResult(kernelContracts.SQLITE_KERNEL_CONTRACT_CASES) as never;
+    });
+    const checkpoints = async (onProgress: ((stage: string) => void) | undefined, ids: readonly string[]) => {
+      onProgress?.("case-1:start");
+      onProgress?.("case-1:passed");
+      return passedRegistryResult(ids) as never;
+    };
+    migrationRun.mockImplementation(async (_adapter, onProgress) => checkpoints(onProgress, migrationsContracts.MIGRATIONS_EFFECTS_CONTRACT_CASES));
+    mergeRun.mockImplementation(async (_adapter, onProgress) => checkpoints(onProgress, portableMergeContracts.PORTABLE_MERGE_CONTRACT_CASES));
+    running.mockImplementation(async (_runId, onProgress) => checkpoints(onProgress, multiPlanContracts.MULTI_PLAN_RUNNING_CONTRACT_CASES));
+    additional.driveRun.mockImplementation(async (_adapter, onProgress) => checkpoints(onProgress, driveContracts.GOOGLE_DRIVE_BACKUP_REQUIRED_CASE_IDS));
+    additional.progressRun.mockImplementation(async (_runId, onProgress) => checkpoints(onProgress, progressContracts.PROGRESS_PARITY_CONTRACT_CASES));
     try {
       const progress: string[] = [];
       const adapter = await createExpoV12AcceptanceSqliteContractAdapter("phase20", (stage) => progress.push(stage));
+      const concurrent = await Promise.all(V12_ACCEPTANCE_SQLITE_CASES.map((definition) => adapter.runMixedUpgrade(definition)));
       const result = await runV12AcceptanceSqliteContracts(adapter);
+      expect(concurrent).toEqual(V12_ACCEPTANCE_SQLITE_CASES.map(passedV12Case));
+      expect(result.cases).toEqual(concurrent);
 
       expect(result).toMatchObject({ status: "passed", total: 10, passed: 10, failed: 0, skipped: 0 });
       expect(migrationAdapter).toHaveBeenCalledTimes(1);
@@ -132,15 +150,34 @@ describe("v1.2 aggregate SQLite acceptance contract", () => {
       expect(mergeAdapter).toHaveBeenCalledTimes(1);
       expect(mergeAdapter).toHaveBeenCalledWith("phase20-v12-portable-merge");
       expect(migrationRun).toHaveBeenCalledTimes(1);
+      expect(migrationRun).toHaveBeenCalledWith(expect.anything(), expect.any(Function));
       expect(mergeRun).toHaveBeenCalledTimes(1);
+      expect(mergeRun).toHaveBeenCalledWith(expect.anything(), expect.any(Function));
       expect(running).toHaveBeenCalledTimes(1);
-      expect(running).toHaveBeenCalledWith("phase20-v12-multi-plan-running");
-      expect(additional.kernelAdapter).toHaveBeenCalledWith("phase20-v12-kernel");
+      expect(running).toHaveBeenCalledWith("phase20-v12-multi-plan-running", expect.any(Function));
+      expect(additional.kernelAdapter).toHaveBeenCalledWith("phase20-v12-kernel", expect.any(Function));
       expect(additional.kernelRun).toHaveBeenCalledTimes(1);
       expect(additional.driveAdapter).toHaveBeenCalledWith("phase20-v12-google-drive-backup");
       expect(additional.driveRun).toHaveBeenCalledTimes(1);
-      expect(additional.progressRun).toHaveBeenCalledWith("phase20-v12-progress-parity");
-      expect(progress).toEqual(V12_ACCEPTANCE_SOURCE_REGISTRIES);
+      expect(additional.progressRun).toHaveBeenCalledWith("phase20-v12-progress-parity", expect.any(Function));
+      expect(additional.driveRun).toHaveBeenCalledWith(expect.anything(), expect.any(Function));
+      expect(progress).toEqual(V12_ACCEPTANCE_SOURCE_REGISTRIES.flatMap((registry) => [
+        registry,
+        ...(registry === "garmin-acceptance" ? [] : [`${registry}:case-1:start`]),
+        ...(registry === "garmin-acceptance" || registry === "sqlite-kernel" ? [] : [`${registry}:case-1:passed`]),
+      ]));
+      expect(progress.every((stage) => /^[a-z0-9_:-]{1,80}$/u.test(stage))).toBe(true);
+      const throwingStages: string[] = [];
+      const throwingAdapter = await createExpoV12AcceptanceSqliteContractAdapter("phase20-observer-throws", (stage) => {
+        throwingStages.push(stage);
+        throw new Error("observer_not_acceptance_work");
+      });
+      const throwingResult = await runV12AcceptanceSqliteContracts(throwingAdapter);
+      expect(throwingResult).toEqual(result);
+      expect(throwingStages).toEqual(progress);
+      expect(migrationRun).toHaveBeenCalledTimes(2);
+      expect(mergeRun).toHaveBeenCalledTimes(2);
+      expect(running).toHaveBeenCalledTimes(2);
       expect(result.cases.every(({ sourceFacts }) => sourceFacts.length > 0
         && sourceFacts.every(({ cases }) => cases.length > 0 && cases.every(({ status }) => status === "passed")))).toBe(true);
     } finally {
