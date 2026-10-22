@@ -151,9 +151,13 @@ describe("Progress parity contract", () => {
       },
       cleanup: async () => { events.push("cleanup"); },
     }, (stage) => { events.push(stage); throw new Error("observer_failed"); });
-    expect(events.filter((stage) => stage.startsWith("case-"))).toEqual(
+    expect(events.filter((stage) => /^case-\d+:(start|passed|failed)$/u.test(stage))).toEqual(
       PROGRESS_PARITY_CONTRACT_CASES.flatMap((_id, index) => [`case-${index + 1}:start`, `case-${index + 1}:passed`]),
     );
+    expect(events.filter((stage) => stage.includes(":fixture-"))).toEqual([
+      ...["identity", "target", "observation"].map(stage => `case-2:fixture-1:${stage}:passed:validated`),
+      ...[1, 2].flatMap(index => ["identity", "target", "observation"].map(stage => `case-3:fixture-${index}:${stage}:passed:validated`)),
+    ]);
     for (const [index, id] of PROGRESS_PARITY_CONTRACT_CASES.entries()) {
       expect(events[events.indexOf(`open:${id}`) - 1]).toBe(`case-${index + 1}:start`);
       expect(events[events.indexOf(`case-${index + 1}:passed`) - 1]).toBe("closed");
@@ -229,7 +233,8 @@ describe("Progress parity contract", () => {
   it("fails the requirement-specific path instead of being masked by Running setup", async () => {
     const stages: string[] = [];
     const result = await runProgressParityContract(createHostAdapter("progress-pro03-strength"), (stage) => { stages.push(stage); throw new Error("observer_failed"); });
-    expect(stages).toEqual(PROGRESS_PARITY_CONTRACT_CASES.flatMap((_id, index) => [
+    expect(stages).toContain("case-3:error:unexpected_error");
+    expect(stages.filter(stage => /^case-\d+:(start|passed|failed)$/u.test(stage))).toEqual(PROGRESS_PARITY_CONTRACT_CASES.flatMap((_id, index) => [
       `case-${index + 1}:start`, `case-${index + 1}:${index === 2 ? "failed" : "passed"}`,
     ]));
     const strength = result.cases.find(({ id }) => id === "progress-pro03-strength");

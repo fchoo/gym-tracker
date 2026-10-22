@@ -29,6 +29,7 @@ import { createWorkoutOutcomeRepository } from "../../platform/sqlite/repositori
 import type { SqliteKernel, SqliteSnapshotKernel } from "../../platform/sqlite/sqliteKernel";
 import { createExpoMigrationsEffectsContractAdapter } from "./migrationsEffects.contract";
 import { reportContractProgress, type ContractProgressObserver } from "./contractProgress";
+import { inspectSyntheticStrengthFixture, progressNativeDiagnosticCode } from "./progressNativeDiagnostics";
 
 export const PROGRESS_PARITY_CONTRACT_VERSION = 1 as const;
 export const PROGRESS_PARITY_CONTRACT_CASES = [
@@ -198,7 +199,15 @@ async function runningTargetReplay(runtime: ProgressParityRuntime, recoveryBacku
   return { counts: Object.freeze({ snapshots: 0, runningFacts: 0, goalRevisions: goals[0].count, receiptRows: receipts[0].count, receiptReplays: 1 }), projection: { revision: readBack.goal.revision }, receipt: { outcome: replay.outcome, rows: receipts[0].count } };
 }
 
-async function runRequirementCase(id: ProgressParityContractCaseId, runtime: ProgressParityRuntime, recoveryBackup: RecoveryBackupPort): Promise<{ counts: Counts; source: unknown; projection: unknown; receipt: unknown }> {
+function reportSyntheticStrengthDiagnostics(facts: readonly ProgressRecord[], observer: ContractProgressObserver | undefined, prefix: "case-2" | "case-3"): void {
+  for (const [index, fact] of facts.entries()) {
+    for (const diagnostic of inspectSyntheticStrengthFixture(fact)) {
+      reportContractProgress(observer, `${prefix}:fixture-${index + 1}:${diagnostic.stage}:${diagnostic.status}:${diagnostic.code}`);
+    }
+  }
+}
+
+async function runRequirementCase(id: ProgressParityContractCaseId, runtime: ProgressParityRuntime, recoveryBackup: RecoveryBackupPort, onProgress?: ContractProgressObserver): Promise<{ counts: Counts; source: unknown; projection: unknown; receipt: unknown }> {
   switch (id) {
     case "progress-pro13-target-persistence": {
       const output = await runningTargetReplay(runtime, recoveryBackup);
@@ -211,7 +220,9 @@ async function runRequirementCase(id: ProgressParityContractCaseId, runtime: Pro
       return { counts: Object.freeze({ ...EMPTY_COUNTS, snapshots }), source: { periods: reads.length }, projection: reads.map((read) => ({ sport: read.sport, period: read.period })), receipt: { rows: 0 } };
     }
     case "progress-pro02-all": {
-      const dashboard = projectProgressDashboard({ sport: "All", strength: { facts: [strengthFact(1)] }, running: { activities: [runningActivity], targets: [runningProjectionTarget] } });
+      const facts = [strengthFact(1)];
+      reportSyntheticStrengthDiagnostics(facts, onProgress, "case-2");
+      const dashboard = projectProgressDashboard({ sport: "All", strength: { facts }, running: { activities: [runningActivity], targets: [runningProjectionTarget] } });
       invariant(dashboard.sport === "All" && dashboard.activeGoals.length === 2, "progress_all_sources_invalid");
       return { counts: Object.freeze({ snapshots: 0, runningFacts: 1, goalRevisions: 1, receiptRows: 0, receiptReplays: 0 }), source: { strengthFacts: 1, runningFacts: 1 }, projection: { sport: dashboard.sport, activeGoals: dashboard.activeGoals.length }, receipt: { rows: 0 } };
     }
@@ -220,7 +231,9 @@ async function runRequirementCase(id: ProgressParityContractCaseId, runtime: Pro
       let snapshots = 0;
       const repository = createProgressRepository(snapshotKernel(runtime, () => { snapshots += 1; }));
       await repository.load({ sport: "Strength", period: "all_time", nowLocalDate: "2026-08-24" });
-      const dashboard = projectProgressDashboard({ sport: "Strength", strength: { facts: [strengthFact(1), strengthFact(2)] } });
+      const facts = [strengthFact(1), strengthFact(2)];
+      reportSyntheticStrengthDiagnostics(facts, onProgress, "case-3");
+      const dashboard = projectProgressDashboard({ sport: "Strength", strength: { facts } });
       invariant(dashboard.sport === "Strength" && dashboard.goals[0]?.evidenceCount === 2, "progress_strength_projection_invalid");
       return { counts: Object.freeze({ snapshots, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 }), source: { strengthFacts: 2 }, projection: { sport: dashboard.sport, evidence: dashboard.goals[0].evidenceCount }, receipt: { rows: 0 } };
     }
@@ -312,9 +325,12 @@ export async function runProgressParityContract(runIdOrAdapter: string | Progres
       reportContractProgress(onProgress, `case-${index + 1}:start`);
       const runtime = await adapter.createRuntime(id);
       try {
-        const output = await runRequirementCase(id, runtime, adapter.recoveryBackup);
+        const output = await runRequirementCase(id, runtime, adapter.recoveryBackup, onProgress);
         cases.push(Object.freeze({ id, requirement, status: "passed", code: "progress_contract_case_passed", counts: output.counts, timings: Object.freeze({ durationMs: Date.now() - startedMs }), hashes: Object.freeze({ source: await adapter.sha256(canonicalJson({ id, requirement, source: output.source })), projection: await adapter.sha256(canonicalJson({ id, requirement, projection: output.projection })), receipt: await adapter.sha256(canonicalJson({ id, requirement, receipt: output.receipt })) }) }));
       } catch (error) {
+        if (id === "progress-pro02-all" || id === "progress-pro03-strength") {
+          reportContractProgress(onProgress, `case-${index + 1}:error:${progressNativeDiagnosticCode(error)}`);
+        }
         cases.push(Object.freeze({ id, requirement, status: "failed", code: "progress_contract_case_failed", counts: EMPTY_COUNTS, timings: Object.freeze({ durationMs: Date.now() - startedMs }), hashes: EMPTY_HASHES, errorCode: safeErrorCode(error) }));
       } finally {
         await runtime.close();
