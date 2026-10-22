@@ -247,6 +247,8 @@ type RouteState =
   | Readonly<{ status: "disabled" | "running" }>
   | Readonly<{
       status: "finished";
+      runId: string;
+      suite: NativeContractSuite;
       result: NativeContractResult;
     }>
   | Readonly<{
@@ -471,7 +473,7 @@ export default function NativeSqliteContractsScreen() {
               finishedAt: result.finishedAt,
             },
           })}`);
-          setState({ status: "finished", result: result as unknown as NativeContractResult });
+          setState({ status: "finished", runId, suite: selectedSuite, result: result as unknown as NativeContractResult });
           return;
         }
         if (selectedSuite === "phase2-content") {
@@ -480,7 +482,7 @@ export default function NativeSqliteContractsScreen() {
           );
           assertPhase2ContentContractResult(result);
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
         if (selectedSuite === "phase2-fts") {
@@ -489,7 +491,7 @@ export default function NativeSqliteContractsScreen() {
           );
           assertPhase2FtsContractResult(result);
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
         if (selectedSuite === "phase2-metrics") {
@@ -498,7 +500,7 @@ export default function NativeSqliteContractsScreen() {
           );
           assertPhase2MetricsContractResult(result);
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
         if (selectedSuite === "phase2-plan") {
@@ -507,7 +509,7 @@ export default function NativeSqliteContractsScreen() {
           );
           assertPhase2PlanContractResult(result);
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
         if (selectedSuite === "phase2-schedule") {
@@ -516,7 +518,7 @@ export default function NativeSqliteContractsScreen() {
           );
           assertPhase2ScheduleContractResult(result);
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
         if (selectedSuite === "phase2-search") {
@@ -525,7 +527,7 @@ export default function NativeSqliteContractsScreen() {
           );
           assertPhase2SearchContractResult(result);
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
         if (selectedSuite === "phase2-starter") {
@@ -534,7 +536,7 @@ export default function NativeSqliteContractsScreen() {
           );
           assertPhase2StarterContractResult(result);
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
 
@@ -551,7 +553,7 @@ export default function NativeSqliteContractsScreen() {
             }
             return completed;
           });
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
 
@@ -560,7 +562,7 @@ export default function NativeSqliteContractsScreen() {
             await createExpoMigrationsEffectsContractAdapter(runId),
           );
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
         if (selectedSuite === "portable-merge") {
@@ -568,19 +570,19 @@ export default function NativeSqliteContractsScreen() {
             await createExpoPortableMergeContractAdapter(runId),
           );
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
         if (selectedSuite === "multi-plan-running") {
           const result = await verifyMultiPlanRunningContract(runId);
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
         if (selectedSuite === "progress-parity") {
           const result = await verifyProgressParityContract(runId);
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
         if (selectedSuite === "google-drive-backup") {
@@ -588,13 +590,13 @@ export default function NativeSqliteContractsScreen() {
             await createExpoGoogleDriveBackupContractAdapter(runId),
           );
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result: result as unknown as NativeContractResult });
+          setState({ status: "finished", runId, suite: selectedSuite, result: result as unknown as NativeContractResult });
           return;
         }
         const adapter = await createExpoSqliteContractAdapter(runId);
         const kernelResult = await verifySqliteKernelContract(adapter);
         console.log(`${RESULT_MARKER}${JSON.stringify(kernelResult)}`);
-        setState({ status: "finished", result: kernelResult });
+        setState({ status: "finished", runId, suite: selectedSuite, result: kernelResult });
       } catch (error: unknown) {
         const errorCode = boundedErrorCode(error);
         console.error(`${ERROR_MARKER}${JSON.stringify({
@@ -726,7 +728,7 @@ export default function NativeSqliteContractsScreen() {
             ))}
           </View>
           <Text style={styles.machineResult}>
-            {`${RESULT_MARKER}${encodeURIComponent(JSON.stringify(selectedSuite === "v1.2-acceptance" ? { runId, result } : result))}`}
+            {`${RESULT_MARKER}${encodeURIComponent(JSON.stringify(state.status === "finished" && state.suite === "v1.2-acceptance" ? { runId: state.runId, result } : result))}`}
           </Text>
         </>
       )}
