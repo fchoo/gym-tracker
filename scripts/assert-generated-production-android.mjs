@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { GOOGLE_OAUTH_REGISTRATIONS } from "./google-oauth-config.mjs";
 
@@ -104,7 +104,9 @@ if (isMain) {
   } catch {
     try {
       const config = JSON.parse((await import("node:child_process")).execFileSync(
-        "npx", ["expo", "config", "--json"], {
+        // Pinned Expo serialization turns null into {}; evaluate the factory before serialization.
+        process.execPath, ["-e", 'const {loadModuleSync}=require("@expo/require-utils"); const config=loadModuleSync(process.cwd()+"/app.config.ts").default({config:{}}); process.stdout.write(JSON.stringify(config));'], {
+          cwd: fileURLToPath(new URL("..", import.meta.url)),
           encoding: "utf8", maxBuffer: 1024 * 1024,
           env: { ...process.env, GYM_TRACKER_BUILD_PROFILE: "production" },
           stdio: ["ignore", "pipe", "ignore"],

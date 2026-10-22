@@ -5,6 +5,8 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GOOGLE_OAUTH_REGISTRATIONS } from './google-oauth-config.mjs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 function productionSources() {
   const exclusions = [
@@ -78,6 +80,40 @@ test('production app config ignores an environment-requested acceptance suite', 
   assert.equal(config.extra.nativeContractsEnabled, false);
   assert.equal(config.extra.nativeContractSuite, null);
   assert.equal(config.android.package, 'com.fchoo.gymtracker');
+});
+
+test('production assertion CLI evaluates raw config when cache is absent and rejects poisoned cache', t => {
+  const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
+  const temporary = mkdtempSync(path.join(tmpdir(), 'p20-production-cli-'));
+  t.after(() => rmSync(temporary, { recursive: true, force: true }));
+  const sources = productionSources();
+  const android = path.join(temporary, 'android');
+  for (const [name, value] of Object.entries({ 'app/build.gradle': sources.gradle,
+    'gradle.properties': sources.gradleProperties, 'app/src/main/AndroidManifest.xml': sources.manifest,
+    'app/src/main/res/values/strings.xml': sources.strings, 'app/src/main/res/xml/backup_rules.xml': sources.backup,
+    'app/src/main/res/xml/data_extraction_rules.xml': sources.extraction })) {
+    mkdirSync(path.dirname(path.join(android, name)), { recursive: true });
+    writeFileSync(path.join(android, name), value);
+  }
+  const run = () => spawnSync(process.execPath, [path.join(root, 'scripts/assert-generated-production-android.mjs'), android], {
+    cwd: temporary, encoding: 'utf8', env: { ...process.env,
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: GOOGLE_OAUTH_REGISTRATIONS.webClientId,
+      EXPO_PUBLIC_NATIVE_CONTRACT_SUITE: 'v1.2-acceptance' },
+  });
+  assert.equal(run().status, 0, 'uncached production assertion failed');
+  const config = spawnSync(process.execPath, ['-e', 'const {loadModuleSync}=require("@expo/require-utils"); process.stdout.write(JSON.stringify(loadModuleSync(process.cwd()+"/app.config.ts").default({config:{}})));'], {
+    cwd: root, encoding: 'utf8', env: { ...process.env, GYM_TRACKER_BUILD_PROFILE: 'production',
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: GOOGLE_OAUTH_REGISTRATIONS.webClientId },
+  });
+  assert.equal(config.status, 0);
+  const poisoned = JSON.parse(config.stdout);
+  poisoned.extra.nativeContractsEnabled = true;
+  poisoned.extra.nativeContractSuite = 'v1.2-acceptance';
+  mkdirSync(path.join(temporary, '.expo'));
+  writeFileSync(path.join(temporary, '.expo/production-app-config.json'), JSON.stringify(poisoned));
+  const rejected = run();
+  assert.equal(rejected.status, 1);
+  assert.match(rejected.stderr, /native contract hooks/u);
 });
 
 test('production assertion accepts the Garmin-selected ARM64 generation contract', () => {
