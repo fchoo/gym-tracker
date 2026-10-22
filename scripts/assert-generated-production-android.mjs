@@ -39,6 +39,11 @@ const requireExclusions = (value, section, output) => {
   }
 };
 
+export function validateProductionNativeContractConfig(config) {
+  return config.extra?.nativeContractsEnabled === false && config.extra?.nativeContractSuite === null
+    ? [] : ["production native contract hooks must be false and suite null"];
+}
+
 export function validateGeneratedProductionAndroidSources({
   gradle, gradleProperties, manifest, strings, backup, extraction,
 }) {
@@ -50,6 +55,20 @@ export function validateGeneratedProductionAndroidSources({
     /^reactNativeArchitectures=arm64-v8a$/mu,
     "production React Native architectures must retain selected ARM64",
   );
+  const application = manifest.match(/<application\b[^>]*>/u)?.[0] ?? '';
+  const debugFlag = application.match(/android:debuggable\s*=\s*["']([^"']*)["']/u)?.[1];
+  if (debugFlag !== undefined && debugFlag !== 'false') {
+    output.push('production main application must remain nondebuggable');
+  }
+  const releaseBlock = gradle.match(/\brelease\s*\{(?:[^{}]|\{[^{}]*\})*\}/u)?.[0] ?? '';
+  if (/\bdebuggable\s*(?:=\s*)?true\b/u.test(releaseBlock)
+    || /\brelease\.debuggable\s*=\s*true\b/u.test(gradle)
+    || /\bdebuggableVariants\s*(?:=|\+=)\s*\[[^\]]*["']release["']/u.test(gradle)) {
+    output.push('production release build must not enable debugging');
+  }
+  if (/<instrumentation\b|Phase20QualityInstrumentation/u.test(manifest)) {
+    output.push('production generated Android must not contain test instrumentation');
+  }
   match(manifest, /<data[^>]*android:scheme="gymtracker"/u, "production URL scheme is missing");
   match(strings, /<string name="app_name">Gym Tracker<\/string>/u, "production app label is missing");
   match(manifest, /android:fullBackupContent="@xml\/backup_rules"/u, "production full backup rules are not linked");
@@ -81,6 +100,7 @@ if (isMain) {
       || config.extra?.googleOAuth?.signingCertificate?.sha1 !== GOOGLE_OAUTH_REGISTRATIONS.production.sha1
       || config.extra?.googleOAuth?.signingCertificate?.sha256 !== GOOGLE_OAUTH_REGISTRATIONS.production.sha256
     ) failures.push("production Google OAuth configuration is missing or mismatched");
+    failures.push(...validateProductionNativeContractConfig(config));
   } catch {
     try {
       const config = JSON.parse((await import("node:child_process")).execFileSync(
@@ -100,6 +120,7 @@ if (isMain) {
         || config.extra?.googleOAuth?.signingCertificate?.sha1 !== GOOGLE_OAUTH_REGISTRATIONS.production.sha1
         || config.extra?.googleOAuth?.signingCertificate?.sha256 !== GOOGLE_OAUTH_REGISTRATIONS.production.sha256
       ) failures.push("production Google OAuth configuration is missing or mismatched");
+      failures.push(...validateProductionNativeContractConfig(config));
     } catch { failures.push("production Google OAuth configuration could not be generated"); }
   }
   const sourceFailures = validateGeneratedProductionAndroidSources({

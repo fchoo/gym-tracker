@@ -37,7 +37,9 @@ class GymTrackerPhysicalTestService : HeadlessJsTaskService() {
 `;
 
 const withAndroidPhysicalTestService: ConfigPlugin = (config) => {
-  const enabled = config.extra?.nativeContractsEnabled === true;
+  const enabled = config.extra?.buildProfile === 'development-test'
+    && config.extra?.nativeContractsEnabled === true
+    && config.android?.package === 'com.fchoo.gymtracker.devtest';
   if (!enabled) {
     return config;
   }
@@ -46,6 +48,8 @@ const withAndroidPhysicalTestService: ConfigPlugin = (config) => {
     const application = AndroidConfig.Manifest.getMainApplicationOrThrow(
       manifestConfig.modResults,
     );
+    // run-as needs this manifest capability; keep release BuildConfig.DEBUG false.
+    application.$['android:debuggable'] = 'true';
     application.service ??= [];
     application.service = application.service.filter(
       (service) => service.$['android:name'] !== serviceClass,

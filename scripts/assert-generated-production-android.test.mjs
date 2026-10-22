@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { validateGeneratedProductionAndroidSources } from "./assert-generated-production-android.mjs";
+import { validateGeneratedProductionAndroidSources, validateProductionNativeContractConfig } from "./assert-generated-production-android.mjs";
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { GOOGLE_OAUTH_REGISTRATIONS } from './google-oauth-config.mjs';
 
-export function productionSources() {
+function productionSources() {
   const exclusions = [
     ['database', '.'], ['root', 'backup-staging'], ['root', 'plaintext-staging'],
     ['file', 'backup-staging'], ['file', 'plaintext-staging'],
@@ -17,6 +21,64 @@ export function productionSources() {
     extraction: `<data-extraction-rules>\n<cloud-backup>\n${exclusions}\n</cloud-backup>\n<device-transfer>\n${exclusions}\n</device-transfer>\n</data-extraction-rules>`,
   };
 }
+
+test('production rejects application debugging without rejecting a normal debug build type', () => {
+  const sources = productionSources();
+  assert.deepEqual(validateGeneratedProductionAndroidSources(sources), []);
+  assert.deepEqual(validateGeneratedProductionAndroidSources({ ...sources,
+    manifest: sources.manifest.replace('<application ', '<application android:debuggable="false" '),
+  }), []);
+  for (const debugValue of ['true', '@bool/debug_enabled', '${debuggable}']) {
+    assert.match(validateGeneratedProductionAndroidSources({ ...sources,
+      manifest: sources.manifest.replace('<application ', `<application android:debuggable="${debugValue}" `),
+    }).join(' '), /nondebuggable/u);
+  }
+});
+
+test('production rejects release debugging overrides and test instrumentation', () => {
+  for (const gradle of [
+    'buildTypes { release { debuggable true } }',
+    'buildTypes { release { debuggable = true } }',
+    'buildTypes.release.debuggable = true',
+    'react { debuggableVariants = ["debug", "release"] }',
+  ]) {
+    assert.match(validateGeneratedProductionAndroidSources({ ...productionSources(),
+      gradle: `applicationId "com.fchoo.gymtracker"\n${gradle}`,
+    }).join(' '), /release.*debug/u);
+  }
+  for (const forbidden of [
+    '<service android:name=".GymTrackerPhysicalTestService" />',
+    '<instrumentation android:name=".Phase20QualityInstrumentation" />',
+  ]) {
+    assert.match(validateGeneratedProductionAndroidSources({ ...productionSources(),
+      manifest: productionSources().manifest + forbidden,
+    }).join(' '), /service|instrumentation/u);
+  }
+});
+
+test('production requires hooks false and suite null in its app config', () => {
+  assert.deepEqual(validateProductionNativeContractConfig({ extra: { nativeContractsEnabled: false, nativeContractSuite: null } }), []);
+  for (const config of [{}, { extra: {} },
+    { extra: { nativeContractsEnabled: true, nativeContractSuite: null } },
+    { extra: { nativeContractsEnabled: false, nativeContractSuite: 'v1.2-acceptance' } }]) {
+    assert.match(validateProductionNativeContractConfig(config).join(' '), /native contract/u);
+  }
+});
+
+test('production app config ignores an environment-requested acceptance suite', () => {
+  const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
+  // Evaluate the factory directly: pinned Expo Serialize converts null into {}.
+  const result = spawnSync(process.execPath, ['-e', 'const {loadModuleSync}=require("@expo/require-utils"); const config=loadModuleSync(process.cwd()+"/app.config.ts").default({config:{}}); process.stdout.write(JSON.stringify(config));'], {
+    cwd: root, encoding: 'utf8', env: { ...process.env,
+      GYM_TRACKER_BUILD_PROFILE: 'production', EXPO_PUBLIC_NATIVE_CONTRACT_SUITE: 'v1.2-acceptance',
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: GOOGLE_OAUTH_REGISTRATIONS.webClientId },
+  });
+  assert.equal(result.status, 0, 'production config generation failed');
+  const config = JSON.parse(result.stdout);
+  assert.equal(config.extra.nativeContractsEnabled, false);
+  assert.equal(config.extra.nativeContractSuite, null);
+  assert.equal(config.android.package, 'com.fchoo.gymtracker');
+});
 
 test('production assertion accepts the Garmin-selected ARM64 generation contract', () => {
   assert.deepEqual(validateGeneratedProductionAndroidSources(productionSources()), []);

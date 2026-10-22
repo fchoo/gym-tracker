@@ -1,0 +1,65 @@
+import { describe, expect, it } from '@jest/globals';
+import { AndroidConfig } from 'expo/config-plugins';
+import type { ExpoConfig } from 'expo/config';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import withAndroidPhysicalTestService from './withAndroidPhysicalTestService';
+
+function devtestConfig(): ExpoConfig {
+  return { name: 'test', slug: 'test', android: { package: 'com.fchoo.gymtracker.devtest' },
+    extra: { buildProfile: 'development-test', nativeContractsEnabled: true } };
+}
+
+function manifest() {
+  return { manifest: { $: { 'xmlns:android': 'http://schemas.android.com/apk/res/android' },
+    application: [{ $: { 'android:name': '.MainApplication' }, service: [
+      { $: { 'android:name': '.OtherService' } },
+    ] }] } };
+}
+
+describe('devtest physical native access', () => {
+  it('sets only the main application manifest flag and reapplies idempotently', async () => {
+    const config = withAndroidPhysicalTestService(devtestConfig());
+    const action = config.mods!.android!.manifest!;
+    const input = { ...config, modResults: manifest(), modRequest: { platform: 'android' } };
+    const first = await action(input as never);
+    const second = await action(first);
+    const application = AndroidConfig.Manifest.getMainApplicationOrThrow(second.modResults);
+    expect(application.$['android:debuggable']).toBe('true');
+    expect(application.service).toEqual([
+      { $: { 'android:name': '.OtherService' } },
+      { $: { 'android:name': '.GymTrackerPhysicalTestService', 'android:exported': 'true',
+        'android:permission': 'android.permission.DUMP', 'android:stopWithTask': 'false' } },
+    ]);
+    expect(config.mods!.android!.appBuildGradle).toBeUndefined();
+  });
+
+  it('does not register manifest or source mods for any wrong identity or disabled hooks', () => {
+    for (const config of [
+      { ...devtestConfig(), extra: undefined },
+      { ...devtestConfig(), extra: { nativeContractsEnabled: true } },
+      { ...devtestConfig(), extra: { buildProfile: 'production', nativeContractsEnabled: true } },
+      { ...devtestConfig(), extra: { buildProfile: 'development-test', nativeContractsEnabled: false } },
+      { ...devtestConfig(), extra: { buildProfile: 'development-test', nativeContractsEnabled: 'true' } },
+      { ...devtestConfig(), android: { package: 'com.fchoo.gymtracker' } },
+      { ...devtestConfig(), android: undefined },
+    ]) {
+      expect(withAndroidPhysicalTestService(config)).toBe(config);
+      expect(config).not.toHaveProperty('mods');
+    }
+  });
+
+  it('retains the protected headless service implementation in the devtest package only', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'p20-physical-plugin-'));
+    try {
+      const config = withAndroidPhysicalTestService(devtestConfig());
+      await config.mods!.android!.dangerous!({ ...config, modRequest: { platform: 'android',
+        platformProjectRoot: root } } as never);
+      const source = readFileSync(path.join(root, 'app/src/main/java/com/fchoo/gymtracker/devtest/GymTrackerPhysicalTestService.kt'), 'utf8');
+      expect(source).toContain('package com.fchoo.gymtracker.devtest');
+      expect(source).toContain('900_000');
+      expect(source).toContain('suite != "benchmark" && suite != "argon2"');
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});
