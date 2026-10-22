@@ -47,8 +47,8 @@ export function validateGeneratedProductionAndroidSources({
   match(gradle, /applicationId\s+["']com\.fchoo\.gymtracker["']/u, "production applicationId is missing");
   match(
     gradleProperties,
-    /^reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64$/mu,
-    "production React Native architectures must retain the full ABI set",
+    /^reactNativeArchitectures=arm64-v8a$/mu,
+    "production React Native architectures must retain selected ARM64",
   );
   match(manifest, /<data[^>]*android:scheme="gymtracker"/u, "production URL scheme is missing");
   match(strings, /<string name="app_name">Gym Tracker<\/string>/u, "production app label is missing");
