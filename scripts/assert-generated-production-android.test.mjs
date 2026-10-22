@@ -37,6 +37,15 @@ test('production rejects application debugging without rejecting a normal debug 
   }
 });
 
+test('production rejects the development-test-only hardcoded-debug lint annotation', () => {
+  const sources = productionSources();
+  for (const ignored of ['HardcodedDebugMode', 'UnusedAttribute, HardcodedDebugMode']) {
+    assert.match(validateGeneratedProductionAndroidSources({ ...sources,
+      manifest: sources.manifest.replace('<application ', `<application tools:ignore="${ignored}" `),
+    }).join(' '), /debug lint annotation/u);
+  }
+});
+
 test('production rejects release debugging overrides and test instrumentation', () => {
   for (const gradle of [
     'buildTypes { release { debuggable true } }',

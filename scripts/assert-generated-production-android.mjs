@@ -60,6 +60,9 @@ export function validateGeneratedProductionAndroidSources({
   if (debugFlag !== undefined && debugFlag !== 'false') {
     output.push('production main application must remain nondebuggable');
   }
+  if (/\btools:ignore\s*=\s*["'][^"']*\bHardcodedDebugMode\b/u.test(manifest)) {
+    output.push('production must not carry the development-test debug lint annotation');
+  }
   const releaseBlock = gradle.match(/\brelease\s*\{(?:[^{}]|\{[^{}]*\})*\}/u)?.[0] ?? '';
   if (/\bdebuggable\s*(?:=\s*)?true\b/u.test(releaseBlock)
     || /\brelease\.debuggable\s*=\s*true\b/u.test(gradle)

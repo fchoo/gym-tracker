@@ -13,6 +13,7 @@ function devtestConfig(): ExpoConfig {
 
 function manifest() {
   return { manifest: { $: { 'xmlns:android': 'http://schemas.android.com/apk/res/android' },
+    queries: [],
     application: [{ $: { 'android:name': '.MainApplication' }, service: [
       { $: { 'android:name': '.OtherService' } },
     ] }] } };
@@ -27,11 +28,25 @@ describe('devtest physical native access', () => {
     const second = await action(first);
     const application = AndroidConfig.Manifest.getMainApplicationOrThrow(second.modResults);
     expect(application.$['android:debuggable']).toBe('true');
+    expect(second.modResults.manifest.$['xmlns:tools']).toBe('http://schemas.android.com/tools');
+    expect(application.$['tools:ignore']).toBe('HardcodedDebugMode');
     expect(application.service).toEqual([
       { $: { 'android:name': '.OtherService' } },
       { $: { 'android:name': '.GymTrackerPhysicalTestService', 'android:exported': 'true',
         'android:permission': 'android.permission.DUMP', 'android:stopWithTask': 'false' } },
     ]);
+    expect(config.mods!.android!.appBuildGradle).toBeUndefined();
+  });
+
+  it('adds only the intentional test-app lint annotation and preserves existing annotations', async () => {
+    const config: ExportedConfig = withAndroidPhysicalTestService(devtestConfig());
+    const input = manifest();
+    const application = AndroidConfig.Manifest.getMainApplicationOrThrow(input);
+    application.$['tools:ignore'] = 'UnusedAttribute, HardcodedDebugMode';
+    const action = config.mods!.android!.manifest!;
+    const first = await action({ ...config, modResults: input, modRequest: { platform: 'android' } } as never);
+    const second = await action(first);
+    expect(AndroidConfig.Manifest.getMainApplicationOrThrow(second.modResults).$['tools:ignore']).toBe('UnusedAttribute,HardcodedDebugMode');
     expect(config.mods!.android!.appBuildGradle).toBeUndefined();
   });
 
