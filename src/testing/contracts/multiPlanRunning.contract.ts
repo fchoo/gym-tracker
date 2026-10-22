@@ -1,4 +1,5 @@
 import fullBodyFoundationAsset from "../../../assets/content/full-body-foundation.v1.json";
+import { observeContractOperation, reportContractProgress, type ContractProgressObserver } from "./contractProgress";
 import {
   changeGarminActivityLifecycle,
   confirmGarminImportDate,
@@ -114,24 +115,26 @@ async function withFreshExpoRuntime(
   adapter: ExpoMigrationsAdapter,
   caseId: MultiPlanRunningContractCaseId,
   operation: (kernel: SqliteKernel) => Promise<void>,
+  onProgress?: ContractProgressObserver,
 ): Promise<void> {
-  const runtime = await adapter.createRuntime(caseId);
+  const stage = `case-${MULTI_PLAN_RUNNING_CONTRACT_CASES.indexOf(caseId) + 1}`;
+  const runtime = await observeContractOperation(onProgress, `${stage}:open`, () => adapter.createRuntime(caseId));
   try {
-    const migrated = await createMigrationRunner({
+    const migrated = await observeContractOperation(onProgress, `${stage}:migration`, () => createMigrationRunner({
       databaseName: runtime.databaseName,
       kernel: runtime.kernel,
       migrations,
       // The native adapter supplies a per-case backup port.  Keep the adapter
       // fallback for test adapters that expose only the shared port.
       recoveryBackup: runtime.recoveryBackup ?? adapter.recoveryBackup,
-    }).run();
+    }).run());
     invariant(
       migrated.currentVersion === migrations.at(-1)?.version,
       "phase13_migration_not_current",
     );
-    await operation(runtime.kernel);
+    await observeContractOperation(onProgress, `${stage}:assertions`, () => operation(runtime.kernel));
   } finally {
-    await runtime.close();
+    await observeContractOperation(onProgress, `${stage}:close`, () => runtime.close());
   }
 }
 
@@ -174,33 +177,39 @@ async function assertMigrationFailureCut(
   adapter: ExpoMigrationsAdapter,
   databaseKey: string,
   action: (runtime: ExpoRuntime) => Promise<void>,
+  stage: "cut-statement" | "cut-verify" | "cut-commit",
+  onProgress?: ContractProgressObserver,
   observer: SqliteKernelTestObserver = {},
 ): Promise<void> {
-  const runtime = await adapter.createRuntime(databaseKey, observer);
+  const runtime = await observeContractOperation(onProgress, `${stage}:open`, () => adapter.createRuntime(databaseKey, observer));
   let failed = false;
   try {
+    reportContractProgress(onProgress, `${stage}:migration:start`);
     try {
       await action(runtime);
+      reportContractProgress(onProgress, `${stage}:migration:done`);
     } catch {
       failed = true;
+      reportContractProgress(onProgress, `${stage}:migration:failed`);
     }
   } finally {
-    await runtime.close();
+    await observeContractOperation(onProgress, `${stage}:close`, () => runtime.close());
   }
 
-  const reopenedRuntime = await adapter.createRuntime(databaseKey);
+  const reopenedRuntime = await observeContractOperation(onProgress, `${stage}:reopen`, () => adapter.createRuntime(databaseKey));
   try {
-    const state = await failedMigrationState(reopenedRuntime.kernel);
+    const state = await observeContractOperation(onProgress, `${stage}:readback`, () => failedMigrationState(reopenedRuntime.kernel));
     invariant(failed, "phase13_migration_failure_not_observed");
     invariant(state.version === 0 && state.userTables === 0, "phase13_migration_rollback_invalid");
   } finally {
-    await reopenedRuntime.close();
+    await observeContractOperation(onProgress, `${stage}:reclose`, () => reopenedRuntime.close());
   }
 }
 
 async function runMigrationFailureCuts(
   adapter: ExpoMigrationsAdapter,
   caseId: string,
+  onProgress?: ContractProgressObserver,
 ): Promise<void> {
   await assertMigrationFailureCut(adapter, `${caseId}-statement`, async (runtime) => {
     await createMigrationRunner({
@@ -216,13 +225,13 @@ async function runMigrationFailureCuts(
         }
       },
     }).run();
-  });
+  }, "cut-statement", onProgress);
   await assertMigrationFailureCut(adapter, `${caseId}-verify`, async (runtime) => {
     await createMigrationRunner({ databaseName: runtime.databaseName, kernel: runtime.kernel, migrations: [verifyFailureMigration] }).run();
-  });
+  }, "cut-verify", onProgress);
   await assertMigrationFailureCut(adapter, `${caseId}-commit`, async (runtime) => {
     await createMigrationRunner({ databaseName: runtime.databaseName, kernel: runtime.kernel, migrations: [commitFailureMigration] }).run();
-  }, {
+  }, "cut-commit", onProgress, {
     async beforeCommit() {
       throw new Error("phase13_commit_failure");
     },
@@ -895,6 +904,7 @@ export async function runMultiPlanRunningContractOnKernel(
 
 export async function createExpoMultiPlanRunningContractAdapter(
   runId: string,
+  onProgress?: ContractProgressObserver,
 ): Promise<MultiPlanRunningContractAdapter> {
   const base = await createExpoMigrationsEffectsContractAdapter(
     `multi-plan-running-${runId}`,
@@ -902,11 +912,18 @@ export async function createExpoMultiPlanRunningContractAdapter(
   const adapter: MultiPlanRunningContractAdapter = {
     runCase: (caseId: MultiPlanRunningContractCaseId) =>
       caseId === "phase13-migration-failure-cuts"
-        ? runMigrationFailureCuts(base, caseId)
+        ? runMigrationFailureCuts(base, caseId, onProgress)
         : withFreshExpoRuntime(
             base,
             caseId,
-            (kernel) => runMultiPlanRunningContractCase(caseId, kernel),
+            (kernel) => runMultiPlanRunningContractCase(caseId, kernel, {
+              // The nested canonical matrix must be fresh and enclosing-run scoped.
+              runPortableMergeContract: async () => runPortableMergeContract(
+                await createExpoPortableMergeContractAdapter(`multi-plan-running-${runId}-merge-rebuild`),
+                (stage) => reportContractProgress(onProgress, `portable-merge:${stage}`),
+              ),
+            }),
+            onProgress,
           ),
     ...(base.cleanup === undefined ? {} : { cleanup: base.cleanup }),
   };
@@ -915,21 +932,24 @@ export async function createExpoMultiPlanRunningContractAdapter(
 
 export async function runMultiPlanRunningContract(
   runIdOrAdapter: string | MultiPlanRunningContractAdapter,
+  onProgress?: ContractProgressObserver,
 ): Promise<MultiPlanRunningContractResult> {
   const startedAt = new Date().toISOString();
   const adapter = typeof runIdOrAdapter === "string"
-    ? await createExpoMultiPlanRunningContractAdapter(runIdOrAdapter)
+    ? await createExpoMultiPlanRunningContractAdapter(runIdOrAdapter, onProgress)
     : runIdOrAdapter;
   const cases: MultiPlanRunningContractResult["cases"][number][] = [];
   try {
-    for (const id of MULTI_PLAN_RUNNING_CONTRACT_CASES) {
+    for (const [index, id] of MULTI_PLAN_RUNNING_CONTRACT_CASES.entries()) {
       const startedMs = Date.now();
+      reportContractProgress(onProgress, `case-${index + 1}:start`);
       try {
         await adapter.runCase(id);
         cases.push(Object.freeze({ id, status: "passed", durationMs: Date.now() - startedMs }));
       } catch (error) {
         cases.push(Object.freeze({ id, status: "failed", durationMs: Date.now() - startedMs, errorCode: safeErrorCode(error) }));
       }
+      reportContractProgress(onProgress, `case-${index + 1}:${cases[cases.length - 1]!.status}`);
     }
   } finally {
     await adapter.cleanup?.();
