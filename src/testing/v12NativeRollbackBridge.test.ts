@@ -253,6 +253,37 @@ describe("rollback bridge guards and orchestration (host-only unit tests)", () =
     expect(mockFiles.has(`${mockPath}/v12-rollback-${nonce}/result-staged.json`)).toBe(false);
     expect(f.raw.open).not.toHaveBeenCalled();
   });
+  it("does not announce readiness or completion while an asynchronous copy fallback is incomplete", async () => {
+    nativePorts();
+    jest.spyOn(cryptoModule, "createExpoAesGcmArchiveDriver").mockImplementation(() => { throw new Error("v12_rollback_synthetic_failure"); });
+    const valid = { ...arm(), expires_at_ms: Date.now() + 60_000 };
+    mockFiles.set(`${mockPath}/v12-rollback-${nonce}/arm.json`, new TextEncoder().encode(JSON.stringify(valid)));
+    const finalPath = `${mockPath}/v12-rollback-${nonce}/result.json`;
+    const readyPath = `${mockPath}/v12-rollback-${nonce}/result.ready`;
+    const originalMove = MockFile.prototype.move;
+    let copying!: () => void;
+    const copyStarted = new Promise<void>(resolve => { copying = resolve; });
+    let finish!: () => void;
+    const pendingCopy = new Promise<void>(resolve => { finish = resolve; });
+    jest.spyOn(MockFile.prototype, "move").mockImplementation(function (this: MockFile, other) {
+      if (!this.path.endsWith("/result-staged.json")) return originalMove.call(this, other);
+      mockFiles.set(other.path, new Uint8Array());
+      copying();
+      return pendingCopy.then(() => { originalMove.call(this, other); });
+    });
+    const operation = collectNativeRollbackBridge(identity, nonce);
+    await copyStarted;
+    expect(mockFiles.get(finalPath)).toEqual(new Uint8Array());
+    expect(mockFiles.has(readyPath)).toBe(false);
+    finish();
+    await expect(operation).rejects.toThrow("v12_rollback_synthetic_failure");
+    expect(JSON.parse(new TextDecoder().decode(mockFiles.get(finalPath)!)).failure).toBe("v12_rollback_synthetic_failure");
+    expect(new TextDecoder().decode(mockFiles.get(readyPath)!)).toBe("ready");
+  });
+  it("rejects an existing readiness barrier instead of reusing stale completion", async () => {
+    mockFiles.set(`${mockPath}/v12-rollback-${nonce}/result.ready`, new Uint8Array([1]));
+    await expect(collectNativeRollbackBridge(identity, nonce)).rejects.toThrow("arm_invalid");
+  });
   it("rejects an existing staged result instead of overwriting it", async () => {
     mockFiles.set(`${mockPath}/v12-rollback-${nonce}/result-staged.json`, new Uint8Array([1]));
     await expect(collectNativeRollbackBridge(identity, nonce)).rejects.toThrow("arm_invalid");

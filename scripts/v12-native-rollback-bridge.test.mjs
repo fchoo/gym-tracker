@@ -76,6 +76,22 @@ test("source-owned transport binds private arm and exact bytes outside immutable
   assert.ok(!f.calls.some(call => /kill-server|start-server|logcat|force-stop|clear/u.test(call.args.join(" "))));
 });
 
+test("host never reads a partially copied result before the private readiness barrier (HOST UNIT ONLY)", async t => {
+  const f = fixture(t);
+  let polls = 0;
+  const original = f.dependencies.command;
+  f.dependencies.command = (exe, args, opts) => {
+    if (args.join(" ").includes("result.json")) {
+      assert.match(args.join(" "), /test -f [^ ]+\/result\.ready && test -f [^ ]+\/result\.json/u);
+      if (polls++ === 0) return { status: 1, stdout: Buffer.alloc(0) };
+    }
+    return original(exe, args, opts);
+  };
+  const result = await runV12NativeRollbackBridge(f.options, f.dependencies);
+  assert.equal(polls, 2);
+  assert.equal(result.inspection.clean_restore_receipt.outcome, "restored");
+});
+
 test("async archive callback performs the native transport before returning parser inspection (HOST UNIT ONLY)", async t => {
   const f = fixture(t);
   const result = await authenticateV12RollbackOnDevice({ root: f.root, runId, environment: f.options.environment,

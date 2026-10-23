@@ -215,15 +215,17 @@ export async function collectNativeRollbackBridge(identity: RollbackNativeIdenti
   const consumed = new File(Paths.document, `v12-rollback-${nonce}`, "consumed.json");
   const resultFile = new File(Paths.document, `v12-rollback-${nonce}`, "result.json");
   const stagedResult = new File(Paths.document, `v12-rollback-${nonce}`, "result-staged.json");
-  if (consumed.exists || resultFile.exists || stagedResult.exists) fail("arm_invalid");
-  function publishResult(value: unknown): void {
-    // The host polls only result.json. Same-directory rename exposes complete bytes,
-    // never the empty/partial file created by Expo's synchronous write operation.
+  const resultReady = new File(Paths.document, `v12-rollback-${nonce}`, "result.ready");
+  if (consumed.exists || resultFile.exists || stagedResult.exists || resultReady.exists) fail("arm_invalid");
+  async function publishResult(value: unknown): Promise<void> {
+    // Expo move may fall back to copy/delete. Await its completion before exposing
+    // the readiness barrier; the host never reads a partially copied result.json.
     stagedResult.write(JSON.stringify(value));
-    stagedResult.move(resultFile);
+    await stagedResult.move(resultFile);
+    resultReady.write("ready");
   }
   const arm = validateRollbackArm(JSON.parse(armFile.textSync()), nonce, Date.now());
-  armFile.move(consumed);
+  await armFile.move(consumed);
   try {
     const ports = productionRollbackPorts();
     const archive = arm.phase === "restore" ? new File(Paths.document, `v12-rollback-${nonce}`, "incoming.gtbk").bytesSync() : undefined;
@@ -233,10 +235,10 @@ export async function collectNativeRollbackBridge(identity: RollbackNativeIdenti
     const archiveFile = new File(Paths.document, `v12-rollback-${nonce}`, "archive.gtbk");
     if (archiveFile.exists) fail("arm_invalid");
     archiveFile.write(result.archive);
-    publishResult({ schema_version: 1, producer: "v12-native-rollback-bridge/v1", arm, inspection: result.inspection });
+    await publishResult({ schema_version: 1, producer: "v12-native-rollback-bridge/v1", arm, inspection: result.inspection });
   } catch (error) {
     const code = error instanceof Error && /^v12_rollback_[a-z_]+$/u.test(error.message) ? error.message : "v12_rollback_failed";
-    publishResult({ schema_version: 1, producer: "v12-native-rollback-bridge/v1", arm, failure: code });
+    await publishResult({ schema_version: 1, producer: "v12-native-rollback-bridge/v1", arm, failure: code });
     throw new Error(code);
   }
 }
