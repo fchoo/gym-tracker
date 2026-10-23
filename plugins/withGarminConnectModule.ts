@@ -32,12 +32,12 @@ export function applyGarminProjectBuildGradle(contents: string): string {
   if (configured.includes(CHAQUOPY_CLASSPATH)) return addChaquopyRepository(configured);
   const pluginsBlock = /plugins\s*\{/u.exec(contents);
   if (pluginsBlock !== null) {
-    const insertionPoint = (pluginsBlock.index ?? 0) + pluginsBlock[0].length;
+    const insertionPoint = pluginsBlock.index + pluginsBlock[0].length;
     return `${contents.slice(0, insertionPoint)}\n    ${CHAQUOPY_PLUGIN}${contents.slice(insertionPoint)}`;
   }
   const buildscriptDependencies = /buildscript\s*\{[\s\S]*?\bdependencies\s*\{/u.exec(contents);
   if (buildscriptDependencies === null) throw new Error("garmin_cng_missing_plugins_block");
-  const insertionPoint = (buildscriptDependencies.index ?? 0) + buildscriptDependencies[0].length;
+  const insertionPoint = buildscriptDependencies.index + buildscriptDependencies[0].length;
   configured = `${contents.slice(0, insertionPoint)}\n    ${CHAQUOPY_CLASSPATH}${contents.slice(insertionPoint)}`;
   return addChaquopyRepository(configured);
 }
@@ -46,7 +46,7 @@ function addChaquopyRepository(contents: string): string {
   if (contents.includes(CHAQUOPY_REPOSITORY)) return contents;
   const allProjectsRepositories = /allprojects\s*\{[\s\S]*?\brepositories\s*\{/u.exec(contents);
   if (allProjectsRepositories === null) return contents;
-  const insertionPoint = (allProjectsRepositories.index ?? 0) + allProjectsRepositories[0].length;
+  const insertionPoint = (allProjectsRepositories.index) + allProjectsRepositories[0].length;
   return `${contents.slice(0, insertionPoint)}\n    ${CHAQUOPY_REPOSITORY}${contents.slice(insertionPoint)}`;
 }
 
@@ -78,8 +78,11 @@ chaquopy {
     defaultConfig {
         version = "3.13"
         pip {
-            options "--no-deps"
+            options "--no-deps", "--only-binary", "cffi,curl-cffi,chaquopy-libffi"
             garminPythonLock.packages.each { lockedPackage ->
+                if (!(lockedPackage.name == "python-garminconnect" || lockedPackage.artifact.filename.endsWith(".whl"))) {
+                    throw new GradleException("garmin_python_native_source_forbidden")
+                }
                 install new File(garminPythonArtifactDir, lockedPackage.artifact.filename).absolutePath
             }
         }

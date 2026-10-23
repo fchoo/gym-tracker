@@ -11,7 +11,8 @@ reviewed by `scripts/verify-garmin-python-lock.mjs` before packaging.
 | requests | 2.34.2 | Apache-2.0 |
 | ua-generator | 2.1.6 | MIT |
 | certifi | 2026.7.22 | MPL-2.0 |
-| cffi | 2.1.1 | MIT |
+| cffi | 2.1.1 (local Android cross-build) | MIT-0 |
+| chaquopy-libffi | 3.3 (official Android wheel, build 3) | MIT |
 | pycparser | 3.11 | BSD-3-Clause |
 | rich | 15.0.0 | MIT |
 | markdown-it-py | 4.2.0 | MIT |

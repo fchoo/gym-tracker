@@ -1,14 +1,34 @@
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it, jest } from "@jest/globals";
+
+jest.mock('expo/config-plugins', () => ({
+  withGradleProperties: (config: object, action: (value: object) => object) => ({ ...config, properties: action({modResults: []}) }),
+  withProjectBuildGradle: (config: object, action: (value: object) => object) => ({ ...config, project: action({modResults: {contents: 'plugins {}'}}) }),
+  withAppBuildGradle: (config: object, action: (value: object) => object) => ({ ...config, app: action({modResults: {contents: 'apply plugin: "com.android.application"'}}) }),
+}));
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import {
+import withGarminConnectModule, {
   applyGarminAppBuildGradle,
   applyGarminGradleProperties,
   applyGarminProjectBuildGradle,
 } from "./withGarminConnectModule";
 
 describe("withGarminConnectModule", () => {
+  it('applies every CNG callback and retains unrelated Gradle properties', () => {
+    const configured = withGarminConnectModule({name: 'Gym', slug: 'gym'});
+    expect(configured).toHaveProperty('properties');
+    expect(configured).toHaveProperty('project');
+    expect(configured).toHaveProperty('app');
+    expect(applyGarminGradleProperties([{type:'comment',value:'keep'},{type:'empty'}])).toEqual([{type:'comment',value:'keep'},{type:'empty'},{type:'property',key:'reactNativeArchitectures',value:'arm64-v8a'}]);
+    const classpath = "buildscript { dependencies { classpath('com.chaquo.python:gradle:17.0.0') } }";
+    expect(applyGarminProjectBuildGradle(classpath)).toBe(classpath);
+    const repositories = classpath + '\nallprojects { repositories {} }';
+    expect(applyGarminProjectBuildGradle(repositories)).toContain('https://chaquo.com/maven');
+    const pinned = classpath + '\nmaven { url "https://chaquo.com/maven" }';
+    expect(applyGarminProjectBuildGradle(pinned)).toBe(pinned);
+    expect(() => applyGarminAppBuildGradle('plugins {}')).toThrow('garmin_cng_missing_android_application_plugin');
+  });
   it("restricts the generated React Native architecture set to ARM64", () => {
     const configured = applyGarminGradleProperties([
       { type: "property", key: "reactNativeArchitectures", value: "armeabi-v7a,arm64-v8a,x86,x86_64" },
@@ -53,7 +73,9 @@ allprojects {
     expect(configuredApp).toContain("verifyGarminPythonLock");
     expect(configuredApp).toContain("garmin-python-lock.json");
     expect(configuredApp).toContain("garmin-python-artifacts");
-    expect(configuredApp).toContain('options "--no-deps"');
+    expect(configuredApp).toContain('options "--no-deps", "--only-binary", "cffi,curl-cffi,chaquopy-libffi"');
+    expect(configuredApp).toContain('lockedPackage.name == "python-garminconnect"');
+    expect(configuredApp).toContain('throw new GradleException("garmin_python_native_source_forbidden")');
     expect(configuredApp).toContain('install new File(garminPythonArtifactDir');
     expect(configuredApp).not.toContain('install "--no-deps"');
     expect(configuredApp).toContain("materializeGarminPythonLock");
