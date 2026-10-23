@@ -45,6 +45,7 @@ test("Kotlin coverage explicitly enumerates every security-critical Garmin sourc
   assert.deepEqual(spec.metrics, ["statements", "branches", "functions", "lines"]);
   assert.deepEqual(spec.sourcePaths, [
     "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminClientWorker.kt",
+    "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminPythonContainers.kt",
     "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminAdversarialSuiteRunner.kt",
     "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminTokenStore.kt",
     "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminEvidenceArmStore.kt",
@@ -54,6 +55,7 @@ test("Kotlin coverage explicitly enumerates every security-critical Garmin sourc
   ]);
   assert.deepEqual(spec.testPaths, [
     "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminTokenStoreTest.kt",
+    "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminPythonContainersTest.kt",
     "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminEvidenceArmStoreTest.kt",
     "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminConnectModuleTest.kt",
   ]);
@@ -64,6 +66,9 @@ test("Kotlin coverage explicitly enumerates every security-critical Garmin sourc
     "expo/modules/garminconnect/GarminEvidenceAuthorizationController",
     "expo/modules/garminconnect/GarminEvidenceExecutionIdentity",
     "expo/modules/garminconnect/GarminClientWorker",
+    "expo/modules/garminconnect/GarminClientWorkerKt",
+    "expo/modules/garminconnect/GarminPythonContainers",
+    "expo/modules/garminconnect/GarminPythonKind",
     "expo/modules/garminconnect/ChaquopyGarminPythonDispatcher",
     "expo/modules/garminconnect/GarminAdversarialSuiteRunner",
     "expo/modules/garminconnect/GarminTokenStore",
@@ -76,6 +81,7 @@ test("Kotlin coverage explicitly enumerates every security-critical Garmin sourc
     "expo/modules/garminconnect/GarminBenchmarkRuntimeInfo",
   ]);
   assert.deepEqual(spec.branchlessClasses, [
+    "expo/modules/garminconnect/GarminPythonKind",
     "expo/modules/garminconnect/GarminConnectModule",
     "expo/modules/garminconnect/GarminConnectPlatformBindings",
     "expo/modules/garminconnect/GarminEvidenceExecutionIdentity",
