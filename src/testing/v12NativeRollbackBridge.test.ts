@@ -109,8 +109,9 @@ describe("rollback bridge guards and orchestration (host-only unit tests)", () =
     expect(validateRollbackArm(arm(), nonce, 1_000)).toEqual(arm());
     for (const value of [null, "text", [], {}, { ...arm(), extra: 1 }, { ...arm(), schema_version: 2 },
       { ...arm(), route_id: "wrong" }, { ...arm(), phase: "wrong" }, { ...arm(), nonce: "b".repeat(32) },
-      { ...arm(), run_id: "wrong" }, { ...arm(), apk_sha256: "wrong" }, { ...arm(), declared_schema_version: 45 },
-      { ...arm(), expires_at_ms: 1.5 }, { ...arm(), expires_at_ms: 999 }, { ...arm(), expires_at_ms: 400_000 }]) {
+      { ...arm(), run_id: "wrong" }, { ...arm(), run_id: [arm().run_id] },
+      { ...arm(), apk_sha256: "wrong" }, { ...arm(), apk_sha256: [arm().apk_sha256] }, { ...arm(), declared_schema_version: 45 },
+      { ...arm(), expires_at_ms: 1.5 }, { ...arm(), expires_at_ms: 999 }, { ...arm(), expires_at_ms: 1_000 }, { ...arm(), expires_at_ms: 400_000 }]) {
       expect(() => validateRollbackArm(value, nonce, 1_000)).toThrow("v12_rollback_arm_invalid");
     }
     const missing = { ...arm(), replacement: 1 } as Record<string, unknown>; delete missing.route_id;
@@ -229,6 +230,16 @@ describe("rollback bridge guards and orchestration (host-only unit tests)", () =
     const result = JSON.parse(new TextDecoder().decode(mockFiles.get(`${mockPath}/v12-rollback-${nonce}/result.json`)!));
     expect(result.inspection.clean_restore_receipt.outcome).toBe("restored");
     await expect(collectNativeRollbackBridge(identity, nonce)).rejects.toThrow("arm_invalid");
+  });
+  it("retains a sanitized failure receipt when a native port binding is unavailable", async () => {
+    nativePorts();
+    jest.spyOn(cryptoModule, "createExpoAesGcmArchiveDriver").mockImplementation(() => { throw new Error("private native binding path"); });
+    const valid = { ...arm(), expires_at_ms: Date.now() + 60_000 };
+    mockFiles.set(`${mockPath}/v12-rollback-${nonce}/arm.json`, new TextEncoder().encode(JSON.stringify(valid)));
+    await expect(collectNativeRollbackBridge(identity, nonce)).rejects.toThrow("v12_rollback_failed");
+    const result = JSON.parse(new TextDecoder().decode(mockFiles.get(`${mockPath}/v12-rollback-${nonce}/result.json`)!));
+    expect(result.failure).toBe("v12_rollback_failed");
+    expect(mockFiles.has(`${mockPath}/v12-rollback-${nonce}/consumed.json`)).toBe(true);
   });
   it("denies production/invalid nonces before private-file access", async () => {
     await expect(collectNativeRollbackBridge({}, nonce)).rejects.toThrow("disabled");

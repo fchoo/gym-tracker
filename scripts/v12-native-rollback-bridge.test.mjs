@@ -194,7 +194,11 @@ test("does not overwrite an earlier operational attempt or follow an operations 
 test("default runtime rejects wrong-profile manifest before ANY actual ADB; default command runs only Node to prove failure", async t => {
   const f = fixture(t); f.manifest.build.profile = "production"; writeFileSync(f.build, JSON.stringify(f.manifest));
   const runtimeDependencies = { ...f.dependencies }; delete runtimeDependencies.runtime;
-  await assert.rejects(runV12NativeRollbackBridge(f.options, runtimeDependencies), /identity_mismatch/u);
+  await assert.rejects(runV12NativeRollbackBridge(f.options, runtimeDependencies), /identity_invalid/u);
+  const sourceFixture = fixture(t);
+  assert.equal(spawnSync("/usr/bin/git", ["init", "--quiet", sourceFixture.root]).status, 0);
+  const sourceDependencies = { ...sourceFixture.dependencies }; delete sourceDependencies.runtime;
+  await assert.rejects(runV12NativeRollbackBridge(sourceFixture.options, sourceDependencies), /source_identity_mismatch/u);
   const g = fixture(t); const commandDependencies = { ...g.dependencies,
     resolveTools: () => ({ execution_origin: "production-attested/v1", test_only: false, adb: process.execPath, unzip: process.execPath }) };
   delete commandDependencies.command;
@@ -209,6 +213,47 @@ test("default nonce/clock/wait functions remain executable without fake native c
   const result = await runV12NativeRollbackBridge(f.options, dependencies);
   assert.equal(result.inspection.schema_version, 22);
   assert.equal(readdirSync(f.operational).filter(name => name.startsWith("rollback-")).length, 1);
+});
+
+test("rejects a result fetched after the arm deadline and preserves the failed attempt", async t => {
+  const f = fixture(t); let clock = 1_000;
+  f.dependencies.now = () => clock;
+  const execute = f.dependencies.command;
+  f.dependencies.command = (exe, args, options) => {
+    const result = execute(exe, args, options);
+    if (args.join(" ").includes("result.json")) clock = 181_001;
+    return result;
+  };
+  await assert.rejects(runV12NativeRollbackBridge(f.options, f.dependencies), /native_timeout/u);
+  assert.equal(existsSync(path.join(f.operationDir, "compatible-archive.gtbk")), false);
+});
+
+test("revalidates source/APK/device/lease ownership before retaining a successful result", async t => {
+  const f = fixture(t); let constructors = 0;
+  f.dependencies.runtime = () => {
+    if (++constructors === 2) throw new Error("v12_production_native_launcher_source_identity_mismatch");
+    return { withLease: async (_payload, operation) => operation() };
+  };
+  await assert.rejects(runV12NativeRollbackBridge(f.options, f.dependencies), /native_failed/u);
+  assert.equal(constructors, 2);
+  assert.equal(existsSync(path.join(f.operationDir, "compatible-archive.gtbk")), false);
+});
+
+test("rejects non-live, unrelated-run or mismatched APK manifests before transport", async t => {
+  for (const patch of [{ run_id: "phase20-20261023T000000Z-bbbbbbbbbbbb" }, { mode: "fixture" },
+    { build: { profile: "production" } }, { build: { profile: "development-test", package: "wrong" } },
+    { device: { identity_sha256: "e".repeat(64), installed_apk_sha256: "f".repeat(64) } }]) {
+    const f = fixture(t); writeFileSync(f.build, JSON.stringify({ ...f.manifest, ...patch }));
+    await assert.rejects(runV12NativeRollbackBridge(f.options, f.dependencies), /identity_invalid/u);
+    assert.equal(f.calls.length, 0);
+  }
+});
+
+test("does not mistake a transport exit error for an absent private result", async t => {
+  const f = fixture(t); const execute = f.dependencies.command;
+  f.dependencies.command = (exe, args, options) => args.join(" ").includes("result.json")
+    ? { status: 2, stdout: Buffer.alloc(0) } : execute(exe, args, options);
+  await assert.rejects(runV12NativeRollbackBridge(f.options, f.dependencies), /native_prerequisite_failed/u);
 });
 
 test("CLI output wrapper awaits its result and sanitizes errors (HOST UNIT ONLY)", async t => {

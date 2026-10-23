@@ -60,12 +60,15 @@ export async function runV12NativeRollbackBridge({ root = process.cwd(), runId, 
   const attestation = { run_id: runId, source_tree_sha256: manifest.source?.tree_sha256, apk_sha256: manifest.build?.apk?.sha256,
     apk_signature_sha256: manifest.build?.apk?.signature_sha256, device_identity_sha256: manifest.device?.identity_sha256,
     installed_apk_sha256: manifest.device?.installed_apk_sha256 };
-  if (!Object.entries(attestation).filter(([key]) => key.endsWith("sha256")).every(([, value]) => HASH.test(value ?? ""))) fail("identity_invalid");
+  if (manifest.run_id !== runId || manifest.mode !== "live" || manifest.build?.profile !== "development-test"
+    || manifest.build?.package !== PACKAGE || attestation.apk_sha256 !== attestation.installed_apk_sha256
+    || !Object.entries(attestation).filter(([key]) => key.endsWith("sha256")).every(([, value]) => HASH.test(value ?? ""))) fail("identity_invalid");
   const tools = (dependencies.resolveTools ?? resolveV12NativeExecutionTools)({ requiredTools: ["adb", "unzip"], env: environment });
   if (tools.execution_origin !== V12_PRODUCTION_EXECUTION_ORIGIN || tools.test_only !== false) fail("test_environment_forbidden");
   const serial = environment.V12_DEVICE_SERIAL;
   if (typeof serial !== "string" || !/^[A-Za-z0-9._:-]{1,200}$/u.test(serial)) fail("device_binding_unavailable");
-  const runtime = (dependencies.runtime ?? createProductionNativeRuntime)(attestation, { root, executionTools: tools });
+  const runtimeFactory = dependencies.runtime ?? createProductionNativeRuntime;
+  const runtime = runtimeFactory(attestation, { root, executionTools: tools });
   const execute = dependencies.command ?? spawnSync;
   const now = dependencies.now ?? Date.now;
   const wait = dependencies.wait ?? delay;
@@ -76,7 +79,7 @@ export async function runV12NativeRollbackBridge({ root = process.cwd(), runId, 
   const deadline = now() + 180_000;
   function command(exe, args, input, allowAbsent = false) {
     const result = execute(exe, args, { input, timeout: 10_000, maxBuffer: 34 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"] });
-    if (result.error || result.signal || (!allowAbsent && result.status !== 0)) fail("native_prerequisite_failed");
+    if (result.error || result.signal || (result.status !== 0 && (!allowAbsent || result.status !== 1))) fail("native_prerequisite_failed");
     return result;
   }
   const adb = (args, input, allowAbsent) => command(tools.adb, ["-s", serial, ...args], input, allowAbsent);
@@ -108,7 +111,7 @@ export async function runV12NativeRollbackBridge({ root = process.cwd(), runId, 
         if (fetched.status === 0) { resultBytes = Buffer.from(fetched.stdout); break; }
         await wait(250);
       }
-      if (resultBytes === undefined) fail("native_timeout");
+      if (resultBytes === undefined || now() >= deadline) fail("native_timeout");
       const result = JSON.parse(resultBytes);
       if (!exact(result, ["schema_version", "producer", "arm", Object.hasOwn(result, "failure") ? "failure" : "inspection"])
         || result.schema_version !== 1 || result.producer !== "v12-native-rollback-bridge/v1"
@@ -123,10 +126,14 @@ export async function runV12NativeRollbackBridge({ root = process.cwd(), runId, 
         || (phase === "restore" && !archiveBytes.equals(archive))
         || result.inspection?.canonical_post_restore_facts?.archive_sha256 !== hash(archiveBytes)) fail("archive_invalid");
       archiveInspection(result.inspection, archiveBytes, 22);
-      writeFileSync(path.join(operational, "native-result.json"), resultBytes, { flag: "wx", mode: 0o600 });
-      const archivePath = path.join(operational, "compatible-archive.gtbk");
-      writeFileSync(archivePath, archiveBytes, { flag: "wx", mode: 0o600 });
-      return { archivePath, archiveBytes, inspection: result.inspection };
+      // Reconstruct the real runtime to recheck final source/device identity, then verify the owned lease/APK again.
+      return await runtimeFactory(attestation, { root, executionTools: tools }).withLease({ lease: request.lease }, async () => {
+        if (now() >= deadline) fail("native_timeout");
+        writeFileSync(path.join(operational, "native-result.json"), resultBytes, { flag: "wx", mode: 0o600 });
+        const archivePath = path.join(operational, "compatible-archive.gtbk");
+        writeFileSync(archivePath, archiveBytes, { flag: "wx", mode: 0o600 });
+        return { archivePath, archiveBytes, inspection: result.inspection };
+      });
     });
   } catch (error) {
     const code = rollbackBridgeError(error);

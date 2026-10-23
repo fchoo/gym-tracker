@@ -51,10 +51,10 @@ export function validateRollbackArm(value: unknown, nonce: unknown, nowMs: numbe
   if (Object.keys(arm).length !== keys.length || !keys.every(key => Object.hasOwn(arm, key))
     || arm.schema_version !== 1 || arm.route_id !== "v12-rollback-bridge" || !["create", "restore"].includes(arm.phase)
     || typeof nonce !== "string" || !NONCE.test(nonce) || arm.nonce !== nonce
-    || !/^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u.test(arm.run_id)
-    || ![arm.source_tree_sha256, arm.apk_sha256, arm.device_identity_sha256, arm.lease_id_sha256, arm.archive_sha256].every(hash => HASH.test(hash))
+    || typeof arm.run_id !== "string" || !/^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u.test(arm.run_id)
+    || ![arm.source_tree_sha256, arm.apk_sha256, arm.device_identity_sha256, arm.lease_id_sha256, arm.archive_sha256].every(hash => typeof hash === "string" && HASH.test(hash))
     || arm.declared_schema_version !== 22 || !Number.isSafeInteger(nowMs) || !Number.isSafeInteger(arm.expires_at_ms)
-    || arm.expires_at_ms < nowMs || arm.expires_at_ms > nowMs + 5 * 60_000) fail("arm_invalid");
+    || arm.expires_at_ms <= nowMs || arm.expires_at_ms > nowMs + 5 * 60_000) fail("arm_invalid");
   return arm;
 }
 
@@ -217,8 +217,8 @@ export async function collectNativeRollbackBridge(identity: RollbackNativeIdenti
   if (consumed.exists || resultFile.exists) fail("arm_invalid");
   const arm = validateRollbackArm(JSON.parse(armFile.textSync()), nonce, Date.now());
   armFile.move(consumed);
-  const ports = productionRollbackPorts();
   try {
+    const ports = productionRollbackPorts();
     const archive = arm.phase === "restore" ? new File(Paths.document, `v12-rollback-${nonce}`, "incoming.gtbk").bytesSync() : undefined;
     if (archive !== undefined && await ports.digest(archive) !== arm.archive_sha256) fail("archive_invalid");
     const result = await executeRollbackBridge({ nonce, phase: arm.phase, archive }, ports);
