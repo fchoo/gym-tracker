@@ -24,7 +24,9 @@ function fixture(t) {
   }
   const wheel = path.join(path.dirname(descriptor.manifest.path), descriptor.output.filename);
   writeFileSync(path.join(target, wheel), readFileSync(path.join(root, wheel)));
-  return { projectRoot: target, targetFiles: modules, tests, testReportPath: path.join(target, GARMIN_CLI_EVIDENCE_DIRECTORY, "tests.stdout") };
+  const testReportPath = path.join(target, "current-test-results.tap");
+  writeFileSync(testReportPath, readFileSync(path.join(evidence, "tests.stdout")));
+  return { projectRoot: target, targetFiles: modules, tests, testReportPath };
 }
 
 test("sealed real CLI ranges remap only exact bound helper sources across checkout roots", t => {
@@ -36,6 +38,8 @@ test("sealed real CLI ranges remap only exact bound helper sources across checko
   assert.ok(scripts.every(script => script.functions.length > 0));
   const prior = process.env.PHASE20_GARMIN_CLI_COVERAGE_DIRECTORY;
   try {
+    delete process.env.PHASE20_GARMIN_CLI_COVERAGE_DIRECTORY;
+    assert.deepEqual(loadGarminCliCoverageEvidence(options), scripts);
     process.env.PHASE20_GARMIN_CLI_COVERAGE_DIRECTORY = path.join(options.projectRoot, GARMIN_CLI_EVIDENCE_DIRECTORY);
     assert.deepEqual(loadGarminCliCoverageEvidence({ ...options, projectRoot: root }).map(script => script.url), scripts.map(script => script.url.replace(options.projectRoot, root)));
   } finally {
@@ -54,7 +58,7 @@ test("evidence rejects missing, tampered, malformed, added and symlinked raw str
     ["receipt", directory => writeFileSync(path.join(directory, descriptor.receipt.path), "{}")],
     ["stdout", directory => writeFileSync(path.join(directory, "cli.stdout"), "{}")],
     ["stderr", directory => writeFileSync(path.join(directory, "cli.stderr"), "failure")],
-    ["tests", directory => writeFileSync(path.join(directory, "tests.stdout"), "# tests 24\n# pass 24\n# skipped 1\n")],
+    ["tests", directory => writeFileSync(path.join(directory, "tests.stdout"), `# tests ${descriptor.tests.total}\n# pass ${descriptor.tests.total}\n# skipped 1\n`)],
   ]) await t.test(name, t => {
     const options = fixture(t);
     mutate(path.join(options.projectRoot, GARMIN_CLI_EVIDENCE_DIRECTORY));
@@ -74,7 +78,8 @@ test("current full packaging test report and exact scope cannot be bypassed by r
   for (const [name, change] of [
     ["filtered scope", options => ({ ...options, tests: tests.slice(1) })],
     ["wrong target", options => ({ ...options, targetFiles: modules.slice(1) })],
-    ["skipped", options => { writeFileSync(options.testReportPath, "# tests 24\n# pass 24\n# fail 0\n# cancelled 0\n# skipped 1\n# todo 0\n"); return options; }],
+    ["skipped", options => { writeFileSync(options.testReportPath, `# tests ${descriptor.tests.total}\n# pass ${descriptor.tests.total}\n# fail 0\n# cancelled 0\n# skipped 1\n# todo 0\n`); return options; }],
+    ["stale pre-repair count", options => { writeFileSync(options.testReportPath, "# tests 24\n# pass 24\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n"); return options; }],
     ["empty", options => { writeFileSync(options.testReportPath, ""); return options; }],
     ["failed", options => { writeFileSync(options.testReportPath, readFileSync(path.join(evidence, "tests.stdout"), "utf8").replace("# fail 0", "# fail 1")); return options; }],
   ]) await t.test(name, t => {

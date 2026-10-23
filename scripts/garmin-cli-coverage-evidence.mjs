@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 
 // Real, exclusively owned public-input CLI build. Never a numeric coverage fixture.
 // Renew this seal only with a new reviewed producer stream when any bound input changes.
-export const GARMIN_CLI_EVIDENCE_SHA256 = "19d0a6ed8556994fb4c370a40d2ea7d682076d868b9740abe2a898f1964253ab";
+export const GARMIN_CLI_EVIDENCE_SHA256 = "0ec87d8658679a5669eba85973bbe0d3c5468fda3604f26ae5a325c8bdd73641";
 export const GARMIN_CLI_EVIDENCE_DIRECTORY = "artifacts/host/garmin-cli-coverage";
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 
