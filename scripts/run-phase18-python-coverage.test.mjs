@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
+import { createHash } from "node:crypto";
+import { PHASE18_LANGUAGE_COVERAGE_SPECS, validatePhase18LanguageCoverageReport } from "./phase18-language-coverage.mjs";
 
 test("Python coverage fails closed without coverage.py and writes no passed report", () => {
   const outputRoot = mkdtempSync(path.join(tmpdir(), "phase18-python-coverage-"));
@@ -81,6 +83,28 @@ test("Python coverage uses one checked-in pin across bootstrap, npm, CI, and doc
   assert.match(workflow, /npm run test:coverage:phase18:python/u);
   assert.match(documentation, /npm run bootstrap:coverage:phase18/u);
   assert.match(documentation, /npm run test:coverage:phase18:python/u);
+});
+
+test("Python collector executes complete bridge and readiness suites with source-bound function entries", () => {
+  const outputRoot = mkdtempSync(path.join(tmpdir(), "phase18-python-readiness-full-"));
+  try {
+    const output = path.join(outputRoot, "python-coverage.json");
+    const result = spawnSync(path.resolve(".venv/bin/python"), ["scripts/run-phase18-python-coverage.py", "--output", output], {
+      encoding: "utf8", timeout: 30_000,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const bridge = JSON.parse(readFileSync(output, "utf8"));
+    const readiness = JSON.parse(readFileSync(path.join(outputRoot, "python-readiness-coverage.json"), "utf8"));
+    const readBytes = (file) => readFileSync(file);
+    assert.equal(validatePhase18LanguageCoverageReport(bridge, PHASE18_LANGUAGE_COVERAGE_SPECS.python, readBytes), true);
+    assert.equal(validatePhase18LanguageCoverageReport(readiness, PHASE18_LANGUAGE_COVERAGE_SPECS.pythonReadiness, readBytes), true);
+    assert.equal(bridge.tests_run, 21);
+    assert.equal(readiness.tests_run, 10);
+    assert.deepEqual(readiness.missing_functions, []);
+    assert.equal(readiness.coverage.functions.total, 6);
+    assert.equal(readiness.sources[0].sha256, createHash("sha256").update(readBytes(PHASE18_LANGUAGE_COVERAGE_SPECS.pythonReadiness.sourcePaths[0])).digest("hex"));
+    assert.equal(existsSync(path.join(outputRoot, ".coverage")), false);
+  } finally { rmSync(outputRoot, { recursive: true, force: true }); }
 });
 
 test("PR bootstrap runs the dependency audit immediately after locked installation", () => {

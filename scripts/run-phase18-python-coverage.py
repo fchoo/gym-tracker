@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import importlib
 import importlib.util
 import json
 from pathlib import Path
 import sys
+import types
 import unittest
 
 
@@ -66,9 +68,9 @@ class _RecordingResult(unittest.TextTestResult):
         super().startTest(test)
 
 
-def _run_tests() -> _RecordingResult:
-    sys.path.insert(0, str(SOURCE_PATH.parent))
-    specification = importlib.util.spec_from_file_location(TEST_MODULE_NAME, TEST_PATH)
+def _run_tests(source_path=SOURCE_PATH, test_path=TEST_PATH, module_name=TEST_MODULE_NAME) -> _RecordingResult:
+    sys.path.insert(0, str(source_path.parent))
+    specification = importlib.util.spec_from_file_location(module_name, test_path)
     if specification is None or specification.loader is None:
         raise RuntimeError("phase18_python_coverage_test_load_failed")
     module = importlib.util.module_from_spec(specification)
@@ -125,6 +127,86 @@ def _counter(covered: int, total: int) -> dict[str, int | float]:
     }
 
 
+READINESS_CASES = (
+    "test_selected_client_and_inert_sessions_are_required",
+    "test_each_import_failure_is_fixed_and_staged",
+    "test_upstream_silent_optional_fallback_never_passes",
+    "test_factory_partial_failure_still_closes_all_sessions",
+    "test_close_failure_closes_remaining_sessions_and_never_passes",
+    "test_inert_construction_and_ca_failures_are_sanitized",
+    "test_lazy_native_curl_initialization_failure_is_not_ready",
+    "test_changed_selected_requests_binding_and_missing_session_shape_fail_closed",
+    "test_other_threads_keep_requests_api_and_sessions_untouched",
+    "test_exception_codes_are_exact_allowlist_not_names_or_messages",
+)
+
+
+def _readiness_report(coverage_lib):
+    source_path = SOURCE_PATH.with_name("garmin_transport_readiness.py")
+    test_path = TEST_PATH.with_name("test_garmin_transport_readiness.py")
+    source = source_path.read_bytes()
+    sites = {(node.name, node.lineno) for node in ast.walk(ast.parse(source))
+             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    expected = set()
+
+    def code_id(code):
+        return (code.co_qualname, code.co_firstlineno, hashlib.sha256(code.co_code).hexdigest())
+
+    def visit(code):
+        for value in code.co_consts:
+            if isinstance(value, types.CodeType):
+                if (value.co_name, value.co_firstlineno) in sites:
+                    expected.add(code_id(value))
+                visit(value)
+
+    visit(compile(source, str(source_path), "exec"))
+    if len(expected) != len(sites):
+        raise RuntimeError("phase18_python_readiness_function_binding_invalid")
+    seen = set()
+
+    def profile(frame, event, _arg):
+        if event == "call" and frame.f_code.co_filename == str(source_path):
+            seen.add(code_id(frame.f_code))
+
+    measurement = coverage_lib.Coverage(branch=True, include=[str(source_path)], data_file=None)
+    measurement.start()
+    original_profile = sys.getprofile()
+    sys.setprofile(profile)
+    try:
+        result = _run_tests(source_path, test_path, "phase18_test_garmin_transport_readiness")
+    finally:
+        sys.setprofile(original_profile)
+        measurement.stop()
+    _, statements, excluded, missing_lines, _ = measurement.analysis2(str(source_path))
+    stats = measurement.branch_stats(str(source_path))
+    total_branches = sum(total for total, _taken in stats.values())
+    covered_branches = sum(taken for _total, taken in stats.values())
+    missing_functions = sorted(expected - seen)
+    coverage = {
+        "statements": _counter(len(statements) - len(missing_lines), len(statements)),
+        "branches": _counter(covered_branches, total_branches),
+        "functions": _counter(len(expected & seen), len(expected)),
+        "lines": _counter(len(statements) - len(missing_lines), len(statements)),
+    }
+    missing_cases = sorted(set(READINESS_CASES) - set(result.executed))
+    passed = (result.wasSuccessful() and not result.skipped and not excluded
+              and not missing_cases and all(counter["missed"] == 0 for counter in coverage.values()))
+    return {
+        "schema_version": 1, "suite": "phase18-garmin-python-readiness",
+        "status": "passed" if passed else "failed",
+        "runtime": {"name": "python", "version": sys.version.split()[0]},
+        "runtime_proof": "NON_NATIVE_HOST_ONLY_SYNTHETIC_MODULES_WITH_NETWORK_DENIAL",
+        "coverage_engine": "coverage.py",
+        "sources": [{"path": source_path.relative_to(PROJECT_ROOT).as_posix(), "sha256": _sha256(source_path)}],
+        "test": {"path": test_path.relative_to(PROJECT_ROOT).as_posix(), "sha256": _sha256(test_path)},
+        "tests_run": result.testsRun, "failures": len(result.failures), "errors": len(result.errors),
+        "skipped": len(result.skipped), "required_cases": list(READINESS_CASES),
+        "executed_cases": sorted(result.executed), "missing_cases": missing_cases,
+        "coverage": coverage, "missing_lines": sorted(missing_lines),
+        "missing_functions": missing_functions,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -153,6 +235,7 @@ def main() -> int:
     missing_cases = sorted(set(REQUIRED_CASES) - set(executed_cases))
     passed = (
         result.wasSuccessful()
+        and not result.skipped
         and not missing_cases
         and not missing_lines
         and not missing_branches
@@ -190,7 +273,10 @@ def main() -> int:
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    return 0 if passed else 1
+    readiness = _readiness_report(coverage_lib)
+    readiness_output = args.output.with_name("python-readiness-coverage.json")
+    readiness_output.write_text(json.dumps(readiness, indent=2) + "\n", encoding="utf-8")
+    return 0 if passed and readiness["status"] == "passed" else 1
 
 
 if __name__ == "__main__":

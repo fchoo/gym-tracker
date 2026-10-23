@@ -25,6 +25,8 @@ function reportFor(spec) {
     suite: spec.suite,
     status: "passed",
     runtime: { name: spec.language, version: "test" },
+    ...(spec.runtimeProof === undefined ? {} : { runtime_proof: spec.runtimeProof }),
+    ...(spec.supportPaths === undefined ? {} : { support: spec.supportPaths.map((path) => ({ path, sha256: digest(path) })) }),
     sources: spec.sourcePaths.map((path) => ({ path, sha256: digest(path) })),
     tests: testPaths.map((path) => ({ path, sha256: digest(path) })),
     tests_run: spec.requiredCases.length,
@@ -40,6 +42,27 @@ function reportFor(spec) {
 
 const readBytes = (path) => Buffer.from(path);
 
+test("readiness registration adds full Python and supplemental host Kotlin scopes without replacing bridge or Gradle classes", () => {
+  const { python, kotlin, pythonReadiness, kotlinReadiness } = PHASE18_LANGUAGE_COVERAGE_SPECS;
+  assert.equal(python.sourcePaths[0].endsWith("/garmin_bridge.py"), true);
+  assert.equal(pythonReadiness.sourcePaths[0].endsWith("/garmin_transport_readiness.py"), true);
+  assert.equal(pythonReadiness.requiredCases.length, 10);
+  assert.deepEqual(pythonReadiness.metrics, ["statements", "branches", "functions", "lines"]);
+  assert.equal(kotlinReadiness.requiredCases.length, 5);
+  assert.deepEqual(kotlinReadiness.requiredClasses, [
+    "expo/modules/garminconnect/GarminConnectModule",
+    "expo/modules/garminconnect/GarminConnectModule$definition$1$3",
+    "expo/modules/garminconnect/GarminConnectPlatformBindings",
+    "expo/modules/garminconnect/GarminTransportReadinessKt",
+    "expo/modules/garminconnect/GarminTransportReadinessPlatform",
+    "expo/modules/garminconnect/GarminTransportReadinessRunner",
+  ]);
+  assert.equal(kotlin.testPaths.some((path) => path.includes("/host/")), false);
+  assert.equal(kotlinReadiness.testPaths.some((path) => path.endsWith("HostDiagnosticBoundaryTest.kt")), true);
+  assert.match(kotlinReadiness.runtimeProof, /NON_NATIVE_HOST_ONLY/u);
+  assert.match(pythonReadiness.runtimeProof, /NON_NATIVE_HOST_ONLY/u);
+});
+
 test("Kotlin coverage explicitly enumerates every security-critical Garmin source, test, class and metric", () => {
   const spec = PHASE18_LANGUAGE_COVERAGE_SPECS.kotlin;
   assert.deepEqual(spec.metrics, ["statements", "branches", "functions", "lines"]);
@@ -52,12 +75,14 @@ test("Kotlin coverage explicitly enumerates every security-critical Garmin sourc
     "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminStoredSessionEvidenceRunner.kt",
     "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminConnectPlatformBindings.kt",
     "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminConnectModule.kt",
+    "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminTransportReadiness.kt",
   ]);
   assert.deepEqual(spec.testPaths, [
     "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminTokenStoreTest.kt",
     "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminPythonContainersTest.kt",
     "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminEvidenceArmStoreTest.kt",
     "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminConnectModuleTest.kt",
+    "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminTransportReadinessTest.kt",
   ]);
   assert.deepEqual(spec.requiredClasses, [
     "expo/modules/garminconnect/GarminConnectModule",
@@ -79,6 +104,7 @@ test("Kotlin coverage explicitly enumerates every security-critical Garmin sourc
     "expo/modules/garminconnect/GarminAdversarialRotationGate",
     "expo/modules/garminconnect/GarminRuntimeInfo",
     "expo/modules/garminconnect/GarminBenchmarkRuntimeInfo",
+    "expo/modules/garminconnect/GarminTransportReadinessKt",
   ]);
   assert.deepEqual(spec.branchlessClasses, [
     "expo/modules/garminconnect/GarminPythonKind",
@@ -148,6 +174,8 @@ test("language coverage reports reject failed, stale, incomplete, or empty evide
       })),
       { ...valid, tests: valid.tests.slice(1) },
       { ...valid, tests: undefined },
+      ...(spec.runtimeProof === undefined ? [] : [{ ...valid, runtime_proof: "NATIVE_ANDROID_PASS" }]),
+      ...(spec.supportPaths === undefined ? [] : [{ ...valid, support: valid.support.slice(1) }]),
       ...(spec.requiredClasses === undefined ? [] : [{ ...valid, covered_classes: valid.covered_classes.slice(1) }]),
     ];
     for (const candidate of variants) {
@@ -181,7 +209,7 @@ test("Phase 18 loading resolves current source-bound reports from disk", () => {
   const projectRoot = mkdtempSync(path.join(tmpdir(), "phase18-language-coverage-"));
   try {
     for (const spec of Object.values(PHASE18_LANGUAGE_COVERAGE_SPECS)) {
-      for (const relativePath of [...spec.sourcePaths, ...(spec.testPaths ?? [spec.testPath])]) {
+      for (const relativePath of [...spec.sourcePaths, ...(spec.testPaths ?? [spec.testPath]), ...(spec.supportPaths ?? [])]) {
         const absolutePath = path.join(projectRoot, relativePath);
         mkdirSync(path.dirname(absolutePath), { recursive: true });
         writeFileSync(absolutePath, relativePath);
@@ -192,7 +220,7 @@ test("Phase 18 loading resolves current source-bound reports from disk", () => {
     }
     assert.deepEqual(
       Object.keys(loadPhase18LanguageCoverageReports({ projectRoot })).sort(),
-      ["kotlin", "python"],
+      ["kotlin", "kotlinReadiness", "python", "pythonReadiness"],
     );
   } finally {
     rmSync(projectRoot, { force: true, recursive: true });

@@ -3,7 +3,14 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
-const HASH = /^[a-f0-9]{64}$/u;
+const JAVA_ROOT = "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect";
+const KOTLIN_TEST_ROOT = "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect";
+const READINESS_HOST_ROOT = "modules/garmin-connect/android/src/test/host/readiness";
+const readinessCases = Object.freeze([
+  "only exact package embedded config and nonce bound URI can dispatch",
+  "embedded config parsing preserves scalar types and fails closed",
+  "Python output is reconstructed from exact fixed allowlist only",
+]);
 
 export const PHASE18_LANGUAGE_COVERAGE_SPECS = Object.freeze({
   python: Object.freeze({
@@ -47,12 +54,14 @@ export const PHASE18_LANGUAGE_COVERAGE_SPECS = Object.freeze({
       "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminStoredSessionEvidenceRunner.kt",
       "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminConnectPlatformBindings.kt",
       "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminConnectModule.kt",
+      `${JAVA_ROOT}/GarminTransportReadiness.kt`,
     ]),
     testPaths: Object.freeze([
       "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminTokenStoreTest.kt",
       "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminPythonContainersTest.kt",
       "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminEvidenceArmStoreTest.kt",
       "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminConnectModuleTest.kt",
+      `${KOTLIN_TEST_ROOT}/GarminTransportReadinessTest.kt`,
     ]),
     requiredClasses: Object.freeze([
       "expo/modules/garminconnect/GarminConnectModule",
@@ -74,6 +83,7 @@ export const PHASE18_LANGUAGE_COVERAGE_SPECS = Object.freeze({
       "expo/modules/garminconnect/GarminAdversarialRotationGate",
       "expo/modules/garminconnect/GarminRuntimeInfo",
       "expo/modules/garminconnect/GarminBenchmarkRuntimeInfo",
+      "expo/modules/garminconnect/GarminTransportReadinessKt",
     ]),
     branchlessClasses: Object.freeze([
       "expo/modules/garminconnect/GarminPythonKind",
@@ -126,6 +136,71 @@ export const PHASE18_LANGUAGE_COVERAGE_SPECS = Object.freeze({
       "Kotlin device identity equals the source-owned JavaScript canonical vectors",
       "Kotlin device identity rejects malformed facts and covers every JSON escape",
       "Garmin evidence route requires the exact devtest package scheme and host",
+      ...readinessCases,
+    ]),
+  }),
+  pythonReadiness: Object.freeze({
+    language: "python",
+    suite: "phase18-garmin-python-readiness",
+    reportPath: "coverage/phase18/python-readiness-coverage.json",
+    runtimeProof: "NON_NATIVE_HOST_ONLY_SYNTHETIC_MODULES_WITH_NETWORK_DENIAL",
+    sourcePaths: Object.freeze(["modules/garmin-connect/android/src/main/python/garmin_transport_readiness.py"]),
+    testPath: "modules/garmin-connect/android/src/test/python/test_garmin_transport_readiness.py",
+    metrics: Object.freeze(["statements", "branches", "functions", "lines"]),
+    requiredCases: Object.freeze([
+      "test_selected_client_and_inert_sessions_are_required",
+      "test_each_import_failure_is_fixed_and_staged",
+      "test_upstream_silent_optional_fallback_never_passes",
+      "test_factory_partial_failure_still_closes_all_sessions",
+      "test_close_failure_closes_remaining_sessions_and_never_passes",
+      "test_inert_construction_and_ca_failures_are_sanitized",
+      "test_lazy_native_curl_initialization_failure_is_not_ready",
+      "test_changed_selected_requests_binding_and_missing_session_shape_fail_closed",
+      "test_other_threads_keep_requests_api_and_sessions_untouched",
+      "test_exception_codes_are_exact_allowlist_not_names_or_messages",
+    ]),
+  }),
+  kotlinReadiness: Object.freeze({
+    language: "kotlin",
+    suite: "phase18-garmin-kotlin-readiness-host",
+    reportPath: "coverage/phase18/kotlin-readiness-coverage.json",
+    runtimeProof: "NON_NATIVE_HOST_ONLY; real Android/Chaquopy compile signatures; explicit fake APIs at runtime",
+    sourcePaths: Object.freeze([
+      `${JAVA_ROOT}/GarminConnectModule.kt`,
+      `${JAVA_ROOT}/GarminConnectPlatformBindings.kt`,
+      `${JAVA_ROOT}/GarminTransportReadiness.kt`,
+    ]),
+    testPaths: Object.freeze([
+      `${KOTLIN_TEST_ROOT}/GarminConnectModuleTest.kt`,
+      `${KOTLIN_TEST_ROOT}/GarminTransportReadinessTest.kt`,
+      `${READINESS_HOST_ROOT}/HostDiagnosticBoundaryTest.kt`,
+    ]),
+    supportPaths: Object.freeze([
+      `${READINESS_HOST_ROOT}/Report.java`,
+      ...["run-kotlin.py", "seal-kotlin.py", "run-python.py"].map((file) => `${READINESS_HOST_ROOT}/${file}`),
+      ...["Coroutine.kt", "Module.kt", "Records.kt"].map((file) => `${READINESS_HOST_ROOT}/stubs/${file}`),
+      ...["android/content/Intent.java", "android/content/res/AssetManager.java", "android/net/Uri.java",
+        "com/chaquo/python/PyObject.java", "com/chaquo/python/Python.java", "com/chaquo/python/android/AndroidPlatform.java"]
+        .map((file) => `${READINESS_HOST_ROOT}/fake-api/${file}`),
+    ]),
+    requiredClasses: Object.freeze([
+      "expo/modules/garminconnect/GarminConnectModule",
+      "expo/modules/garminconnect/GarminConnectModule$definition$1$3",
+      "expo/modules/garminconnect/GarminConnectPlatformBindings",
+      "expo/modules/garminconnect/GarminTransportReadinessKt",
+      "expo/modules/garminconnect/GarminTransportReadinessPlatform",
+      "expo/modules/garminconnect/GarminTransportReadinessRunner",
+    ]),
+    branchlessClasses: Object.freeze([
+      "expo/modules/garminconnect/GarminConnectModule",
+      "expo/modules/garminconnect/GarminConnectModule$definition$1$3",
+      "expo/modules/garminconnect/GarminConnectPlatformBindings",
+    ]),
+    metrics: Object.freeze(["statements", "branches", "functions", "lines"]),
+    requiredCases: Object.freeze([
+      ...readinessCases,
+      "registered typed method reaches only zero argument inert Python probe",
+      "native production guard rejects before Python and never opens a store",
     ]),
   }),
 });
@@ -162,6 +237,7 @@ export function validatePhase18LanguageCoverageReport(report, spec, readBytes = 
     || report.runtime === null
     || typeof report.runtime !== "object"
     || report.runtime.name !== spec.language
+    || (spec.runtimeProof !== undefined && report.runtime_proof !== spec.runtimeProof)
     || typeof report.runtime.version !== "string"
     || report.runtime.version.length < 1
     || report.failures !== 0
@@ -190,8 +266,13 @@ export function validatePhase18LanguageCoverageReport(report, spec, readBytes = 
     sha256: digest(readBytes(testPath)),
   }));
   const actualTests = report.tests ?? (report.test === undefined ? undefined : [report.test]);
+  const expectedSupport = spec.supportPaths?.map((supportPath) => ({
+    path: supportPath,
+    sha256: digest(readBytes(supportPath)),
+  }));
   if (!isDeepStrictEqual(report.sources, expectedSources)
-    || !isDeepStrictEqual(actualTests, expectedTests)) {
+    || !isDeepStrictEqual(actualTests, expectedTests)
+    || (expectedSupport !== undefined && !isDeepStrictEqual(report.support, expectedSupport))) {
     fail(`${spec.language}:identity`);
   }
   return true;

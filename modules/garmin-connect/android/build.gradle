@@ -53,6 +53,9 @@ tasks.register('phase18GarminKotlinCoverageReport', JacocoReport) {
   classDirectories.from(files(fileTree(layout.buildDirectory.dir('tmp/kotlin-classes/debug')) {
     include 'expo/modules/garminconnect/GarminConnectModule.class'
     include 'expo/modules/garminconnect/GarminConnectModuleKt.class'
+    // Pure JVM cases only. Platform/Runner and the typed Coroutine callback are
+    // measured separately by src/test/host/readiness, never on this runtime path.
+    include 'expo/modules/garminconnect/GarminTransportReadinessKt.class'
     include 'expo/modules/garminconnect/GarminConnectPlatformBindings.class'
     include 'expo/modules/garminconnect/GarminEvidenceAuthorizationController*.class'
     include 'expo/modules/garminconnect/GarminEvidenceExecutionIdentity.class'
