@@ -131,11 +131,20 @@ def _activity_id(arguments: Any, *, details: bool = False) -> str:
 
 def _running_discovery_item(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
+        print('GYM_TRACKER_GARMIN_DISCOVERY_SHAPE:{"item_is_dict":false}')
         raise _BridgeInputError("malformed_response")
     activity_id = value.get("activityId")
     activity_type = value.get("activityType")
     if isinstance(activity_id, int) and activity_id > 0:
         activity_id = str(activity_id)
+    # Temporary native diagnosis: fixed booleans only; never provider fields or values.
+    print("GYM_TRACKER_GARMIN_DISCOVERY_SHAPE:" + json.dumps({
+        "item_is_dict": True,
+        "identifier_valid": isinstance(activity_id, str) and _ACTIVITY_ID.fullmatch(activity_id) is not None,
+        "type_is_dict": isinstance(activity_type, dict),
+        "type_is_running": isinstance(activity_type, dict) and activity_type.get("typeKey") == "running",
+        "type_is_treadmill": isinstance(activity_type, dict) and activity_type.get("typeKey") == "treadmill_running",
+    }, separators=(",", ":")))
     if (
         not isinstance(activity_id, str)
         or _ACTIVITY_ID.fullmatch(activity_id) is None
@@ -590,6 +599,10 @@ class GarminBridge:
             raise _BridgeInputError("arguments_rejected")
         started_generation = self._generation
         items = self._require_client().get_activities(start, limit, "running")
+        print("GYM_TRACKER_GARMIN_DISCOVERY_SHAPE:" + json.dumps({
+            "page_is_list": isinstance(items, list),
+            "page_within_limit": isinstance(items, list) and len(items) <= limit,
+        }, separators=(",", ":")))
         if not isinstance(items, list) or len(items) > limit:
             raise _BridgeInputError("malformed_response")
         self._capture_tokens()
