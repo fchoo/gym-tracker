@@ -154,19 +154,23 @@ def _bounded_json(value: Any, *, depth: int = 0, budget: list[int] | None = None
         budget = [0]
     budget[0] += 1
     if depth > _MAX_JSON_DEPTH or budget[0] > _MAX_JSON_NODES:
+        print("GYM_TRACKER_GARMIN_JSON_REJECTION:structure_limit")
         raise _BridgeInputError("malformed_response")
     if value is None or isinstance(value, bool):
         return value
     if isinstance(value, int):
         if abs(value) > 9_007_199_254_740_991:
+            print("GYM_TRACKER_GARMIN_JSON_REJECTION:integer_limit")
             raise _BridgeInputError("malformed_response")
         return value
     if isinstance(value, float):
         if not math.isfinite(value) or abs(value) > 9_007_199_254_740_991:
+            print("GYM_TRACKER_GARMIN_JSON_REJECTION:float_limit")
             raise _BridgeInputError("malformed_response")
         return value
     if isinstance(value, str):
         if len(value) > _MAX_JSON_STRING_LENGTH or _URL_VALUE.match(value):
+            print("GYM_TRACKER_GARMIN_JSON_REJECTION:string_limit_or_url")
             raise _BridgeInputError("malformed_response")
         return value
     if isinstance(value, (list, tuple)):
@@ -175,9 +179,11 @@ def _bounded_json(value: Any, *, depth: int = 0, budget: list[int] | None = None
         result: dict[str, Any] = {}
         for key, child in value.items():
             if not isinstance(key, str) or not key or len(key) > 128 or _FORBIDDEN_KEY.search(key):
+                print("GYM_TRACKER_GARMIN_JSON_REJECTION:invalid_or_forbidden_key")
                 raise _BridgeInputError("malformed_response")
             result[key] = _bounded_json(child, depth=depth + 1, budget=budget)
         return result
+    print("GYM_TRACKER_GARMIN_JSON_REJECTION:unsupported_type")
     raise _BridgeInputError("malformed_response")
 
 
