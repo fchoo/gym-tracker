@@ -54,6 +54,27 @@ function exposure(input: Readonly<{
 }
 
 describe("projectProgressPeriod", () => {
+  it("projects periods and comparable candidates without Array.toSorted while preserving inputs", () => {
+    const input = {
+      period: "all_time" as const, nowLocalDate: "2026-08-24",
+      periodInputs: Object.freeze([{ localDate: "2026-08-24", completedExercises: 1, plannedExercises: 1, completedWorkingSets: 1, plannedWorkingSets: 1, comparableExposureCount: 1 }]),
+      comparableExposures: Object.freeze([exposure({ sessionId: "synthetic-session", setId: "synthetic-set", localDate: "2026-08-24", completedAtMs: 1, reps: 8 })]),
+      scheduledOpportunities: Object.freeze([]), attention: Object.freeze([]),
+    };
+    const before = JSON.stringify(input);
+    const expected = projectProgressPeriod(input);
+    const descriptor = Object.getOwnPropertyDescriptor(Array.prototype, "toSorted");
+    try {
+      Object.defineProperty(Array.prototype, "toSorted", { value: undefined, configurable: true, writable: true });
+      expect(projectProgressPeriod(input)).toEqual(expected);
+      expect(projectStrengthComparableFacts(Object.freeze([]))).toEqual([]);
+      expect(JSON.stringify(input)).toBe(before);
+    } finally {
+      if (descriptor === undefined) Reflect.deleteProperty(Array.prototype, "toSorted");
+      else Object.defineProperty(Array.prototype, "toSorted", descriptor);
+    }
+  });
+
   it("uses inclusive civil 4-week and 12-week windows ending on the supplied date", () => {
     const input = {
       nowLocalDate: "2026-08-24",

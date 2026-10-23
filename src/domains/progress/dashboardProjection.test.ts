@@ -19,6 +19,37 @@ const accepted2400 = {
 };
 
 describe("projectProgressDashboard", () => {
+  it("projects All, Strength, and Running directly without Array.toSorted and never changes frozen inputs", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(Array.prototype, "toSorted");
+    const base = {
+      exerciseId: "synthetic-strength", exerciseName: "Synthetic press", identityKey: "load_reps:1:1", comparatorKey: "identity",
+      sessionId: "synthetic-session", setId: "synthetic-set-1", localDate: "2026-08-24", sourceRevision: 1,
+      targetJson: JSON.stringify({ version: 1, profile: "load_reps", loadGrams: 40_000, minReps: 8, maxReps: 10, incrementGrams: 2_500, perSide: false }),
+      observationJson: JSON.stringify({ version: 1, profile: "load_reps", loadGrams: 42_500, reps: 8, source: "manual" }),
+    };
+    const facts = Object.freeze([Object.freeze(base), Object.freeze({ ...base, setId: "synthetic-set-2", sourceRevision: 2 })]);
+    const targets = Object.freeze([{ targetId: "synthetic-running-target", sport: "Running" as const, distanceMeters: 2400, targetDurationSeconds: 660, effectiveAtMs: 0, revision: 1, sourceOrder: 1 }]);
+    const activities = Object.freeze([Object.freeze(accepted2400)]);
+    const before = JSON.stringify({ facts, targets, activities });
+    try {
+      Object.defineProperty(Array.prototype, "toSorted", { value: undefined, configurable: true, writable: true });
+      const all = projectProgressDashboard({ sport: "All", strength: { facts: facts.slice(0, 1) }, running: { activities, targets } });
+      expect(all.sport).toBe("All");
+      if (all.sport !== "All") throw new Error("unexpected sport");
+      expect(all.activeGoals).toHaveLength(2);
+      expect(Object.isFrozen(all.activeGoals)).toBe(true);
+      const strength = projectProgressDashboard({ sport: "Strength", strength: { facts } });
+      if (strength.sport !== "Strength") throw new Error("unexpected sport");
+      expect(strength.goals[0]?.evidenceCount).toBe(2);
+      expect(Object.isFrozen(strength.goals)).toBe(true);
+      expect(projectProgressDashboard({ sport: "Running", running: { activities, targets } })).toMatchObject({ goals: [{ evidenceCount: 1, target: { durationSeconds: 660 } }] });
+      expect(JSON.stringify({ facts, targets, activities })).toBe(before);
+    } finally {
+      if (descriptor === undefined) Reflect.deleteProperty(Array.prototype, "toSorted");
+      else Object.defineProperty(Array.prototype, "toSorted", descriptor);
+    }
+  });
+
   it("projects one accepted source-summary 2.4 km effort with its effective target and source evidence", () => {
     const projection = projectProgressDashboard({
       sport: "Running",

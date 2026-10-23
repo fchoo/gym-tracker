@@ -142,7 +142,7 @@ function targetAt(
       && target.targetDurationSeconds !== null
       && target.effectiveAtMs <= atMs
       && validPositiveInteger(target.targetDurationSeconds))
-    .toSorted((left, right) => left.effectiveAtMs - right.effectiveAtMs
+    .slice().sort((left, right) => left.effectiveAtMs - right.effectiveAtMs
       || left.revision - right.revision || left.targetId.localeCompare(right.targetId))
     .at(-1);
   return candidate === undefined
@@ -161,7 +161,7 @@ function currentTarget(
       && target.distanceMeters === distanceMeters
       && target.targetDurationSeconds !== null
       && validPositiveInteger(target.targetDurationSeconds))
-    .toSorted(compareGoals)
+    .slice().sort(compareGoals)
     .at(-1);
   return candidate === undefined
     ? null
@@ -193,7 +193,7 @@ function plannedNextFor(
     && validIdentifier(candidate.planName)
     && validIdentifier(candidate.activityId)
     && validIdentifier(candidate.activityName)
-  ).toSorted((left, right) =>
+  ).slice().sort((left, right) =>
     left.localDate.localeCompare(right.localDate)
     || left.sport.localeCompare(right.sport)
     || left.sourceOpportunityId.localeCompare(right.sourceOpportunityId)
@@ -204,7 +204,7 @@ function runningProjection(
   input: NonNullable<ProgressDashboardInput["running"]>,
   plannedNext: ProgressPlannedNext | null,
 ): Extract<ProgressDashboardProjection, { sport: "Running" }> {
-  const eligible = input.activities.filter(isEligibleRunningFact).toSorted(compareEffort);
+  const eligible = input.activities.filter(isEligibleRunningFact).slice().sort(compareEffort);
   const authoritativeTargets = input.targets.filter(isAuthoritativeGoal);
   const grouped = new Map<string, ProgressRunningActivityFact[]>();
   for (const fact of eligible) {
@@ -223,7 +223,7 @@ function runningProjection(
     const [distanceText, timeBasisText] = key.split("\u0000");
     const distanceMeters = Number(distanceText);
     const timeBasis = timeBasisText as ProgressRunningActivityFact["timeBasis"];
-    const ordered = values.toSorted(compareEffort);
+    const ordered = values.slice().sort(compareEffort);
     const latestFact = ordered.at(-1) ?? null;
     const bestFact = ordered.length === 0 ? null : ordered.reduce((current, candidate) =>
       candidate.durationSeconds < current.durationSeconds
@@ -267,7 +267,7 @@ function runningProjection(
   return Object.freeze({
     sport: "Running" as const,
     state,
-    goals: Object.freeze(goals.toSorted((left, right) => left.distanceMeters - right.distanceMeters
+    goals: Object.freeze(goals.slice().sort((left, right) => left.distanceMeters - right.distanceMeters
       || left.timeBasis.localeCompare(right.timeBasis))),
     plannedNext,
     ...(goals.length > 0 ? {} : {
@@ -417,7 +417,7 @@ function strengthGoals(facts: readonly ProgressRecord[]): readonly ProgressStren
     groups.set(key, values);
   }
   return Object.freeze([...groups.entries()].flatMap(([goalId, values]) => {
-    const ordered = values.toSorted(compareStrengthFact);
+    const ordered = values.slice().sort(compareStrengthFact);
     const latest = ordered.at(-1)!;
     const latestScalar = scalarMetric(latest.target, latest.observation)!;
     const best = ordered.reduce((selected, candidate) => {
@@ -469,7 +469,7 @@ function strengthGoals(facts: readonly ProgressRecord[]): readonly ProgressStren
         return Object.freeze({ ...value, targetAtDate: target });
       })),
     })];
-  }).toSorted((left, right) => left.exerciseName.localeCompare(right.exerciseName)
+  }).slice().sort((left, right) => left.exerciseName.localeCompare(right.exerciseName)
     || left.goalId.localeCompare(right.goalId)));
 }
 
@@ -501,7 +501,7 @@ export function projectProgressDashboard(input: ProgressDashboardInput): Progres
     ...strength.filter(({ target }) => target !== null).map((goal) => Object.freeze({ sport: "Strength" as const, goal })),
     ...running.goals.filter(({ target }) => target !== null).map((goal) => Object.freeze({ sport: "Running" as const, goal })),
   ].map((goal) => allGoalCandidate(goal, declaredGoals))
-    .toSorted((left, right) => compareGoals(left.order, right.order))
+    .slice().sort((left, right) => compareGoals(left.order, right.order))
     .map(({ value }) => value);
   return Object.freeze({
     sport: "All" as const,
