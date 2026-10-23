@@ -98,7 +98,7 @@ test("Python collector executes complete bridge and readiness suites with source
     const readBytes = (file) => readFileSync(file);
     assert.equal(validatePhase18LanguageCoverageReport(bridge, PHASE18_LANGUAGE_COVERAGE_SPECS.python, readBytes), true);
     assert.equal(validatePhase18LanguageCoverageReport(readiness, PHASE18_LANGUAGE_COVERAGE_SPECS.pythonReadiness, readBytes), true);
-    assert.equal(bridge.tests_run, 22);
+    assert.equal(bridge.tests_run, 23);
     assert.equal(readiness.tests_run, 10);
     assert.deepEqual(readiness.missing_functions, []);
     assert.equal(readiness.coverage.functions.total, 6);

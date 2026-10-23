@@ -77,6 +77,28 @@ def provider_error(name, *, status=None, retry_after=None):
 
 
 class GarminBridgeTests(unittest.TestCase):
+    def test_activity_read_projects_reviewed_dtos_before_rejecting_provider_metadata(self):
+        fake = FakeClient()
+        bridge = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: fake)
+        bridge.dispatch("login", {"email": "owner", "password": "synthetic-secret"})
+        component = {"activityId": 42, "activityTypeDTO": {"typeKey": "treadmill_running"},
+                     "summaryDTO": {"distance": 5000, "duration": 1500, "movingDuration": 0,
+                                    "startTimeGMT": "2026-10-05T23:30:00.000Z"}}
+        fake.get_activity = lambda _id: {**component, "providerAddedUrl": "https://provider.invalid/synthetic",
+                                         "metadataDTO": {"token": "synthetic-secret", "unreviewed": object()}}
+        result = bridge.dispatch("getActivity", {"externalActivityId": "42"})
+        self.assertEqual(result, {"status": "ok", "generation": 1, "data": component})
+        self.assertNotRegex(json.dumps(result), r"synthetic-secret|providerAddedUrl|metadataDTO|provider.invalid")
+        for changed in ({**component, "summaryDTO": {"url": "https://provider.invalid/synthetic"}},
+                        {**component, "summaryDTO": {"startTimeGMT": "https://provider.invalid/synthetic"}},
+                        {**component, "activityTypeDTO": {"typeKey": "x" * 16385}},
+                        {**component, "summaryDTO": {"distance": float("nan")}},
+                        {**component, "activityTypeDTO": {"token": "synthetic-secret"}},
+                        {"summaryDTO": component["summaryDTO"]}, None):
+            fake.get_activity = lambda _id: changed
+            self.assertEqual(bridge.dispatch("getActivity", {"externalActivityId": "42"}),
+                             {"status": "error", "error": {"code": "malformed_response"}})
+
     def test_treadmill_discovery_preserves_supported_subtype_and_only_bounded_identity(self):
         fake = FakeClient()
         bridge = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: fake)

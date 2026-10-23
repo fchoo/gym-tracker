@@ -608,6 +608,11 @@ class GarminBridge:
         identifier = _activity_id(arguments)
         started_generation = self._generation
         value = self._require_client().get_activity(identifier)
+        if not isinstance(value, dict) or "activityId" not in value:
+            raise _BridgeInputError("malformed_response")
+        # The port carries the reviewed activity component, not account metadata.
+        # Validate every selected DTO unchanged through the strict JSON boundary.
+        value = {key: value[key] for key in ("activityId", "activityTypeDTO", "summaryDTO") if key in value}
         self._capture_tokens()
         return self._success(value, generation=started_generation)
 
