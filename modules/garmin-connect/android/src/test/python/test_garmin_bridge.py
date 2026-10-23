@@ -77,6 +77,24 @@ def provider_error(name, *, status=None, retry_after=None):
 
 
 class GarminBridgeTests(unittest.TestCase):
+    def test_treadmill_discovery_preserves_supported_subtype_and_only_bounded_identity(self):
+        fake = FakeClient()
+        bridge = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: fake)
+        bridge.dispatch("login", {"email": "owner", "password": "synthetic-secret"})
+        for subtype in ("running", "treadmill_running"):
+            fake.get_activities = lambda *_args: [{
+                "activityId": "42", "activityType": {"typeKey": subtype, "private": "discarded"},
+                "activityName": "private activity name", "url": "https://private.invalid",
+            }]
+            result = bridge.dispatch("getActivities", {"start": 0, "limit": 1, "activityType": "running"})
+            self.assertEqual(result, {"status": "ok", "generation": 1, "data": {
+                "items": [{"activityId": 42, "activityType": {"typeKey": subtype}}], "nextStart": 1,
+            }})
+        for subtype in ("cycling", "walking", "trail_running", None, 1, [], {}):
+            fake.get_activities = lambda *_args: [{"activityId": 42, "activityType": {"typeKey": subtype}}]
+            self.assertEqual(bridge.dispatch("getActivities", {"start": 0, "limit": 1, "activityType": "running"}),
+                             {"status": "error", "error": {"code": "malformed_response"}})
+
     def test_proxy_mapping_is_rejected_before_client_creation_but_typed_dict_reaches_factory(self):
         # Host-only proxy reproduction, not an installed Chaquopy runtime claim.
         calls = []

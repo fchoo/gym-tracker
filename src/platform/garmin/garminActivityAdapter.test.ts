@@ -134,6 +134,23 @@ const errorCases: Array<[GarminNativeErrorCode, boolean]> = [
 ];
 
 describe("Garmin activity adapter", () => {
+  it.each(["running", "treadmill_running"])("discovers supported %s summaries without changing provider identity or requesting components", async typeKey => {
+    const { driver, mapper } = fixtures();
+    jest.mocked(driver.getActivities).mockResolvedValue({
+      status: "ok", generation: 1,
+      data: { items: [{ activityId: "42", activityType: { typeKey } }], nextStart: 1 },
+    });
+    const adapter = createGarminActivityAdapter({ driver, mapper });
+    await adapter.restoreSession();
+    await expect(adapter.listRunningSummaries({ limit: 1 })).resolves.toEqual({
+      items: [{ account_namespace: accountNamespace, external_activity_id: "42" }], next_cursor: "1",
+    });
+    expect(driver.getActivity).not.toHaveBeenCalled();
+    expect(driver.getActivitySplits).not.toHaveBeenCalled();
+    expect(driver.getActivityDetails).not.toHaveBeenCalled();
+    expect(mapper.fromActivity).not.toHaveBeenCalled();
+  });
+
   it("restores an encrypted session through the typed native driver", async () => {
     const { driver, mapper } = fixtures();
     const adapter = createGarminActivityAdapter({ driver, mapper });

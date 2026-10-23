@@ -207,7 +207,7 @@ function parseDiscovery(
   if (typeof externalActivityId !== "string"
     || !EXTERNAL_ACTIVITY_ID.test(externalActivityId)
     || typeof typeKey !== "string"
-    || typeKey !== "running") {
+    || (typeKey !== "running" && typeKey !== "treadmill_running")) {
     throw new GarminActivityAdapterError("malformed_response");
   }
   return Object.freeze({
