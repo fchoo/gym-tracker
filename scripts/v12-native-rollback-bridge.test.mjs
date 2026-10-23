@@ -48,7 +48,7 @@ function fixture(t) {
       const text = args.join(" "); let stdout = Buffer.alloc(0); let status = 0;
       if (exe === "host-unit-unzip") stdout = Buffer.from(JSON.stringify(config));
       else if (text.includes("arm.json") && opts.input !== undefined) controls.arm = JSON.parse(opts.input);
-      else if (text.includes("airplane-mode")) stdout = Buffer.from(controls.offline ? "Airplane mode is enabled" : "Airplane mode is disabled");
+      else if (text.includes("airplane-mode")) stdout = Buffer.from(controls.airplaneOutput ?? (controls.offline ? "Airplane mode is enabled" : "Airplane mode is disabled"));
       else if (text.includes("wifi_on")) stdout = Buffer.from(controls.wifi);
       else if (text.includes("mobile_data")) stdout = Buffer.from(controls.mobile);
       else if (text.includes("date")) stdout = Buffer.from(controls.date);
@@ -75,6 +75,20 @@ test("source-owned transport binds private arm and exact bytes outside immutable
   for (const call of f.calls.filter(call => call.exe === "host-unit-adb")) assert.deepEqual(call.args.slice(0, 2), ["-s", "host-unit-device"]);
   assert.ok(!f.calls.some(call => /kill-server|start-server|logcat|force-stop|clear/u.test(call.args.join(" "))));
 });
+
+test("actual Android bare enabled status permits the offline rollback operation (HOST UNIT ONLY)", async t => {
+  const f = fixture(t); f.controls.airplaneOutput = "enabled";
+  const result = await runV12NativeRollbackBridge(f.options, f.dependencies);
+  assert.equal(result.inspection.clean_restore_receipt.outcome, "restored");
+});
+
+for (const output of ["disabled", "unknown", "enabled\ndisabled"]) {
+  test(`rollback rejects non-offline or ambiguous airplane status: ${JSON.stringify(output)} (HOST UNIT ONLY)`, async t => {
+    const f = fixture(t); f.controls.airplaneOutput = output;
+    await assert.rejects(runV12NativeRollbackBridge(f.options, f.dependencies), /offline_required/u);
+    assert.equal(f.controls.arm, undefined);
+  });
+}
 
 test("host never reads a partially copied result before the private readiness barrier (HOST UNIT ONLY)", async t => {
   const f = fixture(t);

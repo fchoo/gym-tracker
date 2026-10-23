@@ -80,7 +80,8 @@ if (shell[0] === 'cmd' && shell[1] === 'connectivity') {
     if (state.failAirplaneRestore && shell[3] === 'disable' && state.domainCalls.length > 0) return 1;
     state.airplane = shell[3] === 'enable'; state.settings.airplane_mode_on = state.airplane ? '1' : '0'; save();
   }
-  out(`Airplane mode is ${state.airplane ? 'enabled' : 'disabled'}`); return 0;
+  const airplane = state.airplane ? 'enabled' : 'disabled';
+  out(state.airplaneOutput ?? (state.bareAirplaneStatus ? airplane : `Airplane mode is ${airplane}`)); return 0;
 }
 if (shell[0] === 'date' && shell[1] === '+%s') { out('2000000'); return 0; }
 if (shell[0] === 'run-as') {

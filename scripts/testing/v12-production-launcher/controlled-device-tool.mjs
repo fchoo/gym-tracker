@@ -73,7 +73,7 @@ if (args[0] === "shell") {
     return 0;
   }
   if (command === "cmd" && rest[0] === "connectivity" && rest[1] === "airplane-mode") {
-    if (rest[2] === undefined) output(`Airplane mode is ${state.display.airplane}`);
+    if (rest[2] === undefined) output(state.airplaneOutput ?? (state.bareAirplaneStatus ? state.display.airplane : `Airplane mode is ${state.display.airplane}`));
     else { state.display.airplane = rest[2] === "enable" ? "enabled" : "disabled"; state.settings.airplane_mode_on = rest[2] === "enable" ? "1" : "0"; save(); }
     return 0;
   }

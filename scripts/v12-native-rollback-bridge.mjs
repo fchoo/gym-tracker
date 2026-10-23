@@ -8,6 +8,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { createProductionNativeRuntime } from "./v12-production-native-runtime.mjs";
 import { archiveInspection } from "./v12-rollback-archive-inspection.mjs";
+import { normalizeV12AirplaneModeStatus } from "./v12-airplane-mode-status.mjs";
 import { resolveV12NativeExecutionTools, V12_PRODUCTION_EXECUTION_ORIGIN } from "./v12-native-execution-origin.mjs";
 
 const PACKAGE = "com.fchoo.gymtracker.devtest";
@@ -86,7 +87,7 @@ export async function runV12NativeRollbackBridge({ root = process.cwd(), runId, 
   const shell = (...args) => adb(["shell", args.map(quote).join(" ")]).stdout.toString().trim();
   try {
     return await runtime.withLease({ lease: request.lease }, async () => {
-      if (shell("cmd", "connectivity", "airplane-mode") !== "Airplane mode is enabled"
+      if (normalizeV12AirplaneModeStatus(shell("cmd", "connectivity", "airplane-mode")) !== "Airplane mode is enabled"
         || shell("settings", "get", "global", "wifi_on") !== "0"
         || shell("settings", "get", "global", "mobile_data") !== "0") fail("offline_required");
       const apk = safeFile(path.join(root, manifest.build.apk.path));

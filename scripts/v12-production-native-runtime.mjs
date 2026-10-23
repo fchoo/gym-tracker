@@ -9,6 +9,7 @@ import { parseNativeContractLogOutput, parseNativeContractLogFailure, parseNativ
 import { assertV12AcceptanceNativeContractResult } from "./v12-sqlite-producer-contract.mjs";
 import { V12_NATIVE_LEASE_PATH, V12_NATIVE_RUNTIME_SETTINGS } from "./v12-device-settings-contract.mjs";
 import { V12_NATIVE_ADB_CALL_TIMEOUT_MS } from "./v12-native-time-budgets.mjs";
+import { normalizeV12AirplaneModeStatus } from "./v12-airplane-mode-status.mjs";
 import { resolveV12NativeExecutionTools } from "./v12-native-execution-origin.mjs";
 
 const HASH = /^[a-f0-9]{64}$/u;
@@ -123,7 +124,7 @@ export function createProductionNativeRuntime(attestation, {
     return Object.freeze({ physical: match[1], override: match[2] ?? null });
   }
   function readCalendarSettings() {
-    const airplane = shell("cmd", "connectivity", "airplane-mode");
+    const airplane = normalizeV12AirplaneModeStatus(shell("cmd", "connectivity", "airplane-mode"));
     const night = /^Night mode: (auto|yes|no|custom)$/u.exec(shell("cmd", "uimode", "night"))?.[1];
     if (!/^Airplane mode is (?:enabled|disabled)$/u.test(airplane) || night === undefined) nativeFailure("settings_invalid");
     return Object.freeze({ values: readSettings(), airplane, size: readWindowSetting("size"), density: readWindowSetting("density"), night });

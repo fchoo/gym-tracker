@@ -168,6 +168,7 @@ const phase20EvidenceTests = Object.freeze([
   "scripts/run-v12-maestro.test.mjs",
   "scripts/source-tree-digest.test.mjs",
   "scripts/v12-accessibility-shard.test.mjs",
+  "scripts/v12-airplane-mode-status.test.mjs",
   "scripts/v12-artifact-privacy.test.mjs",
   "scripts/v12-atomic-publication.integration.test.mjs",
   "scripts/v12-atomic-shard-publication.test.mjs",
@@ -279,6 +280,7 @@ const phase20EvidenceProjects = Object.freeze([
       "scripts/validate-development-test-native-access.mjs",
       "scripts/v12-native-rollback-bridge.mjs",
       "scripts/v12-rollback-archive-inspection.mjs",
+      "scripts/v12-airplane-mode-status.mjs",
       "scripts/v12-artifact-privacy.mjs",
       "scripts/v12-atomic-shard-publication.mjs",
       "scripts/v12-calendar-artifact-transport.mjs",
@@ -833,7 +835,7 @@ const registeredPhase20EvidenceTests = validateEvidenceTestManifest({
   tests: phase20EvidenceTests,
   isEvidenceTest: isPhase20EvidenceTest,
   error: "phase20_evidence_test_manifest_drift",
-  expectedCount: 56,
+  expectedCount: 57,
 });
 const expectedPhase20ProjectNames = [
   "contracts",
@@ -847,10 +849,10 @@ const expectedPhase20ProjectNames = [
 const assignedPhase20Tests = phase20EvidenceProjects.flatMap(({ tests }) => tests);
 const assignedPhase20Modules = new Set(phase20EvidenceProjects.flatMap(({ modules = [] }) => modules));
 if (JSON.stringify(phase20EvidenceProjects.map(({ name }) => name)) !== JSON.stringify(expectedPhase20ProjectNames)
-  || assignedPhase20Tests.length !== 56
-  || new Set(assignedPhase20Tests).size !== 56
+  || assignedPhase20Tests.length !== 57
+  || new Set(assignedPhase20Tests).size !== 57
   || JSON.stringify([...assignedPhase20Tests].sort()) !== JSON.stringify(registeredPhase20EvidenceTests)
-  || assignedPhase20Modules.size !== 21
+  || assignedPhase20Modules.size !== 22
   || phase20EvidenceProjects.find(({ name }) => name === "cli-blackbox")?.coverage !== false) {
   throw new Error(JSON.stringify({
     error: "phase20_coverage_project_manifest_invalid",

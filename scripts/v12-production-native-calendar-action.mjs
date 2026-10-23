@@ -25,6 +25,7 @@ import {
 } from "./v12-calendar-observation-contract.mjs";
 import { junitOutcome, worse } from "./v12-production-domain-receipts.mjs";
 import { createProductionNativeRuntime } from "./v12-production-native-runtime.mjs";
+import { normalizeV12AirplaneModeStatus } from "./v12-airplane-mode-status.mjs";
 import { resolveV12NativeExecutionTools } from "./v12-native-execution-origin.mjs";
 import {
   canonicalV12CalendarArtifactDescriptor,
@@ -259,7 +260,7 @@ export function createV12CalendarDeviceSession(root, runId, executionTools, {
     if (!/^(?:null|\d+(?:\.\d+)?)$/u.test(value)) fail("settings_invalid");
     return [key, value];
     }));
-    const airplane = shell("cmd", "connectivity", "airplane-mode");
+    const airplane = normalizeV12AirplaneModeStatus(shell("cmd", "connectivity", "airplane-mode"));
     const night = /^Night mode: (auto|yes|no|custom)$/u.exec(shell("cmd", "uimode", "night"))?.[1];
     if (!/^Airplane mode is (?:enabled|disabled)$/u.test(airplane) || night === undefined) fail("settings_invalid");
     return Object.freeze({ values, airplane, size: wm("size"), density: wm("density"), night });

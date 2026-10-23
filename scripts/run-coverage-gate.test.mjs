@@ -97,7 +97,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   ));
   assert.deepEqual(manifest.phase20, discoveredPhase20);
   assert.deepEqual(manifest.phase18, discoveredPhase18);
-  assert.equal(manifest.phase20.length, 56);
+  assert.equal(manifest.phase20.length, 57);
   assert.equal(manifest.phase18.length, 18);
   assert.ok(manifest.phase18.includes("scripts/phase18-garmin-proof.test.mjs"));
   assert.deepEqual(Object.keys(manifest.phase20_coverage).sort(), [
@@ -132,12 +132,13 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
     { name: "cli-blackbox", timeoutMs: 50 * 60_000 },
   ]);
   const registeredProjectTests = coverageProjects.flatMap(({ tests }) => tests);
-  assert.equal(registeredProjectTests.length, 56);
-  assert.equal(new Set(registeredProjectTests).size, 56);
+  assert.equal(registeredProjectTests.length, 57);
+  assert.equal(new Set(registeredProjectTests).size, 57);
   assert.deepEqual([...registeredProjectTests].sort(), manifest.phase20);
   const coveredModules = new Set(coverageProjects.flatMap(({ modules }) => modules));
-  assert.equal(coveredModules.size, 21);
+  assert.equal(coveredModules.size, 22);
   for (const required of [
+    "scripts/v12-airplane-mode-status.mjs",
     "scripts/native-contract-log-transport.mjs",
     "scripts/validate-development-test-native-access.mjs",
     "scripts/v12-native-rollback-bridge.mjs",

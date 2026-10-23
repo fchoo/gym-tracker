@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createProductionNativeRuntime } from './v12-production-native-runtime.mjs';
+import { normalizeV12AirplaneModeStatus } from './v12-airplane-mode-status.mjs';
 import { V12_RECOVERY_CASE_IDS, V12_RECOVERY_CUT_DEFINITIONS, V12_RECOVERY_CUT_IDS, V12_RECOVERY_SCENARIOS as RECOVERY_SCENARIO_DEFINITIONS, V12_RECOVERY_UNCOMMITTED_CUT_IDS } from './v12-recovery-shard.mjs';
 import { exact, fail, garminCases, hash, HASH, junitOutcome, worse } from './v12-production-domain-receipts.mjs';
 import { executeProductionCalendarAction } from './v12-production-native-calendar-action.mjs';
@@ -213,7 +214,7 @@ function session(root, a, action, executionTools) {
   }
   async function restoreAround(operation) {
     const prior = settings();
-    const airplane = shell('cmd', 'connectivity', 'airplane-mode');
+    const airplane = normalizeV12AirplaneModeStatus(shell('cmd', 'connectivity', 'airplane-mode'));
     if (!/^Airplane mode is (?:enabled|disabled)$/u.test(airplane)) fail('settings_invalid');
     try { return await operation(); }
     finally {
@@ -226,7 +227,7 @@ function session(root, a, action, executionTools) {
       for (const [key, ns] of Object.entries(SETTINGS)) {
         try { if (cleanupShell('settings', 'get', ns, key) !== prior[key]) failed = true; } catch { failed = true; }
       }
-      try { if (cleanupShell('cmd', 'connectivity', 'airplane-mode') !== airplane) failed = true; } catch { failed = true; }
+      try { if (normalizeV12AirplaneModeStatus(cleanupShell('cmd', 'connectivity', 'airplane-mode')) !== airplane) failed = true; } catch { failed = true; }
       if (failed) fail('settings_restore_failed');
     }
   }
