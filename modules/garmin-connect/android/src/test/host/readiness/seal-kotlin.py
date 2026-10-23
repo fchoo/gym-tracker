@@ -6,16 +6,17 @@ import os
 import re
 import subprocess
 import xml.etree.ElementTree as ET
+from host_tool_bindings import resolve_tool_bindings
 HOST = Path(__file__).resolve().parent
 ROOT = next(parent for parent in HOST.parents if (parent / 'modules/garmin-connect/src/index.ts').is_file())
-OUT = Path(os.environ.get('GARMIN_READINESS_OUTPUT', ROOT / 'artifacts/garmin-readiness-host/final'))
-CACHE = Path.home()/'.gradle/caches/modules-2/files-2.1'
-JAVA = Path.home()/'Library/Java/JavaVirtualMachines/temurin-17.0.20+8.jdk/Contents/Home/bin/java'
-def jar(group, name, version):
-    return next((CACHE/group/name/version).glob('*/*.jar'))
-jars = [jar('org.jacoco', name, '0.8.13') for name in ('org.jacoco.core', 'org.jacoco.report')] + list((CACHE/'org.ow2.asm').glob('*/9.8/*/*.jar'))
+OUT = Path(os.environ.get('GARMIN_READINESS_OUTPUT', ROOT / 'artifacts/garmin-readiness-host/final')).expanduser().resolve()
+tools = resolve_tool_bindings()
+JAVA = tools.java
+jar = tools.jar
+jars = [jar('org.jacoco', name, '0.8.13') for name in ('org.jacoco.core', 'org.jacoco.report')]
+jars += [jar('org.ow2.asm', name, '9.8') for name in ('asm', 'asm-commons', 'asm-tree')]
 cp = os.pathsep.join(map(str, [OUT, *jars]))
-subprocess.run([str(JAVA.with_name('javac')), '-cp', cp, '-d', str(OUT), str(HOST/'Report.java')], check=True)
+subprocess.run([str(tools.javac), '-cp', cp, '-d', str(OUT), str(HOST/'Report.java')], check=True)
 subprocess.run([str(JAVA), '-cp', cp, 'Report', str(OUT/'host.exec'), str(OUT/'classes-final'), str(ROOT/'modules/garmin-connect/android/src/main/java'), str(OUT/'kotlin-all.xml')], check=True)
 classes = {x.attrib['name']: x for x in ET.parse(OUT/'kotlin-all.xml').getroot().iter('class')}
 # Every production class in the new source file, plus affected registered
