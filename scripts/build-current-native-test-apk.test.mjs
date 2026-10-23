@@ -31,6 +31,9 @@ case "$1 $2" in
   "scripts/validate-v12-prebuild-predecessors.mjs ") exit 0 ;;
   "scripts/source-tree-digest.mjs --head") printf '%s\\n' '${"a".repeat(64)}' ;;
   "scripts/assert-generated-android.mjs "*) exit 0 ;;
+  "scripts/verify-garmin-python-lock.mjs --materialize") [ "$V12_GARMIN_BINARY_GUARD_FAILURE" != inputs ] || exit 3; exit 0 ;;
+  "scripts/verify-garmin-android-binaries.mjs --artifacts-dir") [ "$V12_GARMIN_BINARY_GUARD_FAILURE" != artifacts ] || exit 4; exit 0 ;;
+  "scripts/verify-garmin-android-binaries.mjs --apk") exit 5 ;;
   "scripts/validate-development-test-native-access.mjs "*) exec "$REAL_NODE" "$@" ;;
   *) printf 'unexpected fake node command: %s\\n' "$*" >&2; exit 97 ;;
 esac
@@ -68,6 +71,51 @@ function waitForActiveClaim(claimsRoot, timeoutMs = 5_000) {
   }
   assert.fail(`timed out waiting for an active claim under ${claimsRoot}`);
 }
+
+test("v1.2 verifies locked Android inputs before freeze and compiled Python binaries before retain/install/publish", () => {
+  const source = readFileSync(new URL("./build-current-native-test-apk.sh", import.meta.url), "utf8");
+  const inputs = source.indexOf('scripts/verify-garmin-python-lock.mjs --materialize');
+  const artifacts = source.indexOf('scripts/verify-garmin-android-binaries.mjs --artifacts-dir');
+  const freeze = source.indexOf('base_head=$("$git_executable" rev-parse HEAD)');
+  const apk = source.indexOf('scripts/verify-garmin-android-binaries.mjs --apk');
+  const assemble = source.indexOf(':app:assembleRelease');
+  const retain = source.indexOf('cp "$generated_apk" "$staged_apk_path.tmp"');
+  const install = source.indexOf('adb -s "$device_serial" install -r');
+  const publish = source.indexOf('ln "$staged_apk_path" "$apk_path"');
+  assert.ok(inputs > source.indexOf('sh scripts/doctor-android.sh --phase20'));
+  assert.ok(artifacts > inputs && freeze > artifacts);
+  assert.ok(apk > assemble && apk < retain && retain < install && install < publish);
+  assert.match(source, /scripts\/verify-garmin-android-binaries\.mjs --apk "\$generated_apk" "\$ANDROID_HOME\/ndk\/27\.1\.12297006"/u);
+});
+
+for (const failure of ['inputs', 'artifacts', 'apk']) test(`v1.2 ${failure} binary guard stops before device mutation and publication (HOST ONLY)`, (t) => {
+  const f = claimFixture(t);
+  cpSync(new URL('./hash-apk.sh', import.meta.url), path.join(f.root, 'scripts/hash-apk.sh'));
+  const npx = path.join(f.env.ANDROID_HOME, 'npx');
+  writeFileSync(npx, `#!/bin/sh
+mkdir -p android/app/build/outputs/apk/release
+printf 'fixture APK' > android/app/build/outputs/apk/release/app-release.apk
+printf '#!/bin/sh\\nexit 0\\n' > android/gradlew
+chmod +x android/gradlew
+`);
+  chmodSync(npx, 0o755);
+  const validator = path.join(f.root, 'scripts/validate-development-test-app-config.mjs');
+  writeFileSync(validator, '#!/bin/sh\nexit 0\n'); chmodSync(validator, 0o755);
+  const adb = path.join(f.env.ANDROID_HOME, 'platform-tools/adb');
+  writeFileSync(adb, `#!/bin/sh
+if [ "$1" = -s ] && [ "$3 $4 $5" = 'shell getprop sys.boot_completed' ]; then printf '1\\n'; exit 0; fi
+printf 'unexpected device mutation\\n' > ${JSON.stringify(path.join(f.root, 'device-mutation.txt'))}
+exit 96
+`);
+  chmodSync(adb, 0o755);
+  const result = spawnSync('sh', [f.script, '--suite', 'v1.2-acceptance'], {
+    cwd: f.root, encoding: 'utf8', env: { ...f.env, V12_GARMIN_BINARY_GUARD_FAILURE: failure },
+  });
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /(?:locked Garmin Python artifacts|Android Python input binaries|compiled Android Python binaries) are invalid/u);
+  assert.equal(existsSync(path.join(f.root, 'device-mutation.txt')), false);
+  assert.equal(existsSync(path.join(f.root, 'artifacts/native/v1.2-acceptance')), false);
+});
 
 test("the native test APK build gates compiled debug capability before retaining, installing, or publishing", () => {
   const source = readFileSync(new URL("./build-current-native-test-apk.sh", import.meta.url), "utf8");

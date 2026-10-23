@@ -314,6 +314,17 @@ else
   sh scripts/doctor-android.sh
 fi
 
+if [ "$suite" = 'v1.2-acceptance' ]; then
+  if ! "$node_executable" scripts/verify-garmin-python-lock.mjs --materialize \
+    --artifacts-dir modules/garmin-connect/python/garmin-python-artifacts; then
+    fail 'locked Garmin Python artifacts are invalid.'
+  fi
+  if ! "$node_executable" scripts/verify-garmin-android-binaries.mjs --artifacts-dir \
+    modules/garmin-connect/python/garmin-python-artifacts "$ANDROID_HOME/ndk/27.1.12297006"; then
+    fail 'Android Python input binaries are invalid.'
+  fi
+fi
+
 base_head=$("$git_executable" rev-parse HEAD)
 source_tree_sha256=$("$node_executable" scripts/source-tree-digest.mjs \
   --head "$base_head" --assert-clean)
@@ -377,6 +388,14 @@ generated_apk="$project_root/android/app/build/outputs/apk/release/app-release.a
 if ! EXPO_PUBLIC_NATIVE_CONTRACT_SUITE="$suite" \
   "$project_root/scripts/validate-development-test-app-config.mjs" "$generated_apk"; then
   fail 'embedded development-test config is invalid.'
+fi
+
+# Reject host-built or incompatible Python native libraries in the actual APK.
+# This observation precedes retaining, installing or publishing acceptance bytes.
+if [ "$suite" = 'v1.2-acceptance' ]; then
+  if ! "$node_executable" scripts/verify-garmin-android-binaries.mjs --apk "$generated_apk" "$ANDROID_HOME/ndk/27.1.12297006"; then
+    fail 'compiled Android Python binaries are invalid.'
+  fi
 fi
 
 # Validate the binary manifest's run-as prerequisite without enabling release DEBUG.
