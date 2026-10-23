@@ -14,6 +14,7 @@ import {
 } from "@jest/globals";
 import React from "react";
 import {
+  AccessibilityInfo,
   Appearance,
   BackHandler,
   RefreshControl,
@@ -22,6 +23,8 @@ import {
   Text,
   View,
 } from "react-native";
+
+import { SafeAreaInsetsContext } from "react-native-safe-area-context";
 
 import {
   AdaptiveScreen,
@@ -35,6 +38,7 @@ import {
   ContentCard,
   EmptyState,
   ExerciseRow,
+  FocusablePressable,
   IconAction,
   InlineNotice,
   MetricSummary,
@@ -45,6 +49,7 @@ import {
   SecondaryAction,
   SectionHeader,
   SkeletonBlock,
+  WorkoutPrimaryAction,
 } from "../components";
 import {
   WorkoutStartSheet,
@@ -1004,6 +1009,100 @@ describe("Plan 01-02 route shell", () => {
     },
   );
 
+  it.each([
+    [24.5, 40, 24.5],
+    [0, 40, 0],
+    [-1, 40, 0],
+    [Number.NaN, 40, 0],
+    [Number.POSITIVE_INFINITY, 40, 0],
+    [undefined, 24.5, 24.5],
+    [undefined, 0, 0],
+    [undefined, -1, 0],
+    [undefined, Number.NaN, 0],
+    [undefined, Number.POSITIVE_INFINITY, 0],
+  ])("reserves bottom inset %s over context %s as %s on the paper nav only", async (bottom, contextBottom, expected) => {
+    await render(
+      <SafeAreaInsetsContext.Provider value={{ top: 11, right: 0, bottom: contextBottom, left: 0 }}>
+        <AppearanceProvider>
+          <AppTabs
+            {...(bottom === undefined ? {} : { insets: { bottom } })}
+            navigation={{ emit: () => ({ defaultPrevented: false }), navigate: jest.fn() }}
+            state={{ index: 0, routes }}
+          />
+        </AppearanceProvider>
+      </SafeAreaInsetsContext.Provider>,
+    );
+    const nav = screen.getByTestId("root-navigation-bottom");
+    expect(nav).toHaveStyle({ paddingBottom: expected, backgroundColor: themes.light.paper, flexDirection: "row" });
+    // Intrinsic content height can grow with system text scaling. No fixed track.
+    expect(StyleSheet.flatten(nav.props.style).height).toBeUndefined();
+    for (const tab of screen.getAllByRole("tab")) {
+      expect(tab).toHaveStyle({ minHeight: 64, minWidth: 48, paddingVertical: 8 });
+      expect(StyleSheet.flatten(tab.props.style).paddingBottom).toBeUndefined();
+    }
+  });
+
+  it.each([
+    ["Light", themes.light],
+    ["Dark", themes.dark],
+  ] as Array<["Light" | "Dark", ThemeColors]>)("updates %s insets without resetting fitted glyphs, targets, IDs, or D-pad focus", async (appearance, colors) => {
+    const navigate = jest.fn();
+    const store = createMemoryAppearanceStore(appearance);
+    const nav = (bottom: number) => (
+      <AppearanceProvider store={store}>
+        <AppTabs insets={{ bottom }} navigation={{ emit: () => ({ defaultPrevented: false }), navigate }} state={{ index: 0, routes }} />
+      </AppearanceProvider>
+    );
+    const rendered = await render(nav(0));
+    let text = screen.getByTestId("root-tab-label-index");
+    await fireEvent(text, "layout", { nativeEvent: { layout: { width: 76 } } });
+    text = screen.getByTestId("root-tab-label-index");
+    const probe = () => screen.getByTestId("root-tab-label-probe-index", { includeHiddenElements: true });
+    const metrics = (width: number) => ({ nativeEvent: { lines: [{ text: "Workout", width, height: 44 }] } });
+    await fireEvent(probe(), "textLayout", metrics(120));
+    await fireEvent(probe(), "textLayout", metrics(72));
+    await fireEvent(text, "textLayout", metrics(72));
+    const library = screen.getByRole("tab", { name: "Library" });
+    await fireEvent(library, "focus");
+    const targetStyle = StyleSheet.flatten(library.props.style);
+
+    for (const bottom of [24.5, 48, 0]) {
+      await rendered.rerender(nav(bottom));
+      expect(screen.getByTestId("root-navigation-bottom")).toHaveStyle({ paddingBottom: bottom, backgroundColor: colors.paper });
+      expect(screen.getByTestId("root-tab-label-index")).toBe(text);
+      expect(text).toHaveTextContent("Workout", { exact: true });
+      expect(text).toHaveStyle({ fontFamily: "ArchivoVariable", fontSize: 9.75, lineHeight: 22, color: colors.ink });
+      expect(text).toHaveProp("numberOfLines", 1);
+      expect(text).toHaveProp("allowFontScaling", true);
+      expect(text).toHaveProp("adjustsFontSizeToFit", false);
+      expect(screen.getByTestId("root-tab-label-underline-index", { includeHiddenElements: true }))
+        .toHaveStyle({ width: 72, height: 3, backgroundColor: colors.orange });
+      expect(StyleSheet.flatten(library.props.style)).toEqual(targetStyle);
+      expect(library).toHaveStyle({ minHeight: 64, minWidth: 48, outlineColor: colors.blue, outlineWidth: 3 });
+      expect(screen.getAllByRole("tab").map((tab) => [tab.props.accessibilityLabel, tab.props.nativeID]))
+        .toEqual([["Workout", "root-tab-index"], ["Calendar", "root-tab-calendar"], ["Library", "root-tab-library"], ["Progress", "root-tab-progress"]]);
+    }
+    await fireEvent(library, "keyDown", { nativeEvent: { key: "Enter" } });
+    expect(navigate).toHaveBeenCalledWith("library");
+  });
+
+  it("updates context safe-area padding for disabled loading tabs without a navigator", async () => {
+    const loading = (bottom: number) => (
+      <SafeAreaInsetsContext.Provider value={{ top: 11, right: 0, bottom, left: 0 }}>
+        <AppearanceProvider><AppLoadingShell /></AppearanceProvider>
+      </SafeAreaInsetsContext.Provider>
+    );
+    const rendered = await render(loading(24));
+    for (const bottom of [24, 0, 36]) {
+      await rendered.rerender(loading(bottom));
+      expect(screen.getByTestId("root-navigation-bottom")).toHaveStyle({ paddingBottom: bottom, backgroundColor: themes.light.paper });
+      for (const tab of screen.getAllByRole("tab")) {
+        expect(tab).toBeDisabled();
+        expect(tab).toHaveProp("focusable", false);
+      }
+    }
+  });
+
   it("keeps selection underlines at verified plain-native glyph width, not autofit event width", async () => {
     const navigation = {
       emit: () => ({ defaultPrevented: false }),
@@ -1808,6 +1907,104 @@ describe("Plan 01-02 shared component vocabulary", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Return to Workout" }));
     expect(close).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(focus).toHaveBeenCalledTimes(2));
+  });
+
+  it("retains primitive card, target, header, and pressed-color states alongside inset padding", async () => {
+    await render(
+      <AppearanceProvider>
+        <ContentCard pressed status="attention" testID="pressed-card"><Text>Pressed card</Text></ContentCard>
+        <ContentCard status="error" testID="error-card"><Text>Error card</Text></ContentCard>
+        <PrimaryAction label="Pressed primary" onPress={jest.fn()} />
+        <SecondaryAction label="Pressed secondary" onPress={jest.fn()} />
+        <WorkoutPrimaryAction label="Pressed workout" onPress={jest.fn()} />
+        <WorkoutPrimaryAction disabled label="Disabled workout" onPress={jest.fn()} />
+        <IconAction icon="info" accessibilityLabel="Selected icon" onPress={jest.fn()} selected />
+        <IconAction icon="info" accessibilityLabel="Card icon" onPress={jest.fn()} tone="card" />
+        <ScreenHeader title="Custom back" density="deep" backAction={jest.fn()} backActionTestID="custom-back" />
+        <InlineNotice card focusable heading="Card notice" body="Card detail" />
+        <MetricSummary label="Default metric" value="1" />
+        <MetricSummary label="Card metric" value="2" tone="card" />
+        <PlanActivationRow tone="card" onPress={jest.fn()} />
+        <AppTabs insets={{ bottom: 24 }} navigation={{ emit: () => ({ defaultPrevented: false }), navigate: jest.fn() }} state={{ index: 0, routes: [{ name: "index", key: "index" }] }} />
+      </AppearanceProvider>,
+    );
+    expect(screen.getByTestId("pressed-card")).toHaveStyle({ backgroundColor: themes.light.contentCardPressed, borderColor: themes.light.timerAttention });
+    expect(screen.getByTestId("error-card")).toHaveStyle({ borderColor: themes.light.destructive });
+    expect(screen.getByTestId("custom-back")).toHaveProp("accessibilityLabel", "Go back");
+    const notice = screen.getByText("Card notice").parent?.parent;
+    expect(notice).toHaveProp("accessibilityRole", "header");
+    expect(notice).toHaveProp("focusable", true);
+    expect(screen.getByText("Card detail")).toHaveStyle({ color: themes.light.contentCardTextSecondary });
+    expect(screen.getByText("2")).toHaveStyle({ color: themes.light.contentCardText });
+    expect(screen.getByRole("button", { name: "Card icon" }).queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke).toBe(themes.light.contentCardText);
+    const expectedPressed = new Map([
+      ["Pressed primary", themes.light.actionPressed],
+      ["Pressed secondary", themes.light.surfaceSubtle],
+      ["Pressed workout", themes.light.workoutPrimaryActionPressed],
+      ["Selected icon", themes.light.surfaceSubtle],
+      ["Card icon", themes.light.contentCardPressed],
+      ["Workout", themes.light.surfaceSubtle],
+    ]);
+    // Exercise real native responder state, rather than fireEvent.press's callback-only path.
+    for (const [name, expected] of expectedPressed) {
+      const action = screen.getByRole(name === "Workout" ? "tab" : "button", { name });
+      const event = { currentTarget: 1, target: 1, persist: jest.fn(), nativeEvent: { pageX: 0, pageY: 0, timestamp: 0, touches: [], changedTouches: [] } };
+      await fireEvent(action, "responderGrant", event);
+      expect(action).toHaveStyle({ backgroundColor: expected });
+      await act(async () => {
+        await fireEvent(action, "responderRelease", event);
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      });
+    }
+    expect(screen.getByRole("button", { name: "Disabled workout" })).toBeDisabled();
+    expect(screen.getByTestId("root-navigation-bottom")).toHaveStyle({ paddingBottom: 24 });
+  });
+
+  it("keeps passive pressables and valid native focus handles safe", async () => {
+    const native = require("react-native") as typeof import("react-native");
+    const findHandle = jest.spyOn(native, "findNodeHandle");
+    const accessibleFocus = jest.spyOn(AccessibilityInfo, "setAccessibilityFocus").mockImplementation(() => undefined);
+    const ref = React.createRef<View>();
+    try {
+      await render(
+        <AppearanceProvider>
+          <FocusablePressable onPress={null} testID="passive-action" />
+          <PrimaryAction ref={ref} label="Native focus target" onPress={jest.fn()} />
+        </AppearanceProvider>,
+      );
+      expect(screen.getByTestId("passive-action").props.onKeyDown).toBeUndefined();
+      findHandle.mockReturnValue(27);
+      await act(() => ref.current?.focus());
+      expect(accessibleFocus).toHaveBeenCalledWith(27);
+      accessibleFocus.mockClear();
+      for (const handle of [0, -1]) {
+        findHandle.mockReturnValue(handle);
+        await act(() => ref.current?.focus());
+      }
+      expect(accessibleFocus).not.toHaveBeenCalled();
+    } finally {
+      findHandle.mockRestore();
+      accessibleFocus.mockRestore();
+    }
+  });
+
+  it("changes appearance and closes with or without an invoking focus ref", async () => {
+    const focus = jest.fn();
+    for (const restoreFocusRef of [undefined, { current: null }, { current: { focus } as unknown as View }]) {
+      const close = jest.fn();
+      const rendered = await render(
+        <AppearanceProvider>
+          <AppearanceSheet visible onClose={close} {...(restoreFocusRef === undefined ? {} : { restoreFocusRef })} />
+        </AppearanceProvider>,
+      );
+      await fireEvent.press(screen.getByRole("radio", { name: "Dark" }));
+      await fireEvent(screen.getByRole("radio", { name: "Dark" }), "keyDown", { nativeEvent: { key: "Enter" } });
+      expect(screen.getByRole("radio", { name: "Dark" })).toBeSelected();
+      await fireEvent.press(screen.getAllByRole("button", { name: "Close appearance" })[0]!);
+      expect(close).toHaveBeenCalledTimes(1);
+      await rendered.unmount();
+    }
+    expect(focus).toHaveBeenCalled();
   });
 
   it("keeps later workout controls out of the Phase 1 foundation vocabulary", () => {

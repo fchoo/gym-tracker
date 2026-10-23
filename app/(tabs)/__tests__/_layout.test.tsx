@@ -13,6 +13,7 @@ import {
 } from "@jest/globals";
 import React from "react";
 import { Dimensions } from "react-native";
+import { SafeAreaInsetsContext } from "react-native-safe-area-context";
 
 import {
   AppearanceProvider,
@@ -21,7 +22,10 @@ import {
   themes,
   type ThemeColors,
 } from "../../../src/ui/theme";
-import RootTabsLayout from "../_layout";
+import RootTabsLayout, { RootSettingsContent } from "../_layout";
+
+type SettingsContentProps = React.ComponentProps<typeof import("../../../src/ui/screens/SettingsScreen").AppSettingsContent>;
+const mockObserveSettings = jest.fn<(props: SettingsContentProps) => void>();
 
 let mockRenderedWidth = 839;
 let mockFontScale = 1;
@@ -29,6 +33,7 @@ let mockPathname = "/";
 const mockNavigate = jest.fn();
 const mockPush = jest.fn();
 let mockSelectedRouteIndex = 0;
+let mockInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const mockReadRestAlertPreferences = jest.fn(async () => ({
   soundEnabled: true,
   vibrationEnabled: true,
@@ -41,7 +46,7 @@ const mockSetRestAlertPreferences = jest.fn(async (preferences: {
 }));
 const mockOpenRestNotificationSettings = jest.fn();
 const mockRuntime = {
-  launchState: "trusted" as const,
+  launchState: "trusted" as "trusted" | "booting" | "failed",
   notificationPermission: "granted" as const,
   openRestNotificationSettings: mockOpenRestNotificationSettings,
   readRestAlertPreferences: mockReadRestAlertPreferences,
@@ -216,23 +221,15 @@ jest.mock("../../../src/ui/screens/SettingsScreen", () => {
 
   return {
     __esModule: true,
-    AppSettingsContent: ({
-      onOpenDataAndRecovery,
-      onOpenRemovedSessions,
-      removedSessionsTriggerRef,
-      dataAndRecoveryTriggerRef,
-    }: Readonly<{
-      onOpenDataAndRecovery(): void;
-      onOpenRemovedSessions(): void;
-      removedSessionsTriggerRef?: React.RefObject<{ focus?: () => void } | null>;
-      dataAndRecoveryTriggerRef?: React.RefObject<{ focus?: () => void } | null>;
-    }>) => {
+    AppSettingsContent: (props: SettingsContentProps) => {
+      const { onOpenDataAndRecovery, onOpenRemovedSessions, removedSessionsTriggerRef, dataAndRecoveryTriggerRef } = props;
+      mockObserveSettings(props);
       React.useEffect(() => {
         if (removedSessionsTriggerRef !== undefined) {
-          removedSessionsTriggerRef.current = { focus: mockRemovedSessionsTriggerFocus };
+          removedSessionsTriggerRef.current = { focus: mockRemovedSessionsTriggerFocus } as unknown as import("react-native").View;
         }
         if (dataAndRecoveryTriggerRef !== undefined) {
-          dataAndRecoveryTriggerRef.current = {};
+          dataAndRecoveryTriggerRef.current = {} as import("react-native").View;
         }
       }, [dataAndRecoveryTriggerRef, removedSessionsTriggerRef]);
 
@@ -274,6 +271,7 @@ jest.mock("expo-router", () => {
       tabBarPosition?: "bottom" | "left";
     };
     tabBar: (props: {
+      insets: typeof mockInsets;
       navigation: {
         emit: () => { defaultPrevented: boolean };
         navigate: () => void;
@@ -298,6 +296,7 @@ jest.mock("expo-router", () => {
         testID: "root-tabs",
       },
       tabBar({
+        insets: mockInsets,
         navigation: {
           emit: () => ({ defaultPrevented: false }),
           navigate: mockNavigate,
@@ -405,9 +404,13 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     mockNavigate.mockReset();
     mockPush.mockReset();
     mockReadRestAlertPreferences.mockClear();
+    mockObserveSettings.mockClear();
+    mockRuntime.workoutRefreshGeneration = 0;
     mockSetRestAlertPreferences.mockClear();
     mockOpenRestNotificationSettings.mockClear();
     mockSelectedRouteIndex = 0;
+    mockInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+    mockRuntime.launchState = "trusted";
     mockPathname = "/";
     for (const focus of Object.values(mockHeadingFocus)) {
       focus.mockReset();
@@ -511,6 +514,31 @@ describe("RootTabsLayout adaptive navigator placement", () => {
       expect(selected).toBeSelected();
     },
   );
+
+  it.each(["trusted", "booting", "failed"] as const)("forwards live navigator bottom insets once while launch is %s", async (launchState) => {
+    mockRuntime.launchState = launchState;
+    mockInsets = { top: 11, right: 0, bottom: 24, left: 0 };
+    const layout = () => (
+      <SafeAreaInsetsContext.Provider value={{ top: 11, right: 0, bottom: 40, left: 0 }}>
+        <AppearanceProvider><RootTabsLayout /></AppearanceProvider>
+      </SafeAreaInsetsContext.Provider>
+    );
+    const rendered = await render(layout());
+    for (const bottom of [24, 0, 36.5]) {
+      await act(async () => {
+        mockInsets = { ...mockInsets, bottom };
+        await rendered.rerender(layout());
+      });
+      expect(rendered.getByTestId("root-navigation-bottom"))
+        .toHaveStyle({ paddingBottom: bottom, backgroundColor: themes.light.paper });
+      expect(rendered.getByTestId("app-root-shell")).toHaveStyle({ flex: 1, paddingBottom: undefined });
+      for (const label of destinationLabels) {
+        const tab = rendered.getByRole("tab", { name: label });
+        expect(tab).toHaveProp("accessibilityState", { disabled: launchState !== "trusted", selected: label === "Workout" });
+        expect(tab).toHaveStyle({ minHeight: 64, minWidth: 48 });
+      }
+    }
+  });
 
   it("uses remeasured single-line font fitting in one bottom row at 200% text", async () => {
     setRenderedDimensions(360, 2);
@@ -653,6 +681,36 @@ describe("RootTabsLayout adaptive navigator placement", () => {
       destinationLabels.length,
     );
     expect(rendered.getByRole("tab", { name: "Library" })).toBeSelected();
+  });
+
+  it("keeps settings reads fenced across loading transitions and handles rejected reads", async () => {
+    const removedSessionsTriggerRef = React.createRef<import("react-native").View>();
+    const dataAndRecoveryTriggerRef = React.createRef<import("react-native").View>();
+    const settings = () => (
+      <RootSettingsContent onNavigate={jest.fn()} onRegisterOrigin={jest.fn()} removedSessionsTriggerRef={removedSessionsTriggerRef} dataAndRecoveryTriggerRef={dataAndRecoveryTriggerRef} />
+    );
+    let resolveRead!: (preferences: { soundEnabled: boolean; vibrationEnabled: boolean }) => void;
+    mockReadRestAlertPreferences.mockImplementationOnce(() => new Promise((resolve) => { resolveRead = resolve; }));
+    const rendered = await render(settings());
+    expect(mockObserveSettings.mock.calls.at(-1)?.[0].restAlertPreferencesLoading).toBe(true);
+    mockRuntime.launchState = "booting";
+    await rendered.rerender(settings());
+    expect(mockObserveSettings.mock.calls.at(-1)?.[0].restAlertPreferencesLoading).toBe(false);
+    await act(async () => resolveRead({ soundEnabled: false, vibrationEnabled: false }));
+    expect(mockObserveSettings.mock.calls.at(-1)?.[0].preferences).toEqual({ soundEnabled: true, vibrationEnabled: true });
+
+    mockRuntime.launchState = "trusted";
+    mockReadRestAlertPreferences.mockImplementationOnce(async () => { throw new Error("read unavailable"); });
+    await rendered.rerender(settings());
+    await waitFor(() => expect(mockObserveSettings.mock.calls.at(-1)?.[0].restAlertPreferencesLoading).toBe(false));
+    const next = { soundEnabled: false, vibrationEnabled: true };
+    await act(async () => {
+      const saved = await mockObserveSettings.mock.calls.at(-1)?.[0].onChangeRestAlertPreferences(next);
+      expect(saved).toEqual({ preferences: next });
+    });
+    expect(mockSetRestAlertPreferences).toHaveBeenCalledWith(next);
+    expect(mockObserveSettings.mock.calls.at(-1)?.[0].preferences).toEqual(next);
+    await rendered.unmount();
   });
 
   it("keeps the root-header settings trigger wired through its open and close flow", async () => {

@@ -175,6 +175,7 @@ export default function RootTabsLayout() {
           tabBar={(props) => (
             <AppTabs
               disabled={launchState !== "trusted"}
+              insets={props.insets}
               navigation={props.navigation}
               state={props.state}
             />

@@ -48,6 +48,8 @@ import {
   type ViewStyle,
 } from "react-native";
 
+import { SafeAreaInsetsContext } from "react-native-safe-area-context";
+
 import {
   radius,
   sizes,
@@ -1274,14 +1276,21 @@ type AppTabsProps = Readonly<{
     navigate(name: string): void;
   };
   disabled?: boolean;
+  insets?: Readonly<{ bottom: number }>;
 }>;
 
 export function AppTabs({
   state,
   navigation,
   disabled = false,
+  insets,
 }: AppTabsProps) {
   const { colors } = useAppTheme();
+  const safeAreaInsets = React.useContext(SafeAreaInsetsContext);
+  // Navigator overrides are authoritative, including zero. Direct/loading callers
+  // use context; reserve the inset once on paper, outside the unchanged targets.
+  const bottomInset = insets?.bottom ?? safeAreaInsets?.bottom ?? 0;
+  const paddingBottom = Number.isFinite(bottomInset) && bottomInset > 0 ? bottomInset : 0;
   const tabs = rootDestinations.map((destination) => {
     const route = state.routes.find(
       (candidate) => candidate.name === destination.name,
@@ -1341,7 +1350,7 @@ export function AppTabs({
       style: [
         styles.appTabs,
         styles.appTabsBottom,
-        { backgroundColor: colors.paper, borderColor: colors.line },
+        { backgroundColor: colors.paper, borderColor: colors.line, paddingBottom },
       ],
       testID: "root-navigation-bottom",
     },
