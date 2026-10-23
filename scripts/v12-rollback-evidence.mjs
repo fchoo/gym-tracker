@@ -9,6 +9,8 @@ import { pathToFileURL } from "node:url";
 
 import { publishV12AtomicShard, verifyV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
 import { resolveV12NativeExecutionTools } from "./v12-native-execution-origin.mjs";
+import { archiveInspection } from "./v12-rollback-archive-inspection.mjs";
+export { archiveInspection } from "./v12-rollback-archive-inspection.mjs";
 
 const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const HASH = /^[a-f0-9]{64}$/u;
@@ -75,8 +77,6 @@ function archiveFormat(bytes) {
   return version;
 }
 
-function jsonBytes(value) { return Buffer.from(`${JSON.stringify(value)}\n`); }
-
 function releaseManifest(bytes, apkBytes, signature, expectedPackage) {
   let value;
   try { value = JSON.parse(bytes.toString("utf8")); } catch { fail("release_manifest_invalid"); }
@@ -93,35 +93,7 @@ function releaseManifest(bytes, apkBytes, signature, expectedPackage) {
   return Object.freeze(value);
 }
 
-function archiveInspection(value, archiveBytes, declaredSchemaVersion) {
-  if (!exact(value, ["format_version", "schema_version", "clean_restore_receipt", "canonical_post_restore_facts"])
-    || !Number.isSafeInteger(value.format_version) || !Number.isSafeInteger(value.schema_version)
-    || value.schema_version !== declaredSchemaVersion) fail("schema_boundary_invalid");
-  const facts = value.canonical_post_restore_facts;
-  if (!exact(facts, ["schema_version", "producer", "archive_sha256", "source_schema_version", "table_count", "row_count",
-    "source_facts_sha256", "reopened_facts_sha256", "integrity_check", "foreign_key_violations"])
-    || facts.schema_version !== 1 || facts.producer !== "v12-canonical-post-restore-facts/v1"
-    || facts.archive_sha256 !== sha256(archiveBytes) || facts.source_schema_version !== value.schema_version
-    || !Number.isSafeInteger(facts.table_count) || facts.table_count < 1
-    || !Number.isSafeInteger(facts.row_count) || facts.row_count < 0
-    || ![facts.source_facts_sha256, facts.reopened_facts_sha256].every(hash => HASH.test(hash ?? ""))
-    || facts.source_facts_sha256 !== facts.reopened_facts_sha256
-    || facts.integrity_check !== "ok" || facts.foreign_key_violations !== 0) fail("restore_facts_invalid");
-  const factsBytes = jsonBytes(facts);
-  const receipt = value.clean_restore_receipt;
-  if (!exact(receipt, ["schema_version", "producer", "parser", "outcome", "clean_target", "archive_sha256",
-    "archive_format_version", "archive_schema_version", "post_restore_facts_sha256", "reopened_post_restore_facts_sha256"])
-    || receipt.schema_version !== 1 || receipt.producer !== "v12-production-clean-restore-receipt/v1"
-    || receipt.parser !== RESTORE_PARSER || receipt.outcome !== "restored" || receipt.clean_target !== true
-    || receipt.archive_sha256 !== sha256(archiveBytes) || receipt.archive_format_version !== value.format_version
-    || receipt.archive_schema_version !== value.schema_version
-    || receipt.post_restore_facts_sha256 !== sha256(factsBytes)
-    || receipt.reopened_post_restore_facts_sha256 !== sha256(factsBytes)) fail("restore_receipt_invalid");
-  return Object.freeze({ formatVersion: value.format_version, schemaVersion: value.schema_version,
-    receipt: Object.freeze(receipt), receiptBytes: jsonBytes(receipt), facts: Object.freeze(facts), factsBytes });
-}
-
-function authenticateArchive(archivePath, archiveBytes, declaredSchemaVersion, authenticateAndRestoreArchive) {
+function authenticateArchiveValue(archivePath, archiveBytes, declaredSchemaVersion, authenticateAndRestoreArchive) {
   if (typeof authenticateAndRestoreArchive !== "function") fail("restore_parser_required");
   let value;
   try {
@@ -136,7 +108,11 @@ function authenticateArchive(archivePath, archiveBytes, declaredSchemaVersion, a
     if (error instanceof Error && error.message.startsWith("v12_rollback_")) throw error;
     fail("archive_invalid");
   }
-  return archiveInspection(value, archiveBytes, declaredSchemaVersion);
+  return value;
+}
+
+function authenticateArchive(archivePath, archiveBytes, declaredSchemaVersion, executor) {
+  return archiveInspection(authenticateArchiveValue(archivePath, archiveBytes, declaredSchemaVersion, executor), archiveBytes, declaredSchemaVersion);
 }
 
 function archiveSupportsSchema(formatVersion, schemaVersion) {
@@ -185,6 +161,26 @@ function validateSignature(value) {
   const certificate = /certificate SHA-256 digest:\s*([A-Fa-f0-9:]{64,95})/u.exec(text)?.[1]?.replaceAll(":", "").toLowerCase();
   if (certificate !== value.certificate_sha256) fail("signature_invalid");
   return value;
+}
+
+/** Derives artifact ownership from signed APK bytes, not a declared compatibility/schema claim. */
+export function deriveV12RetainedPriorReleaseManifest({ priorApkPath, environment = process.env, verifyApkSignature, readApkConfig } = {}) {
+  const apkPath = regularFile(priorApkPath);
+  const apkBytes = readFileSync(apkPath);
+  if (apkBytes.length < 4 || !apkBytes.subarray(0, 4).equals(APK_MAGIC)) fail("apk_invalid");
+  const signature = validateSignature(signatureFor(apkPath, { environment, verifyApkSignature }));
+  let config;
+  if (readApkConfig !== undefined) config = readApkConfig(apkPath);
+  else {
+    const tools = resolveV12NativeExecutionTools({ requiredTools: ["unzip"], env: environment });
+    const result = spawnSync(tools.unzip, ["-p", apkPath, "assets/app.config"], { timeout: 30_000, maxBuffer: 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+    if (result.error || result.signal || result.status !== 0) fail("release_manifest_invalid");
+    try { config = JSON.parse(result.stdout); } catch { fail("release_manifest_invalid"); }
+  }
+  if (config?.android?.package !== PRODUCTION_PACKAGE || config?.extra?.buildProfile !== "production"
+    || config?.extra?.nativeContractsEnabled !== false) fail("release_manifest_invalid");
+  return Object.freeze({ schema_version: 1, producer: "v12-retained-prior-release/v1", package: PRODUCTION_PACKAGE,
+    apk: { sha256: sha256(apkBytes), size_bytes: apkBytes.length, signature_sha256: sha256(signature.report), certificate_sha256: signature.certificate_sha256 } });
 }
 
 function evidenceValue({ runId, apkBytes, signature, releaseManifestBytes, release, archiveBytes, inspection, currentVersion }) {
@@ -255,7 +251,7 @@ function validateEvidenceShape(value, runId, root) {
   return value;
 }
 
-export function publishV12RollbackEvidence({ root = process.cwd(), runId, priorApkPath, priorReleaseManifestPath,
+function prepareRollback({ root = process.cwd(), runId, priorApkPath, priorReleaseManifestPath,
   compatibleArchivePath, lastValidSchemaVersion, verifyApkSignature, authenticateAndRestoreArchive, environment,
   expectedPackage = PRODUCTION_PACKAGE } = {}) {
   if (!RUN_ID.test(runId ?? "")) fail("arguments_invalid");
@@ -268,10 +264,14 @@ export function publishV12RollbackEvidence({ root = process.cwd(), runId, priorA
   const signature = validateSignature(signatureFor(priorApk, { verifyApkSignature, environment }));
   const releaseManifestBytes = readFileSync(priorReleaseManifest);
   const release = releaseManifest(releaseManifestBytes, apkBytes, signature, expectedPackage);
-  const inspection = authenticateArchive(compatibleArchive, archiveBytes, lastValidSchemaVersion, authenticateAndRestoreArchive);
+  return { root, runId, apkBytes, signature, releaseManifestBytes, release, archiveBytes, compatibleArchive,
+    lastValidSchemaVersion, authenticateAndRestoreArchive, prefixFormatVersion, currentVersion: currentSchemaVersion(root) };
+}
+
+function publishPreparedRollback(prepared, inspection) {
+  const { root, runId, apkBytes, signature, releaseManifestBytes, archiveBytes, prefixFormatVersion } = prepared;
   if (inspection.formatVersion !== prefixFormatVersion) fail("archive_invalid");
-  const evidence = evidenceValue({ runId, apkBytes, signature, releaseManifestBytes, release, archiveBytes, inspection,
-    currentVersion: currentSchemaVersion(root) });
+  const evidence = evidenceValue({ ...prepared, inspection });
   return publishV12AtomicShard({
     root,
     runId,
@@ -288,6 +288,26 @@ export function publishV12RollbackEvidence({ root = process.cwd(), runId, priorA
     validate: members => members.length === V12_ROLLBACK_PUBLICATION_MEMBERS.length
       && [...members.map(({ artifact }) => artifact)].sort().every((member, index) => member === [...V12_ROLLBACK_PUBLICATION_MEMBERS].sort()[index]),
   });
+}
+
+/** Synchronous host fixtures remain supported; thenables cannot pass inspection. */
+export function publishV12RollbackEvidence(options) {
+  const prepared = prepareRollback(options);
+  const { compatibleArchive, archiveBytes, lastValidSchemaVersion, authenticateAndRestoreArchive } = prepared;
+  return publishPreparedRollback(prepared, authenticateArchive(compatibleArchive, archiveBytes, lastValidSchemaVersion, authenticateAndRestoreArchive));
+}
+
+/** Production restore commits and close/reopen verification must finish before publication. */
+export async function publishV12RollbackEvidenceAsync(options) {
+  const prepared = prepareRollback(options);
+  const { compatibleArchive, archiveBytes, lastValidSchemaVersion, authenticateAndRestoreArchive } = prepared;
+  let value;
+  try { value = await authenticateArchiveValue(compatibleArchive, archiveBytes, lastValidSchemaVersion, authenticateAndRestoreArchive); }
+  catch (error) {
+    if (error instanceof Error && /^v12_rollback_[a-z_]+$/u.test(error.message)) throw error;
+    fail("archive_invalid");
+  }
+  return publishPreparedRollback(prepared, archiveInspection(value, archiveBytes, lastValidSchemaVersion));
 }
 
 export function verifyV12RollbackEvidence({ root = process.cwd(), runId, verifyApkSignature, environment, allowFinalResidue = false } = {}) {
@@ -344,20 +364,26 @@ export function verifyV12RollbackEvidence({ root = process.cwd(), runId, verifyA
   });
 }
 
-function cli(args) {
+export async function executeV12RollbackCli(args) {
+  if (args.length === 2 && args[0] === "--derive-prior-manifest") {
+    return deriveV12RetainedPriorReleaseManifest({ priorApkPath: path.resolve(args[1]) });
+  }
   if (args.length !== 10 || args[0] !== "--run" || args[2] !== "--prior-apk" || args[4] !== "--prior-manifest"
     || args[6] !== "--archive" || args[8] !== "--last-valid-schema") fail("arguments_invalid");
-  return publishV12RollbackEvidence({ runId: args[1], priorApkPath: path.resolve(args[3]),
+  const { authenticateV12RollbackOnDevice } = await import("./v12-native-rollback-bridge.mjs");
+  return publishV12RollbackEvidenceAsync({ runId: args[1], priorApkPath: path.resolve(args[3]),
     priorReleaseManifestPath: path.resolve(args[5]), compatibleArchivePath: path.resolve(args[7]),
-    lastValidSchemaVersion: Number(args[9]) });
+    lastValidSchemaVersion: Number(args[9]),
+    authenticateAndRestoreArchive: request => authenticateV12RollbackOnDevice({ runId: args[1], request }),
+  });
 }
 
 export function v12RollbackErrorMessage(error) {
-  return error instanceof Error ? error.message : "v12_rollback_failed";
+  return error instanceof Error && /^v12_rollback_[a-z_]+$/u.test(error.message) ? error.message : "v12_rollback_failed";
 }
 
 const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
-  try { process.stdout.write(`${JSON.stringify(cli(process.argv.slice(2)))}\n`); }
+  try { process.stdout.write(`${JSON.stringify(await executeV12RollbackCli(process.argv.slice(2)))}\n`); }
   catch (error) { process.stderr.write(`${v12RollbackErrorMessage(error)}\n`); process.exitCode = 1; }
 }
