@@ -33,6 +33,7 @@ internal class GarminConnectPlatformBindings(
   private val installedIdentityProvider: (Context?, String) -> Map<String, String>,
   private val streamDigestProvider: (InputStream) -> String,
   private val bytesDigestProvider: (ByteArray) -> String,
+  private val transportReadinessProvider: (String) -> Map<String, String>,
 ) {
   fun worker(): GarminClientWorker = workerProvider()
   fun dispatcher(): GarminPythonDispatcher = dispatcherProvider()
@@ -53,6 +54,7 @@ internal class GarminConnectPlatformBindings(
     installedIdentityProvider(context, deviceIdentitySha256)
   fun streamDigest(input: InputStream): String = streamDigestProvider(input)
   fun bytesDigest(bytes: ByteArray): String = bytesDigestProvider(bytes)
+  fun transportReadiness(nonce: String): Map<String, String> = transportReadinessProvider(nonce)
 
   companion object {
     fun backgroundScope(module: Module): CoroutineScope = module.appContext.backgroundCoroutineScope
@@ -275,6 +277,7 @@ internal class GarminConnectPlatformBindings(
         },
         streamDigestProvider = ::digest,
         bytesDigestProvider = ::digest,
+        transportReadinessProvider = GarminTransportReadinessPlatform(module)::run,
       )
     }
   }

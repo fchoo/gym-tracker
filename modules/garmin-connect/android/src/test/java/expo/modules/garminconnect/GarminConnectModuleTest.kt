@@ -53,6 +53,7 @@ class GarminConnectModuleTest {
         installedIdentityProvider = { _, device -> mapOf("deviceIdentitySha256" to device) },
         streamDigestProvider = { "stream-digest" },
         bytesDigestProvider = { "bytes-digest" },
+        transportReadinessProvider = { mapOf("nonce" to it) },
       )
 
       assertTrue(bindings.worker() === worker)
@@ -73,6 +74,7 @@ class GarminConnectModuleTest {
       assertEquals(mapOf("deviceIdentitySha256" to "device"), bindings.installedIdentity(null, "device"))
       assertEquals("stream-digest", bindings.streamDigest(ByteArrayInputStream(byteArrayOf(1))))
       assertEquals("bytes-digest", bindings.bytesDigest(byteArrayOf(1)))
+      assertEquals(mapOf("nonce" to "a".repeat(32)), bindings.transportReadiness("a".repeat(32)))
 
       val module = GarminConnectModule(
         bindingsFactory = { bindings },

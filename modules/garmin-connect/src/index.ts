@@ -21,6 +21,8 @@ export type GarminRuntimeInfo = Readonly<{
 export type GarminConnectNativeModule = Readonly<{
   runtimeInfo(): Promise<unknown>;
   benchmarkDeterministicJson?(input: Readonly<{ payloadJson: string }>): Promise<unknown>;
+  /** DEVTEST-only, nonce/embedded-config bound. Mandatory for readiness, optional for old native builds. */
+  diagnoseTransportReadiness?(nonce: string): Promise<unknown>;
   connectionState(): Promise<unknown>;
   login(input: Readonly<{ email: string; password: string }>): Promise<unknown>;
   resumeMfa(input: Readonly<{ challengeHandle: string; code: string }>): Promise<unknown>;

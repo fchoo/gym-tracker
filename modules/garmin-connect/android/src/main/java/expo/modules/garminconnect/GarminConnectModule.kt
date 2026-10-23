@@ -328,6 +328,10 @@ class GarminConnectModule() : Module() {
       bindings.benchmark(input.payloadJson)
     }).runOnQueue(scope)
 
+    (AsyncFunction("diagnoseTransportReadiness") Coroutine { nonce: String ->
+      bindings.transportReadiness(nonce)
+    }).runOnQueue(scope)
+
     AsyncFunction("connectionState")
       .SuspendBody<Map<String, Any?>> { worker().connectionState() }
       .runOnQueue(scope)

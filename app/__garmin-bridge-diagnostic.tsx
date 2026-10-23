@@ -6,16 +6,16 @@ import { getGarminConnectNativeModule } from "../modules/garmin-connect/src";
 import { garminBridgeDiagnosticEnabled, runGarminBridgeDiagnostic as verifyGarminBridge } from "../src/testing/garminBridgeDiagnostic";
 
 function Probe({ nonce }: Readonly<{ nonce: string }>) {
-  const [status, setStatus] = React.useState("Checking native bridge");
+  const [status, setStatus] = React.useState("Checking inert transport readiness");
   React.useEffect(() => {
     let mounted = true;
     void (async () => {
       let result;
-      try { result = await verifyGarminBridge(getGarminConnectNativeModule()); }
+      try { result = await verifyGarminBridge(getGarminConnectNativeModule(), nonce); }
       catch { result = { status: "failed", stage: "module", code: "native_bridge_rejected" }; }
       if (!mounted) return;
       console.log(`GYM_TRACKER_GARMIN_BRIDGE_DIAGNOSTIC:${JSON.stringify({ schema_version: 1, nonce, ...result })}`);
-      setStatus(result.status === "passed" ? "Native bridge ready" : "Native bridge failed");
+      setStatus(result.status === "passed" ? "Inert transport ready (no login or handshake)" : "Native bridge failed");
     })();
     return () => { mounted = false; };
   }, [nonce]);
