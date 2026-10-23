@@ -29,6 +29,7 @@ describe("guarded read-only stage route", () => {
       : { status: "failed", stage: "activity", code: "malformed_response" } as const;
     jest.mocked(runGarminSyncDiagnostic).mockResolvedValue(result);
     await render(<Route />); await waitFor(() => expect(screen.getByText(status === "passed" ? "Read-only native stages ready" : "Read-only stage failed")).toBeOnTheScreen());
+    expect(runGarminSyncDiagnostic).toHaveBeenCalledWith(getGarminConnectNativeModule(), mockNonce);
     expect(console.log).toHaveBeenCalledWith(`GYM_TRACKER_GARMIN_SYNC_DIAGNOSTIC:${JSON.stringify({ schema_version: 1, nonce: "a".repeat(32), ...result })}`);
   });
   it("sanitizes module construction errors", async () => {
@@ -42,5 +43,34 @@ describe("guarded read-only stage route", () => {
     jest.mocked(runGarminSyncDiagnostic).mockReturnValue(pending); const view = await render(<Route />); await view.unmount();
     await act(async () => { done({ status: "passed", stage: "complete", code: "read_only_components_ready" }); await pending; });
     expect(console.log).not.toHaveBeenCalled();
+  });
+
+  it.each(["pending", "failed"] as const)("reuses actual provider execution on a %s route remount", async state => {
+    const actual = jest.requireActual<typeof import("../../src/testing/garminSyncDiagnostic")>("../../src/testing/garminSyncDiagnostic");
+    jest.mocked(runGarminSyncDiagnostic).mockImplementation(actual.runGarminSyncDiagnostic);
+    mockNonce = (state === "pending" ? "b" : "c").repeat(32);
+    const ok = (data: unknown) => ({ status: "ok", data });
+    let finish!: (value: unknown) => void;
+    const discovery = state === "pending" ? new Promise(resolve => { finish = resolve; }) : Promise.resolve({ status: "error", error: { code: "offline" } });
+    const native = {
+      restoreSession: jest.fn<() => Promise<unknown>>().mockResolvedValue(ok({ kind: "connected" })),
+      getActivities: jest.fn<() => Promise<unknown>>().mockReturnValue(discovery),
+      getActivity: jest.fn<() => Promise<unknown>>().mockResolvedValue(ok({})),
+      getActivitySplits: jest.fn<() => Promise<unknown>>().mockResolvedValue(ok({})),
+      getActivityDetails: jest.fn<() => Promise<unknown>>().mockResolvedValue(ok({})),
+    };
+    jest.mocked(getGarminConnectNativeModule).mockReturnValue(native as never);
+    const first = await render(<Route />);
+    await waitFor(() => expect(native.getActivities).toHaveBeenCalledTimes(1));
+    if (state === "failed") await waitFor(() => expect(screen.getByText("Read-only stage failed")).toBeOnTheScreen());
+    await first.unmount(); jest.mocked(console.log).mockClear();
+    await render(<Route />);
+    if (state === "pending") await act(async () => { finish(ok({ items: [{ activityId: 123 }] })); await discovery; });
+    await waitFor(() => expect(screen.getByText(state === "pending" ? "Read-only native stages ready" : "Read-only stage failed")).toBeOnTheScreen());
+    expect(native.restoreSession).toHaveBeenCalledTimes(1);
+    expect(native.getActivities).toHaveBeenCalledTimes(1);
+    for (const method of ["getActivity", "getActivitySplits", "getActivityDetails"] as const) expect(native[method]).toHaveBeenCalledTimes(state === "pending" ? 1 : 0);
+    expect(console.log).toHaveBeenCalledTimes(1);
+    expect(console.log).toHaveBeenCalledWith(`GYM_TRACKER_GARMIN_SYNC_DIAGNOSTIC:${JSON.stringify({ schema_version: 1, nonce: mockNonce, status: state === "pending" ? "passed" : "failed", stage: state === "pending" ? "complete" : "discovery", code: state === "pending" ? "read_only_components_ready" : "offline" })}`);
   });
 });

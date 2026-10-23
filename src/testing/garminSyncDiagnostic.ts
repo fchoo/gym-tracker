@@ -2,8 +2,29 @@ import type { GarminConnectNativeModule } from "../../modules/garmin-connect/src
 
 const codes = new Set(["invalid_credentials", "mfa_expired", "sign_in_required", "data_access_denied", "rate_limited", "offline", "timeout", "malformed_response", "temporary_failure"]);
 
+const nonceCapacity = 32;
+const nonceResults = new Map<string, Promise<Awaited<ReturnType<typeof readGarminSyncStages>>>>();
+
+/** One provider execution per nonce for this runtime, including failures. No consumed nonce is evicted. */
+export function runGarminSyncDiagnostic(native: GarminConnectNativeModule, nonce?: string) {
+  // Direct host callers may omit a nonce; the guarded route always supplies its exact nonce.
+  if (nonce === undefined) return readGarminSyncStages(native);
+  if (typeof nonce !== "string" || !/^[a-f0-9]{32}$/u.test(nonce)) {
+    return Promise.resolve(Object.freeze({ status: "failed", stage: "guard", code: "invalid_nonce" }));
+  }
+  const existing = nonceResults.get(nonce);
+  if (existing !== undefined) return existing;
+  if (nonceResults.size >= nonceCapacity) {
+    return Promise.resolve(Object.freeze({ status: "failed", stage: "guard", code: "nonce_capacity_exhausted" }));
+  }
+  // Reserve synchronously before any native stage can run, including a reentrant call.
+  const pending = Promise.resolve().then(() => readGarminSyncStages(native));
+  nonceResults.set(nonce, pending);
+  return pending;
+}
+
 /** Read-only provider stage diagnosis. No credentials, payloads or activity identifiers escape. */
-export async function runGarminSyncDiagnostic(native: GarminConnectNativeModule) {
+async function readGarminSyncStages(native: GarminConnectNativeModule) {
   let stage = "restore";
   try {
     const read = async (operation: () => Promise<unknown>) => {

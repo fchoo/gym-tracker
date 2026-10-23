@@ -12,7 +12,7 @@ function Probe({ nonce }: Readonly<{ nonce: string }>) {
     let mounted = true;
     void (async () => {
       let result;
-      try { result = await verifyReadOnlyGarminStages(getGarminConnectNativeModule()); }
+      try { result = await verifyReadOnlyGarminStages(getGarminConnectNativeModule(), nonce); }
       catch { result = { status: "failed", stage: "module", code: "temporary_failure" }; }
       if (!mounted) return;
       console.log(`GYM_TRACKER_GARMIN_SYNC_DIAGNOSTIC:${JSON.stringify({ schema_version: 1, nonce, ...result })}`);
