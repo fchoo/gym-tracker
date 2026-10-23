@@ -1186,20 +1186,26 @@ export function AppTabs({
         selected ? colors.ink : colors.quiet,
       ),
       h(
-        Text,
+        View,
         {
           style: [
-            typeScale.body as TextStyle,
-            styles.appTabLabel,
-            {
-              borderBottomColor: selected ? colors.orange : "transparent",
-              color: selected ? colors.ink : colors.quiet,
-              textAlign: "center",
-            },
+            styles.appTabLabelContainer,
+            { borderBottomColor: selected ? colors.orange : "transparent" },
           ],
-          testID: `root-tab-label-${destination.name}`,
+          testID: `root-tab-label-container-${destination.name}`,
         },
-        destination.label,
+        h(
+          Text,
+          {
+            style: [
+              typeScale.body as TextStyle,
+              styles.appTabLabel,
+              { color: selected ? colors.ink : colors.quiet },
+            ],
+            testID: `root-tab-label-${destination.name}`,
+          },
+          destination.label,
+        ),
       ),
     );
   });
@@ -1487,10 +1493,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[1],
     paddingVertical: space[2],
   },
-  appTabLabel: {
+  appTabLabelContainer: {
+    alignItems: "center",
+    alignSelf: "center",
     borderBottomWidth: 3,
+    maxWidth: "100%",
     paddingBottom: 2,
     paddingHorizontal: space[1],
+  },
+  appTabLabel: {
+    alignSelf: "stretch",
+    textAlign: "center",
   },
   exerciseRow: {
     alignItems: "flex-start",

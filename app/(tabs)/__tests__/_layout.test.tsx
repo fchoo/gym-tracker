@@ -480,9 +480,11 @@ describe("RootTabsLayout adaptive navigator placement", () => {
         borderColor: colors.line,
       });
       expect(selected).toBeSelected();
-      expect(rendered.getByTestId("root-tab-label-calendar")).toHaveStyle({
+      expect(rendered.getByTestId("root-tab-label-container-calendar")).toHaveStyle({
         borderBottomColor: colors.orange,
         borderBottomWidth: 3,
+      });
+      expect(rendered.getByTestId("root-tab-label-calendar")).toHaveStyle({
         color: colors.ink,
         fontSize: 16,
         fontWeight: "400",
@@ -491,11 +493,11 @@ describe("RootTabsLayout adaptive navigator placement", () => {
       expect(
         selected.queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
       ).toBe(colors.ink);
-      expect(rendered.getByTestId("root-tab-label-index")).toHaveStyle({
+      expect(rendered.getByTestId("root-tab-label-container-index")).toHaveStyle({
         borderBottomColor: "transparent",
         borderBottomWidth: 3,
-        color: colors.quiet,
       });
+      expect(rendered.getByTestId("root-tab-label-index")).toHaveStyle({ color: colors.quiet });
       expect(
         rendered.getByRole("tab", { name: "Workout" })
           .queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,

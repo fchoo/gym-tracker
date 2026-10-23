@@ -894,8 +894,8 @@ describe("Plan 01-02 route shell", () => {
     for (const label of ["Workout", "Calendar", "Library", "Progress"]) {
       expect(screen.getByText(label)).toBeOnTheScreen();
     }
-    expect(screen.getByText("Library")).toHaveStyle({
-      lineHeight: 22,
+    expect(screen.getByText("Library")).toHaveStyle({ lineHeight: 22 });
+    expect(screen.getByTestId("root-tab-label-container-library")).toHaveStyle({
       paddingBottom: 2,
       paddingHorizontal: 4,
     });
@@ -903,9 +903,11 @@ describe("Plan 01-02 route shell", () => {
       backgroundColor: themes.light.paper,
       borderColor: themes.light.line,
     });
-    expect(screen.getByText("Workout")).toHaveStyle({
+    expect(screen.getByTestId("root-tab-label-container-index")).toHaveStyle({
       borderBottomColor: themes.light.orange,
       borderBottomWidth: 3,
+    });
+    expect(screen.getByText("Workout")).toHaveStyle({
       color: themes.light.ink,
       fontSize: 16,
       fontWeight: "400",
@@ -914,11 +916,17 @@ describe("Plan 01-02 route shell", () => {
     expect(
       today.queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
     ).toBe(themes.light.ink);
-    expect(screen.getByText("Calendar")).toHaveStyle({
+    expect(screen.getByTestId("root-tab-label-container-calendar")).toHaveStyle({
       borderBottomColor: "transparent",
       borderBottomWidth: 3,
-      color: themes.light.quiet,
     });
+    expect(screen.getByText("Calendar")).toHaveStyle({ color: themes.light.quiet });
+    for (const destination of ["index", "calendar", "library", "progress"]) {
+      const textStyle = StyleSheet.flatten(screen.getByTestId(`root-tab-label-${destination}`).props.style);
+      expect(textStyle.paddingHorizontal).toBeUndefined();
+      expect(textStyle.borderBottomWidth).toBeUndefined();
+      expect(screen.getByTestId(`root-tab-label-container-${destination}`)).toHaveStyle({ maxWidth: "100%" });
+    }
     expect(
       screen.getByRole("tab", { name: "Calendar" })
         .queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
@@ -959,19 +967,19 @@ describe("Plan 01-02 route shell", () => {
       });
       expect(selected).toBeSelected();
       expect(unselected).not.toBeSelected();
-      expect(screen.getByTestId("root-tab-label-library")).toHaveStyle({
+      expect(screen.getByTestId("root-tab-label-container-library")).toHaveStyle({
         borderBottomColor: colors.orange,
         borderBottomWidth: 3,
-        color: colors.ink,
       });
+      expect(screen.getByTestId("root-tab-label-library")).toHaveStyle({ color: colors.ink });
       expect(
         selected.queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
       ).toBe(colors.ink);
-      expect(screen.getByTestId("root-tab-label-index")).toHaveStyle({
+      expect(screen.getByTestId("root-tab-label-container-index")).toHaveStyle({
         borderBottomColor: "transparent",
         borderBottomWidth: 3,
-        color: colors.quiet,
       });
+      expect(screen.getByTestId("root-tab-label-index")).toHaveStyle({ color: colors.quiet });
       expect(
         unselected.queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
       ).toBe(colors.quiet);
@@ -981,7 +989,7 @@ describe("Plan 01-02 route shell", () => {
         outlineColor: colors.blue,
         outlineWidth: 3,
       });
-      expect(screen.getByTestId("root-tab-label-library"))
+      expect(screen.getByTestId("root-tab-label-container-library"))
         .toHaveStyle({ borderBottomColor: colors.orange });
     },
   );
