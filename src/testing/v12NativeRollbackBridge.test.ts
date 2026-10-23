@@ -231,6 +231,32 @@ describe("rollback bridge guards and orchestration (host-only unit tests)", () =
     expect(result.inspection.clean_restore_receipt.outcome).toBe("restored");
     await expect(collectNativeRollbackBridge(identity, nonce)).rejects.toThrow("arm_invalid");
   });
+  it("keeps the final result absent until complete staged bytes are moved into place", async () => {
+    const f = nativePorts();
+    jest.spyOn(cryptoModule, "createExpoAesGcmArchiveDriver").mockImplementation(() => { throw new Error("v12_rollback_synthetic_failure"); });
+    const valid = { ...arm(), expires_at_ms: Date.now() + 60_000 };
+    mockFiles.set(`${mockPath}/v12-rollback-${nonce}/arm.json`, new TextEncoder().encode(JSON.stringify(valid)));
+    const finalPath = `${mockPath}/v12-rollback-${nonce}/result.json`;
+    const originalWrite = MockFile.prototype.write;
+    let observedStaging = false;
+    jest.spyOn(MockFile.prototype, "write").mockImplementation(function (this: MockFile, value) {
+      if (this.path.endsWith("/result-staged.json")) {
+        mockFiles.set(this.path, new Uint8Array());
+        expect(mockFiles.has(finalPath)).toBe(false);
+        observedStaging = true;
+      }
+      originalWrite.call(this, value);
+    });
+    await expect(collectNativeRollbackBridge(identity, nonce)).rejects.toThrow("v12_rollback_synthetic_failure");
+    expect(observedStaging).toBe(true);
+    expect(JSON.parse(new TextDecoder().decode(mockFiles.get(finalPath)!)).failure).toBe("v12_rollback_synthetic_failure");
+    expect(mockFiles.has(`${mockPath}/v12-rollback-${nonce}/result-staged.json`)).toBe(false);
+    expect(f.raw.open).not.toHaveBeenCalled();
+  });
+  it("rejects an existing staged result instead of overwriting it", async () => {
+    mockFiles.set(`${mockPath}/v12-rollback-${nonce}/result-staged.json`, new Uint8Array([1]));
+    await expect(collectNativeRollbackBridge(identity, nonce)).rejects.toThrow("arm_invalid");
+  });
   it("retains a sanitized failure receipt when a native port binding is unavailable", async () => {
     nativePorts();
     jest.spyOn(cryptoModule, "createExpoAesGcmArchiveDriver").mockImplementation(() => { throw new Error("private native binding path"); });

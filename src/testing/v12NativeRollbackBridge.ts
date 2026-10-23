@@ -214,7 +214,14 @@ export async function collectNativeRollbackBridge(identity: RollbackNativeIdenti
   const armFile = new File(Paths.document, `v12-rollback-${nonce}`, "arm.json");
   const consumed = new File(Paths.document, `v12-rollback-${nonce}`, "consumed.json");
   const resultFile = new File(Paths.document, `v12-rollback-${nonce}`, "result.json");
-  if (consumed.exists || resultFile.exists) fail("arm_invalid");
+  const stagedResult = new File(Paths.document, `v12-rollback-${nonce}`, "result-staged.json");
+  if (consumed.exists || resultFile.exists || stagedResult.exists) fail("arm_invalid");
+  function publishResult(value: unknown): void {
+    // The host polls only result.json. Same-directory rename exposes complete bytes,
+    // never the empty/partial file created by Expo's synchronous write operation.
+    stagedResult.write(JSON.stringify(value));
+    stagedResult.move(resultFile);
+  }
   const arm = validateRollbackArm(JSON.parse(armFile.textSync()), nonce, Date.now());
   armFile.move(consumed);
   try {
@@ -226,10 +233,10 @@ export async function collectNativeRollbackBridge(identity: RollbackNativeIdenti
     const archiveFile = new File(Paths.document, `v12-rollback-${nonce}`, "archive.gtbk");
     if (archiveFile.exists) fail("arm_invalid");
     archiveFile.write(result.archive);
-    resultFile.write(JSON.stringify({ schema_version: 1, producer: "v12-native-rollback-bridge/v1", arm, inspection: result.inspection }));
+    publishResult({ schema_version: 1, producer: "v12-native-rollback-bridge/v1", arm, inspection: result.inspection });
   } catch (error) {
     const code = error instanceof Error && /^v12_rollback_[a-z_]+$/u.test(error.message) ? error.message : "v12_rollback_failed";
-    resultFile.write(JSON.stringify({ schema_version: 1, producer: "v12-native-rollback-bridge/v1", arm, failure: code }));
+    publishResult({ schema_version: 1, producer: "v12-native-rollback-bridge/v1", arm, failure: code });
     throw new Error(code);
   }
 }
