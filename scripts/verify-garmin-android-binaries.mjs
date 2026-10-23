@@ -42,17 +42,36 @@ export function verifyGarminAndroidWheels(lock, directory, ndk, inspect = inspec
 }
 
 export function verifyGarminAndroidApk(apk, ndk, inspect = inspectAndroidElf) {
-  const bytes = readFileSync(apk); const outer = readArchive(bytes, 'zip', ['assets/chaquopy/requirements-*.imy', 'lib/arm64-v8a/libpython3.13.so']);
+  const bytes = readFileSync(apk); const outer = readArchive(bytes, 'zip', ['assets/chaquopy/requirements-*.imy', 'lib/arm64-v8a/*.so']);
   const requirements = outer.filter(([name]) => /^assets\/chaquopy\/requirements-(common|arm64-v8a)\.imy$/u.test(name));
   if (requirements.length !== 2) throw new Error('garmin_android_requirements_archives');
   if (outer.some(([name]) => /^assets\/chaquopy\/requirements-(?!common|arm64-v8a).+\.imy$/u.test(name))) throw new Error('garmin_android_wrong_abi');
   const entries = requirements.flatMap(([archive, data]) => readArchive(data).map(([name, binary]) => [`${archive}/${name}`, binary]));
   const result = verifyNativeEntries(entries, ndk, inspect);
   // For an APK, verify the actual runtime, rather than allowing its wheel-time external boundary.
-  const runtime = outer.find(([name]) => name === 'lib/arm64-v8a/libpython3.13.so');
+  const libraries = new Map();
+  for (const [name, data] of outer.filter(([name]) => name.startsWith('lib/arm64-v8a/'))) {
+    const match = /^lib\/arm64-v8a\/(lib[\w.+-]+\.so)$/u.exec(name);
+    if (!match) throw new Error(`garmin_android_runtime_path:${name}`);
+    if (libraries.has(match[1])) throw new Error('garmin_android_duplicate_binary');
+    libraries.set(match[1], [name, data]);
+  }
+  const runtime = libraries.get('libpython3.13.so');
   if (!runtime) throw new Error('garmin_android_python_runtime');
-  const python = inspect(runtime[1], runtime[0], ndk);
-  return { ...result, apkSha256: sha256(bytes), python };
+  const inspected = new Map();
+  function inspectRuntime([name, data]) {
+    if (inspected.has(name)) return inspected.get(name);
+    const report = inspect(data, name, ndk);
+    inspected.set(name, report);
+    for (const needed of report.needed) {
+      const dependency = libraries.get(needed);
+      if (dependency) inspectRuntime(dependency);
+      else if (!SYSTEM_LIBS.has(needed)) throw new Error(`garmin_android_missing_dependency:${name}:${needed}`);
+    }
+    return report;
+  }
+  const python = inspectRuntime(runtime);
+  return { ...result, apkSha256: sha256(bytes), python, runtimeBinaries: [...inspected.values()] };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
