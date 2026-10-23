@@ -896,16 +896,16 @@ describe("Plan 01-02 route shell", () => {
     }
     expect(screen.getByText("Library")).toHaveStyle({ lineHeight: 22 });
     expect(screen.getByTestId("root-tab-label-container-library")).toHaveStyle({
-      paddingBottom: 2,
+      gap: 2,
       paddingHorizontal: 4,
     });
     expect(screen.getByTestId("root-navigation-bottom")).toHaveStyle({
       backgroundColor: themes.light.paper,
       borderColor: themes.light.line,
     });
-    expect(screen.getByTestId("root-tab-label-container-index")).toHaveStyle({
-      borderBottomColor: themes.light.orange,
-      borderBottomWidth: 3,
+    expect(screen.getByTestId("root-tab-label-underline-index", { includeHiddenElements: true })).toHaveStyle({
+      backgroundColor: themes.light.orange,
+      height: 3,
     });
     expect(screen.getByText("Workout")).toHaveStyle({
       color: themes.light.ink,
@@ -916,17 +916,26 @@ describe("Plan 01-02 route shell", () => {
     expect(
       today.queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
     ).toBe(themes.light.ink);
-    expect(screen.getByTestId("root-tab-label-container-calendar")).toHaveStyle({
-      borderBottomColor: "transparent",
-      borderBottomWidth: 3,
+    expect(screen.getByTestId("root-tab-label-underline-calendar", { includeHiddenElements: true })).toHaveStyle({
+      backgroundColor: "transparent",
+      height: 3,
     });
     expect(screen.getByText("Calendar")).toHaveStyle({ color: themes.light.quiet });
     for (const destination of ["index", "calendar", "library", "progress"]) {
-      const textStyle = StyleSheet.flatten(screen.getByTestId(`root-tab-label-${destination}`).props.style);
-      expect(textStyle.paddingHorizontal).toBeUndefined();
-      expect(textStyle.borderBottomWidth).toBeUndefined();
-      expect(screen.getByTestId(`root-tab-label-container-${destination}`)).toHaveStyle({ maxWidth: "100%", alignSelf: "stretch" });
-      expect(screen.getByTestId(`root-tab-label-${destination}`)).toHaveStyle({ width: "100%", flexShrink: 1 });
+      const text = screen.getByTestId(`root-tab-label-${destination}`);
+      const textStyle = StyleSheet.flatten(text.props.style);
+      for (const property of ["padding", "paddingHorizontal", "paddingVertical", "paddingBottom", "borderBottomWidth", "height", "maxHeight"]) {
+        expect(textStyle[property]).toBeUndefined();
+      }
+      expect(text).toHaveProp("numberOfLines", 1);
+      expect(text).toHaveProp("adjustsFontSizeToFit", true);
+      expect(text).toHaveProp("minimumFontScale", 0.5);
+      expect(text).toHaveProp("allowFontScaling", true);
+      expect(text.props.maxFontSizeMultiplier).toBeUndefined();
+      const container = screen.getByTestId(`root-tab-label-container-${destination}`);
+      expect(container).toHaveStyle({ maxWidth: "100%", alignSelf: "stretch", width: "100%" });
+      expect(StyleSheet.flatten(container.props.style).borderBottomWidth).toBeUndefined();
+      expect(text).toHaveStyle({ width: "100%", flexShrink: 1, textAlign: "center" });
     }
     expect(
       screen.getByRole("tab", { name: "Calendar" })
@@ -968,17 +977,17 @@ describe("Plan 01-02 route shell", () => {
       });
       expect(selected).toBeSelected();
       expect(unselected).not.toBeSelected();
-      expect(screen.getByTestId("root-tab-label-container-library")).toHaveStyle({
-        borderBottomColor: colors.orange,
-        borderBottomWidth: 3,
+      expect(screen.getByTestId("root-tab-label-underline-library", { includeHiddenElements: true })).toHaveStyle({
+        backgroundColor: colors.orange,
+        height: 3,
       });
       expect(screen.getByTestId("root-tab-label-library")).toHaveStyle({ color: colors.ink });
       expect(
         selected.queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
       ).toBe(colors.ink);
-      expect(screen.getByTestId("root-tab-label-container-index")).toHaveStyle({
-        borderBottomColor: "transparent",
-        borderBottomWidth: 3,
+      expect(screen.getByTestId("root-tab-label-underline-index", { includeHiddenElements: true })).toHaveStyle({
+        backgroundColor: "transparent",
+        height: 3,
       });
       expect(screen.getByTestId("root-tab-label-index")).toHaveStyle({ color: colors.quiet });
       expect(
@@ -990,12 +999,59 @@ describe("Plan 01-02 route shell", () => {
         outlineColor: colors.blue,
         outlineWidth: 3,
       });
-      expect(screen.getByTestId("root-tab-label-container-library"))
-        .toHaveStyle({ borderBottomColor: colors.orange });
+      expect(screen.getByTestId("root-tab-label-underline-library", { includeHiddenElements: true }))
+        .toHaveStyle({ backgroundColor: colors.orange });
     },
   );
 
-  it("keeps four complete root destinations in one bottom composition at 200% text", async () => {
+  it("keeps selection underlines at the fitted label width without constraining Text", async () => {
+    const navigation = {
+      emit: () => ({ defaultPrevented: false }),
+      navigate: jest.fn(),
+    };
+    const rendered = await render(
+      <AppearanceProvider>
+        <AppTabs navigation={navigation} state={{ index: 0, routes }} />
+      </AppearanceProvider>,
+    );
+
+    for (const [destination, width] of [
+      ["index", 55.25],
+      ["calendar", 59.5],
+      ["library", 45.75],
+      ["progress", 60],
+    ] as const) {
+      const text = screen.getByTestId(`root-tab-label-${destination}`);
+      const underline = screen.getByTestId(`root-tab-label-underline-${destination}`, { includeHiddenElements: true });
+      expect(underline).toHaveStyle({ width: 0, height: 3, maxWidth: "100%" });
+      expect(underline).toHaveProp("accessible", false);
+      expect(underline).toHaveProp("importantForAccessibility", "no-hide-descendants");
+      expect(underline).toHaveProp("pointerEvents", "none");
+
+      await fireEvent(text, "textLayout", { nativeEvent: { lines: [{ width }] } });
+      expect(underline).toHaveStyle({ width });
+      expect(text).toHaveStyle({ width: "100%" });
+    }
+
+    const libraryText = screen.getByTestId("root-tab-label-library");
+    const libraryUnderline = screen.getByTestId("root-tab-label-underline-library", { includeHiddenElements: true });
+    await fireEvent(libraryText, "textLayout", { nativeEvent: { lines: [{ width: 63.5 }] } });
+    await rendered.rerender(
+      <AppearanceProvider>
+        <AppTabs navigation={navigation} state={{ index: 2, routes }} />
+      </AppearanceProvider>,
+    );
+    expect(libraryUnderline).toHaveStyle({ backgroundColor: themes.light.orange, width: 63.5 });
+    expect(screen.getByTestId("root-tab-label-underline-index", { includeHiddenElements: true }))
+      .toHaveStyle({ backgroundColor: "transparent", width: 55.25 });
+
+    for (const lines of [[], [{ width: Number.NaN }], [{ width: -1 }]]) {
+      await fireEvent(libraryText, "textLayout", { nativeEvent: { lines } });
+      expect(libraryUnderline).toHaveStyle({ width: 0 });
+    }
+  });
+
+  it("keeps four complete root destinations in one single-line fitted bottom composition", async () => {
     const navigate = jest.fn();
     await render(
       <AppearanceProvider>
@@ -1025,7 +1081,12 @@ describe("Plan 01-02 route shell", () => {
         minHeight: 64,
         minWidth: 48,
       });
-      expect(screen.getByText(label).props.numberOfLines).toBeUndefined();
+      const text = screen.getByText(label);
+      expect(text).toHaveProp("numberOfLines", 1);
+      expect(text).toHaveProp("adjustsFontSizeToFit", true);
+      expect(text).toHaveProp("minimumFontScale", 0.5);
+      expect(text).toHaveProp("allowFontScaling", true);
+      expect(text).toHaveTextContent(label, { exact: true });
     }
 
     const progress = screen.getByRole("tab", { name: "Progress" });

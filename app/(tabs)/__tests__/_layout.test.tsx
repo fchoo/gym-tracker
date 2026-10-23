@@ -480,9 +480,9 @@ describe("RootTabsLayout adaptive navigator placement", () => {
         borderColor: colors.line,
       });
       expect(selected).toBeSelected();
-      expect(rendered.getByTestId("root-tab-label-container-calendar")).toHaveStyle({
-        borderBottomColor: colors.orange,
-        borderBottomWidth: 3,
+      expect(rendered.getByTestId("root-tab-label-underline-calendar", { includeHiddenElements: true })).toHaveStyle({
+        backgroundColor: colors.orange,
+        height: 3,
       });
       expect(rendered.getByTestId("root-tab-label-calendar")).toHaveStyle({
         color: colors.ink,
@@ -493,9 +493,9 @@ describe("RootTabsLayout adaptive navigator placement", () => {
       expect(
         selected.queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
       ).toBe(colors.ink);
-      expect(rendered.getByTestId("root-tab-label-container-index")).toHaveStyle({
-        borderBottomColor: "transparent",
-        borderBottomWidth: 3,
+      expect(rendered.getByTestId("root-tab-label-underline-index", { includeHiddenElements: true })).toHaveStyle({
+        backgroundColor: "transparent",
+        height: 3,
       });
       expect(rendered.getByTestId("root-tab-label-index")).toHaveStyle({ color: colors.quiet });
       expect(
@@ -512,7 +512,7 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     },
   );
 
-  it("keeps one bottom row with full labels at 200% text", async () => {
+  it("requests single-line native fitting in one bottom row at 200% text", async () => {
     setRenderedDimensions(360, 2);
     const rendered = await render(
       <AppearanceProvider>
@@ -532,11 +532,29 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     expect(
       rendered.getAllByRole("tab").map((tab) => tab.props.accessibilityLabel),
     ).toEqual(destinationLabels);
-    for (const label of destinationLabels) {
+    // Host rendering verifies the fitting request, not Android's final glyph pixels.
+    for (const [index, label] of destinationLabels.entries()) {
+      const destination = ["index", "calendar", "library", "progress"][index];
       expect(rendered.getByRole("tab", { name: label })).toHaveStyle({
         minHeight: 64,
         minWidth: 48,
       });
+      const text = rendered.getByTestId(`root-tab-label-${destination}`);
+      expect(text).toHaveTextContent(label, { exact: true });
+      expect(text).toHaveProp("numberOfLines", 1);
+      expect(text).toHaveProp("adjustsFontSizeToFit", true);
+      expect(text).toHaveProp("minimumFontScale", 0.5);
+      expect(text).toHaveProp("allowFontScaling", true);
+      expect(text.props.maxFontSizeMultiplier).toBeUndefined();
+      expect(text).toHaveStyle({
+        fontFamily: "ArchivoVariable",
+        fontSize: 16,
+        lineHeight: 22,
+        width: "100%",
+        flexShrink: 1,
+      });
+      expect(rendered.getByTestId(`root-tab-label-container-${destination}`))
+        .toHaveStyle({ width: "100%", alignSelf: "stretch" });
     }
 
     expect(rendered.queryByTestId("root-navigation-rail")).not.toBeOnTheScreen();
@@ -584,7 +602,8 @@ describe("RootTabsLayout adaptive navigator placement", () => {
       minWidth: 48,
       outlineWidth: sizes.focusRing,
     });
-    expect(rendered.getByText("Library").props.numberOfLines).toBeUndefined();
+    expect(rendered.getByTestId("root-tab-label-library")).toHaveProp("numberOfLines", 1);
+    expect(rendered.getByTestId("root-tab-label-library")).toHaveProp("adjustsFontSizeToFit", true);
     expect(rendered.getByTestId("root-tabs")).toHaveStyle({
       flex: 1,
       flexDirection: "column",

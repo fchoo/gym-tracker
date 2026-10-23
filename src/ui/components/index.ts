@@ -40,6 +40,7 @@ import {
   type PressableProps,
   type PressableStateCallbackType,
   type StyleProp,
+  type TextLayoutEvent,
   type TextStyle,
   type ViewStyle,
 } from "react-native";
@@ -1116,6 +1117,60 @@ export const rootDestinations = [
   },
 ] as const;
 
+function AppTabLabel({
+  destination,
+  selected,
+}: Readonly<{
+  destination: (typeof rootDestinations)[number];
+  selected: boolean;
+}>) {
+  const { colors } = useAppTheme();
+  const [labelWidth, setLabelWidth] = useState(0);
+
+  function measureLabel(event: TextLayoutEvent) {
+    const width = event.nativeEvent.lines[0]?.width ?? 0;
+    setLabelWidth(Number.isFinite(width) ? Math.max(0, width) : 0);
+  }
+
+  return h(
+    View,
+    {
+      style: styles.appTabLabelContainer,
+      testID: `root-tab-label-container-${destination.name}`,
+    },
+    h(
+      Text,
+      {
+        // Keep Archivo 16/22 and system scaling; fit only within this tab column.
+        allowFontScaling: true,
+        adjustsFontSizeToFit: true,
+        minimumFontScale: 0.5,
+        numberOfLines: 1,
+        onTextLayout: measureLabel,
+        style: [
+          typeScale.body as TextStyle,
+          styles.appTabLabel,
+          { color: selected ? colors.ink : colors.quiet },
+        ],
+        testID: `root-tab-label-${destination.name}`,
+      },
+      destination.label,
+    ),
+    // The text box fills the column, but Revision 18's underline follows the label.
+    h(View, {
+      accessible: false,
+      accessibilityElementsHidden: true,
+      importantForAccessibility: "no-hide-descendants",
+      pointerEvents: "none",
+      style: [
+        styles.appTabLabelUnderline,
+        { backgroundColor: selected ? colors.orange : "transparent", width: labelWidth },
+      ],
+      testID: `root-tab-label-underline-${destination.name}`,
+    }),
+  );
+}
+
 type AppTabsProps = Readonly<{
   state: {
     index: number;
@@ -1185,28 +1240,7 @@ export function AppTabs({
         destination.icon,
         selected ? colors.ink : colors.quiet,
       ),
-      h(
-        View,
-        {
-          style: [
-            styles.appTabLabelContainer,
-            { borderBottomColor: selected ? colors.orange : "transparent" },
-          ],
-          testID: `root-tab-label-container-${destination.name}`,
-        },
-        h(
-          Text,
-          {
-            style: [
-              typeScale.body as TextStyle,
-              styles.appTabLabel,
-              { color: selected ? colors.ink : colors.quiet },
-            ],
-            testID: `root-tab-label-${destination.name}`,
-          },
-          destination.label,
-        ),
-      ),
+      h(AppTabLabel, { destination, selected }),
     );
   });
 
@@ -1496,16 +1530,20 @@ const styles = StyleSheet.create({
   appTabLabelContainer: {
     alignItems: "center",
     alignSelf: "stretch",
-    borderBottomWidth: 3,
+    gap: 2,
     maxWidth: "100%",
-    paddingBottom: 2,
     paddingHorizontal: space[1],
+    width: "100%",
   },
   appTabLabel: {
     alignSelf: "stretch",
     flexShrink: 1,
     textAlign: "center",
     width: "100%",
+  },
+  appTabLabelUnderline: {
+    height: 3,
+    maxWidth: "100%",
   },
   exerciseRow: {
     alignItems: "flex-start",
