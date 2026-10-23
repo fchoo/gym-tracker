@@ -740,6 +740,7 @@ describe("RootLayout attended preview isolation", () => {
     },
     { label: "Phase 20 quality", pathname: "/__phase20-quality-probe", params: {} },
     { label: "v1.2 native contracts", pathname: "/__native-contracts", params: {} },
+    { label: "rollback archive", pathname: "/__v12-recovery-archive", params: { nonce: "a".repeat(32) } },
     { label: "Phase 20 Garmin", pathname: "/__v12-production-garmin", params: {} },
     { label: "Garmin evidence", pathname: "/__phase18-garmin-proof", params: {} },
   ])(
@@ -758,6 +759,31 @@ describe("RootLayout attended preview isolation", () => {
       expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
     },
   );
+
+  it.each([true, false])("isolates the rollback archive route with native hooks enabled=%s", async (enabled) => {
+    mockNativeContractsEnabled = enabled;
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockPathname = "/__v12-recovery-archive";
+    mockSearchParams = { nonce: "a".repeat(32) };
+    await render(<RootLayout />);
+    expect(screen.getByTestId("root-stack-screen-__v12-recovery-archive")).toBeOnTheScreen();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+    expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
+  });
+
+  it("fails closed before rollback runtime construction when fonts fail", async () => {
+    mockPathname = "/__v12-recovery-archive";
+    mockSearchParams = { nonce: "a".repeat(32) };
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockFontsLoaded = false;
+    mockFontError = new Error("synthetic_font_failure");
+    await render(<RootLayout />);
+    expect(screen.getByTestId("root-failure-font")).toBeOnTheScreen();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+    expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
+  });
 
   it("keeps a disabled preview deep link off the production runtime", async () => {
     mockNativeContractsEnabled = false;

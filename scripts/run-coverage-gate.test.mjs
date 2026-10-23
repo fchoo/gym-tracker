@@ -97,7 +97,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   ));
   assert.deepEqual(manifest.phase20, discoveredPhase20);
   assert.deepEqual(manifest.phase18, discoveredPhase18);
-  assert.equal(manifest.phase20.length, 54);
+  assert.equal(manifest.phase20.length, 56);
   assert.equal(manifest.phase18.length, 18);
   assert.ok(manifest.phase18.includes("scripts/phase18-garmin-proof.test.mjs"));
   assert.deepEqual(Object.keys(manifest.phase20_coverage).sort(), [
@@ -111,7 +111,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
     manifest.phase20_coverage.metrics,
     ["statements", "branches", "functions", "lines"],
   );
-  assert.equal(manifest.phase20_coverage.jest_istanbul_modules.length, 11);
+  assert.equal(manifest.phase20_coverage.jest_istanbul_modules.length, 13);
   const coverageProjects = manifest.phase20_coverage.node_v8_projects;
   assert.equal(coverageProjects.length, 7);
   assert.deepEqual(coverageProjects.map(({ name }) => name), [
@@ -132,14 +132,16 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
     { name: "cli-blackbox", timeoutMs: 50 * 60_000 },
   ]);
   const registeredProjectTests = coverageProjects.flatMap(({ tests }) => tests);
-  assert.equal(registeredProjectTests.length, 54);
-  assert.equal(new Set(registeredProjectTests).size, 54);
+  assert.equal(registeredProjectTests.length, 56);
+  assert.equal(new Set(registeredProjectTests).size, 56);
   assert.deepEqual([...registeredProjectTests].sort(), manifest.phase20);
   const coveredModules = new Set(coverageProjects.flatMap(({ modules }) => modules));
-  assert.equal(coveredModules.size, 19);
+  assert.equal(coveredModules.size, 21);
   for (const required of [
     "scripts/native-contract-log-transport.mjs",
     "scripts/validate-development-test-native-access.mjs",
+    "scripts/v12-native-rollback-bridge.mjs",
+    "scripts/v12-rollback-archive-inspection.mjs",
     "scripts/v12-atomic-shard-publication.mjs",
     "scripts/v12-rollback-evidence.mjs",
     "scripts/verify-v12-native-evidence.mjs",

@@ -159,6 +159,8 @@ const phase20EvidenceTests = Object.freeze([
   "scripts/generate-v12-attended-checklist.test.mjs",
   "scripts/native-device-selection.test.mjs",
   "scripts/v12-native-contract-log-transport.test.mjs",
+  "scripts/v12-native-rollback-bridge.test.mjs",
+  "scripts/v12-rollback-async.test.mjs",
   "scripts/phase20-integrity-coverage.test.mjs",
   "scripts/phase20-subprocess-coverage.test.mjs",
   "scripts/phase20-visual-integrity-coverage.test.mjs",
@@ -275,6 +277,8 @@ const phase20EvidenceProjects = Object.freeze([
     modules: Object.freeze([
       "scripts/native-contract-log-transport.mjs",
       "scripts/validate-development-test-native-access.mjs",
+      "scripts/v12-native-rollback-bridge.mjs",
+      "scripts/v12-rollback-archive-inspection.mjs",
       "scripts/v12-artifact-privacy.mjs",
       "scripts/v12-atomic-shard-publication.mjs",
       "scripts/v12-calendar-artifact-transport.mjs",
@@ -370,6 +374,8 @@ const phase20IntegrityCriticalFiles = [
   "src/testing/v12NativeContractLogTransport.ts",
   "src/testing/contracts/contractProgress.ts",
   "src/testing/contracts/progressNativeDiagnostics.ts",
+  "src/testing/v12NativeRollbackBridge.ts",
+  "app/__v12-recovery-archive.tsx",
   "src/testing/contracts/phase15Workout.contract.ts",
   "src/testing/contracts/v12Acceptance.contract.ts",
   "src/testing/contracts/v12Accessibility.contract.ts",
@@ -825,7 +831,7 @@ const registeredPhase20EvidenceTests = validateEvidenceTestManifest({
   tests: phase20EvidenceTests,
   isEvidenceTest: isPhase20EvidenceTest,
   error: "phase20_evidence_test_manifest_drift",
-  expectedCount: 54,
+  expectedCount: 56,
 });
 const expectedPhase20ProjectNames = [
   "contracts",
@@ -839,10 +845,10 @@ const expectedPhase20ProjectNames = [
 const assignedPhase20Tests = phase20EvidenceProjects.flatMap(({ tests }) => tests);
 const assignedPhase20Modules = new Set(phase20EvidenceProjects.flatMap(({ modules = [] }) => modules));
 if (JSON.stringify(phase20EvidenceProjects.map(({ name }) => name)) !== JSON.stringify(expectedPhase20ProjectNames)
-  || assignedPhase20Tests.length !== 54
-  || new Set(assignedPhase20Tests).size !== 54
+  || assignedPhase20Tests.length !== 56
+  || new Set(assignedPhase20Tests).size !== 56
   || JSON.stringify([...assignedPhase20Tests].sort()) !== JSON.stringify(registeredPhase20EvidenceTests)
-  || assignedPhase20Modules.size !== 19
+  || assignedPhase20Modules.size !== 21
   || phase20EvidenceProjects.find(({ name }) => name === "cli-blackbox")?.coverage !== false) {
   throw new Error(JSON.stringify({
     error: "phase20_coverage_project_manifest_invalid",
@@ -894,13 +900,16 @@ if (focusPhase19) {
 }
 if (focusPhase20) {
   focusedIntegrityFiles.push(...phase20IntegrityCriticalFiles);
-  focusedProjects.push("unit", "sqlite-host");
+  focusedProjects.push("unit", "components", "sqlite-host");
   jestForwarded.push(
     "src/bootstrap/v12AcceptanceBenchmark.test.ts",
     "src/testing/v12NativeAcceptanceExecutor.test.ts",
     "src/testing/v12NativeContractLogTransport.test.ts",
     "src/testing/contracts/contractProgress.test.ts",
     "src/testing/contracts/progressNativeDiagnostics.test.ts",
+    "src/testing/v12NativeRollbackBridge.test.ts",
+    "app/__tests__/v12-rollback-bridge.test.tsx",
+    "tests/sqlite-host/v12RollbackBridge.test.ts",
     "tests/sqlite-host/v12NativeAcceptanceOperations.test.ts",
     "src/testing/contracts/v12Acceptance.contract.test.ts",
     "src/testing/contracts/v12Accessibility.contract.test.ts",
