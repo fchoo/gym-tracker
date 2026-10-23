@@ -641,6 +641,52 @@ class GarminTokenStoreTest {
   }
 
   @Test
+  fun `MFA challenge never extracts or persists a session before connected completion`() {
+    var connected = false
+    var extractions = 0
+    val token = "opaque-completed-session".toByteArray()
+    val dispatcher = object : GarminPythonDispatcher {
+      override fun dispatch(operation: String, arguments: MutableMap<String, Any>): Map<String, Any?> {
+        connected = operation == "resumeMfa"
+        return success(1, mapOf("kind" to if (connected) "connected" else "mfa_required"))
+      }
+      override fun takePersistableTokens(): ByteArray? {
+        check(connected) { "challenge_has_no_session" }
+        extractions += 1
+        return token
+      }
+    }
+    val store = MemorySessionStore()
+    val worker = GarminClientWorker(dispatcher, store)
+    assertEquals("mfa_required", (worker.login("owner", "synthetic-secret")["data"] as Map<*, *>)["kind"])
+    assertEquals(0, extractions)
+    assertNull(store.value)
+    assertEquals("connected", (worker.resumeMfa("opaque-challenge", "123456")["data"] as Map<*, *>)["kind"])
+    assertEquals(1, extractions)
+    assertArrayEquals("opaque-completed-session".toByteArray(), store.value)
+    assertTrue(token.all { it == 0.toByte() })
+  }
+
+  @Test
+  fun `login and MFA completion persist only connected results not errors or incomplete successes`() {
+    for (result in listOf(
+      mapOf<String, Any?>("status" to "error", "error" to mapOf("code" to "mfa_expired")),
+      success(1, mapOf("kind" to "mfa_required")),
+      success(1, mapOf("kind" to "disconnected")),
+      success(1, emptyMap()),
+      mapOf("status" to "ok", "generation" to 1, "data" to emptyList<Any>()),
+    )) {
+      val dispatcher = object : GarminPythonDispatcher {
+        override fun dispatch(operation: String, arguments: MutableMap<String, Any>) = result
+        override fun takePersistableTokens(): ByteArray? = throw AssertionError("incomplete_session_extraction")
+      }
+      val worker = GarminClientWorker(dispatcher, MemorySessionStore())
+      worker.login("owner", "synthetic-secret")
+      worker.resumeMfa("opaque-challenge", "123456")
+    }
+  }
+
+  @Test
   fun `worker validates MFA restore read and argument boundaries`() {
     val noSession = GarminClientWorker(RecordingDispatcher(ArrayDeque()), MemorySessionStore())
     assertEquals("sign_in_required", errorCode(noSession.restoreSession()))

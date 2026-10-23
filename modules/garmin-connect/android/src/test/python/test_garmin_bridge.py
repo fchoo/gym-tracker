@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 import sys
 import threading
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -77,6 +77,35 @@ def provider_error(name, *, status=None, retry_after=None):
 
 
 class GarminBridgeTests(unittest.TestCase):
+    def test_proxy_mapping_is_rejected_before_client_creation_but_typed_dict_reaches_factory(self):
+        # Host-only proxy reproduction, not an installed Chaquopy runtime claim.
+        calls = []
+        def factory(**kwargs):
+            calls.append(kwargs)
+            return FakeClient(needs_mfa=True)
+        bridge = garmin_bridge.create_bridge(client_factory=factory, handle_factory=lambda: "opaque-challenge")
+        values = {"email": "owner", "password": "synthetic-secret"}
+        rejected = bridge.dispatch("login", MappingProxyType(values))
+        self.assertEqual(rejected, {"status": "error", "error": {"code": "arguments_rejected"}})
+        self.assertEqual(calls, [])
+        accepted = bridge.dispatch("login", dict(values))
+        self.assertEqual(accepted["data"]["kind"], "mfa_required")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["retry_attempts"], 0)
+        self.assertIsNone(bridge.take_persistable_tokens())
+        self.assertEqual(values, {"email": "owner", "password": "synthetic-secret"})
+
+    def test_benchmark_canonical_float_json_can_expand_past_one_mb_without_client_creation(self):
+        # Canonical dumps expands each short 1e15 float to full decimal text.
+        padding = json.dumps(["x" * 15990] * 61, separators=(",", ":"))
+        numbers = "[" + ",".join(["1e15"] * 4800) + "]"
+        payload = '{"padding":' + padding + ',"numbers":' + numbers + '}'
+        self.assertLessEqual(len(payload), 1_000_000)
+        result = garmin_bridge.dispatch("benchmarkDeterministicJson", {"payloadJson": payload})
+        self.assertGreater(len(result["normalizedJson"]), 1_000_000)
+        self.assertLess(len(result["normalizedJson"]), 2_000_000)
+        self.assertEqual(json.loads(result["normalizedJson"]), json.loads(payload))
+
     def test_logout_and_reauth_reuse_a_stable_opaque_namespace_for_the_same_account(self):
         first = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: FakeClient())
         second = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: FakeClient())

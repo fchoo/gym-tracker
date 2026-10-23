@@ -1,6 +1,7 @@
 package expo.modules.garminconnect
 
 import android.content.Context
+import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import java.util.concurrent.locks.ReentrantLock
@@ -47,6 +48,46 @@ internal interface GarminPythonDispatcher {
   )
 }
 
+internal fun productionGarminPythonContainers(python: Python): GarminPythonContainers<PyObject> {
+  val builtins = python.getModule("builtins")
+  return GarminPythonContainers(
+    create = { kind -> if (kind == "dict") builtins.callAttr("dict")!! else builtins.callAttr("list")!! },
+    fromScalar = { PyObject.fromJava(it)!! },
+    bytesFromList = { builtins.callAttr("bytes", it)!! },
+    type = { value ->
+      when (value.type()) {
+        builtins["dict"] -> GarminPythonKind.DICT
+        builtins["list"] -> GarminPythonKind.LIST
+        builtins["bool"] -> GarminPythonKind.BOOLEAN
+        builtins["int"] -> GarminPythonKind.INTEGER
+        builtins["float"] -> GarminPythonKind.FLOAT
+        builtins["str"] -> GarminPythonKind.STRING
+        else -> GarminPythonKind.UNSUPPORTED
+      }
+    },
+    readScalar = { value, kind ->
+      when (kind) {
+        GarminPythonKind.BOOLEAN -> value.toBoolean()
+        GarminPythonKind.INTEGER -> value.toLong()
+        GarminPythonKind.FLOAT -> value.toDouble()
+        else -> value.toJava(String::class.java)
+      }
+    },
+    mapView = { it.asMap() },
+    listView = { it.asList() },
+  )
+}
+
+internal fun productionGarminPythonDispatch(
+  python: Python,
+  operation: String,
+  arguments: Map<String, Any>,
+): Map<String, Any?> {
+  val containers = productionGarminPythonContainers(python)
+  return containers.resultMap(python.getModule("garmin_bridge")
+    .callAttr("dispatch", operation, containers.arguments(arguments)))
+}
+
 internal fun productionGarminPythonDispatcher(context: Context): ChaquopyGarminPythonDispatcher =
   ChaquopyGarminPythonDispatcher(
     ensurePythonStarted = {
@@ -57,26 +98,21 @@ internal fun productionGarminPythonDispatcher(context: Context): ChaquopyGarminP
       }
     },
     dispatchBridge = { operation, arguments ->
-      @Suppress("UNCHECKED_CAST")
-      Python.getInstance().getModule("garmin_bridge")
-        .callAttr("dispatch", operation, arguments)
-        .toJava(Map::class.java) as Map<String, Any?>
+      productionGarminPythonDispatch(Python.getInstance(), operation, arguments)
     },
     takeTokens = {
       Python.getInstance().getModule("garmin_bridge")
-        .callAttr("take_persistable_tokens").toJava(ByteArray::class.java)
+        .callAttr("take_persistable_tokens")?.toJava(ByteArray::class.java)
     },
     rejectionEvidence = {
-      @Suppress("UNCHECKED_CAST")
-      Python.getInstance().getModule("garmin_bridge")
-        .callAttr("evidence_rejections")
-        .toJava(Map::class.java) as Map<String, String>
+      val python = Python.getInstance()
+      productionGarminPythonContainers(python).stringMap(python.getModule("garmin_bridge")
+        .callAttr("evidence_rejections"))
     },
     recoveryEvidence = {
-      @Suppress("UNCHECKED_CAST")
-      Python.getInstance().getModule("garmin_bridge")
-        .callAttr("evidence_recovery_extensions")
-        .toJava(List::class.java) as List<Map<String, Any?>>
+      val python = Python.getInstance()
+      productionGarminPythonContainers(python).mapList(python.getModule("garmin_bridge")
+        .callAttr("evidence_recovery_extensions"))
     },
   )
 
@@ -143,8 +179,9 @@ internal class GarminClientWorker(
       try {
         val result = safeDispatch("login", arguments)
         requireGeneration(result, generation)
-        persistPendingTokens(result)
-        sessionAvailable = connected(result)
+        val isConnected = connected(result)
+        if (isConnected) persistPendingTokens(result)
+        sessionAvailable = isConnected
         result
       } finally {
         arguments.clear()
@@ -164,8 +201,9 @@ internal class GarminClientWorker(
       try {
         val result = safeDispatch("resumeMfa", arguments)
         requireGeneration(result, startedGeneration)
-        persistPendingTokens(result)
-        sessionAvailable = connected(result)
+        val isConnected = connected(result)
+        if (isConnected) persistPendingTokens(result)
+        sessionAvailable = isConnected
         result
       } finally {
         arguments.clear()
@@ -306,6 +344,8 @@ internal class GarminClientWorker(
 
   private fun persistPendingTokens(result: Map<String, Any?>) {
     if (result["status"] != "ok") return
+    val data = result["data"] as? Map<*, *>
+    if (data?.get("kind") == "mfa_required") return
     val tokenBytes = dispatcher.takePersistableTokens() ?: return
     try {
       sessionStore.replace(tokenBytes)

@@ -226,9 +226,9 @@ internal class GarminConnectPlatformBindings(
             if (!Python.isStarted()) Python.start(AndroidPlatform(reactContext.applicationContext))
             kind
           }
-          val result = Python.getInstance().getModule("garmin_bridge")
-            .callAttr("dispatch", "runtimeInfo", emptyMap<String, Any>())
-            .toJava(Map::class.java)
+          val result = productionGarminPythonDispatch(
+            Python.getInstance(), "runtimeInfo", emptyMap(),
+          )
           val observedAtNanos = SystemClock.elapsedRealtimeNanos()
           val apk = File(reactContext.applicationInfo.sourceDir)
           val installedApkSizeBytes = apk.length()
