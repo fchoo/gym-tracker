@@ -177,7 +177,8 @@ export const PHASE18_LANGUAGE_COVERAGE_SPECS = Object.freeze({
     ]),
     supportPaths: Object.freeze([
       `${READINESS_HOST_ROOT}/Report.java`,
-      ...["run-kotlin.py", "seal-kotlin.py", "run-python.py"].map((file) => `${READINESS_HOST_ROOT}/${file}`),
+      ...["run-kotlin.py", "seal-kotlin.py", "run-python.py", "host_tool_bindings.py", "test_host_tool_bindings.py",
+        "run-host-tool-bindings-coverage.py", "test_host_coverage_producer.py"].map((file) => `${READINESS_HOST_ROOT}/${file}`),
       ...["Coroutine.kt", "Module.kt", "Records.kt"].map((file) => `${READINESS_HOST_ROOT}/stubs/${file}`),
       ...["android/content/Intent.java", "android/content/res/AssetManager.java", "android/net/Uri.java",
         "com/chaquo/python/PyObject.java", "com/chaquo/python/Python.java", "com/chaquo/python/android/AndroidPlatform.java"]

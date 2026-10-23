@@ -13,12 +13,137 @@ import {
   executePhase18KotlinCoverageCli,
 } from "./run-phase18-kotlin-coverage.mjs";
 import { PHASE18_LANGUAGE_COVERAGE_SPECS } from "./phase18-language-coverage.mjs";
+import * as kotlinRunner from "./run-phase18-kotlin-coverage.mjs";
 
 const spec = PHASE18_LANGUAGE_COVERAGE_SPECS.kotlin;
 const suite = ({ failures = 0 } = {}) => `<testsuite tests="${spec.requiredCases.length}" skipped="0" failures="${failures}" errors="0">${spec.requiredCases.map((name) => `<testcase name="${name}"/>`).join("")}</testsuite>`;
 const counters = '<counter type="INSTRUCTION" missed="0" covered="10"/><counter type="BRANCH" missed="0" covered="10"/><counter type="METHOD" missed="0" covered="10"/><counter type="LINE" missed="0" covered="10"/>';
 const jacoco = `<report>${spec.requiredClasses.map((name) => `<class name="${name}">${counters}</class>`).join("")}${counters}</report>`;
 const junitXmls = () => spec.testPaths.map(() => suite());
+const hostRoot = "modules/garmin-connect/android/src/test/host/readiness";
+const producerPath = `${hostRoot}/run-host-tool-bindings-coverage.py`;
+const producerTestPath = `${hostRoot}/test_host_coverage_producer.py`;
+const hostReportPath = "coverage/phase18/host-tool-bindings-coverage.json";
+
+function hostToolsFixture() {
+  const readBytes = (file) => {
+    try { return readFileSync(file); }
+    catch { return Buffer.from(file); }
+  };
+  const bind = (files) => files.map(file => ({ path: file, sha256: createHash("sha256").update(readBytes(file)).digest("hex") }));
+  const cases = [];
+  let owner;
+  for (const line of readBytes(`${hostRoot}/test_host_tool_bindings.py`).toString().split(/\r?\n/u)) {
+    const declaration = /^class (\w+)\(unittest\.TestCase\):/u.exec(line);
+    if (declaration) owner = declaration[1];
+    const method = /^    def (test_\w+)\(/u.exec(line);
+    if (owner && method) cases.push(`test_host_tool_bindings.${owner}.${method[1]}`);
+  }
+  const counter = (count) => ({ covered: count, missed: 0, total: count, percent: 100 });
+  return { readBytes, raw: {
+    schema_version: 1, suite: "phase18-garmin-host-tool-bindings", status: "passed",
+    runtime_proof: "NON_NATIVE_CONTROLLED_TOOL_PATH_FIXTURES; no compiler/APK/provider proof",
+    runtime: { name: "python", version: "3.14.8", venv: true }, coverage_engine: "7.16.2",
+    coverage: { statements: counter(58), lines: counter(58), branches: counter(20), functions: counter(6) },
+    tests_run: 16, skipped: 0, failures: 0, errors: 0,
+    required_cases: cases.sort(), executed_cases: cases.sort(),
+    sources: bind([`${hostRoot}/host_tool_bindings.py`]), tests: bind([`${hostRoot}/test_host_tool_bindings.py`]),
+    support: bind([`${hostRoot}/run-kotlin.py`, `${hostRoot}/seal-kotlin.py`, producerPath, producerTestPath]),
+    producer_sha256: bind([producerPath])[0].sha256,
+    source_unchanged: true, missing_functions: [], exclusions: [],
+  } };
+}
+
+test("default readiness validates the complete host-tools gate before compiler execution", () => {
+  const fixture = readinessFixture(); const tools = hostToolsFixture(); const calls = [];
+  executePhase18KotlinReadinessCoverage({
+    projectRoot: "/repo", runHostTools: () => calls.push("host-tools-tests"),
+    runHost: () => calls.push("compiler"), readBytes: tools.readBytes,
+    readText: file => file.endsWith("host-tool-bindings-coverage.json") ? JSON.stringify(tools.raw)
+      : file.endsWith(".json") ? JSON.stringify(fixture.raw) : file.endsWith(".xml") ? fixture.jacocoXml : fixture.log,
+    writeReport: (file, report) => calls.push([file, report.status]),
+  });
+  assert.deepEqual(calls, ["host-tools-tests", [hostReportPath, "passed"], "compiler", [PHASE18_LANGUAGE_COVERAGE_SPECS.kotlinReadiness.reportPath, "passed"]]);
+});
+
+test("default readiness never compiles or publishes when host-tools evidence fails", () => {
+  const fixture = readinessFixture(); const tools = hostToolsFixture(); let compiles = 0;
+  assert.throws(() => executePhase18KotlinReadinessCoverage({
+    projectRoot: "/repo", runHostTools: () => {}, runHost: () => { compiles++; }, readBytes: tools.readBytes,
+    readText: file => file.endsWith("host-tool-bindings-coverage.json") ? JSON.stringify({ ...tools.raw, status: "failed" })
+      : file.endsWith(".json") ? JSON.stringify(fixture.raw) : file.endsWith(".xml") ? fixture.jacocoXml : fixture.log,
+    writeReport: () => {},
+  }), /phase18_host_tools_coverage_invalid/u);
+  assert.equal(compiles, 0);
+});
+
+test("host-tools receipts reject partial execution, loose counters, exclusions, drift and stale producer bindings", () => {
+  const fixture = hostToolsFixture();
+  const variants = [null, [], {},
+    { ...fixture.raw, schema_version: 2 }, { ...fixture.raw, suite: "other" },
+    { ...fixture.raw, status: "failed" }, { ...fixture.raw, runtime_proof: "native" },
+    { ...fixture.raw, runtime: null }, { ...fixture.raw, runtime: { name: "python", version: "test" } },
+    { ...fixture.raw, runtime: { name: "other", version: "3.14.8", venv: true } },
+    { ...fixture.raw, runtime: { name: "python", version: "test", venv: true } },
+    { ...fixture.raw, runtime: { name: "python", version: "", venv: true } },
+    { ...fixture.raw, runtime: { name: "python", version: 3, venv: true } },
+    { ...fixture.raw, coverage_engine: "0.0.0" }, { ...fixture.raw, tests_run: 17 },
+    { ...fixture.raw, tests_run: 15 }, { ...fixture.raw, tests_run: 16.5 },
+    { ...fixture.raw, skipped: 1 }, { ...fixture.raw, failures: 1 }, { ...fixture.raw, errors: 1 },
+    { ...fixture.raw, required_cases: fixture.raw.required_cases.slice(1) },
+    { ...fixture.raw, executed_cases: [...fixture.raw.executed_cases.slice(1), fixture.raw.executed_cases[1]] },
+    { ...fixture.raw, executed_cases: [...fixture.raw.executed_cases, "extra"] },
+    { ...fixture.raw, source_unchanged: false }, { ...fixture.raw, missing_functions: ["missing"] },
+    { ...fixture.raw, exclusions: [1] }, { ...fixture.raw, sources: [] }, { ...fixture.raw, tests: [] },
+    { ...fixture.raw, support: fixture.raw.support.slice(1) }, { ...fixture.raw, producer_sha256: "a".repeat(64) },
+    { ...fixture.raw, coverage: { ...fixture.raw.coverage, extra: {} } },
+    { ...fixture.raw, coverage: { ...fixture.raw.coverage, functions: { covered: 7, missed: 0, total: 7, percent: 100 } } },
+    { ...fixture.raw, coverage: { ...fixture.raw.coverage, lines: { ...fixture.raw.coverage.lines, extra: 1 } } },
+    ...["statements", "branches", "functions", "lines"].flatMap(metric => [
+      { ...fixture.raw, coverage: { ...fixture.raw.coverage, [metric]: { covered: 0, missed: 0, total: 0, percent: 100 } } },
+      { ...fixture.raw, coverage: { ...fixture.raw.coverage, [metric]: { covered: 1, missed: 1, total: 2, percent: 100 } } },
+      { ...fixture.raw, coverage: { ...fixture.raw.coverage, [metric]: { ...fixture.raw.coverage[metric], percent: "100" } } },
+    ]),
+  ];
+  for (const candidate of variants) assert.throws(() => kotlinRunner.validatePhase18HostToolsCoverageReport(candidate, fixture.readBytes), /phase18_host_tools_coverage_invalid/u);
+  assert.equal(kotlinRunner.validatePhase18HostToolsCoverageReport(fixture.raw), true);
+  assert.throws(() => kotlinRunner.validatePhase18HostToolsCoverageReport(fixture.raw, file => Buffer.concat([fixture.readBytes(file), Buffer.from("drift")])), /phase18_host_tools_coverage_invalid/u);
+});
+
+test("authored source cases, source exclusions and added functions cannot be hidden in a receipt", () => {
+  for (const mutation of [
+    { path: `${hostRoot}/test_host_tool_bindings.py`, change: text => text.replace('    def test_version_probe_errors_are_sanitized', '    def removed_case') },
+    { path: `${hostRoot}/test_host_tool_bindings.py`, change: text => text.replace('    def test_version_probe_errors_are_sanitized', '    @unittest.skip("controlled")\n    def test_version_probe_errors_are_sanitized') },
+    { path: `${hostRoot}/host_tool_bindings.py`, change: text => text + '\n# pragma: no cover\n' },
+    { path: `${hostRoot}/host_tool_bindings.py`, change: text => text + '\ndef missed_function():\n    return None\n' },
+  ]) {
+    const fixture = hostToolsFixture();
+    const changed = Buffer.from(mutation.change(fixture.readBytes(mutation.path).toString()));
+    const readBytes = file => file === mutation.path ? changed : fixture.readBytes(file);
+    const raw = structuredClone(fixture.raw);
+    for (const group of ["sources", "tests", "support"]) raw[group] = raw[group].map(entry => ({ path: entry.path, sha256: createHash("sha256").update(readBytes(entry.path)).digest("hex") }));
+    assert.throws(() => kotlinRunner.validatePhase18HostToolsCoverageReport(raw, readBytes), /phase18_host_tools_coverage_invalid/u);
+  }
+});
+
+test("default Python binding requires an absolute configured or provisioned interpreter and propagates tool failures", () => {
+  for (const python of [123, "relative/python"]) {
+    assert.throws(() => executePhase18KotlinReadinessCoverage({ env: { GARMIN_READINESS_PYTHON: python }, runHostTools: () => assert.fail("must reject first") }), /phase18_host_tools_python_invalid/u);
+  }
+  const root = mkdtempSync(path.join(tmpdir(), "phase18-host-tool-binding-"));
+  try {
+    assert.throws(() => executePhase18KotlinReadinessCoverage({
+      projectRoot: root, env: { GARMIN_READINESS_PYTHON: "/configured/.venv/bin/python" },
+      execFileSync: (command, args) => { assert.equal(command, "/configured/.venv/bin/python"); assert.equal(args[0], producerPath); throw new Error("controlled interpreter failure"); },
+    }), /controlled interpreter failure/u);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("readiness source inputs include the helper, its complete test and the committed producer", () => {
+  for (const file of [`${hostRoot}/host_tool_bindings.py`, `${hostRoot}/test_host_tool_bindings.py`, producerPath, producerTestPath]) {
+    assert.equal(PHASE18_LANGUAGE_COVERAGE_SPECS.kotlinReadiness.supportPaths.includes(file), true, file);
+  }
+});
 
 // Synthetic collector fixtures are host-only, not Android runtime evidence.
 function readinessFixture() {
@@ -83,19 +208,22 @@ test("supplemental readiness binds real source headers and callback line instead
 
 test("readiness host collection publishes only validated supplemental evidence and never invokes Gradle", () => {
   const fixture = readinessFixture();
+  const tools = hostToolsFixture();
   const calls = [];
   const report = executePhase18KotlinReadinessCoverage({
-    projectRoot: "/repo", runHost: () => calls.push("host"), readBytes: fixture.readBytes,
-    readText: (file) => file.endsWith(".json") ? JSON.stringify(fixture.raw) : file.endsWith(".xml") ? fixture.jacocoXml : fixture.log,
+    projectRoot: "/repo", runHostTools: () => calls.push("tools"), runHost: () => calls.push("host"), readBytes: tools.readBytes,
+    readText: (file) => file.endsWith("host-tool-bindings-coverage.json") ? JSON.stringify(tools.raw)
+      : file.endsWith(".json") ? JSON.stringify(fixture.raw) : file.endsWith(".xml") ? fixture.jacocoXml : fixture.log,
     writeReport: (file, value) => calls.push([file, value.status]),
   });
   assert.equal(report.status, "passed");
-  assert.deepEqual(calls, ["host", [PHASE18_LANGUAGE_COVERAGE_SPECS.kotlinReadiness.reportPath, "passed"]]);
-  assert.throws(() => executePhase18KotlinReadinessCoverage({ runHost: () => { throw new Error("missing pinned compiler"); }, writeReport: () => assert.fail("must not publish") }), /missing pinned compiler/u);
+  assert.deepEqual(calls, ["tools", [hostReportPath, "passed"], "host", [PHASE18_LANGUAGE_COVERAGE_SPECS.kotlinReadiness.reportPath, "passed"]]);
+  assert.throws(() => executePhase18KotlinReadinessCoverage({ runHostTools: () => { throw new Error("missing pinned coverage"); }, writeReport: () => assert.fail("must not publish") }), /missing pinned coverage/u);
 });
 
 test("default host orchestration keeps fake APIs isolated and writes source-validated supplemental output", () => {
   const fixture = readinessFixture();
+  const tools = hostToolsFixture();
   const root = mkdtempSync(path.join(tmpdir(), "phase18-kotlin-host-default-"));
   try {
     symlinkSync(path.resolve("modules"), path.join(root, "modules"));
@@ -106,13 +234,20 @@ test("default host orchestration keeps fake APIs isolated and writes source-vali
         calls.push([command, args, options.timeout]);
         assert.equal(options.cwd, root);
         assert.equal(options.env.GARMIN_READINESS_OUTPUT, path.join(root, "coverage/phase18/readiness-host"));
+        assert.equal(options.env.PYTHONDONTWRITEBYTECODE, "1");
+        if (args[0] === producerPath) {
+          writeFileSync(path.join(options.env.GARMIN_READINESS_OUTPUT, "host-tool-bindings-coverage.json"), JSON.stringify(tools.raw));
+          return "controlled host-only proof\n";
+        }
+        assert.equal(JSON.parse(readFileSync(path.join(root, hostReportPath))).status, "passed");
         if (args[0].endsWith("run-kotlin.py")) return fixture.log;
         writeFileSync(path.join(options.env.GARMIN_READINESS_OUTPUT, "kotlin-four-metrics.json"), JSON.stringify(fixture.raw));
         writeFileSync(path.join(options.env.GARMIN_READINESS_OUTPUT, "kotlin-all.xml"), fixture.jacocoXml);
       },
     });
-    assert.equal(calls.length, 2);
-    assert.equal(calls.every(([command, _args, timeout]) => command === "python3" && timeout === 120_000), true);
+    assert.equal(calls.length, 3);
+    assert.equal(calls.every(([command, _args, timeout]) => command === path.join(root, ".venv/bin/python") && timeout === 120_000), true);
+    assert.deepEqual(calls.map(([_command, args]) => args[0]), [producerPath, `${hostRoot}/run-kotlin.py`, `${hostRoot}/seal-kotlin.py`]);
     assert.equal(JSON.parse(readFileSync(path.join(root, PHASE18_LANGUAGE_COVERAGE_SPECS.kotlinReadiness.reportPath))).runtime_proof,
       PHASE18_LANGUAGE_COVERAGE_SPECS.kotlinReadiness.runtimeProof);
   } finally { rmSync(root, { recursive: true, force: true }); }

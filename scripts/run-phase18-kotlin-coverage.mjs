@@ -16,6 +16,64 @@ const hostRoot = "modules/garmin-connect/android/src/test/host/readiness";
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const binding = (paths, readBytes) => paths.map((file) => ({ path: file, sha256: hash(readBytes(file)) }));
 
+export const PHASE18_HOST_TOOLS_COVERAGE_SPEC = Object.freeze({
+  language: "python", suite: "phase18-garmin-host-tool-bindings", reportPath: "coverage/phase18/host-tool-bindings-coverage.json",
+  runtimeProof: "NON_NATIVE_CONTROLLED_TOOL_PATH_FIXTURES; no compiler/APK/provider proof",
+  producerPath: `${hostRoot}/run-host-tool-bindings-coverage.py`,
+  sourcePaths: Object.freeze([`${hostRoot}/host_tool_bindings.py`]),
+  testPaths: Object.freeze([`${hostRoot}/test_host_tool_bindings.py`]),
+  supportPaths: Object.freeze([`${hostRoot}/run-kotlin.py`, `${hostRoot}/seal-kotlin.py`,
+    `${hostRoot}/run-host-tool-bindings-coverage.py`, `${hostRoot}/test_host_coverage_producer.py`]),
+  metrics: Object.freeze(["statements", "branches", "functions", "lines"]),
+  requiredCases: Object.freeze([
+    ...["test_android_platform_metadata_and_archive_are_required", "test_default_gradle_home_uses_the_callers_home",
+      "test_dependency_missing_ambiguous_or_corrupt_never_falls_back", "test_environment_defaults_sdk_aliases_and_home_expansion",
+      "test_exact_java_vendor_version_and_build_are_required", "test_exact_javac_version_is_required",
+      "test_gradle_home_and_cache_are_required_without_fallback", "test_java_and_javac_must_be_executable_files",
+      "test_missing_relative_and_non_directory_homes_fail_closed", "test_resolves_exact_artifacts_and_preserves_frozen_binding",
+      "test_sdk_home_presence_and_consistency", "test_version_probe_errors_are_sanitized"]
+      .map(name => `test_host_tool_bindings.BindingValidation.${name}`),
+    ...["test_agent_member_is_checked_before_the_compiler_runs", "test_every_missing_pinned_dependency_rejects_before_compilation",
+      "test_invalid_toolchain_rejects_both_scripts_before_compilation", "test_runner_and_sealer_use_configured_linux_and_alternate_mac_tools"]
+      .map(name => `test_host_tool_bindings.ConfiguredToolchainRegression.${name}`),
+  ].sort()),
+});
+
+function authoredHostToolCases(source) {
+  const cases = [];
+  let owner;
+  for (const line of source.split(/\r?\n/u)) {
+    const declaration = /^class (\w+)\(unittest\.TestCase\):/u.exec(line);
+    if (declaration) owner = declaration[1];
+    const method = /^    def (test_\w+)\(/u.exec(line);
+    if (owner && method) cases.push(`test_host_tool_bindings.${owner}.${method[1]}`);
+  }
+  return cases.sort();
+}
+
+export function validatePhase18HostToolsCoverageReport(report, readBytes = readFileSync) {
+  const tools = PHASE18_HOST_TOOLS_COVERAGE_SPEC;
+  try {
+    validatePhase18LanguageCoverageReport(report, tools, readBytes);
+    const source = readBytes(tools.sourcePaths[0]).toString();
+    const tests = readBytes(tools.testPaths[0]).toString();
+    const functions = [...source.matchAll(/^(?:    )?def \w+\(/gmu)].length;
+    if (report.coverage_engine !== "7.16.2" || report.runtime.venv !== true || !/^3\.\d+\.\d+$/u.test(report.runtime.version)
+      || report.tests_run !== 16
+      || !isDeepStrictEqual([...report.executed_cases].sort(), [...tools.requiredCases])
+      || !isDeepStrictEqual(authoredHostToolCases(tests), [...tools.requiredCases])
+      || report.source_unchanged !== true || !isDeepStrictEqual(report.missing_functions, []) || !isDeepStrictEqual(report.exclusions, [])
+      || /pragma:\s*no\s*(?:cover|branch)|@(?:unittest\.)?skip|\bskipTest\s*\(/iu.test(source + tests)
+      || report.producer_sha256 !== hash(readBytes(tools.producerPath))
+      || !isDeepStrictEqual(Object.keys(report.coverage).sort(), [...tools.metrics].sort())
+      || tools.metrics.some(metric => !isDeepStrictEqual(Object.keys(report.coverage[metric]).sort(), ["covered", "missed", "percent", "total"]))
+      || report.coverage.functions.total !== functions) throw new Error("rejected");
+  } catch {
+    throw new Error("phase18_host_tools_coverage_invalid");
+  }
+  return true;
+}
+
 export function createPhase18KotlinReadinessCoverageReport({ raw, jacocoXml, log, readBytes }) {
   const invalid = () => { throw new Error("phase18_kotlin_readiness_coverage_invalid"); };
   const inputs = binding([...spec.sourcePaths, ...spec.testPaths, ...spec.supportPaths], readBytes);
@@ -75,27 +133,38 @@ export function createPhase18KotlinReadinessCoverageReport({ raw, jacocoXml, log
 
 export function executePhase18KotlinReadinessCoverage(dependencies = {}) {
   const projectRoot = dependencies.projectRoot ?? process.cwd();
-  const output = path.join(projectRoot, "coverage/phase18/readiness-host");
+  const output = dependencies.outputDirectory ?? path.join(projectRoot, "coverage/phase18/readiness-host");
   const readBytes = dependencies.readBytes ?? ((file) => readFileSync(path.join(projectRoot, file)));
   const readText = dependencies.readText ?? ((file) => readFileSync(file, "utf8"));
   const exec = dependencies.execFileSync ?? execFileSync;
+  const env = { ...(dependencies.env ?? process.env), GARMIN_READINESS_OUTPUT: output, PYTHONDONTWRITEBYTECODE: "1" };
+  const python = env.GARMIN_READINESS_PYTHON ?? path.join(projectRoot, ".venv/bin/python");
+  if (typeof python !== "string" || !path.isAbsolute(python)) throw new Error("phase18_host_tools_python_invalid");
+  const writeReport = dependencies.writeReport ?? ((file, value) => {
+    mkdirSync(path.dirname(path.join(projectRoot, file)), { recursive: true });
+    writeFileSync(path.join(projectRoot, file), `${JSON.stringify(value, null, 2)}\n`);
+  });
+  const runHostTools = dependencies.runHostTools ?? (() => {
+    mkdirSync(output, { recursive: true });
+    const log = exec(python, [PHASE18_HOST_TOOLS_COVERAGE_SPEC.producerPath], { cwd: projectRoot, env, encoding: "utf8", timeout: 120_000 });
+    writeFileSync(path.join(output, "host-tool-bindings.log"), log);
+  });
+  runHostTools();
+  const hostToolsReport = JSON.parse(readText(path.join(output, "host-tool-bindings-coverage.json")));
+  validatePhase18HostToolsCoverageReport(hostToolsReport, readBytes);
+  writeReport(PHASE18_HOST_TOOLS_COVERAGE_SPEC.reportPath, hostToolsReport);
   const runHost = dependencies.runHost ?? (() => {
     mkdirSync(output, { recursive: true });
-    const env = { ...(dependencies.env ?? process.env), GARMIN_READINESS_OUTPUT: output };
     // No Gradle runtime classpath change, installation, APK, ADB, or provider call.
-    const log = exec("python3", [`${hostRoot}/run-kotlin.py`], { cwd: projectRoot, env, encoding: "utf8", timeout: 120_000 });
+    const log = exec(python, [`${hostRoot}/run-kotlin.py`], { cwd: projectRoot, env, encoding: "utf8", timeout: 120_000 });
     writeFileSync(path.join(output, "kotlin-final.log"), log);
-    exec("python3", [`${hostRoot}/seal-kotlin.py`], { cwd: projectRoot, env, stdio: "inherit", timeout: 120_000 });
+    exec(python, [`${hostRoot}/seal-kotlin.py`], { cwd: projectRoot, env, stdio: "inherit", timeout: 120_000 });
   });
   runHost();
   const report = createPhase18KotlinReadinessCoverageReport({
     raw: JSON.parse(readText(path.join(output, "kotlin-four-metrics.json"))),
     jacocoXml: readText(path.join(output, "kotlin-all.xml")),
     log: readText(path.join(output, "kotlin-final.log")), readBytes,
-  });
-  const writeReport = dependencies.writeReport ?? ((file, value) => {
-    mkdirSync(path.dirname(path.join(projectRoot, file)), { recursive: true });
-    writeFileSync(path.join(projectRoot, file), `${JSON.stringify(value, null, 2)}\n`);
   });
   writeReport(spec.reportPath, report);
   return report;
