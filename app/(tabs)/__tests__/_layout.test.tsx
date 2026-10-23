@@ -512,7 +512,7 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     },
   );
 
-  it("requests single-line native fitting in one bottom row at 200% text", async () => {
+  it("uses remeasured single-line font fitting in one bottom row at 200% text", async () => {
     setRenderedDimensions(360, 2);
     const rendered = await render(
       <AppearanceProvider>
@@ -532,18 +532,18 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     expect(
       rendered.getAllByRole("tab").map((tab) => tab.props.accessibilityLabel),
     ).toEqual(destinationLabels);
-    // Host rendering verifies the fitting request, not Android's final glyph pixels.
+    // Real native event shape verifies the fit contract, not final Android pixels.
     for (const [index, label] of destinationLabels.entries()) {
       const destination = ["index", "calendar", "library", "progress"][index];
       expect(rendered.getByRole("tab", { name: label })).toHaveStyle({
         minHeight: 64,
         minWidth: 48,
       });
-      const text = rendered.getByTestId(`root-tab-label-${destination}`);
+      let text = rendered.getByTestId(`root-tab-label-${destination}`);
       expect(text).toHaveTextContent(label, { exact: true });
       expect(text).toHaveProp("numberOfLines", 1);
-      expect(text).toHaveProp("adjustsFontSizeToFit", true);
-      expect(text).toHaveProp("minimumFontScale", 0.5);
+      expect(text).toHaveProp("adjustsFontSizeToFit", false);
+      expect(text.props.minimumFontScale).toBeUndefined();
       expect(text).toHaveProp("allowFontScaling", true);
       expect(text.props.maxFontSizeMultiplier).toBeUndefined();
       expect(text).toHaveStyle({
@@ -555,8 +555,36 @@ describe("RootTabsLayout adaptive navigator placement", () => {
       });
       expect(rendered.getByTestId(`root-tab-label-container-${destination}`))
         .toHaveStyle({ width: "100%", alignSelf: "stretch" });
+      await fireEvent(text, "layout", { nativeEvent: { layout: { width: 76 } } });
+      text = rendered.getByTestId(`root-tab-label-${destination}`);
+      const probe = () => rendered.getByTestId(`root-tab-label-probe-${destination}`, { includeHiddenElements: true });
+      await fireEvent(probe(), "textLayout", { nativeEvent: { lines: [{ text: label, width: 120, height: 44 }] } });
+      expect(text).toHaveStyle({ fontSize: 9.75, lineHeight: 22 });
+      await fireEvent(probe(), "textLayout", { nativeEvent: { lines: [{ text: label, width: 72, height: 44 }] } });
+      await fireEvent(text, "textLayout", { nativeEvent: { lines: [{ text: label, width: 72, height: 44 }] } });
+      expect(rendered.getByTestId(`root-tab-label-underline-${destination}`, { includeHiddenElements: true }))
+        .toHaveStyle({ width: 72, height: 3 });
     }
 
+    // Live system scaling must discard the prior fitted font and underline.
+    await act(async () => {
+      setRenderedDimensions(360, 1);
+      rendered.rerender(<AppearanceProvider><RootTabsLayout /></AppearanceProvider>);
+    });
+    for (const destination of ["index", "calendar", "library", "progress"]) {
+      expect(rendered.getByTestId(`root-tab-label-${destination}`)).toHaveStyle({ fontSize: 16 });
+      expect(rendered.getByTestId(`root-tab-label-underline-${destination}`, { includeHiddenElements: true }))
+        .toHaveStyle({ width: 0 });
+    }
+    await act(async () => {
+      setRenderedDimensions(360, 2);
+      rendered.rerender(<AppearanceProvider><RootTabsLayout /></AppearanceProvider>);
+    });
+    for (const destination of ["index", "calendar", "library", "progress"]) {
+      expect(rendered.getByTestId(`root-tab-label-${destination}`)).toHaveStyle({ fontSize: 16 });
+      expect(rendered.getByTestId(`root-tab-label-underline-${destination}`, { includeHiddenElements: true }))
+        .toHaveStyle({ width: 0 });
+    }
     expect(rendered.queryByTestId("root-navigation-rail")).not.toBeOnTheScreen();
   });
 
@@ -603,7 +631,7 @@ describe("RootTabsLayout adaptive navigator placement", () => {
       outlineWidth: sizes.focusRing,
     });
     expect(rendered.getByTestId("root-tab-label-library")).toHaveProp("numberOfLines", 1);
-    expect(rendered.getByTestId("root-tab-label-library")).toHaveProp("adjustsFontSizeToFit", true);
+    expect(rendered.getByTestId("root-tab-label-library")).toHaveProp("adjustsFontSizeToFit", false);
     expect(rendered.getByTestId("root-tabs")).toHaveStyle({
       flex: 1,
       flexDirection: "column",

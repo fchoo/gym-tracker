@@ -34,9 +34,12 @@ import {
   AccessibilityInfo,
   findNodeHandle,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
+  type LayoutChangeEvent,
   type PressableProps,
   type PressableStateCallbackType,
   type StyleProp,
@@ -62,6 +65,7 @@ import {
 import { BottomSheet } from "./BottomSheet";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 import { rootTabNativeID } from "../shell/rootFocus";
+import { fitTabLabelFontSize } from "./tabLabelFit";
 
 export {
   ImpactPreview,
@@ -1125,12 +1129,72 @@ function AppTabLabel({
   selected: boolean;
 }>) {
   const { colors } = useAppTheme();
-  const [labelWidth, setLabelWidth] = useState(0);
+  const { fontScale } = useWindowDimensions();
+  const baseFontSize = typeScale.body.fontSize;
+  const [columnWidth, setColumnWidth] = useState(0);
+  const [candidate, setCandidate] = useState({ columnWidth: 0, fontScale, fontSize: baseFontSize });
+  useEffect(() => {
+    setCandidate((current) => current.fontScale === fontScale ? current
+      : { ...current, fontScale, fontSize: baseFontSize });
+  }, [baseFontSize, fontScale]);
+  // Resize or system scaling changes restart at the approved baseline.
+  const fontSize = candidate.columnWidth === columnWidth && candidate.fontScale === fontScale
+    ? candidate.fontSize : baseFontSize;
+  const measurementKey = `${columnWidth}:${fontScale}:${fontSize}`;
+  const currentMeasurementKey = useRef(measurementKey);
+  currentMeasurementKey.current = measurementKey;
+  const [probe, setProbe] = useState({ key: "", width: 0 });
+  const [visible, setVisible] = useState({ key: "", width: 0 });
+  const fit = probe.key === measurementKey
+    ? fitTabLabelFontSize(fontSize, probe.width, columnWidth, baseFontSize * 0.5)
+    : null;
+  const labelWidth = fit?.fits && visible.key === measurementKey
+    && Math.abs(visible.width - probe.width) <= 1
+    ? visible.width : 0;
+
+  function glyphWidth(event: TextLayoutEvent): number {
+    const line = event.nativeEvent.lines[0];
+    return event.nativeEvent.lines.length === 1 && line?.text === destination.label
+      && Number.isFinite(line.width) && line.width > 0 ? line.width : 0;
+  }
+
+  function measureColumn(event: LayoutChangeEvent) {
+    if (currentMeasurementKey.current !== measurementKey) {
+      return;
+    }
+    const width = event.nativeEvent.layout.width;
+    if (Number.isFinite(width) && width > 0 && width !== columnWidth) {
+      setColumnWidth(width);
+      setCandidate({ columnWidth: width, fontScale, fontSize: baseFontSize });
+      setProbe({ key: "", width: 0 });
+      setVisible({ key: "", width: 0 });
+    }
+  }
+
+  function measureProbe(event: TextLayoutEvent) {
+    if (currentMeasurementKey.current !== measurementKey) {
+      return;
+    }
+    const width = glyphWidth(event);
+    setProbe({ key: measurementKey, width });
+    const next = fitTabLabelFontSize(fontSize, width, columnWidth, baseFontSize * 0.5);
+    if (next !== null && next.fontSize !== fontSize) {
+      setCandidate({ columnWidth, fontScale, fontSize: next.fontSize });
+    }
+  }
 
   function measureLabel(event: TextLayoutEvent) {
-    const width = event.nativeEvent.lines[0]?.width ?? 0;
-    setLabelWidth(Number.isFinite(width) ? Math.max(0, width) : 0);
+    if (currentMeasurementKey.current === measurementKey) {
+      setVisible({ key: measurementKey, width: glyphWidth(event) });
+    }
   }
+
+  const nativeTextProps = {
+    allowFontScaling: true,
+    adjustsFontSizeToFit: false,
+    numberOfLines: 1,
+  };
+  const typography = [typeScale.body as TextStyle, { fontSize }];
 
   return h(
     View,
@@ -1138,17 +1202,42 @@ function AppTabLabel({
       style: styles.appTabLabelContainer,
       testID: `root-tab-label-container-${destination.name}`,
     },
+    // A horizontal scroll content has unconstrained intrinsic width, without an
+    // arbitrary large fixture width. It never scrolls or participates in a11y.
+    // RN Android autofit separately mutates measurement and draw size spans;
+    // plain Text avoids that disagreement and keeps the scaled 22sp line track.
+    h(ScrollView, {
+      accessible: false,
+      accessibilityElementsHidden: true,
+      importantForAccessibility: "no-hide-descendants",
+      focusable: false,
+      horizontal: true,
+      pointerEvents: "none",
+      scrollEnabled: false,
+      showsHorizontalScrollIndicator: false,
+      style: styles.appTabLabelProbe,
+      testID: `root-tab-label-probe-container-${destination.name}`,
+    }, h(Text, {
+      ...nativeTextProps,
+      accessible: false,
+      accessibilityElementsHidden: true,
+      importantForAccessibility: "no-hide-descendants",
+      key: measurementKey,
+      onTextLayout: measureProbe,
+      style: typography,
+      testID: `root-tab-label-probe-${destination.name}`,
+    }, destination.label)),
     h(
       Text,
       {
-        // Keep Archivo 16/22 and system scaling; fit only within this tab column.
-        allowFontScaling: true,
-        adjustsFontSizeToFit: true,
-        minimumFontScale: 0.5,
-        numberOfLines: 1,
+        ...nativeTextProps,
+        // Remount to request fresh line events even if RN deduplicates identical
+        // glyph metrics when only the column changed (including first layout).
+        key: `${columnWidth}:${fontScale}`,
+        onLayout: measureColumn,
         onTextLayout: measureLabel,
         style: [
-          typeScale.body as TextStyle,
+          ...typography,
           styles.appTabLabel,
           { color: selected ? colors.ink : colors.quiet },
         ],
@@ -1156,7 +1245,7 @@ function AppTabLabel({
       },
       destination.label,
     ),
-    // The text box fills the column, but Revision 18's underline follows the label.
+    // Revision 18's underline follows verified full-label advance, not its box.
     h(View, {
       accessible: false,
       accessibilityElementsHidden: true,
@@ -1540,6 +1629,13 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     textAlign: "center",
     width: "100%",
+  },
+  appTabLabelProbe: {
+    left: 0,
+    opacity: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
   },
   appTabLabelUnderline: {
     height: 3,

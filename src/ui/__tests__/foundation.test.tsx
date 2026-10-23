@@ -928,8 +928,8 @@ describe("Plan 01-02 route shell", () => {
         expect(textStyle[property]).toBeUndefined();
       }
       expect(text).toHaveProp("numberOfLines", 1);
-      expect(text).toHaveProp("adjustsFontSizeToFit", true);
-      expect(text).toHaveProp("minimumFontScale", 0.5);
+      expect(text).toHaveProp("adjustsFontSizeToFit", false);
+      expect(text.props.minimumFontScale).toBeUndefined();
       expect(text).toHaveProp("allowFontScaling", true);
       expect(text.props.maxFontSizeMultiplier).toBeUndefined();
       const container = screen.getByTestId(`root-tab-label-container-${destination}`);
@@ -1004,7 +1004,7 @@ describe("Plan 01-02 route shell", () => {
     },
   );
 
-  it("keeps selection underlines at the fitted label width without constraining Text", async () => {
+  it("keeps selection underlines at verified plain-native glyph width, not autofit event width", async () => {
     const navigation = {
       emit: () => ({ defaultPrevented: false }),
       navigate: jest.fn(),
@@ -1021,21 +1021,33 @@ describe("Plan 01-02 route shell", () => {
       ["library", 45.75],
       ["progress", 60],
     ] as const) {
-      const text = screen.getByTestId(`root-tab-label-${destination}`);
+      let text = screen.getByTestId(`root-tab-label-${destination}`);
       const underline = screen.getByTestId(`root-tab-label-underline-${destination}`, { includeHiddenElements: true });
       expect(underline).toHaveStyle({ width: 0, height: 3, maxWidth: "100%" });
       expect(underline).toHaveProp("accessible", false);
       expect(underline).toHaveProp("importantForAccessibility", "no-hide-descendants");
       expect(underline).toHaveProp("pointerEvents", "none");
 
-      await fireEvent(text, "textLayout", { nativeEvent: { lines: [{ width }] } });
+      // A column is not a glyph measurement. Wait for both plain-native Texts.
+      await fireEvent(text, "layout", { nativeEvent: { layout: { width: 80 } } });
+      text = screen.getByTestId(`root-tab-label-${destination}`);
+      const label = text.props.children;
+      await fireEvent(text, "textLayout", { nativeEvent: { lines: [{ text: label, width: width / 4 }] } });
+      expect(underline).toHaveStyle({ width: 0 });
+      const probe = screen.getByTestId(`root-tab-label-probe-${destination}`, { includeHiddenElements: true });
+      await fireEvent(probe, "textLayout", { nativeEvent: { lines: [{ text: label, width }] } });
+      // Reject the old quarter-width event even if it races the real measurement.
+      expect(underline).toHaveStyle({ width: 0 });
+      await fireEvent(text, "textLayout", { nativeEvent: { lines: [{ text: label, width }] } });
       expect(underline).toHaveStyle({ width });
-      expect(text).toHaveStyle({ width: "100%" });
+      expect(text).toHaveStyle({ width: "100%", fontSize: 16 });
+      expect(text).toHaveProp("adjustsFontSizeToFit", false);
     }
 
     const libraryText = screen.getByTestId("root-tab-label-library");
     const libraryUnderline = screen.getByTestId("root-tab-label-underline-library", { includeHiddenElements: true });
-    await fireEvent(libraryText, "textLayout", { nativeEvent: { lines: [{ width: 63.5 }] } });
+    await fireEvent(screen.getByTestId("root-tab-label-probe-library", { includeHiddenElements: true }), "textLayout", { nativeEvent: { lines: [{ text: "Library", width: 63.5 }] } });
+    await fireEvent(libraryText, "textLayout", { nativeEvent: { lines: [{ text: "Library", width: 63.5 }] } });
     await rendered.rerender(
       <AppearanceProvider>
         <AppTabs navigation={navigation} state={{ index: 2, routes }} />
@@ -1045,10 +1057,124 @@ describe("Plan 01-02 route shell", () => {
     expect(screen.getByTestId("root-tab-label-underline-index", { includeHiddenElements: true }))
       .toHaveStyle({ backgroundColor: "transparent", width: 55.25 });
 
-    for (const lines of [[], [{ width: Number.NaN }], [{ width: -1 }]]) {
+    for (const lines of [[], [{ text: "Library", width: Number.NaN }], [{ text: "Library", width: -1 }], [{ text: "Lib…", width: 63.5 }], [{ text: "Lib", width: 30 }, { text: "rary", width: 30 }]]) {
       await fireEvent(libraryText, "textLayout", { nativeEvent: { lines } });
       expect(libraryUnderline).toHaveStyle({ width: 0 });
     }
+  });
+
+  it("remeasures nonlinear native font fitting and rejects stale or unverified widths", async () => {
+    await render(
+      <AppearanceProvider>
+        <AppTabs navigation={{ emit: () => ({ defaultPrevented: false }), navigate: jest.fn() }} state={{ index: 0, routes }} />
+      </AppearanceProvider>,
+    );
+    let text = screen.getByTestId("root-tab-label-index");
+    const underline = screen.getByTestId("root-tab-label-underline-index", { includeHiddenElements: true });
+    const probe = () => screen.getByTestId("root-tab-label-probe-index", { includeHiddenElements: true });
+    const metrics = (width: number) => ({ nativeEvent: { lines: [{ text: "Workout", width, height: 44.1, ascender: 32, descender: 12.1 }] } });
+    await fireEvent(probe(), "textLayout", metrics(120));
+    expect(text).toHaveStyle({ fontSize: 16, lineHeight: 22 });
+    expect(underline).toHaveStyle({ width: 0 });
+    for (const width of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await fireEvent(text, "layout", { nativeEvent: { layout: { width } } });
+      expect(text).toHaveStyle({ fontSize: 16 });
+    }
+    await fireEvent(text, "layout", { nativeEvent: { layout: { width: 76 } } });
+    text = screen.getByTestId("root-tab-label-index");
+    const staleProbe = probe().props.onTextLayout;
+    const staleVisible = text.props.onTextLayout;
+    await fireEvent(probe(), "textLayout", metrics(120));
+    expect(text).toHaveStyle({ fontSize: 9.75, lineHeight: 22 });
+    expect(underline).toHaveStyle({ width: 0 });
+    // Android 14 SP conversion need not follow the first width ratio.
+    await fireEvent(probe(), "textLayout", metrics(78));
+    expect(text).toHaveStyle({ fontSize: 9.25, lineHeight: 22 });
+    await act(async () => {
+      staleProbe(metrics(20));
+      staleVisible(metrics(20));
+    });
+    expect(underline).toHaveStyle({ width: 0 });
+    await fireEvent(probe(), "textLayout", metrics(72));
+    expect(underline).toHaveStyle({ width: 0 });
+    await fireEvent(text, "textLayout", metrics(72));
+    expect(underline).toHaveStyle({ width: 72 });
+    expect(text).toHaveTextContent("Workout", { exact: true });
+    expect(text).toHaveProp("allowFontScaling", true);
+    // A wider column restarts at the approved base rather than retaining shrink.
+    await fireEvent(text, "layout", { nativeEvent: { layout: { width: 150 } } });
+    text = screen.getByTestId("root-tab-label-index");
+    expect(text).toHaveStyle({ fontSize: 16 });
+    expect(underline).toHaveStyle({ width: 0 });
+    await fireEvent(text, "textLayout", metrics(120));
+    await fireEvent(probe(), "textLayout", metrics(120));
+    expect(underline).toHaveStyle({ width: 120 });
+  });
+
+  it("requests fresh visible metrics after first-layout ordering and does not repeat same-column fitting", async () => {
+    await render(
+      <AppearanceProvider>
+        <AppTabs navigation={{ emit: () => ({ defaultPrevented: false }), navigate: jest.fn() }} state={{ index: 0, routes }} />
+      </AppearanceProvider>,
+    );
+    const initialText = screen.getByTestId("root-tab-label-index");
+    const underline = screen.getByTestId("root-tab-label-underline-index", { includeHiddenElements: true });
+    const metrics = { nativeEvent: { lines: [{ text: "Workout", width: 64, height: 22.044 }] } };
+    const staleLayout = initialText.props.onLayout;
+    await fireEvent(initialText, "textLayout", metrics);
+    expect(underline).toHaveStyle({ width: 0 });
+    await fireEvent(initialText, "layout", { nativeEvent: { layout: { width: 80 } } });
+    const text = screen.getByTestId("root-tab-label-index");
+    expect(text).not.toBe(initialText);
+    const probe = screen.getByTestId("root-tab-label-probe-index", { includeHiddenElements: true });
+    await fireEvent(probe, "textLayout", metrics);
+    expect(underline).toHaveStyle({ width: 0 });
+    await fireEvent(text, "textLayout", metrics);
+    expect(underline).toHaveStyle({ width: 64 });
+    await act(async () => {
+      staleLayout({ nativeEvent: { layout: { width: 90 } } });
+    });
+    expect(underline).toHaveStyle({ width: 64 });
+    await fireEvent(text, "layout", { nativeEvent: { layout: { width: 80 } } });
+    expect(screen.getByTestId("root-tab-label-index")).toBe(text);
+    expect(underline).toHaveStyle({ width: 64 });
+    for (const lines of [[], [{ text: "Workout", width: Number.POSITIVE_INFINITY }], [{ text: "Work…", width: 64 }]]) {
+      await fireEvent(probe, "textLayout", { nativeEvent: { lines } });
+      expect(underline).toHaveStyle({ width: 0 });
+    }
+    await fireEvent(probe, "textLayout", metrics);
+    expect(underline).toHaveStyle({ width: 64 });
+  });
+
+  it("isolates unbounded native probes from accessibility, focus, and layout", async () => {
+    await render(
+      <AppearanceProvider>
+        <AppTabs navigation={{ emit: () => ({ defaultPrevented: false }), navigate: jest.fn() }} state={{ index: 0, routes }} />
+      </AppearanceProvider>,
+    );
+    for (const destination of ["index", "calendar", "library", "progress"]) {
+      const probe = screen.getByTestId(`root-tab-label-probe-${destination}`, { includeHiddenElements: true });
+      const container = screen.getByTestId(`root-tab-label-probe-container-${destination}`, { includeHiddenElements: true });
+      expect(screen.queryByTestId(`root-tab-label-probe-${destination}`)).toBeNull();
+      expect(container).toHaveProp("accessible", false);
+      expect(container).toHaveProp("accessibilityElementsHidden", true);
+      expect(container).toHaveProp("importantForAccessibility", "no-hide-descendants");
+      expect(container).toHaveProp("focusable", false);
+      expect(container).toHaveProp("pointerEvents", "none");
+      expect(container).toHaveProp("horizontal", true);
+      expect(container).toHaveProp("scrollEnabled", false);
+      expect(container).toHaveStyle({ position: "absolute", opacity: 0 });
+      expect(probe).toHaveProp("accessible", false);
+      expect(probe).toHaveProp("accessibilityElementsHidden", true);
+      expect(probe).toHaveProp("importantForAccessibility", "no-hide-descendants");
+      expect(probe.props.onPress).toBeUndefined();
+      expect(probe).toHaveProp("allowFontScaling", true);
+      expect(probe).toHaveProp("adjustsFontSizeToFit", false);
+      expect(probe).toHaveStyle({ fontFamily: "ArchivoVariable", fontSize: 16, lineHeight: 22 });
+      expect(StyleSheet.flatten(probe.props.style).width).toBeUndefined();
+    }
+    expect(screen.getAllByRole("tab")).toHaveLength(4);
+    expect(screen.getAllByText("Workout")).toHaveLength(1);
   });
 
   it("keeps four complete root destinations in one single-line fitted bottom composition", async () => {
@@ -1083,8 +1209,8 @@ describe("Plan 01-02 route shell", () => {
       });
       const text = screen.getByText(label);
       expect(text).toHaveProp("numberOfLines", 1);
-      expect(text).toHaveProp("adjustsFontSizeToFit", true);
-      expect(text).toHaveProp("minimumFontScale", 0.5);
+      expect(text).toHaveProp("adjustsFontSizeToFit", false);
+      expect(text.props.minimumFontScale).toBeUndefined();
       expect(text).toHaveProp("allowFontScaling", true);
       expect(text).toHaveTextContent(label, { exact: true });
     }
