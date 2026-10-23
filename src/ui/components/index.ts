@@ -1495,7 +1495,7 @@ const styles = StyleSheet.create({
   },
   appTabLabelContainer: {
     alignItems: "center",
-    alignSelf: "center",
+    alignSelf: "stretch",
     borderBottomWidth: 3,
     maxWidth: "100%",
     paddingBottom: 2,
@@ -1503,7 +1503,9 @@ const styles = StyleSheet.create({
   },
   appTabLabel: {
     alignSelf: "stretch",
+    flexShrink: 1,
     textAlign: "center",
+    width: "100%",
   },
   exerciseRow: {
     alignItems: "flex-start",

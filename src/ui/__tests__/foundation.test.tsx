@@ -925,7 +925,8 @@ describe("Plan 01-02 route shell", () => {
       const textStyle = StyleSheet.flatten(screen.getByTestId(`root-tab-label-${destination}`).props.style);
       expect(textStyle.paddingHorizontal).toBeUndefined();
       expect(textStyle.borderBottomWidth).toBeUndefined();
-      expect(screen.getByTestId(`root-tab-label-container-${destination}`)).toHaveStyle({ maxWidth: "100%" });
+      expect(screen.getByTestId(`root-tab-label-container-${destination}`)).toHaveStyle({ maxWidth: "100%", alignSelf: "stretch" });
+      expect(screen.getByTestId(`root-tab-label-${destination}`)).toHaveStyle({ width: "100%", flexShrink: 1 });
     }
     expect(
       screen.getByRole("tab", { name: "Calendar" })
