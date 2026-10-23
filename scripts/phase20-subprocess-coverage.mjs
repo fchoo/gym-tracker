@@ -18,6 +18,8 @@ import {
   V12_POSIX_OWNERSHIP_ENV,
 } from "./v12-posix-process-tree.mjs";
 
+import { loadGarminCliCoverageEvidence } from "./garmin-cli-coverage-evidence.mjs";
+
 const require = createRequire(import.meta.url);
 const v8ToIstanbul = require("v8-to-istanbul");
 const { createCoverageMap } = require("istanbul-lib-coverage");
@@ -291,14 +293,19 @@ async function loadPhase20CoverageMap({
   projectRoot,
   rawDirectory,
   targetFiles,
+  garminProject,
 }) {
   const absoluteTargets = new Map(targetFiles.map((relativePath) => {
     const absolutePath = realpathSync(path.resolve(projectRoot, relativePath));
     return [pathToFileURL(absolutePath).href, { absolutePath, relativePath }];
   }));
   const coverageMap = createCoverageMap({});
-  for (const file of readdirSync(rawDirectory).filter((name) => name.endsWith(".json"))) {
-    const raw = JSON.parse(readFileSync(path.join(rawDirectory, file), "utf8"));
+  const records = readdirSync(rawDirectory).filter((name) => name.endsWith(".json"))
+    .map(file => JSON.parse(readFileSync(path.join(rawDirectory, file), "utf8")));
+  if (garminProject !== undefined) records.push({ result: loadGarminCliCoverageEvidence({
+    projectRoot, targetFiles, tests: garminProject.tests, testReportPath: garminProject.testReportPath,
+  }) });
+  for (const raw of records) {
     for (const script of raw.result ?? []) {
       let normalizedUrl = script.url;
       try {
@@ -494,6 +501,7 @@ export async function runPhase20SubprocessCoverage({
             projectRoot,
             rawDirectory,
             targetFiles: project.modules,
+            garminProject: project.name === "garmin-packaging" ? { tests: project.tests, testReportPath } : undefined,
           });
           const report = summarizePhase20Coverage(projectCoverage);
           writeFileSync(

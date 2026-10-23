@@ -351,6 +351,8 @@ const phase20EvidenceProjects = Object.freeze([
     concurrency: 1,
     tests: [...phase20CliCoverageTests],
     modules: Object.freeze([
+      "scripts/garmin-cli-coverage-evidence.mjs",
+      "scripts/phase20-subprocess-coverage.mjs",
       "scripts/capture-v12-visual.mjs",
       "scripts/compare-v12-visual.mjs",
       "scripts/create-v12-readiness-handoff.mjs",
@@ -876,7 +878,7 @@ if (JSON.stringify(phase20EvidenceProjects.map(({ name }) => name)) !== JSON.str
   || assignedPhase20Tests.length !== 61
   || new Set(assignedPhase20Tests).size !== 61
   || JSON.stringify([...assignedPhase20Tests].sort()) !== JSON.stringify(registeredPhase20EvidenceTests)
-  || assignedPhase20Modules.size !== 26
+  || assignedPhase20Modules.size !== 28
   || phase20EvidenceProjects.find(({ name }) => name === "cli-blackbox")?.coverage !== false) {
   throw new Error(JSON.stringify({
     error: "phase20_coverage_project_manifest_invalid",

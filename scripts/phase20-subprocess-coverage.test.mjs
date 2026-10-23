@@ -1,3 +1,5 @@
+import "./testing/garmin-cli-coverage-evidence.test.mjs";
+import "./testing/phase20-collector-edges.test.mjs";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";

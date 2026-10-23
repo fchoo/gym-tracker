@@ -141,8 +141,10 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   assert.equal(new Set(registeredProjectTests).size, 61);
   assert.deepEqual([...registeredProjectTests].sort(), manifest.phase20);
   const coveredModules = new Set(coverageProjects.flatMap(({ modules }) => modules));
-  assert.equal(coveredModules.size, 26);
+  assert.equal(coveredModules.size, 28);
   for (const required of [
+    "scripts/garmin-cli-coverage-evidence.mjs",
+    "scripts/phase20-subprocess-coverage.mjs",
     "scripts/verify-garmin-python-lock.mjs",
     "scripts/garmin-android-native.mjs",
     "scripts/build-android-cffi.mjs",
