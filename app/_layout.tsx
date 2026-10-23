@@ -282,6 +282,14 @@ function GarminBridgeDiagnosticNavigator() {
   );
 }
 
+function GarminSyncDiagnosticNavigator() {
+  return (
+    <Stack initialRouteName="__garmin-sync-diagnostic" screenOptions={{ animation: "none", headerShown: false }}>
+      <Stack.Screen name="__garmin-sync-diagnostic" />
+    </Stack>
+  );
+}
+
 function V12RollbackArchiveNavigator() {
   return (
     <Stack
@@ -437,6 +445,7 @@ function RootLayoutAttempt({
   const v12NativeContractsPath = pathname === "/__native-contracts";
   const v12RollbackArchivePath = pathname === "/__v12-recovery-archive";
   const garminBridgeDiagnosticPath = pathname === "/__garmin-bridge-diagnostic";
+  const garminSyncDiagnosticPath = pathname === "/__garmin-sync-diagnostic";
   const v12NativeAcceptancePath = pathname.startsWith("/native-acceptance/");
   const phase20QualityPath = pathname === "/__phase20-quality-probe";
   const phase20CalendarEvidencePath = phase20CalendarEvidencePathRequested(searchParams);
@@ -547,6 +556,7 @@ function RootLayoutAttempt({
     || v12NativeContractsPath
     || v12RollbackArchivePath
     || garminBridgeDiagnosticPath
+    || garminSyncDiagnosticPath
     || v12NativeAcceptancePath
     || phase20VisualPath
     || phase20QualityPath
@@ -556,6 +566,7 @@ function RootLayoutAttempt({
   const failClosedFontRoute = phase20VisualPath
     || v12RollbackArchivePath
     || garminBridgeDiagnosticPath
+    || garminSyncDiagnosticPath
     || phase20QualityPath
     || v12NativeAcceptancePath
     || v12ProductionGarminPath
@@ -690,6 +701,18 @@ function RootLayoutAttempt({
         <SafeAreaProvider>
           <AppearanceProvider store={isolatedNativeAppearanceStore}>
             <GarminBridgeDiagnosticNavigator />
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (garminSyncDiagnosticPath) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
+            <GarminSyncDiagnosticNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>

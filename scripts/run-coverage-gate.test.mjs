@@ -115,7 +115,9 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
     manifest.phase20_coverage.metrics,
     ["statements", "branches", "functions", "lines"],
   );
-  assert.equal(manifest.phase20_coverage.jest_istanbul_modules.length, 15);
+  assert.equal(manifest.phase20_coverage.jest_istanbul_modules.length, 17);
+  assert.ok(manifest.phase20_coverage.jest_istanbul_modules.includes("src/testing/garminSyncDiagnostic.ts"));
+  assert.ok(manifest.phase20_coverage.jest_istanbul_modules.includes("app/__garmin-sync-diagnostic.tsx"));
   const coverageProjects = manifest.phase20_coverage.node_v8_projects;
   assert.equal(coverageProjects.length, 8);
   assert.deepEqual(coverageProjects.map(({ name }) => name), [
