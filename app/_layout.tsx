@@ -274,6 +274,14 @@ function V12ProductionGarminNavigator() {
   );
 }
 
+function GarminBridgeDiagnosticNavigator() {
+  return (
+    <Stack initialRouteName="__garmin-bridge-diagnostic" screenOptions={{ animation: "none", headerShown: false }}>
+      <Stack.Screen name="__garmin-bridge-diagnostic" />
+    </Stack>
+  );
+}
+
 function V12RollbackArchiveNavigator() {
   return (
     <Stack
@@ -428,6 +436,7 @@ function RootLayoutAttempt({
   const v12ProductionRecoveryPath = pathname === "/__v12-production-recovery";
   const v12NativeContractsPath = pathname === "/__native-contracts";
   const v12RollbackArchivePath = pathname === "/__v12-recovery-archive";
+  const garminBridgeDiagnosticPath = pathname === "/__garmin-bridge-diagnostic";
   const v12NativeAcceptancePath = pathname.startsWith("/native-acceptance/");
   const phase20QualityPath = pathname === "/__phase20-quality-probe";
   const phase20CalendarEvidencePath = phase20CalendarEvidencePathRequested(searchParams);
@@ -537,6 +546,7 @@ function RootLayoutAttempt({
     || phase18GarminAdversarialPath
     || v12NativeContractsPath
     || v12RollbackArchivePath
+    || garminBridgeDiagnosticPath
     || v12NativeAcceptancePath
     || phase20VisualPath
     || phase20QualityPath
@@ -545,6 +555,7 @@ function RootLayoutAttempt({
     || phase20CalendarEvidencePath;
   const failClosedFontRoute = phase20VisualPath
     || v12RollbackArchivePath
+    || garminBridgeDiagnosticPath
     || phase20QualityPath
     || v12NativeAcceptancePath
     || v12ProductionGarminPath
@@ -667,6 +678,18 @@ function RootLayoutAttempt({
         <SafeAreaProvider>
           <AppearanceProvider store={isolatedNativeAppearanceStore}>
             <V12ProductionGarminNavigator />
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (garminBridgeDiagnosticPath) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
+            <GarminBridgeDiagnosticNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>

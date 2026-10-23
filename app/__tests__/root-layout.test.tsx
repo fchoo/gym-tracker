@@ -741,6 +741,7 @@ describe("RootLayout attended preview isolation", () => {
     { label: "Phase 20 quality", pathname: "/__phase20-quality-probe", params: {} },
     { label: "v1.2 native contracts", pathname: "/__native-contracts", params: {} },
     { label: "rollback archive", pathname: "/__v12-recovery-archive", params: { nonce: "a".repeat(32) } },
+    { label: "Garmin bridge diagnostic", pathname: "/__garmin-bridge-diagnostic", params: { nonce: "a".repeat(32) } },
     { label: "Phase 20 Garmin", pathname: "/__v12-production-garmin", params: {} },
     { label: "Garmin evidence", pathname: "/__phase18-garmin-proof", params: {} },
   ])(
