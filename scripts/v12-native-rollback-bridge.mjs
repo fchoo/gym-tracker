@@ -107,7 +107,7 @@ export async function runV12NativeRollbackBridge({ root = process.cwd(), runId, 
       shell("am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", `gymtracker-devtest://__v12-recovery-archive?nonce=${nonce}`, PACKAGE);
       let resultBytes;
       while (now() < deadline) {
-        const fetched = adb(["exec-out", "run-as", PACKAGE, "sh", "-c", `test -f ${remote}/result.ready && test -f ${remote}/result.json && cat ${remote}/result.json`], undefined, true);
+        const fetched = adb(["exec-out", "run-as", PACKAGE, "sh", "-c", `test -f ${remote}/result.ready && test "$(cat ${remote}/result.ready)" = ready && test -f ${remote}/result.json && cat ${remote}/result.json`], undefined, true);
         if (fetched.status === 0) { resultBytes = Buffer.from(fetched.stdout); break; }
         await wait(250);
       }

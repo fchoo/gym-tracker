@@ -226,6 +226,8 @@ export async function collectNativeRollbackBridge(identity: RollbackNativeIdenti
   }
   const arm = validateRollbackArm(JSON.parse(armFile.textSync()), nonce, Date.now());
   await armFile.move(consumed);
+  let publication: unknown;
+  let operationFailure: string | undefined;
   try {
     const ports = productionRollbackPorts();
     const archive = arm.phase === "restore" ? new File(Paths.document, `v12-rollback-${nonce}`, "incoming.gtbk").bytesSync() : undefined;
@@ -235,10 +237,14 @@ export async function collectNativeRollbackBridge(identity: RollbackNativeIdenti
     const archiveFile = new File(Paths.document, `v12-rollback-${nonce}`, "archive.gtbk");
     if (archiveFile.exists) fail("arm_invalid");
     archiveFile.write(result.archive);
-    await publishResult({ schema_version: 1, producer: "v12-native-rollback-bridge/v1", arm, inspection: result.inspection });
+    publication = { schema_version: 1, producer: "v12-native-rollback-bridge/v1", arm, inspection: result.inspection };
   } catch (error) {
-    const code = error instanceof Error && /^v12_rollback_[a-z_]+$/u.test(error.message) ? error.message : "v12_rollback_failed";
-    await publishResult({ schema_version: 1, producer: "v12-native-rollback-bridge/v1", arm, failure: code });
-    throw new Error(code);
+    operationFailure = error instanceof Error && /^v12_rollback_[a-z_]+$/u.test(error.message) ? error.message : "v12_rollback_failed";
+    publication = { schema_version: 1, producer: "v12-native-rollback-bridge/v1", arm, failure: operationFailure };
   }
+  // Publication errors cannot enter the operation-failure path and rewrite a
+  // moved result object after the readiness barrier became externally visible.
+  try { await publishResult(publication); }
+  catch { throw new Error("v12_rollback_result_publication_failed"); }
+  if (operationFailure !== undefined) throw new Error(operationFailure);
 }

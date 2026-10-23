@@ -82,7 +82,7 @@ test("host never reads a partially copied result before the private readiness ba
   const original = f.dependencies.command;
   f.dependencies.command = (exe, args, opts) => {
     if (args.join(" ").includes("result.json")) {
-      assert.match(args.join(" "), /test -f [^ ]+\/result\.ready && test -f [^ ]+\/result\.json/u);
+      assert.match(args.join(" "), /test -f [^ ]+\/result\.ready && test "\$\(cat [^ ]+\/result\.ready\)" = ready && test -f [^ ]+\/result\.json/u);
       if (polls++ === 0) return { status: 1, stdout: Buffer.alloc(0) };
     }
     return original(exe, args, opts);

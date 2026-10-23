@@ -17,7 +17,7 @@ jest.mock("../platform/sqlite/migrations", () => ({ CURRENT_SCHEMA_VERSION: 47,
 const mockFiles = new Map<string, Uint8Array>();
 const mockPath = "private-files";
 class MockFile {
-  readonly path: string;
+  path: string;
   constructor(...parts: unknown[]) {
     if (parts[0] === "/native-sqlite") throw new Error("native_file_uri_required");
     this.path = parts.join("/");
@@ -25,7 +25,7 @@ class MockFile {
   get exists() { return mockFiles.has(this.path); }
   textSync() { return new TextDecoder().decode(mockFiles.get(this.path)!); }
   bytesSync() { return mockFiles.get(this.path)!.slice(); }
-  move(other: MockFile) { mockFiles.set(other.path, mockFiles.get(this.path)!); mockFiles.delete(this.path); }
+  move(other: MockFile) { mockFiles.set(other.path, mockFiles.get(this.path)!); mockFiles.delete(this.path); this.path = other.path; }
   write(value: string | Uint8Array) { mockFiles.set(this.path, typeof value === "string" ? new TextEncoder().encode(value) : value); }
 }
 jest.mock("expo-file-system", () => ({ File: (..._args: unknown[]) => undefined, Paths: { document: "private-files" } }));
@@ -279,6 +279,27 @@ describe("rollback bridge guards and orchestration (host-only unit tests)", () =
     await expect(operation).rejects.toThrow("v12_rollback_synthetic_failure");
     expect(JSON.parse(new TextDecoder().decode(mockFiles.get(finalPath)!)).failure).toBe("v12_rollback_synthetic_failure");
     expect(new TextDecoder().decode(mockFiles.get(readyPath)!)).toBe("ready");
+  });
+  it("never retries or rewrites a published result if readiness creation fails", async () => {
+    nativePorts();
+    jest.spyOn(cryptoModule, "createExpoAesGcmArchiveDriver").mockImplementation(() => { throw new Error("v12_rollback_synthetic_failure"); });
+    mockFiles.set(`${mockPath}/v12-rollback-${nonce}/arm.json`, new TextEncoder().encode(JSON.stringify({ ...arm(), expires_at_ms: Date.now() + 60_000 })));
+    const originalWrite = MockFile.prototype.write;
+    let resultWrites = 0;
+    let resultBeforeReady: Uint8Array | undefined;
+    jest.spyOn(MockFile.prototype, "write").mockImplementation(function (this: MockFile, value) {
+      if (this.path.endsWith("/result-staged.json") || this.path.endsWith("/result.json")) resultWrites += 1;
+      if (this.path.endsWith("/result.ready")) {
+        resultBeforeReady = mockFiles.get(`${mockPath}/v12-rollback-${nonce}/result.json`)!.slice();
+        mockFiles.set(this.path, new Uint8Array());
+        throw new Error("private marker write failure");
+      }
+      originalWrite.call(this, value);
+    });
+    await expect(collectNativeRollbackBridge(identity, nonce)).rejects.toThrow("v12_rollback_result_publication_failed");
+    expect(resultWrites).toBe(1);
+    expect(mockFiles.get(`${mockPath}/v12-rollback-${nonce}/result.json`)).toEqual(resultBeforeReady);
+    expect(mockFiles.get(`${mockPath}/v12-rollback-${nonce}/result.ready`)).toEqual(new Uint8Array());
   });
   it("rejects an existing readiness barrier instead of reusing stale completion", async () => {
     mockFiles.set(`${mockPath}/v12-rollback-${nonce}/result.ready`, new Uint8Array([1]));
