@@ -45,6 +45,7 @@ const phase19CoverageHead = execFileSync(
   { cwd: projectRoot, encoding: "utf8" },
 ).trim();
 const phase18IntegrityCriticalFiles = [
+  "plugins/withGarminConnectModule.ts",
   "src/domains/activities/activityDetails.ts",
   "src/domains/activities/importCommands.ts",
   "src/domains/portability/mergePlan.ts",
@@ -62,6 +63,7 @@ const phase18IntegrityCriticalFiles = [
   "src/ui/garmin/useGarminConnectionController.ts",
 ];
 const phase18TargetedTests = [
+  "plugins/withGarminConnectModule.test.ts",
   "src/domains/activities/activityDetails.test.ts",
   "src/domains/activities/importCommands.test.ts",
   "src/domains/portability/mergePlan.test.ts",
@@ -144,7 +146,24 @@ const phase16EvidenceFiles = [
   "scripts/v12-calendar-case-evidence.mjs",
   "scripts/v12-calendar-case-registry.mjs",
 ];
+const garminPackagingCoverage = Object.freeze({
+  name: "garmin-packaging",
+  concurrency: 1,
+  modules: Object.freeze([
+    "scripts/verify-garmin-python-lock.mjs",
+    "scripts/garmin-android-native.mjs",
+    "scripts/build-android-cffi.mjs",
+    "scripts/verify-garmin-android-binaries.mjs",
+  ]),
+  tests: Object.freeze([
+    "scripts/verify-garmin-python-lock.test.mjs",
+    "scripts/garmin-android-native.test.mjs",
+    "scripts/build-android-cffi.test.mjs",
+    "scripts/verify-garmin-android-binaries.test.mjs",
+  ]),
+});
 const phase20EvidenceTests = Object.freeze([
+  ...garminPackagingCoverage.tests,
   "scripts/assert-generated-android.test.mjs",
   "scripts/assert-generated-production-android.test.mjs",
   "scripts/validate-development-test-native-access.test.mjs",
@@ -204,6 +223,7 @@ const phase20EvidenceTests = Object.freeze([
   "scripts/verify-v12-native-evidence.security.test.mjs",
 ]);
 const phase20SupportTests = new Set([
+  ...garminPackagingCoverage.tests.map((file) => path.basename(file)),
   "assert-generated-android.test.mjs",
   "assert-generated-production-android.test.mjs",
   "validate-development-test-native-access.test.mjs",
@@ -292,7 +312,8 @@ const phase20EvidenceProjects = Object.freeze([
       && !phase20BlackBoxTests.has(file)
       && !phase20CliCoverageTests.has(file)
       && !phase20FixtureCoverageTests.has(file)
-      && !phase20FixtureVisualCoverageTests.has(file)),
+      && !phase20FixtureVisualCoverageTests.has(file)
+      && !garminPackagingCoverage.tests.includes(file)),
   }),
   Object.freeze({
     name: "native-actions",
@@ -369,6 +390,7 @@ const phase20EvidenceProjects = Object.freeze([
       V12_PHASE20_COVERAGE_FIXTURE: phase20CoverageFixture,
     }),
   }),
+  garminPackagingCoverage,
 ]);
 const phase20IntegrityCriticalFiles = [
   "src/bootstrap/v12AcceptanceBenchmark.ts",
@@ -402,6 +424,7 @@ const phase20CoverageClassifications = Object.freeze({
 });
 const phase19IntegrityCriticalFiles = phase19CoverageManifest.required_files;
 const integrityCriticalFiles = [
+  "plugins/withGarminConnectModule.ts",
   "src/domains/content/catalog.ts",
   "src/domains/portability/backupContracts.ts",
   "src/domains/portability/backupCommands.ts",
@@ -835,7 +858,7 @@ const registeredPhase20EvidenceTests = validateEvidenceTestManifest({
   tests: phase20EvidenceTests,
   isEvidenceTest: isPhase20EvidenceTest,
   error: "phase20_evidence_test_manifest_drift",
-  expectedCount: 57,
+  expectedCount: 61,
 });
 const expectedPhase20ProjectNames = [
   "contracts",
@@ -845,14 +868,15 @@ const expectedPhase20ProjectNames = [
   "cli-blackbox",
   "cli-coverage",
   "fixture-coverage",
+  "garmin-packaging",
 ];
 const assignedPhase20Tests = phase20EvidenceProjects.flatMap(({ tests }) => tests);
 const assignedPhase20Modules = new Set(phase20EvidenceProjects.flatMap(({ modules = [] }) => modules));
 if (JSON.stringify(phase20EvidenceProjects.map(({ name }) => name)) !== JSON.stringify(expectedPhase20ProjectNames)
-  || assignedPhase20Tests.length !== 57
-  || new Set(assignedPhase20Tests).size !== 57
+  || assignedPhase20Tests.length !== 61
+  || new Set(assignedPhase20Tests).size !== 61
   || JSON.stringify([...assignedPhase20Tests].sort()) !== JSON.stringify(registeredPhase20EvidenceTests)
-  || assignedPhase20Modules.size !== 22
+  || assignedPhase20Modules.size !== 26
   || phase20EvidenceProjects.find(({ name }) => name === "cli-blackbox")?.coverage !== false) {
   throw new Error(JSON.stringify({
     error: "phase20_coverage_project_manifest_invalid",

@@ -20,6 +20,10 @@ const supportTests = new Set([
   "run-coverage-gate.test.mjs",
   "source-tree-digest.test.mjs",
   "validate-v12-prebuild-predecessors.test.mjs",
+  "verify-garmin-python-lock.test.mjs",
+  "garmin-android-native.test.mjs",
+  "build-android-cffi.test.mjs",
+  "verify-garmin-android-binaries.test.mjs",
 ]);
 const testFiles = readdirSync("scripts").filter((name) => name.endsWith(".test.mjs"));
 const discoveredPhase20 = testFiles
@@ -97,7 +101,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   ));
   assert.deepEqual(manifest.phase20, discoveredPhase20);
   assert.deepEqual(manifest.phase18, discoveredPhase18);
-  assert.equal(manifest.phase20.length, 57);
+  assert.equal(manifest.phase20.length, 61);
   assert.equal(manifest.phase18.length, 18);
   assert.ok(manifest.phase18.includes("scripts/phase18-garmin-proof.test.mjs"));
   assert.deepEqual(Object.keys(manifest.phase20_coverage).sort(), [
@@ -113,7 +117,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   );
   assert.equal(manifest.phase20_coverage.jest_istanbul_modules.length, 15);
   const coverageProjects = manifest.phase20_coverage.node_v8_projects;
-  assert.equal(coverageProjects.length, 7);
+  assert.equal(coverageProjects.length, 8);
   assert.deepEqual(coverageProjects.map(({ name }) => name), [
     "contracts",
     "native-actions",
@@ -122,6 +126,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
     "cli-blackbox",
     "cli-coverage",
     "fixture-coverage",
+    "garmin-packaging",
   ]);
   assert.deepEqual(
     coverageProjects.filter(({ coverage }) => coverage === false).map(({ name }) => name),
@@ -132,12 +137,16 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
     { name: "cli-blackbox", timeoutMs: 50 * 60_000 },
   ]);
   const registeredProjectTests = coverageProjects.flatMap(({ tests }) => tests);
-  assert.equal(registeredProjectTests.length, 57);
-  assert.equal(new Set(registeredProjectTests).size, 57);
+  assert.equal(registeredProjectTests.length, 61);
+  assert.equal(new Set(registeredProjectTests).size, 61);
   assert.deepEqual([...registeredProjectTests].sort(), manifest.phase20);
   const coveredModules = new Set(coverageProjects.flatMap(({ modules }) => modules));
-  assert.equal(coveredModules.size, 22);
+  assert.equal(coveredModules.size, 26);
   for (const required of [
+    "scripts/verify-garmin-python-lock.mjs",
+    "scripts/garmin-android-native.mjs",
+    "scripts/build-android-cffi.mjs",
+    "scripts/verify-garmin-android-binaries.mjs",
     "scripts/v12-airplane-mode-status.mjs",
     "scripts/native-contract-log-transport.mjs",
     "scripts/validate-development-test-native-access.mjs",
@@ -164,6 +173,18 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   assert.ok(coverageProjects.every(({ coverage, modules, tests }) => (coverage === false || modules.length > 0)
     && tests.length > 0
     && tests.every((file) => manifest.phase20.includes(file))));
+  const packaging = coverageProjects.find(({ name }) => name === "garmin-packaging");
+  assert.deepEqual(packaging.tests, [
+    "scripts/verify-garmin-python-lock.test.mjs",
+    "scripts/garmin-android-native.test.mjs",
+    "scripts/build-android-cffi.test.mjs",
+    "scripts/verify-garmin-android-binaries.test.mjs",
+  ]);
+  assert.equal(manifest.phase18.some((file) => packaging.tests.includes(file)), false);
+  const gate = readFileSync("scripts/run-coverage-gate.mjs", "utf8");
+  assert.match(gate, /const phase18IntegrityCriticalFiles = \[\s+"plugins\/withGarminConnectModule\.ts"/u);
+  assert.match(gate, /const integrityCriticalFiles = \[\s+"plugins\/withGarminConnectModule\.ts"/u);
+  assert.match(gate, /const phase18TargetedTests = \[\s+"plugins\/withGarminConnectModule\.test\.ts"/u);
   assert.match(
     readFileSync("scripts/capture-v12-visual.test.mjs", "utf8"),
     /import "\.\/testing\/v12-visual-streaming\.test\.mjs";/u,
