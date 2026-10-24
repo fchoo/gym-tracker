@@ -70,7 +70,7 @@ function controlledSession(t, options = {}) {
     let stdout = "";
     if (executable === tools.maestro) {
       if (args[0] === "--version") stdout = `${state.version}\n`;
-      else if (state.junit !== null) fs.writeFileSync(args[args.indexOf("--output") + 1], state.junit);
+      else if (state.junit !== null) fs.writeFileSync(args[args.indexOf(args.includes("--junit") ? "--junit" : "--output") + 1], state.junit);
     } else if (executable === tools.unzip) stdout = args[0] === "-Z1" ? state.entries : typeof state.config === "string" ? state.config : JSON.stringify(state.config);
     else if (args[2] === "logcat") stdout = state.logs.length > 1 ? state.logs.shift() : state.logs[0] ?? "";
     else if (args[2] === "exec-out") stdout = args[3] === "screencap" ? Buffer.from("test-only binary capture") : state.xml;
@@ -186,9 +186,18 @@ test("binary capture and JUnit reports retain isolated file permissions and clea
   const dir = session.temporary();
   assert.equal(session.temporary(), dir);
   assert.equal(fs.statSync(dir).mode & 0o777, 0o700);
-  assert.deepEqual(session.maestro(invocation()), { status: "PASS", xml: state.junit });
-  const report = calls.at(-1).args[calls.at(-1).args.indexOf("--output") + 1];
-  assert.equal(fs.statSync(report).mode & 0o777, 0o600);
+  const originalChmod = fs.chmodSync;
+  let reportMode;
+  const permissions = t.mock.method(fs, "chmodSync", (file, mode) => {
+    originalChmod(file, mode);
+    if (String(file).endsWith("raw.xml")) reportMode = fs.statSync(file).mode & 0o777;
+  });
+  syncBuiltinESMExports();
+  try { assert.deepEqual(session.maestro(invocation()), { status: "PASS", xml: state.junit }); }
+  finally { permissions.mock.restore(); syncBuiltinESMExports(); }
+  assert.equal(reportMode, 0o600, "actual JUnit remains private before quarantine cleanup");
+  const report = calls.at(-1).args[calls.at(-1).args.indexOf("--junit") + 1];
+  assert.equal(fs.existsSync(path.dirname(report)), false, "raw JUnit must be quarantined and removed after readback");
   state.junit = null;
   assert.throws(() => session.maestro({ ...invocation(), order: 2 }), /junit_missing/u);
   session.cleanup();
@@ -239,10 +248,53 @@ test("a nonzero Maestro exit returns its failed JUnit outcome without hiding too
   const xml = "<testsuite><testcase><failure/></testcase></testsuite>";
   const { session } = controlledSession(t, { respond: ({ executable, args }) => {
     if (!executable.endsWith("fake-maestro")) return undefined;
-    fs.writeFileSync(args[args.indexOf("--output") + 1], xml);
+    fs.writeFileSync(args[args.indexOf(args.includes("--junit") ? "--junit" : "--output") + 1], xml);
     return { status: 1, signal: null, error: undefined, stdout: "", stderr: "test-only failed testcase" };
   } });
   assert.deepEqual(session.maestro(invocation()), { status: "FAIL", xml });
+});
+
+test("both Calendar flows use only the controlled SDK protocol with exact environment and bounded private JUnit", (t) => {
+  const { session, calls, root } = controlledSession(t);
+  for (const input of [invocation(), probeInvocation()]) {
+    const before = session.logs();
+    assert.equal(before, "");
+    assert.equal(session.maestro(input).status, "PASS");
+    const { args, options } = calls.at(-1);
+    assert.equal(args[0], "sdk-flow", "CLI test artifact capture is forbidden");
+    assert.equal(args[args.indexOf("--device") + 1], "test-device-only");
+    assert.equal(args[args.indexOf("--flow") + 1], path.join(root, input.flow));
+    const variables = Object.fromEntries(args.flatMap((value, index) => value === "-e" ? [args[index + 1].split(/=(.*)/su).slice(0, 2)] : []));
+    assert.deepEqual(variables, input.variables);
+    const deadline = Number(args[args.indexOf("--deadline-ms") + 1]);
+    assert.ok(deadline > 0 && deadline <= 174_000);
+    assert.ok(options.timeout <= 180_000 && options.timeout >= deadline + 6_000);
+    assert.equal(fs.existsSync(path.dirname(args[args.indexOf("--junit") + 1])), false);
+  }
+  assert.equal(calls.some(({ args }) => args.includes("test") || args.includes("-c") || args.includes("--test-output-dir")), false);
+});
+
+test("SDK teardown headroom cannot consume an expired Calendar flow deadline", (t) => {
+  const createdAt = Date.now();
+  const { session, calls } = controlledSession(t);
+  t.mock.method(Date, "now", () => createdAt + 104 * 240_000 - 5_000);
+  assert.throws(() => session.maestro(invocation()), /calendar_action_timeout/u);
+  assert.equal(calls.length, 0);
+});
+
+test("SDK preparation is charged to the existing producer deadline and cannot extend it", (t) => {
+  const { root, tools } = fixture(t);
+  for (const preparationStartedAt of [NaN, -1, 0.1]) assert.throws(() => createV12CalendarDeviceSession(root, RUN_ID, tools, { serial: "fixture", preparationStartedAt }), /calendar_action_timeout/u);
+  let time = 100;
+  t.mock.method(Date, "now", () => time);
+  const spawn = () => assert.fail("expired preparation must not launch tools");
+  const early = createV12CalendarDeviceSession(root, RUN_ID, tools, { serial: "fixture", spawn, preparationStartedAt: 0 });
+  time = 104 * 240_000;
+  assert.throws(() => early.logs(), /calendar_action_timeout/u);
+  time = 100;
+  const future = createV12CalendarDeviceSession(root, RUN_ID, tools, { serial: "fixture", spawn, preparationStartedAt: 100_000 });
+  time += 104 * 240_000;
+  assert.throws(() => future.logs(), /calendar_action_timeout/u);
 });
 
 test("marker polling retries only missing nonce data and rejects stale or malformed markers", async (t) => {
@@ -356,8 +408,11 @@ async function executeFixtureCase(scenario, fileUrl) {
   const artifacts = await import(new URL("./v12-calendar-artifact-transport.mjs", fileUrl));
   const executionOrigin = await import(new URL("./v12-native-execution-origin.mjs", fileUrl));
   const nativeRuntime = await import(new URL("./v12-production-native-runtime.mjs", fileUrl));
+  const sdkModule = await import(new URL("./v12-maestro-safe-sdk.mjs", fileUrl));
+  const { PNG } = await import("pngjs");
   const events = [];
   const tools = { execution_origin: "test-controlled/v1", test_only: true };
+  if (scenario.startsWith("production") || scenario.startsWith("sdk-")) Object.assign(tools, { execution_origin: "production-attested/v1", test_only: false });
   for (const name of ["adb", "maestro", "unzip"]) { tools[name] = path.join(root, `fake-${name}`); fs.writeFileSync(tools[name], "test fixture; never execute\n"); }
   for (const file of ["maestro/v1.2/calendar.yaml", "maestro/v1.2/calendar-requirements.yaml", "src/testing/phase20CalendarFixture.ts"]) { fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true }); fs.writeFileSync(path.join(root, file), `test-only ${file}\n`); }
   fs.mkdirSync(path.join(root, "artifacts/native/v1.2", runId), { recursive: true });
@@ -377,6 +432,18 @@ async function executeFixtureCase(scenario, fileUrl) {
   };
   const result = fixtures.createV12CalendarObservationResult(payload.flow_sha256);
   const resumed = Object.freeze({ testOnly: "completed-fixture" });
+  const sdkBinding = { java: path.join(root, "fake-java"), jar: path.join(root, "fake-runner.jar"), classpath: path.join(root, "fake-sdk.jar"),
+    receipt: { schema_version: 1, engine: "official-maestro-sdk/artifacts-disabled", node_version: process.versions.node,
+      wrapper_sha256: digest, sources: { "SafeFlow.kt": digest, "SafeMaestro.kt": digest, "SessionOwnedDriver.kt": digest },
+      toolchain: { compiler_sha256: digest, jars: { "maestro.jar": digest }, java_realpath_sha256: digest, jdk_files: { java: digest } }, jar_sha256: digest } };
+  const sdkRequests = [];
+  const device = { values: { font_scale: "1", accelerometer_rotation: "0", user_rotation: "0", window_animation_scale: "1", transition_animation_scale: "1", animator_duration_scale: "1", airplane_mode_on: "0" }, size: "780x1688", density: "320", night: "no", logs: "" };
+  const image = new PNG({ width: 2, height: 1 }); image.data.set([155, 71, 11, 255, 255, 255, 255, 255]);
+  const png = PNG.sync.write(image);
+  mock.module(new URL("./v12-maestro-safe-sdk.mjs", fileUrl).href, { namedExports: { ...sdkModule,
+    prepareSafeMaestroSdk() { events.push("sdk-prepare"); if (scenario === "sdk-prepare-failed") throw new Error("maestro_safe_sdk_compile_failed"); return sdkBinding; },
+    verifySafeSdkBinding(binding) { assert.equal(binding, sdkBinding); events.push("sdk-verify"); if (scenario === "sdk-verify-failed") throw new Error("maestro_safe_sdk_receipt_invalid"); return true; },
+  } });
   let completed;
   mock.module(new URL("./v12-native-execution-origin.mjs", fileUrl).href, { namedExports: { ...executionOrigin, resolveV12NativeExecutionTools: () => tools } });
   mock.module(new URL("./v12-production-native-runtime.mjs", fileUrl).href, { namedExports: { ...nativeRuntime, createProductionNativeRuntime: () => {
@@ -387,47 +454,114 @@ async function executeFixtureCase(scenario, fileUrl) {
     return runtime;
   } } });
   mock.module(new URL("./v12-calendar-artifact-transport.mjs", fileUrl).href, { namedExports: { ...artifacts, createV12CalendarArtifactTransport: ({ binding }) => {
-    assert.equal(binding.execution_origin, "test-controlled/v1");
+    assert.equal(binding.execution_origin, tools.execution_origin);
+    const receipt = sdkBinding.receipt;
+    const expectedSdkBinding = tools.test_only ? hash("v12-calendar-test-controlled-sdk-flow/v1")
+      : hash(JSON.stringify({ schema_version: receipt.schema_version, engine: receipt.engine, node_version: receipt.node_version,
+        wrapper_sha256: receipt.wrapper_sha256, sources: receipt.sources, toolchain: receipt.toolchain }));
+    assert.equal(binding.sdk_binding_sha256, expectedSdkBinding);
+    assert.equal(binding.tool_facts.maestro_sha256, hash(fs.readFileSync(tools.maestro)), "CLI byte identity remains separate from executed SDK identity");
     assert.equal(binding.request_sha256, hash(JSON.stringify({ attestation: proof, run_id: payload.run_id, flow_sha256: payload.flow_sha256, flow_revision: payload.flow_revision })));
-    return { loadCompleted: () => scenario === "resumed" ? resumed : null,
+    return { loadCompleted: () => ["resumed", "production-resumed", "production-resume-recompiled"].includes(scenario) ? resumed : null,
       resumeUnit: ({ kind, ordinal, key }) => {
         if (scenario === "collect-failed") throw new Error("calendar_observation_marker_invalid");
+        if (scenario === "production-flow") return undefined;
         if (kind === "stage") return { payload: { stage: result.stages[ordinal], junit: result.junit_cases[ordinal] }, artifacts: [] };
         const [requirementId, probeId] = key.split(":");
         const definition = requirements.V12_CALENDAR_REQUIREMENT_DEFINITIONS.find((item) => item.requirement_id === requirementId);
         const receipt = requirements.createV12CalendarProbeReceipt({ nonce: ordinal.toString(16).padStart(32, "0"), flowSha256: binding.requirements_flow_sha256, fixtureSourceSha256: binding.fixture_source_sha256, requirementId, evidenceId: definition.evidence_id, probeId });
         return { payload: { receipt, junit: { id: key, status: "PASS" } }, artifacts: [] };
-      }, appendUnit() { assert.fail("completed test units must not rerun"); }, complete(value) { events.push("complete"); completed = value; if (scenario === "complete-failed") throw new Error("calendar_action_transport_invalid"); } };
+      }, appendUnit(unit) { assert.equal(scenario, "production-flow"); return { payload: unit.payload, artifacts: unit.artifacts.map(({ bytes, ...descriptor }) => ({ ...descriptor, sha256: hash(bytes), size_bytes: bytes.length })) }; }, complete(value) { events.push("complete"); completed = value; if (scenario === "complete-failed") throw new Error("calendar_action_transport_invalid"); } };
   } } });
   mock.module("node:child_process", { namedExports: { ...processBoundary, spawnSync(executable, args) {
+    assert.equal(args.includes("test") || args.includes("-c") || args.includes("--test-output-dir"), false, "shared log buffer must be preserved");
+    if (executable === sdkBinding.java) {
+      assert.equal(events.at(-1), "sdk-verify", "binding must be verified immediately before every SDK flow");
+      assert.equal(args[2], "gymtracker.maestrosafe.SafeMaestroKt");
+      const request = { serial: args[3], flow: args[4], junit: args[5], deadlineMs: Number(args[6]), env: Object.fromEntries(args.slice(7).map((value) => value.split(/=(.*)/su).slice(0, 2))) };
+      sdkRequests.push(request);
+      assert.equal(request.serial, "test-only-device");
+      assert.ok(request.deadlineMs > 0 && request.deadlineMs <= 174_000);
+      assert.equal(fs.statSync(path.dirname(request.junit)).mode & 0o777, 0o700);
+      fs.writeFileSync(request.junit, "<testsuite><testcase/></testsuite>");
+      if (request.env.V12_CALENDAR_STAGE) {
+        const id = request.env.V12_CALENDAR_STAGE;
+        device.logs += `${contracts.encodeV12CalendarTerminalMarkerChunks(fixtures.createV12CalendarMarkerFixture(id, contracts.V12_CALENDAR_STAGE_IDS.indexOf(id), request.env.V12_CALENDAR_FLOW_SHA256, request.env.V12_CALENDAR_NONCE)).join("\n")}\n`;
+      } else {
+        const receipt = requirements.createV12CalendarProbeReceipt({ nonce: request.env.V12_CALENDAR_EVIDENCE_NONCE, flowSha256: request.env.V12_CALENDAR_REQUIREMENTS_SHA256, fixtureSourceSha256: request.env.V12_CALENDAR_FIXTURE_SOURCE_SHA256, requirementId: request.env.V12_CALENDAR_REQUIREMENT, evidenceId: request.env.V12_CALENDAR_EVIDENCE_ID, probeId: request.env.V12_CALENDAR_PROBE });
+        device.logs += `${requirements.V12_CALENDAR_PROBE_RECEIPT_MARKER}${JSON.stringify(receipt)}\n`;
+      }
+      return { status: 0, stdout: "" };
+    }
+    if (executable === tools.adb) {
+      assert.equal(args[0], "-s"); assert.equal(args[1], "test-only-device");
+      if (args[2] === "logcat") return { status: 0, stdout: device.logs };
+      if (args[2] === "exec-out") return { status: 0, stdout: args[3] === "screencap" ? png : '<node resource-id="calendar-month-viewport" bounds="[0,0][100,100]"/><node resource-id="calendar-collapse-day" bounds="[0,0][100,100]"/><node resource-id="calendar-day-2026-10-15" bounds="[0,0][100,100]"/>' };
+      const tokens = [...(args[3] ?? "").matchAll(/'([^']*)'/gu)].map((match) => match[1]);
+      let stdout = "";
+      if (tokens[0] === "settings") { if (tokens[1] === "get") stdout = device.values[tokens[3]]; else device.values[tokens[3]] = tokens[4]; }
+      else if (tokens[0] === "wm") { if (tokens.length === 2) stdout = `Physical ${tokens[1]}: ${tokens[1] === "size" ? "1080x2400" : "420"}\nOverride ${tokens[1]}: ${device[tokens[1]]}`; else device[tokens[1]] = tokens[2]; }
+      else if (tokens[1] === "uimode") { if (tokens.length === 3) stdout = `Night mode: ${device.night}`; else device.night = tokens[3]; }
+      else if (tokens[1] === "connectivity") stdout = "Airplane mode is disabled";
+      return { status: 0, stdout };
+    }
     assert.ok([tools.maestro, tools.unzip].includes(executable), "native process forbidden in fixture");
     if (executable === tools.maestro) return { status: 0, stdout: "2.8.0\n" };
     if (args[0] === "-Z1") return { status: 0, stdout: "assets/index.android.bundle\nassets/app.config\n" };
     return { status: 0, stdout: JSON.stringify({ android: { package: "com.fchoo.gymtracker.devtest" }, scheme: "gymtracker-devtest", extra: { buildProfile: "development-test", nativeContractsEnabled: true, nativeContractSuite: "v1.2-acceptance" } }) };
   } } });
   process.chdir(root);
+  mock.method(Atomics, "wait", () => "timed-out");
   process.env.V12_DEVICE_SERIAL = "test-only-device";
   for (const key of ["NODE_ENV", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS", "V12_NATIVE_ADAPTER_COMMAND"]) delete process.env[key];
   if (scenario.startsWith("forbidden:")) { const key = scenario.slice(10); process.env[key] = key === "NODE_ENV" ? "test" : ""; }
   if (scenario === "borrowed") payload.lease = lease;
   try {
-    const { executeProductionCalendarAction } = await import(actionUrl);
-    if (["success", "borrowed", "resumed"].includes(scenario)) {
+    const { executeProductionCalendarAction, createV12CalendarDeviceSession, createV12CalendarStageInvocation, createV12CalendarProbeInvocation } = await import(actionUrl);
+    if (scenario === "production-session") {
+      const session = createV12CalendarDeviceSession(root, runId, tools);
+      session.version();
+      session.maestro(createV12CalendarStageInvocation({ stageId: contracts.V12_CALENDAR_STAGE_IDS[0], order: 0, nonce: "b".repeat(32), flowSha256: digest }));
+      const definition = requirements.V12_CALENDAR_REQUIREMENT_DEFINITIONS[0];
+      session.maestro(createV12CalendarProbeInvocation({ definition, probeId: definition.probe_ids[0], order: 0, nonce: "c".repeat(32), flowSha256: digest, fixtureSourceSha256: digest }));
+      session.cleanup();
+      assert.equal(events.filter((event) => event === "sdk-prepare").length, 1);
+      assert.equal(sdkRequests.length, 2);
+      assert.ok(sdkRequests.every(({ junit }) => !fs.existsSync(path.dirname(junit))));
+    } else if (scenario === "production-resume-recompiled") {
+      assert.equal(await executeProductionCalendarAction(payload, proof), resumed);
+      sdkBinding.receipt.jar_sha256 = "c".repeat(64);
+      assert.equal(await executeProductionCalendarAction(payload, proof), resumed);
+      assert.equal(events.filter((event) => event === "sdk-prepare").length, 2, "each action must inspect a newly prepared current SDK before replay");
+      assert.equal(events.filter((event) => event === "sdk-verify").length, 2);
+      assert.equal(sdkRequests.length, 0, "completed units must not execute again");
+    } else if (["success", "borrowed", "resumed", "production-flow", "production-resumed"].includes(scenario)) {
       const output = await executeProductionCalendarAction(payload, proof);
-      if (scenario === "resumed") { assert.equal(output, resumed); assert.deepEqual(events, ["runtime", "acquire", "snapshot", "withLease", "restore", "release"]); }
+      if (["resumed", "production-resumed"].includes(scenario)) { assert.equal(output, resumed); assert.deepEqual(events.filter((event) => !event.startsWith("sdk-")), ["runtime", "acquire", "snapshot", "withLease", "restore", "release"]); }
       else {
         assert.equal(output, completed);
         assert.equal(output.native_receipt.stage_count, 35);
         assert.equal(output.native_receipt.requirement_count, 23);
         assert.equal(output.native_receipt.probe_count, 69);
-        assert.equal(output.native_receipt.evidence_set_sha256, hash(JSON.stringify({ stages: output.stages, requirements: output.requirements, artifacts: [] })));
+        assert.equal(output.native_receipt.evidence_set_sha256, hash(JSON.stringify({ stages: output.stages, requirements: output.requirements, artifacts: output.artifacts })));
         assert.deepEqual(events.slice(-3), scenario === "borrowed" ? ["calendar-snapshot", "complete", "calendar-restore"] : ["calendar-restore", "restore", "release"]);
         if (scenario === "borrowed") assert.equal(events.includes("acquire") || events.includes("restore") || events.includes("release"), false);
+      }
+      if (scenario.startsWith("production")) {
+        assert.equal(events.filter((event) => event === "sdk-prepare").length, 1);
+        assert.equal(sdkRequests.length, scenario === "production-flow" ? 104 : 0);
+        if (scenario === "production-flow") {
+          assert.equal(sdkRequests.filter(({ env }) => env.V12_CALENDAR_STAGE).length, 35);
+          assert.equal(sdkRequests.filter(({ env }) => env.V12_CALENDAR_REQUIREMENT).length, 69);
+          assert.equal(new Set(sdkRequests.map(({ env }) => env.V12_CALENDAR_NONCE ?? env.V12_CALENDAR_EVIDENCE_NONCE)).size, 104);
+          assert.ok(sdkRequests.every(({ env }) => device.logs.includes(env.V12_CALENDAR_NONCE ?? env.V12_CALENDAR_EVIDENCE_NONCE)), "all prior nonce publications remain in the shared buffer");
+          assert.ok(sdkRequests.every(({ junit }) => !fs.existsSync(path.dirname(junit))));
+        }
       }
     } else {
       const expected = scenario.startsWith("forbidden:") ? "v12_production_native_launcher_calendar_action_test_environment_forbidden"
         : scenario === "preserved-error" ? "v12_production_native_launcher_calendar_existing_failure"
-        : ["unknown-error", "generic-error"].includes(scenario) ? "v12_production_native_launcher_calendar_calendar_action_failed"
+        : ["unknown-error", "generic-error", "sdk-prepare-failed", "sdk-verify-failed"].includes(scenario) ? "v12_production_native_launcher_calendar_calendar_action_failed"
         : scenario === "collect-failed" ? "v12_production_native_launcher_calendar_observation_marker_invalid"
         : scenario === "complete-failed" ? "v12_production_native_launcher_calendar_action_transport_invalid"
         : "v12_production_native_launcher_calendar_action_settings_invalid";
@@ -440,7 +574,7 @@ async function executeFixtureCase(scenario, fileUrl) {
   } finally { process.chdir(originalCwd); fs.rmSync(root, { recursive: true, force: true }); }
 }
 
-for (const scenario of ["success", "borrowed", "resumed", "snapshot-failed", "collect-failed", "complete-failed", "calendar-restore-failed", "restore-failed", "preserved-error", "unknown-error", "generic-error", ...["NODE_ENV", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS", "V12_NATIVE_ADAPTER_COMMAND"].map((key) => `forbidden:${key}`)]) {
+for (const scenario of ["success", "borrowed", "resumed", "production-session", "production-flow", "production-resumed", "production-resume-recompiled", "sdk-prepare-failed", "sdk-verify-failed", "snapshot-failed", "collect-failed", "complete-failed", "calendar-restore-failed", "restore-failed", "preserved-error", "unknown-error", "generic-error", ...["NODE_ENV", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS", "V12_NATIVE_ADAPTER_COMMAND"].map((key) => `forbidden:${key}`)]) {
   test(`action lifecycle isolates ${scenario} and preserves native authority guards`, () => {
     const child = spawnSync(process.execPath, ["--experimental-test-module-mocks", "--input-type=module", "--eval", `await (${executeFixtureCase.toString()})(${JSON.stringify(scenario)}, ${JSON.stringify(import.meta.url)});`], { encoding: "utf8", timeout: 30_000, env: { ...process.env, NODE_TEST_CONTEXT: undefined } });
     assert.equal(child.error, undefined);

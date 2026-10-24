@@ -178,6 +178,7 @@ test("the Calendar action stages every raw trace and realistic screenshot withou
     run_id: RUN_ID,
     execution_origin: "test-controlled/v1",
     request_sha256: "1".repeat(64),
+    sdk_binding_sha256: createHash("sha256").update("v12-calendar-test-controlled-sdk-flow/v1").digest("hex"),
     flow_sha256: flowSha256,
     requirements_flow_sha256: createHash("sha256").update(requirementsFlow).digest("hex"),
     fixture_source_sha256: createHash("sha256").update("isolated calendar fixture\n").digest("hex"),
@@ -278,7 +279,10 @@ test("Calendar device commands use only resolver-owned absolute native tools", (
   const commands = [];
   const spawn = (executable, args) => {
     commands.push([executable, ...args]);
-    if (executable === tools.maestro) return { status: 0, signal: null, error: undefined, stdout: "2.8.0\n", stderr: "" };
+    if (executable === tools.maestro) {
+      if (args[0] === "sdk-flow") writeFileSync(args[args.indexOf("--junit") + 1], "<testsuite><testcase/></testsuite>");
+      return { status: 0, signal: null, error: undefined, stdout: "2.8.0\n", stderr: "" };
+    }
     if (executable === tools.unzip && args[0] === "-Z1") return { status: 0, signal: null, error: undefined, stdout: "assets/index.android.bundle\nassets/app.config\n", stderr: "" };
     if (executable === tools.unzip) return { status: 0, signal: null, error: undefined, stdout: JSON.stringify({ android: { package: "com.fchoo.gymtracker.devtest" }, scheme: "gymtracker-devtest", extra: { buildProfile: "development-test", nativeContractsEnabled: true, nativeContractSuite: "v1.2-acceptance" } }), stderr: "" };
     return { status: 0, signal: null, error: undefined, stdout: "", stderr: "" };
@@ -288,7 +292,12 @@ test("Calendar device commands use only resolver-owned absolute native tools", (
   session.logs();
   session.version();
   session.standalone();
+  assert.equal(session.maestro(createV12CalendarStageInvocation({ stageId: V12_CALENDAR_STAGE_IDS[0], order: 0, nonce: "1".repeat(32), flowSha256: HASH })).status, "PASS");
+  const definition = V12_CALENDAR_REQUIREMENT_DEFINITIONS[0];
+  assert.equal(session.maestro(createV12CalendarProbeInvocation({ definition, probeId: definition.probe_ids[0], order: 0, nonce: "2".repeat(32), flowSha256: HASH, fixtureSourceSha256: HASH })).status, "PASS");
   session.cleanup();
-  assert.deepEqual(commands.map(([executable]) => executable), [tools.adb, tools.maestro, tools.unzip, tools.unzip]);
+  assert.deepEqual(commands.map(([executable]) => executable), [tools.adb, tools.maestro, tools.unzip, tools.unzip, tools.maestro, tools.maestro]);
   assert.equal(commands.some((command) => command.includes("-c")), false);
+  assert.equal(commands.some((command) => command.includes("test") || command.includes("--test-output-dir")), false);
+  assert.equal(commands.filter((command) => command.includes("sdk-flow")).length, 2);
 });

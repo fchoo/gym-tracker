@@ -38,6 +38,7 @@ import {
   createV12CalendarProbeReceipt,
   validateV12CalendarProbeReceipt,
 } from "./v12-calendar-requirement-map.mjs";
+import { prepareSafeMaestroSdk, safeSdkArguments, verifySafeSdkBinding } from "./v12-maestro-safe-sdk.mjs";
 
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const FLOW = "maestro/v1.2/calendar.yaml";
@@ -177,13 +178,17 @@ export function resolveV12CalendarExecutionTools({ env = process.env } = {}) {
 export function createV12CalendarDeviceSession(root, runId, executionTools, {
   serial = process.env.V12_DEVICE_SERIAL,
   spawn = spawnSync,
+  safeSdk,
+  preparationStartedAt = Date.now(),
 } = {}) {
   if (typeof serial !== "string" || serial.trim().length === 0) fail("device_missing");
+  if (!Number.isSafeInteger(preparationStartedAt) || preparationStartedAt < 0) fail("timeout");
   if (!exact(executionTools, ["execution_origin", "test_only", "adb", "maestro", "unzip"])
     || !["production-attested/v1", "test-controlled/v1"].includes(executionTools.execution_origin)
     || executionTools.test_only !== (executionTools.execution_origin === "test-controlled/v1")
     || ![executionTools.adb, executionTools.maestro, executionTools.unzip].every((file) => typeof file === "string" && path.isAbsolute(file))) fail("toolchain_invalid");
-  const deadline = Date.now() + 35 * (180_000 + 60_000) + V12_CALENDAR_REQUIREMENT_PROBE_COUNT * (180_000 + 60_000);
+  const deadline = Math.min(preparationStartedAt, Date.now())
+    + 35 * (180_000 + 60_000) + V12_CALENDAR_REQUIREMENT_PROBE_COUNT * (180_000 + 60_000);
   const command = (executable, args, { timeout = 180_000, binary = false, acceptFailure = false, cleanup = false } = {}) => {
     if (!cleanup && Date.now() >= deadline) fail("timeout");
     const result = spawn(executable, args, {
@@ -208,6 +213,10 @@ export function createV12CalendarDeviceSession(root, runId, executionTools, {
     return temporaryDirectory;
   };
   const cleanup = () => { if (temporaryDirectory !== undefined) rmSync(temporaryDirectory, { recursive: true, force: true }); };
+  const sdk = () => {
+    safeSdk ??= prepareSafeMaestroSdk();
+    return safeSdk;
+  };
   const logs = () => adb("logcat", "-d", "-v", "raw", "ReactNativeJS:I", "*:S");
   const screenshot = () => command(executionTools.adb, ["-s", serial, "exec-out", "screencap", "-p"], { binary: true }).stdout;
   const uiDump = () => command(executionTools.adb, ["-s", serial, "exec-out", "uiautomator", "dump", "/dev/tty"]).stdout;
@@ -285,17 +294,33 @@ export function createV12CalendarDeviceSession(root, runId, executionTools, {
       || Number(configured.values.animator_duration_scale) !== Number(animationScale)) fail("settings_invalid");
   };
   const maestro = (invocation) => {
-    const report = path.join(temporary(), `${String(invocation.order).padStart(2, "0")}-${invocation.stageId}.xml`);
-    const debug = path.join(temporary(), `${String(invocation.order).padStart(2, "0")}-${invocation.stageId}-maestro`);
-    const args = ["test", "--device", serial,
-      ...Object.entries(invocation.variables).flatMap(([key, value]) => ["-e", `${key}=${value}`]),
-      "--format", "junit", "--output", report, "--test-output-dir", debug,
-      path.join(root, invocation.flow)];
-    const result = command(executionTools.maestro, args, { acceptFailure: true });
-    let xml;
-    try { xml = readFileSync(report, "utf8"); chmodSync(report, 0o600); }
-    catch { fail("junit_missing"); }
-    return Object.freeze({ status: junitOutcome(xml, result.status), xml });
+    const quarantine = mkdtempSync(path.join(temporary(), "junit-"));
+    chmodSync(quarantine, 0o700);
+    const report = path.join(quarantine, "raw.xml");
+    try {
+      const remaining = Math.min(180_000, deadline - Date.now());
+      if (remaining <= 6_000) fail("timeout");
+      const request = { serial, flow: path.join(root, invocation.flow), junit: report,
+        deadlineMs: remaining - 6_000, env: invocation.variables };
+      let result;
+      if (executionTools.test_only) {
+        result = command(executionTools.maestro, ["sdk-flow", "--device", serial,
+          "--flow", request.flow, "--junit", request.junit, "--deadline-ms", String(request.deadlineMs),
+          ...Object.entries(request.env).flatMap(([key, value]) => ["-e", `${key}=${value}`])],
+        { timeout: request.deadlineMs + 6_000, acceptFailure: true });
+      } else {
+        const binding = sdk();
+        verifySafeSdkBinding(binding);
+        result = command(binding.java, safeSdkArguments(binding, request),
+          { timeout: request.deadlineMs + 6_000, acceptFailure: true });
+      }
+      let xml;
+      try { xml = readFileSync(report, "utf8"); chmodSync(report, 0o600); }
+      catch { fail("junit_missing"); }
+      return Object.freeze({ status: junitOutcome(xml, result.status), xml });
+    } finally {
+      rmSync(quarantine, { recursive: true, force: true });
+    }
   };
   const awaitMarker = async (beforeLogs, invocation) => {
     const startedAt = Date.now();
@@ -329,7 +354,11 @@ export function createV12CalendarDeviceSession(root, runId, executionTools, {
     fail("probe_receipt_timeout");
   };
   return Object.freeze({ cleanup, configureStage, drive, logs, maestro, awaitMarker, awaitProbeReceipt, temporary, screenshot, settings, uiDump,
-    version: () => { if (command(executionTools.maestro, ["--version"]).stdout.trim() !== "2.8.0") fail("maestro_version_invalid"); },
+    version: () => {
+      if (executionTools.test_only) {
+        if (command(executionTools.maestro, ["--version"]).stdout.trim() !== "2.8.0") fail("maestro_version_invalid");
+      } else verifySafeSdkBinding(sdk());
+    },
     standalone: () => {
       const manifest = JSON.parse(readFileSync(path.join(root, "artifacts/native/v1.2", runId, "build.json"), "utf8"));
       const apk = path.join(root, manifest.build.apk.path);
@@ -466,12 +495,27 @@ export async function executeProductionCalendarAction(payload, attestation) {
       launcherSourceSha256: hashBytes(readFileSync(LAUNCHER)),
     });
     const executionTools = resolveV12CalendarExecutionTools();
+    const preparationStartedAt = Date.now();
+    const safeSdk = executionTools.test_only ? undefined : prepareSafeMaestroSdk();
+    if (safeSdk !== undefined) verifySafeSdkBinding(safeSdk);
+    // Bind the source and complete pinned toolchain independently of fresh JAR
+    // timestamps, so completed units can resume under the same SDK identity.
+    // Every actual JAR remains verified against its immutable full receipt.
+    const sdkBindingSha256 = safeSdk === undefined
+      ? hashBytes("v12-calendar-test-controlled-sdk-flow/v1")
+      : hashBytes(JSON.stringify({ schema_version: safeSdk.receipt.schema_version,
+        engine: safeSdk.receipt.engine, node_version: safeSdk.receipt.node_version,
+        wrapper_sha256: safeSdk.receipt.wrapper_sha256, sources: safeSdk.receipt.sources,
+        toolchain: safeSdk.receipt.toolchain }));
     const requirementsFlowSha256 = hashBytes(readFileSync(path.join(root, REQUIREMENTS_FLOW)));
     const fixtureSourceSha256 = hashBytes(readFileSync(path.join(root, FIXTURE_SOURCE)));
     const binding = Object.freeze({ schema_version: 1, run_id: attestation.run_id,
       execution_origin: executionTools.execution_origin,
       request_sha256: hashBytes(JSON.stringify({ attestation, run_id: payload.run_id, flow_sha256: payload.flow_sha256, flow_revision: payload.flow_revision })),
       flow_sha256: payload.flow_sha256, requirements_flow_sha256: requirementsFlowSha256, fixture_source_sha256: fixtureSourceSha256,
+      sdk_binding_sha256: sdkBindingSha256,
+      // Keep CLI executable identity separate from the SDK source/toolchain
+      // that actually executes flows and is bound by sdk_binding_sha256.
       tool_facts: Object.freeze({ adb_sha256: hashBytes(readFileSync(executionTools.adb)), maestro_sha256: hashBytes(readFileSync(executionTools.maestro)), unzip_sha256: hashBytes(readFileSync(executionTools.unzip)) }) });
     const runtime = createProductionNativeRuntime(attestation, { root, executionTools });
     const transport = createV12CalendarArtifactTransport({ root, runId: attestation.run_id, binding });
@@ -483,7 +527,7 @@ export async function executeProductionCalendarAction(payload, attestation) {
       return await runtime.withLease({ ...payload, lease }, async () => {
         const completed = transport.loadCompleted();
         if (completed !== null) return completed;
-        const io = createV12CalendarDeviceSession(root, attestation.run_id, executionTools);
+        const io = createV12CalendarDeviceSession(root, attestation.run_id, executionTools, { safeSdk, preparationStartedAt });
         const deviceSettings = runtime.snapshotCalendarSettings(lease);
         try {
           const collected = await collectV12ProductionCalendarStages({ root, payload, io, transport });
