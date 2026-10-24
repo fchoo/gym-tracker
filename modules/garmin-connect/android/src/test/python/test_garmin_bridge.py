@@ -1,4 +1,5 @@
 import json
+import hashlib
 import logging
 from pathlib import Path
 import sys
@@ -77,6 +78,172 @@ def provider_error(name, *, status=None, retry_after=None):
 
 
 class GarminBridgeTests(unittest.TestCase):
+    def test_full_bounded_details_projection_keeps_all_selected_observations_under_transport_cap(self):
+        keys = [f"unreviewed{index}" for index in range(128)]
+        keys[1], keys[63], keys[127] = "sumElapsedDuration", "sumDistance", "directHeartRate"
+        original = {
+            "metricDescriptors": [{"key": key, "metricsIndex": index} for index, key in enumerate(keys)],
+            "activityDetailMetrics": [{"metrics": [None if index % 9 == 0 else index for index in range(128)]} for _ in range(2000)],
+            "geoPolylineDTO": {"polyline": [{"lat": point / 10000, "lon": -point / 10000, "elapsedDuration": point, "unreviewed": "discarded"} for point in range(4000)]},
+        }
+        for ordinal, row in enumerate(original["activityDetailMetrics"]):
+            row["metrics"][1], row["metrics"][63], row["metrics"][127] = ordinal, ordinal * 2, 140
+        with self.assertRaises(garmin_bridge._BridgeInputError):
+            garmin_bridge._bounded_json(original)
+        fake = FakeClient()
+        fake.get_activity_details = lambda _id, **_limits: original
+        bridge = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: fake)
+        bridge.dispatch("login", {"email": "owner", "password": "synthetic-secret"})
+        result = bridge.dispatch("getActivityDetails", {"externalActivityId": "42", "maxchart": 2000, "maxpoly": 4000})
+        self.assertEqual(result["status"], "ok")
+        projected = result["data"]
+        budget = [0]
+        self.assertEqual(garmin_bridge._bounded_json(projected, budget=budget), projected)
+        self.assertLessEqual(budget[0], 25000)
+        self.assertEqual(garmin_bridge._MAX_JSON_NODES, 25000)
+        self.assertEqual(projected["transportProjectionVersion"], 1)
+        self.assertNotIn("activityDetailMetrics", projected)
+        self.assertEqual(projected["sourceMetricCounts"], [128] * 2000)
+        self.assertEqual(len(projected["geoPolylineDTO"]["polyline"]), 4000)
+        self.assertEqual(projected["sourceMetricDescriptorCount"], 128)
+        self.assertEqual(projected["metricDescriptors"], [
+            {"key": "sumElapsedDuration", "metricsIndex": 0, "sourceMetricsIndex": 1},
+            {"key": "sumDistance", "metricsIndex": 1, "sourceMetricsIndex": 63},
+            {"key": "directHeartRate", "metricsIndex": 2, "sourceMetricsIndex": 127},
+        ])
+        self.assertEqual(projected["activityDetailMetricColumns"], [list(range(2000)), [ordinal * 2 for ordinal in range(2000)], [140] * 2000])
+        self.assertEqual(projected["geoPolylineDTO"]["polyline"], [[point / 10000, -point / 10000, point] for point in range(4000)])
+
+    def test_details_projection_permutations_and_layout_provenance_keep_missing_null_and_zero_distinct(self):
+        fake = FakeClient()
+        bridge = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: fake)
+        bridge.dispatch("login", {"email": "owner", "password": "synthetic-secret"})
+        def project(component):
+            fake.get_activity_details = lambda _id, **_limits: component
+            result = bridge.dispatch("getActivityDetails", {"externalActivityId": "42", "maxchart": 2000, "maxpoly": 4000})
+            self.assertEqual(result["status"], "ok")
+            return result["data"]
+        first = project({
+            "metricDescriptors": [{"key": "directHeartRate", "metricsIndex": 4}, {"key": "sumDistance", "metricsIndex": 2}, {"key": "sumElapsedDuration", "metricsIndex": 0}, {"key": "unreviewed", "metricsIndex": 1}],
+            "activityDetailMetrics": [{"metrics": []}, {"metrics": [0]}, {"metrics": [0, 1, None]}, {"metrics": [0, 1, None, 9]}, {"metrics": [0, 1, None, 9, 140]}],
+        })
+        self.assertEqual(first["metricDescriptors"], [
+            {"key": "directHeartRate", "metricsIndex": 2, "sourceMetricsIndex": 4},
+            {"key": "sumDistance", "metricsIndex": 1, "sourceMetricsIndex": 2},
+            {"key": "sumElapsedDuration", "metricsIndex": 0, "sourceMetricsIndex": 0},
+        ])
+        self.assertEqual(first["activityDetailMetricColumns"], [[None, 0, 0, 0, 0], [None, None, None, None, None], [None, None, None, None, 140]])
+        self.assertEqual(first["sourceMetricCounts"], [0, 1, 3, 4, 5])
+        permuted = project({"metricDescriptors": [{"key": "sumDistance", "metricsIndex": 1}, {"key": "directHeartRate", "metricsIndex": 2}, {"key": "sumElapsedDuration", "metricsIndex": 0}], "activityDetailMetrics": [{"metrics": [0, None, 140]}]})
+        def selected(component):
+            return [{descriptor["key"]: component["activityDetailMetricColumns"][descriptor["metricsIndex"]][ordinal]
+                     for descriptor in component["metricDescriptors"] if descriptor["sourceMetricsIndex"] < width}
+                    for ordinal, width in enumerate(component["sourceMetricCounts"])]
+        self.assertEqual(selected(first)[-1], selected(permuted)[0])
+        self.assertNotEqual(hashlib.sha256(json.dumps(first, sort_keys=True).encode()).digest(), hashlib.sha256(json.dumps(permuted, sort_keys=True).encode()).digest())
+
+    def test_details_layout_only_changes_hash_and_never_sorts_or_deduplicates_samples(self):
+        first = garmin_bridge._project_activity_details({
+            "metricDescriptors": [{"key": "sumDistance", "metricsIndex": 4}, {"key": "sumElapsedDuration", "metricsIndex": 0}],
+            "activityDetailMetrics": [{"metrics": [value, None, 8, 9, 0]} for value in (600, 0, 600, 300)],
+        })
+        second = garmin_bridge._project_activity_details({
+            "metricDescriptors": [{"key": "sumDistance", "metricsIndex": 1}, {"key": "sumElapsedDuration", "metricsIndex": 0}],
+            "activityDetailMetrics": [{"metrics": [value, 0]} for value in (600, 0, 600, 300)],
+        })
+        self.assertEqual(first["activityDetailMetricColumns"], second["activityDetailMetricColumns"])
+        self.assertEqual(first["activityDetailMetricColumns"][0], [600, 0, 600, 300])
+        self.assertNotEqual(first["sourceMetricCounts"], second["sourceMetricCounts"])
+        self.assertNotEqual(hashlib.sha256(json.dumps(first, sort_keys=True).encode()).digest(), hashlib.sha256(json.dumps(second, sort_keys=True).encode()).digest())
+        reversed_descriptors = {**first, "metricDescriptors": list(reversed(first["metricDescriptors"]))}
+        self.assertNotEqual(hashlib.sha256(json.dumps(first, sort_keys=True).encode()).digest(), hashlib.sha256(json.dumps(reversed_descriptors, sort_keys=True).encode()).digest())
+
+    def test_details_projection_preserves_legacy_empty_null_missing_and_timed_route_tuple_shapes(self):
+        for source in ({}, {"metricDescriptors": None, "activityDetailMetrics": None, "geoPolylineDTO": None},
+                       {"metricDescriptors": [], "activityDetailMetrics": []}, {"geoPolylineDTO": {}},
+                       {"geoPolylineDTO": {"polyline": None}}, {"geoPolylineDTO": {"polyline": []}}):
+            self.assertEqual(garmin_bridge._project_activity_details(source), source)
+        route = {"polyline": [{"lat": 0, "lon": 0}, {"lat": 0, "lon": 0, "elapsedDuration": None}, {"lat": 0, "lon": 0, "elapsedDuration": 0}]}
+        missing_descriptors = garmin_bridge._project_activity_details({"geoPolylineDTO": route})
+        self.assertEqual(missing_descriptors["transportProjectionVersion"], 1)
+        self.assertNotIn("metricDescriptors", missing_descriptors)
+        self.assertNotIn("sourceMetricDescriptorCount", missing_descriptors)
+        for samples in ("missing", None, []):
+            source = {"metricDescriptors": None, "geoPolylineDTO": route}
+            if samples != "missing":
+                source["activityDetailMetrics"] = samples
+            projected = garmin_bridge._project_activity_details(source)
+            self.assertEqual(projected["transportProjectionVersion"], 1)
+            self.assertIsNone(projected["metricDescriptors"])
+            self.assertNotIn("sourceMetricDescriptorCount", projected)
+            self.assertEqual(projected["geoPolylineDTO"]["polyline"], [[0, 0], [0, 0, None], [0, 0, 0]])
+            if samples == "missing":
+                self.assertNotIn("sourceMetricCounts", projected)
+                self.assertNotIn("activityDetailMetricColumns", projected)
+            else:
+                self.assertEqual(projected["sourceMetricCounts"], samples)
+                self.assertEqual(projected["activityDetailMetricColumns"], samples)
+
+    def test_details_projection_rejects_every_corrupt_original_metric_before_discarding_unreviewed_columns(self):
+        for index in range(128):
+            metrics = [0] * 128
+            metrics[index] = float("nan")
+            with self.subTest(index=index), self.assertRaises(garmin_bridge._BridgeInputError):
+                garmin_bridge._project_activity_details({"metricDescriptors": [{"key": "sumDistance", "metricsIndex": 0}], "activityDetailMetrics": [{"metrics": metrics}]})
+        for invalid in (True, False, "0", {}, [], (), complex(1, 2), float("inf"), -float("inf"), 9007199254740992, 9007199254740992.0):
+            with self.subTest(kind=type(invalid).__name__), self.assertRaises(garmin_bridge._BridgeInputError):
+                garmin_bridge._project_activity_details({"metricDescriptors": [{"key": "sumDistance", "metricsIndex": 0}], "activityDetailMetrics": [{"metrics": [0, invalid]}]})
+        self.assertEqual(garmin_bridge._details_number(0.25), 0.25)
+        self.assertIsNone(garmin_bridge._details_number(None))
+
+    def test_details_projection_rejects_descriptor_row_and_count_corruption_without_empty_pass(self):
+        valid = {"metricDescriptors": [{"key": "sumDistance", "metricsIndex": 0}], "activityDetailMetrics": [{"metrics": [0]}]}
+        variants = [None, [], {}, {**valid, "transportProjectionVersion": 1},
+                    {**valid, "activityDetailMetricColumns": []}, {**valid, "sourceMetricCounts": []}]
+        # Empty root is compatible; corruption below must not be filtered to it.
+        variants.remove({})
+        for descriptors in (False, {}, (), [None], ["bad"], [{}], [{"key": None, "metricsIndex": 0}],
+                            [{"key": "", "metricsIndex": 0}], [{"key": "x" * 65, "metricsIndex": 0}],
+                            [{"key": "\U0001f600" * 33, "metricsIndex": 0}],
+                            [{"key": "sumDistance", "metricsIndex": index} for index in (0, 1)],
+                            [{"key": "sumDistance", "metricsIndex": 0}, {"key": "other", "metricsIndex": 0}],
+                            [{"key": "unreviewed", "metricsIndex": 0}], [{"key": "https://invalid.test", "metricsIndex": 1}, valid["metricDescriptors"][0]],
+                            [{"key": str(index), "metricsIndex": index} for index in range(129)]):
+            variants.append({**valid, "metricDescriptors": descriptors})
+        for index in (None, True, "0", -1, 128, 1.5, float("nan")):
+            variants.append({**valid, "metricDescriptors": [{"key": "sumDistance", "metricsIndex": index}]})
+        for rows in ({}, (), [None], [{}], [{"metrics": None}], [{"metrics": ()}], [{"metrics": [0] * 129}], [{"metrics": [0]}] * 2001):
+            variants.append({**valid, "activityDetailMetrics": rows})
+        for source in variants:
+            with self.subTest(kind=type(source).__name__), self.assertRaises(garmin_bridge._BridgeInputError):
+                garmin_bridge._project_activity_details(source)
+        accepted = garmin_bridge._project_activity_details({"metricDescriptors": [{"key": "x" * 64, "metricsIndex": 127}], "activityDetailMetrics": []})
+        self.assertEqual(accepted["metricDescriptors"][0]["metricsIndex"], 127)
+        integral = garmin_bridge._project_activity_details({"metricDescriptors": [{"key": "sumDistance", "metricsIndex": 0.0}], "activityDetailMetrics": [{"metrics": [0.25]}]})
+        self.assertEqual(integral["metricDescriptors"][0]["sourceMetricsIndex"], 0.0)
+        self.assertEqual(integral["activityDetailMetricColumns"], [[0.25]])
+
+    def test_details_projection_rejects_route_corruption_and_preserves_fixed_query_arguments(self):
+        for geo in ([], "bad", {"polyline": {}}, {"polyline": ()}, {"polyline": [None]},
+                    {"polyline": [[]]}, {"polyline": [{}]}, {"polyline": [{"lat": 0}]},
+                    {"polyline": [{"lon": 0}]}, {"polyline": [{"lat": None, "lon": 0}]},
+                    {"polyline": [{"lat": 0, "lon": None}]}, {"polyline": [{"lat": True, "lon": 0}]},
+                    {"polyline": [{"lat": 0, "lon": float("nan")}]},
+                    {"polyline": [{"lat": 0, "lon": 0, "elapsedDuration": "0"}]},
+                    {"polyline": [{"lat": 0, "lon": 0}] * 4001}):
+            with self.subTest(kind=type(geo).__name__), self.assertRaises(garmin_bridge._BridgeInputError):
+                garmin_bridge._project_activity_details({"geoPolylineDTO": geo})
+        fake = FakeClient()
+        observed = []
+        def read(identifier, maxchart, maxpoly):
+            observed.append((maxchart, maxpoly))
+            return {"metricDescriptors": [], "activityDetailMetrics": []}
+        fake.get_activity_details = read
+        bridge = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: fake)
+        bridge.dispatch("login", {"email": "owner", "password": "synthetic-secret"})
+        self.assertEqual(bridge.dispatch("getActivityDetails", {"externalActivityId": "42", "maxchart": 2000, "maxpoly": 4000})["status"], "ok")
+        self.assertEqual(observed, [(2000, 4000)])
+
     def test_activity_read_projects_reviewed_dtos_before_rejecting_provider_metadata(self):
         fake = FakeClient()
         bridge = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: fake)

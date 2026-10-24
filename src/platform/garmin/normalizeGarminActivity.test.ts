@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it, jest } from "@jest/globals";
 
-import { canonicalJson } from "../../domains/activities/importContracts";
+import { canonicalJson, CanonicalGarminPayloadSchema } from "../../domains/activities/importContracts";
+import { canonicalizeGarminPayload, GARMIN_CANONICAL_LIMITS } from "./canonicalGarminPayload";
 import {
   GARMIN_NORMALIZATION_VERSION,
   isExactGarminEffortEligible,
@@ -9,6 +10,21 @@ import {
 } from "./normalizeGarminActivity";
 
 const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
+
+function columnarDetails() {
+  return {
+    transportProjectionVersion: 1,
+    metricDescriptors: [
+      { key: "directHeartRate", metricsIndex: 2, sourceMetricsIndex: 4 },
+      { key: "sumElapsedDuration", metricsIndex: 0, sourceMetricsIndex: 0 },
+      { key: "sumDistance", metricsIndex: 1, sourceMetricsIndex: 2 },
+    ],
+    sourceMetricDescriptorCount: 5,
+    activityDetailMetricColumns: [[0, 300, 300, 1560], [null, null, null, 5000], [null, 148, 148, 155]],
+    sourceMetricCounts: [1, 5, 5, 5],
+    geoPolylineDTO: { polyline: [[1.3521, 103.8198, 0], [1.3532, 103.8211, 300]] },
+  };
+}
 
 function outdoorFixture(fetchTime = "2026-10-11T07:00:00.000Z") {
   return {
@@ -110,6 +126,206 @@ const expectedNormalized = {
 };
 
 describe("normalize Garmin activity", () => {
+  it("matches legacy row semantics with sparse source indexes, duplicate samples, nulls and route durations", async () => {
+    const legacy = outdoorFixture();
+    legacy.details.metricDescriptors = [
+      { key: "directHeartRate", metricsIndex: 4 }, { key: "sumElapsedDuration", metricsIndex: 0 }, { key: "sumDistance", metricsIndex: 2 },
+    ];
+    legacy.details.activityDetailMetrics = [{ metrics: [0] }, { metrics: [300, 1, null, 3, 148] }, { metrics: [300, 1, null, 3, 148] }, { metrics: [1560, 1, 5000, 3, 155] }] as unknown as typeof legacy.details.activityDetailMetrics;
+    const expected = await normalizeGarminActivity(legacy, sha256);
+    const compact = await normalizeGarminActivity({ ...legacy, details: columnarDetails() }, sha256);
+    expect(compact.normalized).toEqual(expected.normalized);
+    expect(compact.normalized_json_sha256).toBe(expected.normalized_json_sha256);
+    expect(compact.fidelity_by_channel).toEqual(expected.fidelity_by_channel);
+    expect(compact.raw_component_sha256.details).not.toBe(expected.raw_component_sha256.details);
+    expect(compact.normalized.samples).toHaveLength(4);
+    expect(compact.normalized.route).toEqual(expectedNormalized.route);
+  });
+
+  it("preserves every full-capacity compact sample and timed route point without changing limits", async () => {
+    const details = columnarDetails();
+    details.sourceMetricDescriptorCount = 128;
+    details.metricDescriptors[0]!.sourceMetricsIndex = 127;
+    details.metricDescriptors[1]!.sourceMetricsIndex = 1;
+    details.metricDescriptors[2]!.sourceMetricsIndex = 63;
+    details.sourceMetricCounts = Array.from({ length: 2000 }, () => 128);
+    details.activityDetailMetricColumns = [Array.from({ length: 2000 }, (_, ordinal) => ordinal), Array.from({ length: 2000 }, (_, ordinal) => ordinal * 2), Array.from({ length: 2000 }, () => 140)];
+    details.geoPolylineDTO.polyline = Array.from({ length: 4000 }, (_, ordinal) => [ordinal / 10000, -ordinal / 10000, ordinal]);
+    const envelope = await normalizeGarminActivity({ ...outdoorFixture(), details }, sha256);
+    expect(envelope.normalized.samples).toHaveLength(2000);
+    expect(envelope.normalized.route).toHaveLength(4000);
+    expect(envelope.normalized.samples?.[1999]).toEqual({ elapsed_ms: 1999000, distance_meters: 3998, heart_rate_bpm: 140 });
+    expect(envelope.normalized.route?.[3999]).toEqual({ latitude_e6: 399900, longitude_e6: -399900, elapsed_ms: 3999000 });
+  });
+
+  it("preserves compact null/absent/empty channels and tuple missing/null/zero time", async () => {
+    for (const state of ["missing", "null", "empty"] as const) {
+      const details: Record<string, unknown> = { transportProjectionVersion: 1,
+        geoPolylineDTO: { polyline: [[0, 0], [0, 0, null], [0, 0, 0]] } };
+      if (state === "null") Object.assign(details, { metricDescriptors: null, sourceMetricCounts: null, activityDetailMetricColumns: null });
+      if (state === "empty") Object.assign(details, { metricDescriptors: [], sourceMetricDescriptorCount: 0, sourceMetricCounts: [], activityDetailMetricColumns: [] });
+      const envelope = await normalizeGarminActivity({ ...outdoorFixture(), details }, sha256);
+      expect(envelope.normalized).not.toHaveProperty("samples");
+      expect(envelope.normalized.route).toEqual([{ latitude_e6: 0, longitude_e6: 0 }, { latitude_e6: 0, longitude_e6: 0 }, { latitude_e6: 0, longitude_e6: 0, elapsed_ms: 0 }]);
+    }
+    const details = columnarDetails(); details.activityDetailMetricColumns = [[], [], []]; details.sourceMetricCounts = [];
+    expect((await normalizeGarminActivity({ ...outdoorFixture(), details }, sha256)).normalized).not.toHaveProperty("samples");
+    details.activityDetailMetricColumns = [[null], [null], [null]]; details.sourceMetricCounts = [0];
+    expect((await normalizeGarminActivity({ ...outdoorFixture(), details }, sha256)).normalized).not.toHaveProperty("samples");
+  });
+
+  it("retains nonuniform sample order and original layout hashes without promoting sampled effort", async () => {
+    const details = columnarDetails(); details.activityDetailMetricColumns[0] = [300, 0, 300, 1560];
+    details.sourceMetricDescriptorCount = 3; // Three sparse original descriptors can legitimately reference slot four.
+    const fixture = outdoorFixture(); delete (fixture.activity.summaryDTO as Partial<typeof fixture.activity.summaryDTO>).distance; fixture.splits.lapDTOs = [];
+    const envelope = await normalizeGarminActivity({ ...fixture, details }, sha256);
+    expect(envelope.normalized.samples?.map(sample => sample.elapsed_ms)).toEqual([300000, 0, 300000, 1560000]);
+    expect(isExactGarminEffortEligible(envelope, 5000)).toBe(false);
+    const wider = { ...details, sourceMetricCounts: [2, 6, 6, 6] };
+    const changed = await normalizeGarminActivity({ ...fixture, details: wider }, sha256);
+    expect(changed.normalized).toEqual(envelope.normalized);
+    expect(changed.raw_component_sha256.details).not.toBe(envelope.raw_component_sha256.details);
+  });
+
+  it.each([
+    ["unknown version", (d: Record<string, unknown>) => { d.transportProjectionVersion = 2; }],
+    ["boolean version", (d: Record<string, unknown>) => { d.transportProjectionVersion = true; }],
+    ["missing version", (d: Record<string, unknown>) => { delete d.transportProjectionVersion; }],
+    ["mixed legacy rows", (d: Record<string, unknown>) => { d.activityDetailMetrics = []; }],
+    ["mixed null legacy rows", (d: Record<string, unknown>) => { d.activityDetailMetrics = null; }],
+    ["missing counts", (d: Record<string, unknown>) => { delete d.sourceMetricCounts; }],
+    ["missing columns", (d: Record<string, unknown>) => { delete d.activityDetailMetricColumns; }],
+    ["null counts only", (d: Record<string, unknown>) => { d.sourceMetricCounts = null; }],
+    ["null columns only", (d: Record<string, unknown>) => { d.activityDetailMetricColumns = null; }],
+    ["non-array counts", (d: Record<string, unknown>) => { d.sourceMetricCounts = {}; }],
+    ["too many rows", (d: Record<string, unknown>) => { d.sourceMetricCounts = Array.from({ length: 2001 }, () => 128); }],
+    ["non-array columns", (d: Record<string, unknown>) => { d.activityDetailMetricColumns = {}; }],
+    ["wrong column count", (d: Record<string, unknown>) => { d.activityDetailMetricColumns = []; }],
+    ["non-array column", (d: Record<string, unknown>) => { d.activityDetailMetricColumns = [{}, [], []]; }],
+    ["short column", (d: Record<string, unknown>) => { d.activityDetailMetricColumns = [[0], [], []]; }],
+    ["missing descriptor count", (d: Record<string, unknown>) => { delete d.sourceMetricDescriptorCount; }],
+    ["low descriptor count", (d: Record<string, unknown>) => { d.sourceMetricDescriptorCount = 2; }],
+    ["high descriptor count", (d: Record<string, unknown>) => { d.sourceMetricDescriptorCount = 129; }],
+    ["boolean descriptor count", (d: Record<string, unknown>) => { d.sourceMetricDescriptorCount = true; }],
+    ["null descriptors with count", (d: Record<string, unknown>) => { d.metricDescriptors = null; }],
+    ["unreviewed descriptor", (d: Record<string, unknown>) => { (d.metricDescriptors as Record<string, unknown>[])[0]!.key = "unreviewed"; }],
+    ["too many descriptors", (d: Record<string, unknown>) => { (d.metricDescriptors as Record<string, unknown>[]).push({ key: "other", metricsIndex: 3, sourceMetricsIndex: 6 }); }],
+    ["non-dense compact index", (d: Record<string, unknown>) => { (d.metricDescriptors as Record<string, unknown>[])[0]!.metricsIndex = 3; }],
+    ["duplicate original index", (d: Record<string, unknown>) => { (d.metricDescriptors as Record<string, unknown>[])[0]!.sourceMetricsIndex = 2; }],
+    ["negative original index", (d: Record<string, unknown>) => { (d.metricDescriptors as Record<string, unknown>[])[0]!.sourceMetricsIndex = -1; }],
+    ["large original index", (d: Record<string, unknown>) => { (d.metricDescriptors as Record<string, unknown>[])[0]!.sourceMetricsIndex = 128; }],
+    ["boolean original index", (d: Record<string, unknown>) => { (d.metricDescriptors as Record<string, unknown>[])[0]!.sourceMetricsIndex = true; }],
+    ["unordered original indexes", (d: Record<string, unknown>) => { (d.metricDescriptors as Record<string, unknown>[])[1]!.sourceMetricsIndex = 3; }],
+    ["negative width", (d: Record<string, unknown>) => { d.sourceMetricCounts = [-1, 5, 5, 5]; }],
+    ["large width", (d: Record<string, unknown>) => { d.sourceMetricCounts = [129, 5, 5, 5]; }],
+    ["boolean width", (d: Record<string, unknown>) => { d.sourceMetricCounts = [false, 5, 5, 5]; }],
+    ["fractional width", (d: Record<string, unknown>) => { d.sourceMetricCounts = [1.5, 5, 5, 5]; }],
+    ["absent source with a value", (d: Record<string, unknown>) => { (d.activityDetailMetricColumns as unknown[][])[1]![0] = 9; }],
+    ["boolean metric", (d: Record<string, unknown>) => { (d.activityDetailMetricColumns as unknown[][])[0]![0] = true; }],
+    ["NaN metric", (d: Record<string, unknown>) => { (d.activityDetailMetricColumns as unknown[][])[0]![0] = NaN; }],
+    ["mixed route objects", (d: Record<string, unknown>) => { d.geoPolylineDTO = { polyline: [{ lat: 0, lon: 0 }] }; }],
+    ["short route tuple", (d: Record<string, unknown>) => { d.geoPolylineDTO = { polyline: [[0]] }; }],
+    ["long route tuple", (d: Record<string, unknown>) => { d.geoPolylineDTO = { polyline: [[0, 0, 0, 0]] }; }],
+    ["null route coordinate", (d: Record<string, unknown>) => { d.geoPolylineDTO = { polyline: [[null, 0]] }; }],
+    ["unsafe route coordinate", (d: Record<string, unknown>) => { d.geoPolylineDTO = { polyline: [[NaN, 0]] }; }],
+    ["boolean route duration", (d: Record<string, unknown>) => { d.geoPolylineDTO = { polyline: [[0, 0, true]] }; }],
+  ])("rejects compact corruption before hashing: %s", async (_label, mutate) => {
+    const details = columnarDetails() as unknown as Record<string, unknown>; mutate(details);
+    const hash = jest.fn(sha256);
+    await expect(normalizeGarminActivity({ ...outdoorFixture(), details }, hash)).rejects.toThrow();
+    expect(hash).not.toHaveBeenCalled();
+  });
+
+  it("rejects nonempty undescribed compact rows and metadata-only unknown-version forms", async () => {
+    for (const details of [{ transportProjectionVersion: 1, metricDescriptors: [], sourceMetricDescriptorCount: 0, activityDetailMetricColumns: [], sourceMetricCounts: [0] },
+      { sourceMetricDescriptorCount: 0 }, { transportProjectionVersion: 1, metricDescriptors: null, sourceMetricDescriptorCount: 0 }]) {
+      await expect(normalizeGarminActivity({ ...outdoorFixture(), details }, sha256)).rejects.toThrow();
+    }
+  });
+
+  it("keeps canonical identity bytes and digest behavior for previously accepted inputs", async () => {
+    const seen: string[] = [];
+    const envelope = await normalizeGarminActivity(outdoorFixture(), async value => { seen.push(value); return sha256(value); });
+    const identity = { normalization_version: 1, normalized: envelope.normalized };
+    const canonical = canonicalizeGarminPayload(identity);
+    expect(canonicalJson(identity)).toBe(canonical);
+    expect(seen).toContain(canonical);
+    expect(envelope.normalized_json_sha256).toBe(await sha256(canonical));
+    await expect(normalizeGarminActivity(outdoorFixture(), async value => value.startsWith('{"normalization_version"') ? "invalid" : sha256(value))).rejects.toMatchObject({ code: "garmin_digest_invalid" });
+  });
+
+  it("preserves the generic 10000-key limit and proves the generated strict schema bounds", () => {
+    expect(GARMIN_CANONICAL_LIMITS.maxTotalKeys).toBe(10000);
+    expect(() => canonicalizeGarminPayload({ geoPolylineDTO: { polyline: Array.from({ length: 4000 }, () => ({ lat: 0, lon: 0, elapsedDuration: 0 })) } })).toThrow("garmin_json_limit");
+    const shape = CanonicalGarminPayloadSchema.shape;
+    expect(Object.keys(shape)).toHaveLength(15);
+    expect(Object.keys(shape.laps.element.shape)).toHaveLength(6);
+    expect(Object.keys(shape.samples.unwrap().element.shape)).toHaveLength(5);
+    expect(Object.keys(shape.route.unwrap().element.shape)).toHaveLength(3);
+    const largest = CanonicalGarminPayloadSchema.parse({ ...expectedNormalized,
+      subtype: "\uffff".repeat(512), source_local_date_time: "2026-10-05T23:30:00.000", source_time_zone: "a".repeat(120), source_utc_offset_minutes: 840,
+      laps: Array.from({ length: 1000 }, (_, ordinal) => ({ ordinal, elapsed_ms: 31536000000, timer_ms: 31536000000, moving_ms: 31536000000, distance_meters: 100000000, average_heart_rate_bpm: 300 })),
+      samples: Array.from({ length: 2000 }, () => ({ elapsed_ms: 31536000000, distance_meters: 100000000, heart_rate_bpm: 300, latitude_e6: -180000000, longitude_e6: -180000000 })),
+      route: Array.from({ length: 4000 }, () => ({ latitude_e6: -180000000, longitude_e6: -180000000, elapsed_ms: 31536000000 })),
+    });
+    expect(Buffer.byteLength(canonicalJson({ normalization_version: 1, normalized: largest }), "utf8")).toBeLessThan(GARMIN_CANONICAL_LIMITS.maxCanonicalBytes);
+  });
+
+  it.each([
+    ["undefined", (f: ReturnType<typeof outdoorFixture>) => { (f.activity.summaryDTO as Record<string, unknown>).invalid = undefined; }],
+    ["object getter", (f: ReturnType<typeof outdoorFixture>) => { Object.defineProperty(f.activity.summaryDTO, "distance", { enumerable: true, get: () => { throw new Error("getter must not run"); } }); }],
+    ["symbol", (f: ReturnType<typeof outdoorFixture>) => { Object.defineProperty(f.activity.summaryDTO, Symbol("controlled"), { enumerable: true, value: 1 }); }],
+    ["non-enumerable", (f: ReturnType<typeof outdoorFixture>) => { Object.defineProperty(f.activity.summaryDTO, "hidden", { enumerable: false, value: 1 }); }],
+    ["prototype", (f: ReturnType<typeof outdoorFixture>) => { Object.setPrototypeOf(f.activity.summaryDTO, { controlled: true }); }],
+    ["sparse array", (f: ReturnType<typeof outdoorFixture>) => { delete f.details.activityDetailMetrics[0]!.metrics[0]; }],
+    ["cycle", (f: ReturnType<typeof outdoorFixture>) => { (f.activity.summaryDTO as Record<string, unknown>).cycle = f.activity.summaryDTO; }],
+  ])("rejects malformed raw properties before construction or hashing: %s", async (_label, mutate) => {
+    const fixture = outdoorFixture(); mutate(fixture); const hash = jest.fn(sha256);
+    await expect(normalizeGarminActivity(fixture, hash)).rejects.toThrow();
+    expect(hash).not.toHaveBeenCalled();
+  });
+
+  it("detaches all identity and component bytes before a malicious digest callback mutates the source", async () => {
+    const fixture = outdoorFixture();
+    const expected = await normalizeGarminActivity(structuredClone(fixture), sha256);
+    let changed = false;
+    const actual = await normalizeGarminActivity(fixture, async value => {
+      if (!changed) {
+        changed = true;
+        fixture.account_namespace = "mutated";
+        fixture.external_activity_id = "100";
+        fixture.activity.summaryDTO.distance = 8888;
+        fixture.activity.activityTypeDTO.typeKey = "treadmill_running";
+        fixture.splits.lapDTOs.length = 0;
+        fixture.details.activityDetailMetrics[0]!.metrics[0] = 9999;
+        fixture.details.geoPolylineDTO.polyline[0]!.lat = 0;
+      }
+      return sha256(value);
+    });
+    expect(changed).toBe(true);
+    expect(actual).toEqual(expected);
+  });
+
+  it("rejects a raw array-index getter without invoking it or hashing", async () => {
+    const fixture = outdoorFixture(); const getter = jest.fn(() => 0); const hash = jest.fn(sha256);
+    Object.defineProperty(fixture.details.activityDetailMetrics[0]!.metrics, "0", { enumerable: true, get: getter });
+    await expect(normalizeGarminActivity(fixture, hash)).rejects.toMatchObject({ code: "garmin_json_invalid" });
+    expect(getter).not.toHaveBeenCalled();
+    expect(hash).not.toHaveBeenCalled();
+  });
+
+  it("keeps control and lone-surrogate raw canonical bytes without copying them into generated fields", async () => {
+    const fixture = outdoorFixture();
+    (fixture.activity.summaryDTO as Record<string, unknown>).unreviewedText = "\u0000\u0001\ud800\u4e2d";
+    const originalCanonical = canonicalizeGarminPayload(fixture.activity);
+    const seen: string[] = [];
+    const envelope = await normalizeGarminActivity(fixture, async value => { seen.push(value); return sha256(value); });
+    expect(seen).toContain(originalCanonical);
+    expect(originalCanonical).toContain("\\ud800");
+    expect(envelope.raw_component_sha256.activity).toBe(await sha256(originalCanonical));
+    expect(envelope.normalized).toEqual(expectedNormalized);
+    expect(envelope.normalized_json_sha256).toBe(await sha256(canonicalizeGarminPayload({ normalization_version: 1, normalized: expectedNormalized })));
+  });
   it("maps one outdoor summary/splits/details triple into the exact shared envelope", async () => {
     const envelope = await normalizeGarminActivity(outdoorFixture(), sha256);
 

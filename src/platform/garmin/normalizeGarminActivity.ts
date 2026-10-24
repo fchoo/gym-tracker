@@ -1,12 +1,13 @@
 import type { GarminSourceEnvelope } from "../../domains/activities/garminActivitySourcePort";
 import {
   CanonicalGarminPayloadSchema,
+  canonicalJson,
   parseGarminSourceEnvelope,
   type CanonicalGarminPayload,
 } from "../../domains/activities/importContracts";
 import {
   canonicalizeGarminPayload,
-  hashCanonicalGarminPayload,
+  GarminCanonicalPayloadError,
   type GarminPayloadSha256,
 } from "./canonicalGarminPayload";
 
@@ -203,6 +204,9 @@ function normalizeSamples(
   details: PlainRecord,
   descriptors: ReadonlyMap<string, number>,
 ): NonNullable<CanonicalGarminPayload["samples"]> {
+  if ("transportProjectionVersion" in details || "activityDetailMetricColumns" in details || "sourceMetricCounts" in details || "sourceMetricDescriptorCount" in details) {
+    return normalizeColumnarSamples(details, descriptors);
+  }
   const sourceSamples = optionalArray(details.activityDetailMetrics, 2_000);
   if (sourceSamples.length > 0 && descriptors.size === 0) invalid();
   const normalized: NonNullable<CanonicalGarminPayload["samples"]>[number][] = [];
@@ -232,6 +236,60 @@ function normalizeSamples(
   return normalized;
 }
 
+function normalizeColumnarSamples(
+  details: PlainRecord,
+  descriptors: ReadonlyMap<string, number>,
+): NonNullable<CanonicalGarminPayload["samples"]> {
+  if (details.transportProjectionVersion !== 1 || "activityDetailMetrics" in details) invalid();
+  const sourceDescriptors = optionalArray(details.metricDescriptors, 3);
+  if (Array.isArray(details.metricDescriptors)) {
+    const count = details.sourceMetricDescriptorCount;
+    if (!Number.isSafeInteger(count) || (count as number) < sourceDescriptors.length || (count as number) > 128) invalid();
+  } else if ("sourceMetricDescriptorCount" in details) invalid();
+  if (descriptors.size !== sourceDescriptors.length) invalid();
+  const sources = new Map<number, number>();
+  const sourceIndexes = new Set<number>();
+  for (const descriptor of sourceDescriptors) {
+    const source = record(descriptor);
+    const index = source.metricsIndex as number;
+    const originalIndex = source.sourceMetricsIndex;
+    if (index >= sourceDescriptors.length || !Number.isSafeInteger(originalIndex)
+      || (originalIndex as number) < 0 || (originalIndex as number) >= 128 || sourceIndexes.has(originalIndex as number)) invalid();
+    sources.set(index, originalIndex as number);
+    sourceIndexes.add(originalIndex as number);
+  }
+  for (let index = 1; index < sourceDescriptors.length; index += 1) {
+    if (sources.get(index - 1)! >= sources.get(index)!) invalid();
+  }
+  const hasCounts = "sourceMetricCounts" in details;
+  if (hasCounts !== ("activityDetailMetricColumns" in details)) invalid();
+  if (!hasCounts) return [];
+  const counts = details.sourceMetricCounts;
+  const columns = details.activityDetailMetricColumns;
+  if (counts === null && columns === null) return [];
+  if (!Array.isArray(counts) || counts.length > 2000 || !Array.isArray(columns) || columns.length !== descriptors.size) invalid();
+  if (counts.length > 0 && descriptors.size === 0) invalid();
+  for (const column of columns) {
+    if (!Array.isArray(column) || column.length !== counts.length) invalid();
+  }
+  const normalized: NonNullable<CanonicalGarminPayload["samples"]>[number][] = [];
+  for (let ordinal = 0; ordinal < counts.length; ordinal += 1) {
+    const width = counts[ordinal];
+    if (!Number.isSafeInteger(width) || width < 0 || width > 128) invalid();
+    const sample: Record<string, number> = {};
+    for (const [key, index] of descriptors) {
+      const value: unknown = columns[index][ordinal];
+      if (value === null) continue;
+      if (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER || sources.get(index)! >= width) invalid();
+      if (key === "sumElapsedDuration") assignIfPresent(sample, "elapsed_ms", secondsToMilliseconds({ value }, "value"));
+      else if (key === "sumDistance") assignIfPresent(sample, "distance_meters", meters({ value }, "value"));
+      else assignIfPresent(sample, "heart_rate_bpm", heartRate({ value }, "value"));
+    }
+    if (Object.keys(sample).length > 0) normalized.push(sample as NonNullable<CanonicalGarminPayload["samples"]>[number]);
+  }
+  return normalized;
+}
+
 function normalizeRoute(
   details: PlainRecord,
   subtype: "outdoor" | "treadmill",
@@ -242,7 +300,12 @@ function normalizeRoute(
   const sourcePoints = optionalArray(geo.polyline, 4_000);
   const normalized: NonNullable<CanonicalGarminPayload["route"]>[number][] = [];
   for (const sourcePoint of sourcePoints) {
-    const source = record(sourcePoint);
+    let source: PlainRecord;
+    if (details.transportProjectionVersion === 1) {
+      if (!Array.isArray(sourcePoint) || (sourcePoint.length !== 2 && sourcePoint.length !== 3)) invalid();
+      source = { lat: sourcePoint[0], lon: sourcePoint[1],
+        ...(sourcePoint.length === 3 ? { elapsedDuration: sourcePoint[2] } : {}) };
+    } else source = record(sourcePoint);
     const latitude = sourceNumber(source, "lat");
     const longitude = sourceNumber(source, "lon");
     if (latitude === undefined || longitude === undefined || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) invalid();
@@ -274,17 +337,27 @@ function hasDurationEvidence(value: Readonly<{
   return [value.elapsed_ms, value.timer_ms, value.moving_ms].some((duration) => duration !== undefined);
 }
 
+/** Private immutable bytes come only from the raw canonical guard or the
+ * locally generated, strict-parsed snapshot serialized before callbacks run. */
+async function hashCanonicalSnapshot(canonical: string, sha256: GarminPayloadSha256): Promise<string> {
+  const digest = await sha256(canonical);
+  if (!/^[a-f0-9]{64}$/u.test(digest)) throw new GarminCanonicalPayloadError("garmin_digest_invalid");
+  return digest;
+}
+
 export async function normalizeGarminActivity(
   input: NormalizeGarminActivityInput,
   sha256: GarminPayloadSha256,
 ): Promise<GarminSourceEnvelope> {
-  if (!ACCOUNT_NAMESPACE.test(input.account_namespace) || !EXTERNAL_ACTIVITY_ID.test(input.external_activity_id)) invalid();
-  canonicalizeGarminPayload(input.activity);
-  canonicalizeGarminPayload(input.splits);
-  canonicalizeGarminPayload(input.details);
+  const accountNamespace = input.account_namespace;
+  const externalActivityId = input.external_activity_id;
+  if (!ACCOUNT_NAMESPACE.test(accountNamespace) || !EXTERNAL_ACTIVITY_ID.test(externalActivityId)) invalid();
+  const activityCanonical = canonicalizeGarminPayload(input.activity);
+  const splitsCanonical = canonicalizeGarminPayload(input.splits);
+  const detailsCanonical = canonicalizeGarminPayload(input.details);
 
   const activity = record(input.activity);
-  if (normalizeActivityId(activity.activityId) !== input.external_activity_id) invalid();
+  if (normalizeActivityId(activity.activityId) !== externalActivityId) invalid();
   const activityType = record(activity.activityTypeDTO);
   const subtype = normalizeSubtype(activityType.typeKey);
   const summary = record(activity.summaryDTO);
@@ -319,11 +392,16 @@ export async function normalizeGarminActivity(
   if (route.length > 0) normalizedCandidate.route = route;
   const normalized = CanonicalGarminPayloadSchema.parse(normalizedCandidate);
 
+  // Construction uses fresh dense arrays/data objects and assignIfPresent never
+  // adds undefined. Zod detaches this strict bounded generated snapshot. Serialize
+  // synchronously before any injected hash callback can mutate source inputs.
+  const normalizedCanonical = canonicalJson({ normalization_version: GARMIN_NORMALIZATION_VERSION, normalized });
+
   const [activityDigest, splitsDigest, detailsDigest, normalizedDigest] = await Promise.all([
-    hashCanonicalGarminPayload(input.activity, sha256),
-    hashCanonicalGarminPayload(input.splits, sha256),
-    hashCanonicalGarminPayload(input.details, sha256),
-    hashCanonicalGarminPayload({ normalization_version: GARMIN_NORMALIZATION_VERSION, normalized }, sha256),
+    hashCanonicalSnapshot(activityCanonical, sha256),
+    hashCanonicalSnapshot(splitsCanonical, sha256),
+    hashCanonicalSnapshot(detailsCanonical, sha256),
+    hashCanonicalSnapshot(normalizedCanonical, sha256),
   ]);
   const exactEffortBasis = laps.length > 0
     ? "source_laps" as const
@@ -333,8 +411,8 @@ export async function normalizeGarminActivity(
   return parseGarminSourceEnvelope({
     version: 1,
     source_kind: "garmin_connect_account",
-    account_namespace: input.account_namespace,
-    external_activity_id: input.external_activity_id,
+    account_namespace: accountNamespace,
+    external_activity_id: externalActivityId,
     normalization_version: GARMIN_NORMALIZATION_VERSION,
     normalized_json_sha256: normalizedDigest,
     raw_component_sha256: {

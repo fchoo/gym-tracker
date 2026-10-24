@@ -193,6 +193,111 @@ def _safe_namespace(value: Any) -> str:
     return value
 
 
+def _details_array(value: Any, maximum: int) -> list[Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list) or len(value) > maximum:
+        raise _BridgeInputError("malformed_response")
+    return value
+
+
+def _details_number(value: Any) -> int | float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise _BridgeInputError("malformed_response")
+    return _bounded_json(value)
+
+
+def _details_route(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise _BridgeInputError("malformed_response")
+    if "polyline" not in value:
+        return {}
+    points = _details_array(value["polyline"], 4000)
+    if points is None:
+        return {"polyline": None}
+    projected = []
+    for point in points:
+        if not isinstance(point, dict):
+            raise _BridgeInputError("malformed_response")
+        if "lat" not in point or "lon" not in point or point["lat"] is None or point["lon"] is None:
+            raise _BridgeInputError("malformed_response")
+        selected = [_details_number(point["lat"]), _details_number(point["lon"])]
+        if "elapsedDuration" in point:
+            selected.append(_details_number(point["elapsedDuration"]))
+        projected.append(selected)
+    return {"polyline": projected}
+
+
+def _project_activity_details(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict) or any(key in value for key in ("transportProjectionVersion", "activityDetailMetricColumns", "sourceMetricCounts")):
+        raise _BridgeInputError("malformed_response")
+    descriptors = _details_array(value.get("metricDescriptors"), 128)
+    retained = []
+    source_descriptors = []
+    keys: set[str] = set()
+    indexes: set[int | float] = set()
+    for descriptor in descriptors or []:
+        if not isinstance(descriptor, dict):
+            raise _BridgeInputError("malformed_response")
+        key, index = descriptor.get("key"), descriptor.get("metricsIndex")
+        if (not isinstance(key, str) or not key or len(key.encode("utf-16-le", "surrogatepass")) > 128
+                or isinstance(index, bool) or not isinstance(index, (int, float)) or index < 0 or index >= 128
+                or not math.isfinite(index) or index != int(index)
+                or key in keys or index in indexes):
+            raise _BridgeInputError("malformed_response")
+        _bounded_json(key)
+        keys.add(key)
+        indexes.add(index)
+        source_descriptors.append({"key": key, "metricsIndex": index})
+        if key in ("sumElapsedDuration", "sumDistance", "directHeartRate"):
+            retained.append((key, index))
+    rows = _details_array(value.get("activityDetailMetrics"), 2000)
+    route = _details_route(value["geoPolylineDTO"]) if "geoPolylineDTO" in value else None
+    has_points = route is not None and bool(route.get("polyline"))
+    result: dict[str, Any] = {}
+    if not rows and not has_points:
+        # Legacy missing/null/empty sample collections need no compaction.
+        if "metricDescriptors" in value:
+            result["metricDescriptors"] = None if descriptors is None else source_descriptors
+        if "activityDetailMetrics" in value:
+            result["activityDetailMetrics"] = rows
+    else:
+        if rows and not retained:
+            raise _BridgeInputError("malformed_response")
+        indexes_in_order = sorted(index for _key, index in retained)
+        remapped = {index: ordinal for ordinal, index in enumerate(indexes_in_order)}
+        columns: list[list[int | float | None]] = [[] for _index in indexes_in_order]
+        widths = []
+        for row in rows or []:
+            if not isinstance(row, dict) or not isinstance(row.get("metrics"), list) or len(row["metrics"]) > 128:
+                raise _BridgeInputError("malformed_response")
+            metrics = row["metrics"]
+            for metric in metrics:
+                _details_number(metric)
+            widths.append(len(metrics))
+            for compact_index, source_index in enumerate(indexes_in_order):
+                # Null is only an absence marker when the observed width proves
+                # the source slot absent. Present null remains distinguishable.
+                columns[compact_index].append(metrics[int(source_index)] if source_index < len(metrics) else None)
+        result = {"transportProjectionVersion": 1}
+        if "metricDescriptors" in value:
+            if descriptors is None:
+                result["metricDescriptors"] = None
+            else:
+                result["metricDescriptors"] = [{"key": key, "metricsIndex": remapped[index], "sourceMetricsIndex": index} for key, index in retained]
+                result["sourceMetricDescriptorCount"] = len(source_descriptors)
+        if "activityDetailMetrics" in value:
+            result["activityDetailMetricColumns"] = None if rows is None else columns
+            result["sourceMetricCounts"] = None if rows is None else widths
+    if "geoPolylineDTO" in value:
+        result["geoPolylineDTO"] = route
+    return result
+
+
 def _adversarial_provider_error(name: str, status: int, retry_after: str | None = None) -> Exception:
     error = type(name, (Exception,), {})("injected_failure")
     response = type("AdversarialResponse", (), {})()
@@ -628,7 +733,7 @@ class GarminBridge:
         started_generation = self._generation
         value = self._require_client().get_activity_details(identifier, maxchart=2000, maxpoly=4000)
         self._capture_tokens()
-        return self._success(value, generation=started_generation)
+        return self._success(_project_activity_details(value), generation=started_generation)
 
     def _force_refresh(self) -> dict[str, Any]:
         client = self._require_client()
