@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, openSync, closeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -12,8 +12,23 @@ export function readArchive(bytes, kind = 'zip', patterns = ['*']) {
   const script = kind === 'zip'
     ? 'import io,zipfile,json,base64,sys,fnmatch; z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); print(json.dumps([[i.filename,base64.b64encode(z.read(i)).decode()] for i in z.infolist() if not i.is_dir() and any(fnmatch.fnmatch(i.filename,p) for p in json.loads(sys.argv[1]))]))'
     : 'import io,tarfile,json,base64,sys; z=tarfile.open(fileobj=io.BytesIO(sys.stdin.buffer.read())); print(json.dumps([[i.name,base64.b64encode(z.extractfile(i).read()).decode()] for i in z.getmembers() if i.isfile()]))';
-  return JSON.parse(execFileSync('python3', ['-c', script, JSON.stringify(patterns)], { input: bytes, maxBuffer: 128 * 1024 * 1024 }))
-    .map(([name, data]) => [name, Buffer.from(data, 'base64')]);
+  const directory = mkdtempSync(path.join(tmpdir(), 'garmin-archive-input-'));
+  try {
+    const file = path.join(directory, 'archive.bin');
+    writeFileSync(file, bytes, { mode: 0o600 });
+    const input = openSync(file, 'r');
+    try {
+      // A regular-file descriptor gives Python EOF without a large synchronous
+      // parent-to-child pipe, while inspecting the same complete archive bytes.
+      return JSON.parse(execFileSync('python3', ['-c', script, JSON.stringify(patterns)], {
+        stdio: [input, 'pipe', 'pipe'], maxBuffer: 128 * 1024 * 1024, timeout: 120_000,
+      })).map(([name, data]) => [name, Buffer.from(data, 'base64')]);
+    } finally {
+      closeSync(input);
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 }
 
 export function writeArchive(entries) {

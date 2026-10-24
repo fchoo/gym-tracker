@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { readArchive, writeArchive, inspectAndroidElf, requireCffiBackend, sha256, ndkBin } from './garmin-android-native.mjs';
 import { elfFixture, elfReport, buildInputs } from './garmin-android-test-fixtures.mjs';
 
@@ -12,6 +16,19 @@ test('round-trips deterministic stored ZIPs, filters APK members, and reads lock
   assert.equal(sha256(Buffer.from('hello')), '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824');
   assert.throws(() => readArchive(Buffer.from('bad')));
   assert.match(ndkBin('/ndk','linux'),/linux-x86_64/);assert.match(ndkBin('/ndk','darwin'),/darwin-x86_64/);assert(ndkBin('/ndk').endsWith('/bin'));
+});
+test('reads large filtered archives through a finite file and removes input files on success and error', () => {
+  const inputs = () => readdirSync(tmpdir()).filter((name) => name.startsWith('garmin-archive-input-')).sort();
+  const before = inputs();
+  const directory = mkdtempSync(path.join(tmpdir(), 'garmin-large-archive-test-'));
+  try {
+    const file = path.join(directory, 'large.zip');
+    execFileSync('python3', ['-c', 'import sys,zipfile\nwith zipfile.ZipFile(sys.argv[1],"w",compression=zipfile.ZIP_STORED) as z:\n z.writestr("padding.bin",b"z"*(160*1024*1024))\n z.writestr("selected.txt",b"complete-selected-bytes")', file], { timeout: 30_000 });
+    assert.deepEqual(readArchive(readFileSync(file), 'zip', ['selected.txt']), [['selected.txt', Buffer.from('complete-selected-bytes')]]);
+    assert.deepEqual(inputs(), before);
+    assert.throws(() => readArchive(Buffer.from('invalid archive')));
+    assert.deepEqual(inputs(), before);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 test('rejects every host, wrong-machine, wrong-class and non-shared ELF before tool invocation', () => {
   assert.throws(() => inspectAndroidElf(Buffer.from('Mach-O ARM64'), 'backend.so', '/ndk'), /elf_header/);
