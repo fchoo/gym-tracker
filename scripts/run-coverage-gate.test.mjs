@@ -201,6 +201,9 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   ]);
   assert.equal(manifest.phase18.some((file) => packaging.tests.includes(file)), false);
   const gate = readFileSync("scripts/run-coverage-gate.mjs", "utf8");
+  assert.ok(gate.includes('focusedProjects.push("unit", "components", "sqlite-host", "native-router")'));
+  assert.ok(gate.includes('"app/__tests__/recovery-router-transition.test.tsx"'));
+  assert.ok(gate.includes('["unit", "components", "sqlite-host", "integration", "native-router"]'));
   assert.match(gate, /const phase18IntegrityCriticalFiles = \[\s+"plugins\/withGarminConnectModule\.ts"/u);
   assert.match(gate, /const integrityCriticalFiles = \[\s+"plugins\/withGarminConnectModule\.ts"/u);
   assert.match(gate, /const phase18TargetedTests = \[\s+"plugins\/withGarminConnectModule\.test\.ts"/u);

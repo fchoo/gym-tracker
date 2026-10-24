@@ -959,7 +959,7 @@ if (focusPhase19) {
 }
 if (focusPhase20) {
   focusedIntegrityFiles.push(...phase20IntegrityCriticalFiles);
-  focusedProjects.push("unit", "components", "sqlite-host");
+  focusedProjects.push("unit", "components", "sqlite-host", "native-router");
   jestForwarded.push(
     "src/bootstrap/v12AcceptanceBenchmark.test.ts",
     "src/testing/v12NativeAcceptanceExecutor.test.ts",
@@ -969,6 +969,7 @@ if (focusPhase20) {
     "src/testing/v12ProductionRecoveryNative.test.ts",
     "app/__tests__/root-layout.test.tsx",
     "app/__tests__/v12-production-recovery-route.test.tsx",
+    "app/__tests__/recovery-router-transition.test.tsx",
     "src/testing/contracts/contractProgress.test.ts",
     "src/testing/contracts/progressNativeDiagnostics.test.ts",
     "src/testing/v12NativeRollbackBridge.test.ts",
@@ -1074,7 +1075,7 @@ rmSync(outputDirectory, { force: true, recursive: true });
 
 const selectedProjects = focusedIntegrityFiles.length > 0
   ? focusedProjects
-  : ["unit", "components", "sqlite-host", "integration"];
+  : ["unit", "components", "sqlite-host", "integration", "native-router"];
 // Jest's project-level coverage configuration deliberately excludes src/testing/**.
 // The default strict gate must therefore collect the complete integrity registry,
 // which includes Phase 20's decision contracts without dropping legacy modules.
