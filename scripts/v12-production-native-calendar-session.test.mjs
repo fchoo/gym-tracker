@@ -421,6 +421,8 @@ async function executeFixtureCase(scenario, fileUrl) {
   const { tmpdir } = await import("node:os");
   const { createHash } = await import("node:crypto");
   const { mock } = await import("node:test");
+  const { syncBuiltinESMExports } = await import("node:module");
+  const mutableFs = (await import("node:fs")).default;
   const processBoundary = await import("node:child_process");
   const hash = (value) => createHash("sha256").update(value).digest("hex");
   const root = fs.mkdtempSync(path.join(tmpdir(), "calendar-action-test-only-"));
@@ -539,10 +541,21 @@ async function executeFixtureCase(scenario, fileUrl) {
   } } });
   process.chdir(root);
   mock.method(Atomics, "wait", () => "timed-out");
+  const originalRm = mutableFs.rmSync;
+  const localFailure = ["production-quarantine-cleanup-failed", "production-borrowed-local-cleanup-failed"].includes(scenario);
+  if (localFailure) {
+    mock.method(mutableFs, "rmSync", (file, options) => {
+      const owned = String(file).startsWith(path.join(tmpdir(), `v12-calendar-${runId}-`));
+      const quarantine = path.basename(String(file)).startsWith("junit-");
+      if (owned && (scenario === "production-quarantine-cleanup-failed" ? quarantine : !quarantine)) throw new Error("test-only local cleanup failed");
+      return originalRm(file, options);
+    });
+    syncBuiltinESMExports();
+  }
   process.env.V12_DEVICE_SERIAL = "test-only-device";
   for (const key of ["NODE_ENV", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS", "V12_NATIVE_ADAPTER_COMMAND"]) delete process.env[key];
   if (scenario.startsWith("forbidden:")) { const key = scenario.slice(10); process.env[key] = key === "NODE_ENV" ? "test" : ""; }
-  if (scenario === "borrowed" || scenario === "production-borrowed-cleanup-failed") payload.lease = lease;
+  if (scenario === "borrowed" || scenario.startsWith("production-borrowed-")) payload.lease = lease;
   try {
     const { executeProductionCalendarAction, createV12CalendarDeviceSession, createV12CalendarStageInvocation, createV12CalendarProbeInvocation } = await import(actionUrl);
     if (scenario === "production-session") {
@@ -560,8 +573,9 @@ async function executeFixtureCase(scenario, fileUrl) {
       assert.equal(sdkRequests.length, 1, "uncertain remote driver cleanup must stop further execution");
       assert.equal(events.includes("calendar-snapshot"), true);
       for (const event of ["calendar-restore", "restore", "release", "complete"]) assert.equal(events.includes(event), false, `${event} must not run while SDK ownership is uncertain`);
-      if (scenario === "production-borrowed-cleanup-failed") assert.equal(events.includes("acquire") || events.includes("snapshot"), false);
+      if (scenario.startsWith("production-borrowed-")) assert.equal(events.includes("acquire") || events.includes("snapshot"), false);
       assert.equal(fs.existsSync(path.dirname(sdkRequests[0].junit)), false);
+      if (localFailure) originalRm(path.dirname(path.dirname(sdkRequests[0].junit)), { recursive: true, force: true });
     } else if (scenario === "production-resume-recompiled") {
       assert.equal(await executeProductionCalendarAction(payload, proof), resumed);
       sdkBinding.receipt.jar_sha256 = "c".repeat(64);
@@ -608,7 +622,7 @@ async function executeFixtureCase(scenario, fileUrl) {
   } finally { process.chdir(originalCwd); fs.rmSync(root, { recursive: true, force: true }); }
 }
 
-for (const scenario of ["success", "borrowed", "resumed", "production-session", "production-flow", "production-cleanup-failed", "production-borrowed-cleanup-failed", "production-resumed", "production-resume-recompiled", "sdk-prepare-failed", "sdk-verify-failed", "snapshot-failed", "collect-failed", "complete-failed", "calendar-restore-failed", "restore-failed", "preserved-error", "unknown-error", "generic-error", ...["NODE_ENV", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS", "V12_NATIVE_ADAPTER_COMMAND"].map((key) => `forbidden:${key}`)]) {
+for (const scenario of ["success", "borrowed", "resumed", "production-session", "production-flow", "production-cleanup-failed", "production-borrowed-cleanup-failed", "production-quarantine-cleanup-failed", "production-borrowed-local-cleanup-failed", "production-resumed", "production-resume-recompiled", "sdk-prepare-failed", "sdk-verify-failed", "snapshot-failed", "collect-failed", "complete-failed", "calendar-restore-failed", "restore-failed", "preserved-error", "unknown-error", "generic-error", ...["NODE_ENV", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS", "V12_NATIVE_ADAPTER_COMMAND"].map((key) => `forbidden:${key}`)]) {
   test(`action lifecycle isolates ${scenario} and preserves native authority guards`, () => {
     const child = spawnSync(process.execPath, ["--experimental-test-module-mocks", "--input-type=module", "--eval", `await (${executeFixtureCase.toString()})(${JSON.stringify(scenario)}, ${JSON.stringify(import.meta.url)});`], { encoding: "utf8", timeout: 30_000, env: { ...process.env, NODE_TEST_CONTEXT: undefined } });
     assert.equal(child.error, undefined);

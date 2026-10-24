@@ -493,6 +493,7 @@ export async function collectV12ProductionCalendarStages({ root, payload, io, tr
  * import it in this branch; the integration owner can add that single dispatch.
  */
 export async function executeProductionCalendarAction(payload, attestation) {
+  let retainLease = false;
   try {
     if (process.env.NODE_ENV === "test" || process.env.V12_NATIVE_ADAPTER_TEST_MODE !== undefined
       || process.env.V12_NATIVE_ADAPTER_TEST_PROCESS !== undefined || process.env.V12_NATIVE_ADAPTER_COMMAND !== undefined) fail("test_environment_forbidden");
@@ -527,7 +528,7 @@ export async function executeProductionCalendarAction(payload, attestation) {
     const transport = createV12CalendarArtifactTransport({ root, runId: attestation.run_id, binding });
     const ownedLease = payload.lease === undefined;
     const lease = ownedLease ? runtime.acquireLease() : payload.lease;
-    let runtimeSettings; let retainLease = false;
+    let runtimeSettings;
     try {
       if (ownedLease) runtimeSettings = runtime.snapshotSettings(lease);
       return await runtime.withLease({ ...payload, lease }, async () => {
@@ -567,6 +568,7 @@ export async function executeProductionCalendarAction(payload, attestation) {
       }
     }
   } catch (error) {
+    if (retainLease) throw new Error("v12_production_native_launcher_calendar_action_sdk_cleanup_uncertain");
     if (error instanceof Error && /^v12_production_native_launcher_calendar_[a-z_:.-]+$/u.test(error.message)) throw error;
     const code = error instanceof Error && /^calendar_(?:action|observation)_[a-z_:.-]+$/u.test(error.message)
       ? error.message.replace(/^calendar_/u, "") : "calendar_action_failed";
