@@ -265,6 +265,18 @@ test("fixed SDK cleanup failure aborts either Calendar flow and marks remote cle
   }
 });
 
+test("official SDK JUnit element text and CDATA retain cleanup uncertainty", (t) => {
+  for (const xml of [
+    '<testsuite><testcase><failure>maestro_sdk_cleanup_failed</failure></testcase></testsuite>',
+    '<testsuite><testcase><error><![CDATA[maestro_sdk_cleanup_failed]]></error></testcase></testsuite>',
+  ]) {
+    const { session, state } = controlledSession(t);
+    state.junit = xml;
+    assert.throws(() => session.maestro(invocation()), /calendar_action_sdk_cleanup_uncertain/u);
+    assert.equal(session.cleanupUncertain, true);
+  }
+});
+
 test("ordinary failures and cleanup words outside a failure message do not mark remote cleanup uncertain", (t) => {
   const { session, state } = controlledSession(t);
   for (const xml of [
