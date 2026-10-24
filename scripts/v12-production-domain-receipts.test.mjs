@@ -88,3 +88,15 @@ test('SDK cleanup notification requires a fully validated sole-case failure with
   assert.equal(calls, 2);
   assert.equal(junitOutcome(xml, 1), 'FAIL');
 });
+test('SDK terminal notifications return only fixed known codes after complete JUnit validation', () => {
+  const codes = [];
+  const options = { onSdkTerminalFailure: (code) => { codes.push(code); } };
+  for (const code of ['maestro_ui_flow_failed', 'maestro_sdk_execution_failed', 'maestro_sdk_cleanup_failed']) {
+    assert.equal(junitOutcome(`<testsuite><testcase><failure message="${code}"/></testcase></testsuite>`, 1, options), 'FAIL');
+  }
+  assert.deepEqual(codes, ['maestro_ui_flow_failed', 'maestro_sdk_execution_failed', 'maestro_sdk_cleanup_failed']);
+  assert.equal(junitOutcome('<testsuite><testcase><error message="private unknown message"/></testcase></testsuite>', 1, options), 'FAIL');
+  assert.throws(() => junitOutcome('<testsuite tests="2"><testcase><failure message="maestro_sdk_execution_failed"/></testcase></testsuite>', 1, options), /junit_summary_mismatch/u);
+  assert.equal(codes.length, 3);
+  assert.equal(junitOutcome('<testsuite><testcase><failure message="maestro_ui_flow_failed"/></testcase></testsuite>', 1), 'FAIL');
+});

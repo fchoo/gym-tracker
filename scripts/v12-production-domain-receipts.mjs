@@ -79,7 +79,7 @@ export function garminCases(value, privacyReceipt) {
 // Parse a bounded XML subset, not a regex search for a passing testcase. DTDs,
 // entities, duplicate attributes, malformed nesting and multiple roots fail closed.
 // Failure text is parsed only to locate outcomes; it is never returned.
-export function junitOutcome(xml, exitCode, { onSdkCleanupFailure } = {}) {
+export function junitOutcome(xml, exitCode, { onSdkCleanupFailure, onSdkTerminalFailure } = {}) {
   if (typeof xml !== 'string' || xml.length > 2_000_000 || /<!DOCTYPE|<!ENTITY/iu.test(xml)) fail('junit_invalid');
   const document = { name: '#document', children: [] }; const stack = [document];
   const tokens = /<\?xml\s[^?]*\?>|<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<[^>]*>|[^<]+/gu;
@@ -131,6 +131,11 @@ export function junitOutcome(xml, exitCode, { onSdkCleanupFailure } = {}) {
   if (![0, 1].includes(exitCode) || (exitCode !== 0 && status !== 'FAIL')) fail('junit_exit_mismatch');
   if (cases[0].children.some((node) => ['failure', 'error'].includes(node.name)
     && node.attributes.message === 'maestro_sdk_cleanup_failed')) onSdkCleanupFailure?.();
+  for (const node of cases[0].children) {
+    if (['failure', 'error'].includes(node.name) && [
+      'maestro_ui_flow_failed', 'maestro_sdk_execution_failed', 'maestro_sdk_cleanup_failed',
+    ].includes(node.attributes.message)) onSdkTerminalFailure?.(node.attributes.message);
+  }
   return status;
 }
 
