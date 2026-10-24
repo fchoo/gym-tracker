@@ -3,7 +3,6 @@ package gymtracker.maestrosafe
 import java.nio.file.Path
 import maestro.android.AndroidDeviceConnection
 import maestro.drivers.AndroidDriver
-import kotlin.system.exitProcess
 
 /** Invoked only by the validated source-owned Node contract. */
 fun main(args: Array<String>) {
@@ -16,5 +15,5 @@ fun main(args: Array<String>) {
         val connection = requireNotNull(AndroidDeviceConnection.byId(serial, "localhost", port))
         AndroidDriver(connection, serial, false)
     }
-    exitProcess(if (passed) 0 else 1)
+    if (!passed) throw IllegalStateException("maestro_sdk_flow_failed")
 }

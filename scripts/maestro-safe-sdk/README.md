@@ -25,6 +25,12 @@ produce a successful testcase. Parse, connection, execution, timeout and cleanup
 failures produce bounded official failing JUnit and a nonzero exit. Unwritable
 report destinations fail the process; they cannot produce success. Raw SDK
 stdout/stderr and hierarchy content are never retained by this path.
+After successful SDK execution and cleanup, main returns normally. Failed SDK
+execution or cleanup throws only the fixed `maestro_sdk_flow_failed` exception
+after writing official failing JUnit. This preserves the nonzero failure contract
+without Kotlin `exitProcess` termination scaffolding. The existing process deadline
+still bounds JVM termination; lingering non-daemon driver threads are a diagnostic
+failure, not grounds to extend the budget or accept a JUnit-only success.
 
 Every compilation gets a fresh private build directory. It retains source
 snapshots, input identity, compiler diagnostics, and the completed source/JAR/
@@ -66,11 +72,23 @@ The suite requires zero missed INSTRUCTION, BRANCH, METHOD and LINE counters for
 source report path.
 
 `SafeMaestro.kt` remains in that report. Host tests do not execute its real
-AndroidDeviceConnection/AndroidDriver binding. It has 110 instructions, four
-branches, two methods and eight source lines awaiting native diagnostic coverage.
+AndroidDeviceConnection/AndroidDriver binding. Its normal pass/fail termination
+and null/non-null connection paths require parent-exclusive native diagnostic
+coverage of every INSTRUCTION, BRANCH, METHOD and LINE counter.
 This is an explicit remaining target, not host closure of the complete runner.
 The production domain integration remains covered by the complete controlled
 domain suite; its fixture explicitly rejects unsafe Recovery CLI invocations.
+
+The previous retained runner's native pass/fail/missing-device diagnostic covered
+all four branches, both methods and all eight source lines, but left six of 110
+instructions missed at `exitProcess`. Exact bytecode offsets 243–255 comprise
+the `System.exit` invocation followed by five compiler-generated defensive-throw
+instructions. Normal JVM termination cannot execute the post-call coverage probe
+or that defensive throw. No environment length, value or device path can close
+this gap. Main now uses natural success return and a fixed failure exception;
+the repair changes termination only and preserves actual SDK/JUnit/cleanup.
+Keep the old diagnostic as failed exact-instruction coverage evidence and use a
+fresh source/JAR receipt and execution merge for the repaired entrypoint.
 
 ## Parent-exclusive native coverage diagnostic
 
