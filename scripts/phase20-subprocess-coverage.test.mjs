@@ -40,11 +40,13 @@ import {
 import {
   createV12AppFunctionalReadbacks,
   createV12DirectMaestroToolAttestation,
+  prepareV12DirectSafeSdkBinding,
   createV12FunctionalExecutionReceipt,
   readV12DirectMaestroDeviceMeasurement,
   validateV12DirectMaestroMapping,
 } from "./run-v12-maestro.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+import { prepareSafeMaestroSdk } from "./v12-maestro-safe-sdk.mjs";
 import { executeV12SqliteShardCli } from "./v12-sqlite-shard.mjs";
 import {
   executeLiveV12VisualCapture,
@@ -1802,6 +1804,7 @@ test("production-shaped retained evidence completes preseal and final readiness"
     updatePublicationMember("calendar", "calendar-transitions.json");
 
     const gitAttestationSha256 = createHash("sha256").update(gitAttestationBytes).digest("hex");
+    const currentDirectSdkBinding = prepareSafeMaestroSdk();
     for (const shard of ["multi-plan", "workout", "library-running"]) {
       const mappingRelative = `artifacts/native/v1.2/${runId}/mapping/${shard}.json`;
       const mapping = JSON.parse(readFileSync(save(mappingRelative), "utf8"));
@@ -2107,10 +2110,19 @@ test("production-shaped retained evidence completes preseal and final readiness"
       const publicationRelative = `artifacts/native/v1.2/${runId}/publication/${shard}.json`;
       const mapping = JSON.parse(readFileSync(save(mappingRelative), "utf8"));
       const publication = JSON.parse(readFileSync(save(publicationRelative), "utf8"));
+      // This is a deliberate disposable-fixture transformation, never a runtime
+      // overwrite. Retain and remove the synthetic SDK artifacts before creating
+      // a fresh official host-compiled binding for production-schema validation.
+      for (const relative of [mapping.tool_attestation.safe_sdk.receipt_path, mapping.tool_attestation.safe_sdk.jar_path]) {
+        save(relative); rmSync(path.join(root, relative));
+      }
+      const sdkBinding = prepareV12DirectSafeSdkBinding({ root, runId, shard, tools: directMaestroTools,
+        dependencies: { prepareSafeSdk: () => currentDirectSdkBinding } });
+      created.push(path.join(root, sdkBinding.attestation.receipt_path), path.join(root, sdkBinding.attestation.jar_path));
       const toolAttestation = createV12DirectMaestroToolAttestation({
         execute: executeDirectMaestroTool,
         executionTools: directMaestroTools,
-        shard,
+        shard, root, runId, retainedSafeSdk: sdkBinding.attestation,
       });
       mapping.observations = mapping.observations.map((observation) => {
         const priorReceipt = observation.execution_receipt;
