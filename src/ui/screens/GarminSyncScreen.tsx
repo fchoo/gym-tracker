@@ -323,7 +323,14 @@ function normalizeLocalTime(value: string): string | null {
 }
 
 function validTimeZone(value: string): boolean {
-  return value.trim() === value && value.length >= 1 && value.length <= 120;
+  if (value.trim() !== value || value.length < 1 || value.length > 120
+    || !/^[A-Za-z0-9._+-]+(?:\/[A-Za-z0-9._+-]+)*$/u.test(value)) return false;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value }).format(new Date(0));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function SyncResult({
@@ -500,7 +507,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
     }
     setDateInput(pending.suggestedLocalDate);
     setTimeInput(pending.suggestedLocalTime);
-    setTimeZoneInput(pending.suggestedTimeZone);
+    setTimeZoneInput(validTimeZone(pending.suggestedTimeZone) ? pending.suggestedTimeZone : "");
     setOffsetInput(String(pending.suggestedUtcOffsetMinutes));
     setDateReviewError(null);
   }, [state.pendingDateReview]);
@@ -554,7 +561,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
       return;
     }
     if (!validTimeZone(timeZoneInput)) {
-      setDateReviewError("Enter a bounded time zone label.");
+      setDateReviewError("Enter the activity's time zone, such as Asia/Singapore.");
       return;
     }
     if (!Number.isSafeInteger(offsetMinutes) || offsetMinutes < -840 || offsetMinutes > 840) {
@@ -818,11 +825,16 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
         </View>
         <View style={styles.fieldGroup}>
           <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Time zone</Text>
+          <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
+            Use the timezone where the activity happened, for example Asia/Singapore.
+          </Text>
           <TextInput
             accessibilityLabel="Time zone"
             autoCapitalize="none"
             editable={!dateReviewBusy}
             onChangeText={setTimeZoneInput}
+            placeholder="Asia/Singapore"
+            placeholderTextColor={colors.textSecondary}
             style={[styles.input, { borderColor: colors.divider, color: colors.textPrimary }]}
             value={timeZoneInput}
           />

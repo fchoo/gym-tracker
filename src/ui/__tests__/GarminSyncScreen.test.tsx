@@ -489,6 +489,123 @@ describe("GarminSyncScreen shared shell and disconnect contracts", () => {
     addEventListener.mockRestore();
   });
 
+  it("asks for a named timezone instead of pre-filling an offset display label", async () => {
+    const confirmPendingDateReview = jest.fn(async () => {
+      throw new Error("garmin_envelope_invalid");
+    });
+    const pendingReview = Object.freeze({
+      activityId: "local-activity-1",
+      absoluteStartedAtMs: Date.UTC(2026, 9, 10, 1, 0, 0, 120),
+      sourceLocalDateTime: "2026-10-10T09:00:00.120",
+      sourceUtcOffsetMinutes: 480,
+      suggestedLocalDate: "2026-10-10",
+      suggestedLocalTime: "09:00:00.120",
+      suggestedTimeZone: "UTC+08:00",
+      suggestedUtcOffsetMinutes: 480,
+    });
+    await renderScreen({
+      coordinator: {
+        syncNow: async () => ({
+          kind: "failure",
+          counts: { ...counts, newActivities: 0, attemptedActivities: 0 },
+          failure: { code: "date_confirmation_required", retryable: false },
+        }),
+      },
+      confirmPendingDateReview,
+      getPendingDateReview: () => pendingReview,
+      source: connectedSource(),
+    });
+
+    await fireEvent.press(await screen.findByRole("button", { name: "Sync now" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Review activity date" }));
+    expect(screen.getByLabelText("Time zone")).toHaveProp("value", "");
+    expect(screen.getByLabelText("Local date")).toHaveProp("value", "2026-10-10");
+    expect(screen.getByLabelText("Local time")).toHaveProp("value", "09:00:00.120");
+    expect(screen.getByLabelText("UTC offset minutes")).toHaveProp("value", "480");
+    await fireEvent.press(screen.getByRole("button", { name: "Use activity date" }));
+    expect(await screen.findByText("Enter the activity's time zone, such as Asia/Singapore.")).toBeOnTheScreen();
+    expect(confirmPendingDateReview).not.toHaveBeenCalled();
+  });
+
+  it.each(["UTC+08:00", "Asia/NotAZone", " Asia/Singapore", "Asia/Singapore ", "", "x".repeat(121)])(
+    "keeps an invalid timezone %j outside date confirmation",
+    async (timeZone) => {
+      const confirmPendingDateReview = jest.fn(async () => ({
+        kind: "imported" as const,
+        activityId: "local-activity-1",
+        aggregateRevision: 1,
+      }));
+      const pendingReview = Object.freeze({
+        activityId: "local-activity-1",
+        absoluteStartedAtMs: Date.UTC(2026, 9, 10, 1, 0, 0),
+        suggestedLocalDate: "2026-10-10",
+        suggestedLocalTime: "09:00:00",
+        suggestedTimeZone: "Asia/Singapore",
+        suggestedUtcOffsetMinutes: 480,
+      });
+      await renderScreen({
+        coordinator: {
+          syncNow: async () => ({
+            kind: "failure",
+            counts: { ...counts, newActivities: 0, attemptedActivities: 0 },
+            failure: { code: "date_confirmation_required", retryable: false },
+          }),
+        },
+        confirmPendingDateReview,
+        getPendingDateReview: () => pendingReview,
+        source: connectedSource(),
+      });
+      await fireEvent.press(await screen.findByRole("button", { name: "Sync now" }));
+      await fireEvent.press(await screen.findByRole("button", { name: "Review activity date" }));
+      await fireEvent.changeText(screen.getByLabelText("Time zone"), timeZone);
+      await fireEvent.press(screen.getByRole("button", { name: "Use activity date" }));
+      expect(await screen.findByText("Enter the activity's time zone, such as Asia/Singapore.")).toBeOnTheScreen();
+      expect(confirmPendingDateReview).not.toHaveBeenCalled();
+    },
+  );
+
+  it("confirms the selected timezone while preserving the reviewed date, time and offset", async () => {
+    const review = Object.freeze({
+      activityId: "local-activity-1",
+      absoluteStartedAtMs: Date.UTC(2026, 9, 10, 1, 0, 0, 120),
+      sourceLocalDateTime: "2026-10-10T09:00:00.120",
+      sourceUtcOffsetMinutes: 480,
+      suggestedLocalDate: "2026-10-10",
+      suggestedLocalTime: "09:00:00.120",
+      suggestedTimeZone: "UTC+08:00",
+      suggestedUtcOffsetMinutes: 480,
+    });
+    let pendingReview: typeof review | null = review;
+    const confirmPendingDateReview = jest.fn(async () => {
+      pendingReview = null;
+      return { kind: "imported" as const, activityId: "local-activity-1", aggregateRevision: 1 };
+    });
+    await renderScreen({
+      coordinator: {
+        syncNow: async () => ({
+          kind: "failure",
+          counts: { ...counts, newActivities: 0, attemptedActivities: 0 },
+          failure: { code: "date_confirmation_required", retryable: false },
+        }),
+      },
+      confirmPendingDateReview,
+      getPendingDateReview: () => pendingReview,
+      source: connectedSource(),
+    });
+    await fireEvent.press(await screen.findByRole("button", { name: "Sync now" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Review activity date" }));
+    await fireEvent.changeText(screen.getByLabelText("Time zone"), "Asia/Singapore");
+    await fireEvent.press(screen.getByRole("button", { name: "Use activity date" }));
+    expect(confirmPendingDateReview).toHaveBeenCalledWith({
+      kind: "confirmed",
+      localDate: "2026-10-10",
+      localTime: "09:00:00.120",
+      timeZone: "Asia/Singapore",
+      utcOffsetMinutes: 480,
+    });
+    await waitFor(() => expect(screen.queryByText("Confirm activity date")).not.toBeOnTheScreen());
+  });
+
   it("blocks Back and Keep for later while date review confirmation is in flight", async () => {
     const remove = jest.fn();
     const addEventListener = jest.spyOn(BackHandler, "addEventListener").mockReturnValue({ remove });
