@@ -101,7 +101,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   ));
   assert.deepEqual(manifest.phase20, discoveredPhase20);
   assert.deepEqual(manifest.phase18, discoveredPhase18);
-  assert.equal(manifest.phase20.length, 61);
+  assert.equal(manifest.phase20.length, 62);
   assert.equal(manifest.phase18.length, 18);
   assert.ok(manifest.phase18.includes("scripts/phase18-garmin-proof.test.mjs"));
   assert.deepEqual(Object.keys(manifest.phase20_coverage).sort(), [
@@ -119,12 +119,13 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   assert.ok(manifest.phase20_coverage.jest_istanbul_modules.includes("src/testing/garminSyncDiagnostic.ts"));
   assert.ok(manifest.phase20_coverage.jest_istanbul_modules.includes("app/__garmin-sync-diagnostic.tsx"));
   const coverageProjects = manifest.phase20_coverage.node_v8_projects;
-  assert.equal(coverageProjects.length, 8);
+  assert.equal(coverageProjects.length, 9);
   assert.deepEqual(coverageProjects.map(({ name }) => name), [
     "contracts",
     "native-actions",
     "native-fixtures",
     "quality-coverage",
+    "calendar-coverage",
     "cli-blackbox",
     "cli-coverage",
     "fixture-coverage",
@@ -139,11 +140,18 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
     { name: "cli-blackbox", timeoutMs: 50 * 60_000 },
   ]);
   const registeredProjectTests = coverageProjects.flatMap(({ tests }) => tests);
-  assert.equal(registeredProjectTests.length, 61);
-  assert.equal(new Set(registeredProjectTests).size, 61);
+  assert.equal(registeredProjectTests.length, 62);
+  assert.equal(new Set(registeredProjectTests).size, 62);
   assert.deepEqual([...registeredProjectTests].sort(), manifest.phase20);
   const coveredModules = new Set(coverageProjects.flatMap(({ modules }) => modules));
-  assert.equal(coveredModules.size, 28);
+  assert.equal(coveredModules.size, 29);
+  const calendarCoverage = coverageProjects.find(({ name }) => name === "calendar-coverage");
+  assert.equal(calendarCoverage.coverage, true);
+  assert.deepEqual(calendarCoverage.modules, ["scripts/v12-production-native-calendar-action.mjs"]);
+  assert.deepEqual(calendarCoverage.tests, [
+    "scripts/v12-production-native-calendar-action.test.mjs",
+    "scripts/v12-production-native-calendar-session.test.mjs",
+  ]);
   for (const required of [
     "scripts/garmin-cli-coverage-evidence.mjs",
     "scripts/phase20-subprocess-coverage.mjs",

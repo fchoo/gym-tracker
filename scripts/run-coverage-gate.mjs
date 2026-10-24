@@ -211,6 +211,7 @@ const phase20EvidenceTests = Object.freeze([
   "scripts/v12-preflight-contract.test.mjs",
   "scripts/v12-production-domain-receipts.test.mjs",
   "scripts/v12-production-native-calendar-action.test.mjs",
+  "scripts/v12-production-native-calendar-session.test.mjs",
   "scripts/v12-production-native-domain-actions.test.mjs",
   "scripts/v12-production-native-launcher.test.mjs",
   "scripts/v12-production-native-quality-actions.test.mjs",
@@ -257,6 +258,8 @@ function validateEvidenceTestManifest({ tests, isEvidenceTest, error, expectedCo
   return registered;
 }
 const phase20NativeActionTests = new Set([
+  "scripts/v12-production-native-calendar-action.test.mjs",
+  "scripts/v12-production-native-calendar-session.test.mjs",
   "scripts/v12-native-adapter-attestation.test.mjs",
   "scripts/v12-native-execution-origin.test.mjs",
   "scripts/v12-production-native-domain-actions.test.mjs",
@@ -330,13 +333,24 @@ const phase20EvidenceProjects = Object.freeze([
     concurrency: 1,
     coverage: false,
     tests: [...phase20NativeActionTests].filter((file) => !phase20NativeCoverageTests.has(file)
-      && file !== "scripts/v12-production-native-quality-actions.test.mjs"),
+      && file !== "scripts/v12-production-native-quality-actions.test.mjs"
+      && file !== "scripts/v12-production-native-calendar-action.test.mjs"
+      && file !== "scripts/v12-production-native-calendar-session.test.mjs"),
   }),
   Object.freeze({
     name: "quality-coverage",
     concurrency: 1,
     modules: Object.freeze(["scripts/v12-production-native-quality-actions.mjs"]),
     tests: Object.freeze(["scripts/v12-production-native-quality-actions.test.mjs"]),
+  }),
+  Object.freeze({
+    name: "calendar-coverage",
+    concurrency: 1,
+    modules: Object.freeze(["scripts/v12-production-native-calendar-action.mjs"]),
+    tests: Object.freeze([
+      "scripts/v12-production-native-calendar-action.test.mjs",
+      "scripts/v12-production-native-calendar-session.test.mjs",
+    ]),
   }),
   Object.freeze({
     name: "cli-blackbox",
@@ -862,13 +876,14 @@ const registeredPhase20EvidenceTests = validateEvidenceTestManifest({
   tests: phase20EvidenceTests,
   isEvidenceTest: isPhase20EvidenceTest,
   error: "phase20_evidence_test_manifest_drift",
-  expectedCount: 61,
+  expectedCount: 62,
 });
 const expectedPhase20ProjectNames = [
   "contracts",
   "native-actions",
   "native-fixtures",
   "quality-coverage",
+  "calendar-coverage",
   "cli-blackbox",
   "cli-coverage",
   "fixture-coverage",
@@ -877,10 +892,10 @@ const expectedPhase20ProjectNames = [
 const assignedPhase20Tests = phase20EvidenceProjects.flatMap(({ tests }) => tests);
 const assignedPhase20Modules = new Set(phase20EvidenceProjects.flatMap(({ modules = [] }) => modules));
 if (JSON.stringify(phase20EvidenceProjects.map(({ name }) => name)) !== JSON.stringify(expectedPhase20ProjectNames)
-  || assignedPhase20Tests.length !== 61
-  || new Set(assignedPhase20Tests).size !== 61
+  || assignedPhase20Tests.length !== 62
+  || new Set(assignedPhase20Tests).size !== 62
   || JSON.stringify([...assignedPhase20Tests].sort()) !== JSON.stringify(registeredPhase20EvidenceTests)
-  || assignedPhase20Modules.size !== 28
+  || assignedPhase20Modules.size !== 29
   || phase20EvidenceProjects.find(({ name }) => name === "cli-blackbox")?.coverage !== false) {
   throw new Error(JSON.stringify({
     error: "phase20_coverage_project_manifest_invalid",
