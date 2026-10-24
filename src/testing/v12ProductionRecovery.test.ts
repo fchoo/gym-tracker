@@ -74,6 +74,24 @@ function snapshot(receiptCount: number, digest: string) {
 }
 
 describe("v1.2 native Recovery producer boundary", () => {
+  it("emits only fixed setup transitions bound to the validated nonce", async () => {
+    const lines: string[] = [];
+    const executor: V12ProductionRecoveryExecutor = {
+      arm: async (input) => {
+        input.setupStage?.("delete:start");
+        input.setupStage?.("not-a-private-payload");
+        input.setupStage?.("delete:done");
+      },
+      recover: async () => { throw new Error("unused"); },
+      cleanup: async () => undefined,
+    };
+    await expect(collectV12ProductionRecoveryPhase({ identity, phase: "arm", emit: (line) => { lines.push(line); }, signal: { aborted: false }, executor })).resolves.toBe("armed");
+    expect(lines.map((line) => JSON.parse(line.split("GYM_TRACKER_V12_RECOVERY_SETUP:")[1]!))).toEqual([
+      { schema_version: 1, nonce: identity.nonce, stage: "delete:start" },
+      { schema_version: 1, nonce: identity.nonce, stage: "delete:done" },
+    ]);
+  });
+
   it("is unreachable outside the exact development-test v1.2 identity", () => {
     expect(v12ProductionRecoveryEnabled(identity)).toBe(true);
     for (const candidate of [

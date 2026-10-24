@@ -142,6 +142,22 @@ describe("v1.2 production Recovery native cleanup", () => {
     expect(deleteDatabaseAsync).toHaveBeenCalledTimes(2);
   });
 
+  it("reports actual setup transitions without changing a migration rejection", async () => {
+    jest.mocked(deleteDatabaseAsync).mockResolvedValue(undefined);
+    const failure = new Error("migration_failed");
+    const stages: string[] = [];
+    const executor = createV12ProductionRecoveryNativeExecutor({ migrateDatabase: async () => { throw failure; } });
+    await expect(executor.arm({ ...identity, setupStage: (stage) => { stages.push(stage); } })).rejects.toBe(failure);
+    expect(stages).toEqual(["delete:start", "delete:done", "migrate-target:start", "migrate-target:failed"]);
+  });
+
+  it("keeps a throwing setup observer outside the native operation outcome", async () => {
+    jest.mocked(deleteDatabaseAsync).mockResolvedValue(undefined);
+    const failure = new Error("migration_failed");
+    const executor = createV12ProductionRecoveryNativeExecutor({ migrateDatabase: async () => { throw failure; } });
+    await expect(executor.arm({ ...identity, setupStage: () => { throw new Error("observer_failed"); } })).rejects.toBe(failure);
+  });
+
   it.each(["setup", "command", "barrier", "validation"] as const)(
     "closes every native connection before database cleanup after %s failure",
     async (stage) => {
@@ -177,7 +193,8 @@ describe("v1.2 production Recovery native cleanup", () => {
       expect(closes.length).toBeGreaterThan(0);
       expect(closes.every(({ index }) => index < firstFinalDelete)).toBe(true);
       expect(fixture.events.slice(firstFinalDelete)).toEqual(["delete:target", "delete:source"]);
-      expect(lines).toEqual([]);
+      expect(lines.length).toBeGreaterThan(0);
+      expect(lines.every((line) => line.startsWith("GYM_TRACKER_V12_RECOVERY_SETUP:"))).toBe(true);
     },
   );
 

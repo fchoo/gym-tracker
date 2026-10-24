@@ -147,6 +147,7 @@ export type V12RecoveryExecutionIdentity = Readonly<{
   cutId: string;
   signal: Readonly<{ aborted: boolean }>;
   progress(value: V12RecoveryArmProgress): void;
+  setupStage?(stage: string): void;
 }>;
 
 export type V12RecoveryArmProgress = Readonly<{
@@ -322,6 +323,12 @@ export async function collectV12ProductionRecoveryPhase(input: Readonly<{
     stepId: input.identity.stepId as string,
     cutId: input.identity.cutId as string,
     signal: input.signal,
+    setupStage: (stage) => {
+      if (!/^(?:delete|migrate-target|migrate-source|seed|close-seed|open-baseline|read-baseline|close-baseline|open-test-runtime):(?:start|done|failed)$/u.test(stage)) return;
+      try {
+        input.emit(`GYM_TRACKER_V12_RECOVERY_SETUP:${JSON.stringify({ schema_version: 1, nonce: input.identity.nonce, stage })}`);
+      } catch { /* diagnostics cannot change the setup outcome */ }
+    },
     progress: (value) => {
       const caseId = input.identity.caseId as string;
       const stepId = input.identity.stepId as string;

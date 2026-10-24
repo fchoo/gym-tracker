@@ -1459,22 +1459,28 @@ export function createV12ProductionRecoveryNativeExecutor(
       const names = databaseNames(input);
       const resources = new Set<RecoveryClosable>();
       let armed = false;
+      const observeSetup = async <Result>(stage: string, work: () => Promise<Result>): Promise<Result> => {
+        const report = (status: string) => { try { input.setupStage?.(`${stage}:${status}`); } catch { /* observation only */ } };
+        report("start");
+        try { const result = await work(); report("done"); return result; }
+        catch (error) { report("failed"); throw error; }
+      };
       try {
-        await deleteRecoveryDatabases(names, dependencies.deleteDatabase);
+        await observeSetup("delete", () => deleteRecoveryDatabases(names, dependencies.deleteDatabase));
         const operation = operationForStep(input.caseId, input.stepId);
-        const target = await dependencies.migrateDatabase(names.target);
+        const target = await observeSetup("migrate-target", () => dependencies.migrateDatabase(names.target));
         resources.add(target);
         const source = operation === "secure-restore-commit" || operation === "secure-merge-commit"
-          ? await dependencies.migrateDatabase(names.source)
+          ? await observeSetup("migrate-source", () => dependencies.migrateDatabase(names.source))
           : undefined;
         if (source !== undefined) resources.add(source);
-        await dependencies.setupDatabase(target, source, operation, input);
-        await closeRecoveryResources(resources);
+        await observeSetup("seed", () => dependencies.setupDatabase(target, source, operation, input));
+        await observeSetup("close-seed", () => closeRecoveryResources(resources));
         active(input);
-        const baseline = await dependencies.openKernel(names.target);
+        const baseline = await observeSetup("open-baseline", () => dependencies.openKernel(names.target));
         resources.add(baseline);
-        const before = await dependencies.readSnapshot(baseline, operation, input);
-        await closeRecoveryResources(resources);
+        const before = await observeSetup("read-baseline", () => dependencies.readSnapshot(baseline, operation, input));
+        await observeSetup("close-baseline", () => closeRecoveryResources(resources));
         let runtime: Awaited<ReturnType<typeof openSqliteKernelTestRuntime>>;
         const armOnce = async (code: string) => {
           if (armed) throw new Error("v12_recovery_barrier_duplicate");
@@ -1491,10 +1497,7 @@ export function createV12ProductionRecoveryNativeExecutor(
             : input.cutId === "retry"
               ? { beforeCommit: async () => { throw new Error("v12_recovery_first_attempt_failed"); } }
               : {};
-        runtime = await dependencies.openTestRuntime(
-          names.target,
-          observer,
-        );
+        runtime = await observeSetup("open-test-runtime", () => dependencies.openTestRuntime(names.target, observer));
         resources.add(runtime);
         if (input.cutId === "pre-transaction") {
           return armOnce("writer-not-entered");
