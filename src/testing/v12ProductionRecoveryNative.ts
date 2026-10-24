@@ -160,10 +160,24 @@ async function digestRows(rows: readonly Record<string, unknown>[]) {
   return sha256(stableJson(rows));
 }
 
-async function migrate(databaseName: string): Promise<SqliteKernel> {
-  const kernel = await openSqliteKernel(databaseName);
+type MigrationObservationPhase = "target-open" | "target-run" | "target-error-close";
+type MigrationObservation = `${MigrationObservationPhase}:${"start" | "done" | "failed"}`;
+
+async function migrate(
+  databaseName: string,
+  observer?: (stage: MigrationObservation) => void,
+): Promise<SqliteKernel> {
+  const observe = async <Result>(stage: MigrationObservationPhase, work: () => Promise<Result>): Promise<Result> => {
+    const report = (status: "start" | "done" | "failed") => {
+      try { observer?.(`${stage}:${status}`); } catch { /* observation only */ }
+    };
+    report("start");
+    try { const result = await work(); report("done"); return result; }
+    catch (error) { report("failed"); throw error; }
+  };
+  const kernel = await observe("target-open", () => openSqliteKernel(databaseName));
   try {
-    await createMigrationRunner({
+    await observe("target-run", () => createMigrationRunner({
       databaseName,
       kernel,
       migrations,
@@ -176,10 +190,10 @@ async function migrate(databaseName: string): Promise<SqliteKernel> {
           });
         },
       },
-    }).run();
+    }).run());
     return kernel;
   } catch (error) {
-    await kernel.close();
+    await observe("target-error-close", () => kernel.close());
     throw error;
   }
 }
@@ -1467,7 +1481,9 @@ export function createV12ProductionRecoveryNativeExecutor(
       try {
         await observeSetup("delete", () => deleteRecoveryDatabases(names, dependencies.deleteDatabase));
         const operation = operationForStep(input.caseId, input.stepId);
-        const target = await observeSetup("migrate-target", () => dependencies.migrateDatabase(names.target));
+        const target = await observeSetup("migrate-target", () => dependencies.migrateDatabase(names.target, (stage) => {
+          try { input.setupStage?.(stage); } catch { /* observation only */ }
+        }));
         resources.add(target);
         const source = operation === "secure-restore-commit" || operation === "secure-merge-commit"
           ? await observeSetup("migrate-source", () => dependencies.migrateDatabase(names.source))

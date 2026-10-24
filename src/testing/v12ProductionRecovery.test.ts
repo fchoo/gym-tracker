@@ -105,6 +105,43 @@ describe("v1.2 native Recovery producer boundary", () => {
     ]);
   });
 
+  it("forwards only the exact inner migration stages without filenames, SQL or error payloads", async () => {
+    const accepted = ["target-open", "target-run", "target-error-close"]
+      .flatMap((stage) => ["start", "done", "failed"].map((status) => `${stage}:${status}`));
+    const lines: string[] = [];
+    const executor: V12ProductionRecoveryExecutor = {
+      arm: async (input) => {
+        for (const stage of [...accepted, "target-open:pending", "target-run:heartbeat", "source-open:start",
+          "target-open:start:private.db", "target-run:failed SELECT", "target-error-close:failed\\nprivate-error"]) {
+          input.setupStage?.(stage);
+        }
+      },
+      recover: async () => { throw new Error("unused"); },
+      cleanup: async () => undefined,
+    };
+    await expect(collectV12ProductionRecoveryPhase({
+      identity, phase: "arm", emit: (line) => { lines.push(line); }, signal: { aborted: false }, executor,
+    })).resolves.toBe("armed");
+    expect(lines.map((line) => JSON.parse(line.slice("GYM_TRACKER_V12_RECOVERY_SETUP:".length)))).toEqual(
+      accepted.map((stage) => ({ schema_version: 1, nonce: identity.nonce, stage })),
+    );
+  });
+
+  it("an inner migration diagnostic logger failure cannot alter the collection outcome", async () => {
+    const failure = new Error("migration_failed");
+    const emit = jest.fn(() => { throw new Error("logger_failed"); });
+    const executor: V12ProductionRecoveryExecutor = {
+      arm: async (input) => { input.setupStage?.("target-run:failed"); throw failure; },
+      recover: async () => { throw new Error("unused"); },
+      cleanup: jest.fn(async () => undefined),
+    };
+    await expect(collectV12ProductionRecoveryPhase({
+      identity, phase: "arm", emit, signal: { aborted: false }, executor,
+    })).rejects.toBe(failure);
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(executor.cleanup).toHaveBeenCalledTimes(1);
+  });
+
   it("is unreachable outside the exact development-test v1.2 identity", () => {
     expect(v12ProductionRecoveryEnabled(identity)).toBe(true);
     for (const candidate of [

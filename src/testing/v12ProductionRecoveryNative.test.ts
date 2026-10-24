@@ -6,6 +6,8 @@ import {
   jest,
 } from "@jest/globals";
 import { deleteDatabaseAsync } from "expo-sqlite";
+import { createMigrationRunner } from "../platform/sqlite/migrationRunner";
+import { openSqliteKernel, type SqliteKernel } from "../platform/sqlite/sqliteKernel";
 
 import { createV12ProductionRecoveryNativeExecutor } from "./v12ProductionRecoveryNative";
 import {
@@ -16,6 +18,11 @@ import {
 
 jest.mock("expo-sqlite", () => ({
   deleteDatabaseAsync: jest.fn(),
+}));
+jest.mock("../platform/sqlite/migrationRunner", () => ({ createMigrationRunner: jest.fn() }));
+jest.mock("../platform/sqlite/sqliteKernel", () => ({
+  ...jest.requireActual<typeof import("../platform/sqlite/sqliteKernel")>("../platform/sqlite/sqliteKernel"),
+  openSqliteKernel: jest.fn(),
 }));
 
 const identity: V12RecoveryExecutionIdentity = {
@@ -108,6 +115,8 @@ function armFailureFixture(stage: "setup" | "command" | "barrier" | "validation"
 describe("v1.2 production Recovery native cleanup", () => {
   beforeEach(() => {
     jest.mocked(deleteDatabaseAsync).mockReset();
+    jest.mocked(openSqliteKernel).mockReset();
+    jest.mocked(createMigrationRunner).mockReset();
   });
 
   it.each(["pre-transaction", "retry"] as const)(
@@ -192,6 +201,119 @@ describe("v1.2 production Recovery native cleanup", () => {
     const executor = createV12ProductionRecoveryNativeExecutor({ migrateDatabase: async () => { throw failure; } });
     await expect(executor.arm({ ...identity, setupStage: () => { throw new Error("observer_failed"); } })).rejects.toBe(failure);
   });
+
+  function migrationFixture() {
+    const stages: string[] = [];
+    const afterMigration = new Error("stop_after_migration");
+    const close = jest.fn<SqliteKernel["close"]>(async () => undefined);
+    const kernel = { close } as unknown as SqliteKernel;
+    const run = jest.fn<ReturnType<typeof createMigrationRunner>["run"]>(async () => ({
+      appliedVersions: [], currentVersion: 47, recoveryBackup: null,
+    }));
+    jest.mocked(deleteDatabaseAsync).mockResolvedValue(undefined);
+    jest.mocked(openSqliteKernel).mockResolvedValue(kernel);
+    jest.mocked(createMigrationRunner).mockReturnValue({ run });
+    const executor = createV12ProductionRecoveryNativeExecutor({
+      setupDatabase: async () => { throw afterMigration; },
+    });
+    const start = (setupStage = (stage: string) => { stages.push(stage); }) => executor.arm({
+      ...identity, caseId: "between-set-rest-pointer", stepId: "between-set-commit",
+      cutId: "post-commit-before-ack", setupStage,
+    });
+    return { afterMigration, close, kernel, run, stages, start };
+  }
+
+  it("reports completed default kernel open and migration run before rich seeding", async () => {
+    const f = migrationFixture();
+    await expect(f.start()).rejects.toBe(f.afterMigration);
+    expect(f.stages).toEqual([
+      "delete:start", "delete:done", "migrate-target:start", "target-open:start", "target-open:done",
+      "target-run:start", "target-run:done", "migrate-target:done", "seed:start", "seed:failed",
+    ]);
+    expect(jest.mocked(openSqliteKernel)).toHaveBeenCalledWith(
+      `v12-recovery-${identity.nonce}-between-set-rest-pointer-between-set-commit-post-commit-before-ack.db`,
+    );
+    expect(jest.mocked(createMigrationRunner)).toHaveBeenCalledWith(expect.objectContaining({ kernel: f.kernel }));
+    expect(f.run).toHaveBeenCalledTimes(1);
+    expect(f.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("emits no invented progress while default kernel open is pending", async () => {
+    const f = migrationFixture();
+    const failure = new Error("open_failed");
+    let rejectOpen!: (error: Error) => void;
+    jest.mocked(openSqliteKernel).mockReturnValue(new Promise((_resolve, reject) => { rejectOpen = reject; }));
+    const outcome = f.start().catch((error: unknown) => error);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(f.stages).toEqual(["delete:start", "delete:done", "migrate-target:start", "target-open:start"]);
+    expect(f.run).not.toHaveBeenCalled();
+    expect(f.close).not.toHaveBeenCalled();
+    rejectOpen(failure);
+    expect(await outcome).toBe(failure);
+    expect(f.stages.slice(-2)).toEqual(["target-open:failed", "migrate-target:failed"]);
+    expect(jest.mocked(createMigrationRunner)).not.toHaveBeenCalled();
+  });
+
+  it("emits no completed run marker until the default migration promise resolves", async () => {
+    const f = migrationFixture();
+    let finishRun!: () => void;
+    f.run.mockImplementation(() => new Promise((resolve) => {
+      finishRun = () => resolve({ appliedVersions: [], currentVersion: 47, recoveryBackup: null });
+    }));
+    const outcome = f.start().catch((error: unknown) => error);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(f.stages).toEqual([
+      "delete:start", "delete:done", "migrate-target:start", "target-open:start", "target-open:done", "target-run:start",
+    ]);
+    expect(f.close).not.toHaveBeenCalled();
+    finishRun();
+    expect(await outcome).toBe(f.afterMigration);
+    expect(f.stages).toContain("target-run:done");
+  });
+
+  it("reports a rejected run before waiting for native error cleanup and preserves the original rejection", async () => {
+    const f = migrationFixture();
+    const failure = new Error("migration_failed");
+    let finishClose!: () => void;
+    f.run.mockRejectedValue(failure);
+    f.close.mockImplementation(() => new Promise((resolve) => { finishClose = resolve; }));
+    let settled = false;
+    const outcome = f.start().catch((error: unknown) => { settled = true; return error; });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(f.stages).toEqual([
+      "delete:start", "delete:done", "migrate-target:start", "target-open:start", "target-open:done",
+      "target-run:start", "target-run:failed", "target-error-close:start",
+    ]);
+    expect(settled).toBe(false);
+    finishClose();
+    expect(await outcome).toBe(failure);
+    expect(f.stages.slice(-2)).toEqual(["target-error-close:done", "migrate-target:failed"]);
+    expect(f.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports native error-close failure while retaining the existing close rejection outcome", async () => {
+    const f = migrationFixture();
+    const closeFailure = new Error("native_close_failed");
+    f.run.mockRejectedValue(new Error("migration_failed"));
+    f.close.mockRejectedValue(closeFailure);
+    await expect(f.start()).rejects.toBe(closeFailure);
+    expect(f.stages.slice(-4)).toEqual([
+      "target-run:failed", "target-error-close:start", "target-error-close:failed", "migrate-target:failed",
+    ]);
+  });
+
+  it.each(["completed", "rejected"] as const)(
+    "a throwing inner migration observer does not change a %s migration outcome", async (mode) => {
+      const f = migrationFixture();
+      const failure = new Error("migration_failed");
+      if (mode === "rejected") f.run.mockRejectedValue(failure);
+      const observer = jest.fn(() => { throw new Error("observer_failed"); });
+      await expect(f.start(observer)).rejects.toBe(mode === "rejected" ? failure : f.afterMigration);
+      expect(observer).toHaveBeenCalledWith("target-open:start");
+      expect(observer).toHaveBeenCalledWith(mode === "rejected" ? "target-error-close:done" : "target-run:done");
+      expect(f.close).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it.each(["setup", "command", "barrier", "validation"] as const)(
     "closes every native connection before database cleanup after %s failure",

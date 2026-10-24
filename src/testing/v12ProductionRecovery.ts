@@ -324,7 +324,7 @@ export async function collectV12ProductionRecoveryPhase(input: Readonly<{
     cutId: input.identity.cutId as string,
     signal: input.signal,
     setupStage: (stage) => {
-      if (!/^(?:delete|migrate-target|migrate-source|seed|close-seed|open-baseline|read-baseline|close-baseline|open-test-runtime):(?:start|done|failed)$/u.test(stage)) return;
+      if (!/^(?:delete|migrate-target|migrate-source|seed|close-seed|open-baseline|read-baseline|close-baseline|open-test-runtime|target-open|target-run|target-error-close):(?:start|done|failed)$/u.test(stage)) return;
       try {
         input.emit(`GYM_TRACKER_V12_RECOVERY_SETUP:${JSON.stringify({ schema_version: 1, nonce: input.identity.nonce, stage })}`);
       } catch { /* diagnostics cannot change the setup outcome */ }
