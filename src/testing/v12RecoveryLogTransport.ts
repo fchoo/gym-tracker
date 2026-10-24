@@ -34,7 +34,7 @@ export async function publishV12RecoveryLog(
   options.assertCurrent?.();
   for (const [index, data] of chunks.entries()) {
     options.assertCurrent?.();
-    emit(`${CHUNK_PREFIX}${JSON.stringify({ schema_version: 2, nonce: result.nonce, kind: "chunk", sequence: index + 1, total: chunks.length, data })}`);
+    emit(`${CHUNK_PREFIX}${JSON.stringify({ schema_version: 2, nonce: result.nonce, kind: "chunk", sequence: index + 1, total: chunks.length, sha256: digest, data })}`);
   }
   options.assertCurrent?.();
   emit(`${RESULT_PREFIX}${JSON.stringify({ schema_version: 2, nonce: result.nonce, kind: "chunked", total: chunks.length, sha256: digest })}`);

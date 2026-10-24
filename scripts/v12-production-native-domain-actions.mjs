@@ -83,12 +83,17 @@ function session(root, a, action, executionTools) {
           if (value?.nonce !== nonce) continue;
           if (![1, 2].includes(value.schema_version)) fail('marker_invalid');
           if (prefix === RESULT_CHUNK) {
-            if (!exact(value, ['schema_version', 'nonce', 'kind', 'sequence', 'total', 'data'])
+            const scoped = Object.hasOwn(value, 'sha256');
+            if (!exact(value, ['schema_version', 'nonce', 'kind', 'sequence', 'total', 'data', ...(scoped ? ['sha256'] : [])])
               || value.schema_version !== 2 || value.kind !== 'chunk' || !Number.isSafeInteger(value.sequence)
               || !Number.isSafeInteger(value.total) || value.sequence < 1 || value.total < 1 || value.total > 16
               || value.sequence > value.total || typeof value.data !== 'string' || value.data.length > 1_500
-              || (chunks.has(value.sequence) && chunks.get(value.sequence) !== value.data)) fail('marker_invalid');
-            if (!chunks.has(value.sequence)) { chunks.set(value.sequence, value.data); progressed = Date.now(); }
+              || (scoped && (!HASH.test(value.sha256 ?? '') || Buffer.byteLength(prefix + JSON.stringify(value)) >= 3_500))) fail('marker_invalid');
+            const publication = scoped ? value.sha256 : 'legacy';
+            if (!chunks.has(publication)) chunks.set(publication, { total: value.total, data: new Map() });
+            const stream = chunks.get(publication);
+            if (stream.total !== value.total || (stream.data.has(value.sequence) && stream.data.get(value.sequence) !== value.data)) fail('marker_invalid');
+            if (!stream.data.has(value.sequence)) { stream.data.set(value.sequence, value.data); progressed = Date.now(); }
           } else if (prefix === PROGRESS) {
             if (value.kind === 'ARMED') {
               if (value.schema_version !== 2 || !Number.isSafeInteger(value.sequence) || value.sequence !== 1) fail('marker_invalid');
@@ -98,9 +103,12 @@ function session(root, a, action, executionTools) {
           } else {
             if (value.kind === 'chunked') {
               if (!exact(value, ['schema_version', 'nonce', 'kind', 'total', 'sha256']) || value.schema_version !== 2
-                || !Number.isSafeInteger(value.total) || value.total < 1 || value.total > 16 || chunks.size !== value.total
+                || !Number.isSafeInteger(value.total) || value.total < 1 || value.total > 16
                 || !HASH.test(value.sha256 ?? '')) fail('marker_invalid');
-              const serialized = Array.from({ length: value.total }, (_, index) => chunks.get(index + 1)).join('');
+              if (chunks.has(value.sha256) && chunks.has('legacy')) fail('marker_invalid');
+              const stream = chunks.get(value.sha256) ?? chunks.get('legacy');
+              if (!stream || stream.total !== value.total || stream.data.size !== value.total) fail('marker_invalid');
+              const serialized = Array.from({ length: value.total }, (_, index) => stream.data.get(index + 1)).join('');
               if (hash(serialized) !== value.sha256) fail('marker_invalid');
               try { value = JSON.parse(serialized); } catch { fail('marker_invalid'); }
               if (value?.nonce !== nonce || value.schema_version !== 2) fail('marker_invalid');

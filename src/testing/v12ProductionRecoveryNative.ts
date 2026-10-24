@@ -1499,7 +1499,7 @@ export function createV12ProductionRecoveryNativeExecutor(
         runtime = await observeSetup("open-test-runtime", () => dependencies.openTestRuntime(names.target, observer));
         resources.add(runtime);
         if (input.cutId === "pre-transaction") {
-          return armOnce("writer-not-entered");
+          return await armOnce("writer-not-entered");
         }
         try {
           await dependencies.runOperation(runtime.kernel, operation, names.source, input);
@@ -1517,7 +1517,7 @@ export function createV12ProductionRecoveryNativeExecutor(
           await closeRecoveryResources(resources);
           runtime = await dependencies.openTestRuntime(names.target);
           resources.add(runtime);
-          return armOnce("relaunch-runtime-open");
+          return await armOnce("relaunch-runtime-open");
         }
         if (input.cutId === "recovery") {
           await dependencies.seedRecoveryEffect(runtime.kernel, input);
@@ -1530,7 +1530,7 @@ export function createV12ProductionRecoveryNativeExecutor(
           throw new Error("v12_recovery_barrier_not_reached");
         }
         if (input.cutId === "post-acknowledgement") {
-          return armOnce("acknowledgement-returned");
+          return await armOnce("acknowledgement-returned");
         }
         throw new Error("v12_recovery_barrier_not_reached");
       } finally {

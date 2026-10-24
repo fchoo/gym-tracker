@@ -16,6 +16,7 @@ describe("Recovery result log transport", () => {
     expect(chunks.map((chunk) => chunk.sequence)).toEqual(chunks.map((_, index) => index + 1));
     const body = chunks.map((chunk) => chunk.data).join("");
     expect(JSON.parse(body)).toEqual(result);
+    expect(chunks.every((chunk) => chunk.sha256 === createHash("sha256").update(body).digest("hex"))).toBe(true);
     expect(records.at(-1)).toEqual({ schema_version: 2, nonce: result.nonce, kind: "chunked", total: chunks.length, sha256: await hash(body) });
   });
 

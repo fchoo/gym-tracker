@@ -161,6 +161,38 @@ if (tool === 'adb' && args[2] === 'logcat') {
   if (state.noReceipt && value.stage) delete value.stage.receipt;
   if (value.stage?.receipt) { delete value.stage.receipt.screenshot_sha256; delete value.stage.receipt.trace_sha256; }
   const payload = { schema_version: value?.schema_version ?? 1, nonce, ...value };
+  if (state.retainedRecoveryChunks && ['ARMED', 'recovery'].includes(value?.kind)) {
+    const serialized = JSON.stringify(payload);
+    const digest = hash(serialized);
+    const chunks = Array.from({ length: Math.ceil(serialized.length / 1500) }, (_, index) => ({
+      schema_version: 2, nonce, kind: 'chunk', sequence: index + 1,
+      total: Math.ceil(serialized.length / 1500), sha256: digest,
+      data: serialized.slice(index * 1500, (index + 1) * 1500),
+    }));
+    if (state.chunkMutation === 'unknown-field') chunks[0].extra = true;
+    if (state.chunkMutation === 'bad-digest') chunks[0].sha256 = 'bad';
+    if (state.chunkMutation === 'conflicting-data') chunks.push({ ...chunks[0], data: 'different' });
+    if (state.chunkMutation === 'wrong-total') chunks[1].total += 1;
+    if (state.chunkMutation === 'missing') chunks.pop();
+    if (state.chunkMutation === 'oversized-data') chunks[0].data = 'x'.repeat(1501);
+    if (state.chunkMutation === 'oversized-bytes') chunks[0].data = '漢'.repeat(1500);
+    if (state.chunkMutation === 'altered-data') chunks[0].data = 'x' + chunks[0].data.slice(1);
+    if (state.chunkMutation === 'reordered') chunks.reverse();
+    if (state.chunkMutation === 'duplicate-identical') chunks.push({ ...chunks[0] });
+    const frames = chunks.map((chunk) => `GYM_TRACKER_V12_DOMAIN_RESULT_CHUNK:${JSON.stringify(chunk)}\n`);
+    const terminal = `GYM_TRACKER_V12_DOMAIN_RESULT:${JSON.stringify({ schema_version: 2, nonce, kind: 'chunked', total: Math.ceil(serialized.length / 1500), sha256: digest })}\n`;
+    frames.push(terminal);
+    if (state.chunkMutation === 'duplicate-terminal') frames.push(terminal);
+    if (state.chunkMutation === 'ambiguous-legacy') {
+      const legacy = { ...chunks[0] }; delete legacy.sha256;
+      frames.unshift(`GYM_TRACKER_V12_DOMAIN_RESULT_CHUNK:${JSON.stringify(legacy)}\n`);
+    }
+    if (state.retainedRecoveryNonce !== nonce) { state.retainedRecoveryNonce = nonce; state.retainedArmFrames = []; }
+    if (value.kind === 'ARMED') state.retainedArmFrames = frames;
+    out(state.retainedArmFrames.join(''));
+    if (value.kind === 'recovery') out(frames.join(''));
+    save(); return 0;
+  }
   if (value?.kind === 'garmin') {
     const serialized = JSON.stringify(payload); const chunks = Array.from({ length: Math.ceil(serialized.length / 1500) }, (_, index) => serialized.slice(index * 1500, (index + 1) * 1500));
     chunks.forEach((data, index) => out(`GYM_TRACKER_V12_DOMAIN_RESULT_CHUNK:${JSON.stringify({ schema_version: 2, nonce, kind: 'chunk', sequence: index + 1, total: chunks.length, data })}\n`));

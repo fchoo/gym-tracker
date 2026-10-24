@@ -124,6 +124,26 @@ describe("v1.2 production Recovery native cleanup", () => {
     },
   );
 
+  it.each(["pre-transaction", "relaunch", "post-acknowledgement"] as const)(
+    "keeps the runtime open while successful %s publication is pending",
+    async (cutId) => {
+      const fixture = armFailureFixture("publication");
+      let finishPublication!: () => void;
+      const pending = new Promise<void>((resolve) => { finishPublication = resolve; });
+      const progress = jest.fn(() => pending);
+      void fixture.executor.arm({
+        ...identity, caseId: "restore", stepId: "restore-commit", cutId, progress,
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(progress).toHaveBeenCalledTimes(1);
+      const expectedClosed = cutId === "relaunch" ? 1 : 0;
+      expect(fixture.runtime.close).toHaveBeenCalledTimes(expectedClosed);
+      finishPublication();
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(fixture.runtime.close).toHaveBeenCalledTimes(expectedClosed);
+    },
+  );
+
   it("accepts only Expo's missing-database result for fresh nonce-owned cleanup", async () => {
     jest.mocked(deleteDatabaseAsync).mockRejectedValue(Object.assign(new Error("Database not found"), { code: "ERR_DATABASE_NOT_FOUND" }));
     await expect(createV12ProductionRecoveryNativeExecutor().cleanup(identity)).resolves.toBeUndefined();

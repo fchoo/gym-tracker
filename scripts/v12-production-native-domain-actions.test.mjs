@@ -75,6 +75,17 @@ test('Recovery derives all 14 command steps by 8 cuts from durable native readba
   assert.doesNotMatch(xml, /name="app_status"|name="app_verdict"/u);
   assert.equal(r.readState().domainCalls.length, 224);
 });
+for (const chunkMutation of [undefined, 'reordered', 'duplicate-identical']) test(`Recovery reconstructs retained digest-scoped arm/recover publications: ${chunkMutation ?? 'complete'}`, (t) => {
+  const r = fixture(t); r.updateState({ retainedRecoveryChunks: true, chunkMutation });
+  const report = success(r.invoke('recovery'));
+  assert.equal((report.junit_xml.match(/<testcase\b/gu) ?? []).length, 112);
+  assert.equal(r.readState().domainCalls.length, 224);
+});
+for (const chunkMutation of ['unknown-field', 'bad-digest', 'conflicting-data', 'wrong-total', 'missing', 'oversized-data', 'oversized-bytes', 'altered-data', 'duplicate-terminal', 'ambiguous-legacy']) test(`Recovery rejects digest-scoped ${chunkMutation}`, (t) => {
+  const r = fixture(t); r.updateState({ retainedRecoveryChunks: true, chunkMutation });
+  bounded(r.invoke('recovery'), chunkMutation === 'duplicate-terminal' ? 'marker_duplicate' : 'marker_invalid');
+  assert.equal(existsSync(path.join(r.scratch, 'lock')), false);
+});
 test('Recovery is reachable through the production adapter and checked-in default launcher subprocess', (t) => {
   const r = fixture(t); const xml = success(r.invokeDefault('recovery')).junit_xml;
   assert.equal((xml.match(/<testcase\b/gu) ?? []).length, 112);
