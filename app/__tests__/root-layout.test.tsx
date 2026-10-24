@@ -16,6 +16,7 @@ let mockNativeContractsEnabled = true;
 let mockNativeContractSuite: string | null = null;
 let mockPathname = "/__phase2-attended-preview";
 let mockSearchParams: Record<string, string> = {};
+let mockGlobalSearchParams: Record<string, string> | undefined;
 let mockSafeAreaInsets = { bottom: 0, left: 0, right: 0, top: 0 };
 const mockRuntimeProviderMounted = jest.fn();
 const mockRuntimeProviderDependencies = jest.fn();
@@ -80,6 +81,7 @@ jest.mock("expo-router", () => {
     Stack,
     usePathname: () => mockPathname,
     useLocalSearchParams: () => mockSearchParams,
+    useGlobalSearchParams: () => mockGlobalSearchParams ?? mockSearchParams,
   };
 });
 
@@ -277,6 +279,7 @@ describe("RootLayout attended preview isolation", () => {
     mockNativeContractSuite = null;
     mockPathname = "/__phase2-attended-preview";
     mockSearchParams = {};
+    mockGlobalSearchParams = undefined;
     mockSafeAreaInsets = { bottom: 0, left: 0, right: 0, top: 0 };
     mockRuntimeProviderMounted.mockClear();
     mockRuntimeProviderDependencies.mockClear();
@@ -614,6 +617,37 @@ describe("RootLayout attended preview isolation", () => {
       calendarFixture: databaseName,
     });
     expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+  });
+
+  it("pairs the Recovery pathname with global identity while root local parameters are empty", async () => {
+    mockPathname = "/__v12-production-recovery";
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockSearchParams = {};
+    mockGlobalSearchParams = {
+      nonce: "b".repeat(32),
+      caseId: "legacy-playback",
+      stepId: "legacy-start",
+      cutId: "pre-transaction",
+      phase: "arm",
+    };
+    await render(<RootLayout />);
+    expect(screen.getByTestId("root-stack-screen-__v12-production-recovery")).toBeOnTheScreen();
+    expect(mockRuntimeProviderDependencies).toHaveBeenCalledWith({ recoveryFixture: `gym-tracker-phase20-recovery-shell-${"b".repeat(32)}.db` });
+    expect(screen.queryByTestId("evidence-route-disabled")).not.toBeOnTheScreen();
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed global Recovery identity instead of using stale local parameters", async () => {
+    mockPathname = "/__v12-production-recovery";
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockSearchParams = {
+      nonce: "a".repeat(32), caseId: "legacy-playback", stepId: "legacy-start", cutId: "pre-transaction", phase: "arm",
+    };
+    mockGlobalSearchParams = { ...mockSearchParams, nonce: "invalid" };
+    await render(<RootLayout />);
+    expect(screen.getByTestId("evidence-route-disabled")).toBeOnTheScreen();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    expect(mockCreateRecoveryDependencies).not.toHaveBeenCalled();
   });
 
   it("mounts a loaded Recovery v2 route over a strict nonce-scoped runtime", async () => {

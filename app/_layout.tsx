@@ -1,7 +1,7 @@
 import React from "react";
 import Constants from "expo-constants";
 import { useFonts } from "expo-font";
-import { Redirect, Stack, useLocalSearchParams, usePathname } from "expo-router";
+import { Redirect, Stack, useGlobalSearchParams, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import {
   Keyboard,
@@ -432,7 +432,9 @@ function RootLayoutAttempt({
   const phase14FontProofEnabled = nativeContractsEnabled
     && nativeContractSuite === "phase14-font-proof";
   const pathname = usePathname();
-  const searchParams = useLocalSearchParams() as Readonly<Record<string, unknown>>;
+  // The root switches runtimes from the global pathname; parameters must come
+  // from that same URL rather than this layout's local route context.
+  const searchParams = useGlobalSearchParams() as Readonly<Record<string, unknown>>;
   const phase20VisualPath = pathname === PHASE20_VISUAL_ROUTE;
   const attendedPreviewPath = pathname === "/__phase2-attended-preview";
   const phase6GestureSmokePath = pathname === "/__phase6-gesture-smoke";
