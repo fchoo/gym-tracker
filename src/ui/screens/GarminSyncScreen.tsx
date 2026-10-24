@@ -324,7 +324,7 @@ function normalizeLocalTime(value: string): string | null {
 
 function validTimeZone(value: string): boolean {
   if (value.trim() !== value || value.length < 1 || value.length > 120
-    || !/^[A-Za-z0-9._+-]+(?:\/[A-Za-z0-9._+-]+)*$/u.test(value)) return false;
+    || !/^[A-Za-z][A-Za-z0-9._+-]*(?:\/[A-Za-z0-9._+-]+)*$/u.test(value)) return false;
   try {
     new Intl.DateTimeFormat("en", { timeZone: value }).format(new Date(0));
     return true;

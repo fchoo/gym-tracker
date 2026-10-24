@@ -527,7 +527,7 @@ describe("GarminSyncScreen shared shell and disconnect contracts", () => {
     expect(confirmPendingDateReview).not.toHaveBeenCalled();
   });
 
-  it.each(["UTC+08:00", "Asia/NotAZone", " Asia/Singapore", "Asia/Singapore ", "", "x".repeat(121)])(
+  it.each(["UTC+08:00", "+08", "+0800", "-08", "Asia/NotAZone", " Asia/Singapore", "Asia/Singapore ", "", "x".repeat(121)])(
     "keeps an invalid timezone %j outside date confirmation",
     async (timeZone) => {
       const confirmPendingDateReview = jest.fn(async () => ({
