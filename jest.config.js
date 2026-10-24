@@ -5,6 +5,9 @@ const shared = {
   testPathIgnorePatterns: ["/node_modules/", "/android/", "/ios/"],
 };
 
+const nativeRouterTransformIgnorePatterns = require("jest-expo/jest-preset").transformIgnorePatterns
+  .map((pattern) => pattern.replace("standard-navigation)", "standard-navigation|decode-uri-component)"));
+
 module.exports = {
   ...shared,
   collectCoverageFrom: [
@@ -62,7 +65,17 @@ module.exports = {
       testPathIgnorePatterns: [
         ...shared.testPathIgnorePatterns,
         "/src/ui/garmin/useGarminConnectionController\\.test\\.tsx$",
+        "/app/__tests__/recovery-router-transition\\.test\\.tsx$",
       ],
+    },
+    {
+      ...shared,
+      displayName: "native-router",
+      preset: "jest-expo",
+      testEnvironment: "node",
+      moduleFileExtensions: ["native.ts", "native.tsx", "native.js", ...shared.moduleFileExtensions],
+      transformIgnorePatterns: nativeRouterTransformIgnorePatterns,
+      testMatch: ["<rootDir>/app/__tests__/recovery-router-transition.test.tsx"],
     },
     {
       ...shared,
