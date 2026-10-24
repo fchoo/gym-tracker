@@ -91,8 +91,12 @@ export function canonicalizeGarminPayload(value: unknown): string {
       write("[");
       for (let index = 0; index < child.length; index += 1) {
         if (ownKeys[index] !== String(index)) fail("garmin_json_invalid");
+        const descriptor = Object.getOwnPropertyDescriptor(child, String(index));
+        if (descriptor === undefined || descriptor.enumerable !== true || !("value" in descriptor)) {
+          fail("garmin_json_invalid");
+        }
         if (index > 0) write(",");
-        visit(child[index], depth + 1);
+        visit(descriptor.value, depth + 1);
       }
       write("]");
       return;

@@ -10,6 +10,29 @@ import {
 const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
 
 describe("canonical Garmin payload", () => {
+  it("rejects array index accessors before invoking them and rejects hidden index values", () => {
+    let reads = 0;
+    const accessor = Object.defineProperty([1], "0", { enumerable: true, get: () => { reads += 1; return 1; } });
+    expect(() => canonicalizeGarminPayload(accessor)).toThrow("garmin_json_invalid");
+    expect(reads).toBe(0);
+    const hidden = Object.defineProperty([1], "0", { enumerable: false, value: 1 });
+    expect(() => canonicalizeGarminPayload(hidden)).toThrow("garmin_json_invalid");
+    expect(canonicalizeGarminPayload(Object.freeze([1, null]))).toBe("[1,null]");
+  });
+
+  it("rejects an array index whose data descriptor disappears without reading the value", () => {
+    let reads = 0;
+    const ghost = new Proxy([1], {
+      getOwnPropertyDescriptor: (target, property) => property === "0" ? undefined : Reflect.getOwnPropertyDescriptor(target, property),
+      get: (target, property, receiver) => {
+        if (property === "0") reads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    expect(() => canonicalizeGarminPayload(ghost)).toThrow("garmin_json_invalid");
+    expect(reads).toBe(0);
+  });
+
   it("sorts object keys by binary code-unit order while preserving array order", () => {
     expect(canonicalizeGarminPayload({
       z: [3, 1, 2],
