@@ -52,10 +52,14 @@ if (command.slice(0,3).join(' ') === 'pm list instrumentation') {
   process.stdout.write(String(state.processId) + ' (gymtracker) S ' + Array(18).fill('0').join(' ') + ' ' + String(state.processStartTicks));
 } else if (command[0] === 'logcat' && command[1] === '-c') {
   record();
+  if (state.forbidSharedLogClear) process.exit(76);
   state.coldLog = ''; save();
 } else if (command[0] === 'logcat' && command.includes('monotonic')) {
   record();
-  if (!state.missingColdReady) process.stdout.write(state.coldLog ?? '');
+  const pidIndex = command.indexOf('--pid');
+  const selectedPid = pidIndex < 0 ? undefined : command[pidIndex + 1];
+  if (state.requireCurrentPidLogs && selectedPid !== String(state.processId)) process.exit(77);
+  if (!state.missingColdReady) process.stdout.write(selectedPid === undefined ? state.coldLog ?? '' : state.coldLogByPid?.[selectedPid] ?? '');
 } else if (command[0] === 'am' && command[1] === 'force-stop') {
   record();
   if (state.failStop) { process.stderr.write('private-device /Users/private bearer'); process.exit(1); }
@@ -77,8 +81,10 @@ if (command.slice(0,3).join(' ') === 'pm list instrumentation') {
     database_name:'gym-tracker-phase20-quality-'+nonce+'-workout.db',root:rootName,fixture_id:fixtureId,state_id:stateId,configuration_id:'quality-workout-performance-f200',
     sqlite_receipt_sha256:hashValue(state.mutateColdSource && sequence === 2 ? 'source:mutated' : 'source:stable'),readiness_sha256:hashValue('ready:'+sequence),payload:{root:rootName}};
   const marker = {...unsigned,receipt_sha256:hashValue(canonical(unsigned))}; const readySeconds = state.processStartTicks / 100 + 0.1;
-  state.coldLog = (readySeconds - 0.01).toFixed(3) + ' I/ReactNativeJS: GYM_TRACKER_PHASE20_WORKLOAD:' + JSON.stringify(callback) + '\n'
-    + readySeconds.toFixed(3) + ' I/ReactNativeJS: GYM_TRACKER_PHASE20_WORKLOAD:' + JSON.stringify(marker) + '\n'; save();
+  const currentColdLog = (readySeconds - 0.01).toFixed(3) + ' I/ReactNativeJS: GYM_TRACKER_PHASE20_WORKLOAD:' + JSON.stringify(callback) + '\n'
+    + readySeconds.toFixed(3) + ' I/ReactNativeJS: GYM_TRACKER_PHASE20_WORKLOAD:' + JSON.stringify(marker) + '\n';
+  state.coldLog = (state.coldLog ?? '') + currentColdLog;
+  state.coldLogByPid = { ...(state.coldLogByPid ?? {}), [state.processId]: currentColdLog }; save();
   process.stdout.write('Status: ok\n');
 } else if (command[0] === 'am' && command[1] === 'instrument') {
   record();
@@ -200,6 +206,22 @@ test("production subprocess returns the complete native performance raw schema u
     V12_QUALITY_COMMAND_GRAPH.performance.length);
   assert.equal(result.samples.garmin_sync_normalization.baseline.source, "phase20-current-source-baseline/v1");
 });
+test("cold launch preserves shared logs and reads each new process without clearing buffers", (t) => {
+  const runner = fixture(t);
+  const retained = '150.000 I/OtherApplication: retained unrelated log entry\n';
+  runner.updateState({ coldLog: retained, forbidSharedLogClear: true, requireCurrentPidLogs: true });
+  const result = successful(runner);
+  assert.equal(result.samples.native_receipts.cold_launch_cycles.length, 20);
+  assert.equal(runner.readState().coldLog.startsWith(retained), true);
+  const commands = runner.readState().commands.map((args) => args[3] ?? '');
+  assert.equal(commands.some((command) => command.includes("'logcat' '-c'")), false);
+  const reads = commands.filter((command) => command.includes("'logcat'") && command.includes("'monotonic'"));
+  assert.equal(reads.length, 20);
+  assert.equal(reads.every((command) => command.includes("'--pid'")), true);
+  assert.equal(new Set(result.samples.native_receipts.cold_launch_cycles.map((cycle) => `${cycle.process_id}:${cycle.process_start_ticks}`)).size, 20);
+  released(runner);
+});
+
 test("cold launch rejects a clear-task-style cycle which does not restart the app process", (t) => {
   const runner = fixture(t); runner.updateState({ reuseProcess: true, processId: 2500, processStartTicks: 90_000 });
   rejected(runner.invoke(), "cold_process_not_restarted"); released(runner);

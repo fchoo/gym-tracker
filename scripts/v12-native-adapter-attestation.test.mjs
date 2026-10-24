@@ -507,10 +507,10 @@ test("every adapter action has an explicit bounded timeout and transport budget"
   assert.equal(V12_RECOVERY_ACTION_BUDGET.max_ms,
     Object.values(V12_RECOVERY_COMMAND_GRAPH).reduce((total, path) => total + v12CommandPathMaxMs(path), 0));
   assert.equal(V12_QUALITY_COMMAND_GRAPH.performance_cold_initialization.length, 5);
-  assert.equal(V12_QUALITY_COMMAND_GRAPH.performance_cold_cycle.length, 7);
+  assert.equal(V12_QUALITY_COMMAND_GRAPH.performance_cold_cycle.length, 6);
   assert.equal(V12_QUALITY_WAIT_GRAPH.performance_cold_readiness.length, 20);
   assert.ok(V12_QUALITY_WAIT_GRAPH.performance_cold_readiness.every(({ max_ms: maxMs }) => maxMs === 60_000));
-  assert.equal(V12_QUALITY_COMMAND_GRAPH.performance.length, 216);
+  assert.equal(V12_QUALITY_COMMAND_GRAPH.performance.length, 196);
   assert.equal(V12_QUALITY_COMMAND_GRAPH.accessibility.length, 72);
   for (const action of ["performance", "accessibility"]) {
     const budget = V12_QUALITY_ACTION_BUDGETS[action];

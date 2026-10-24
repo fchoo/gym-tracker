@@ -271,8 +271,8 @@ const qualityColdLaunchInitialization = commands("quality.performance.cold-initi
   "warm-process-id-read", "warm-process-stat-read",
 ], V12_NATIVE_ADB_CALL_TIMEOUT_MS);
 const qualityColdLaunchCycle = commands("quality.performance.cold-cycle", [
-  "logcat-clear", "force-stop", "stopped-process-id-read", "cold-launch",
-  "readiness-logcat-tail", "current-process-id-read", "current-process-stat-read",
+  "force-stop", "stopped-process-id-read", "cold-launch",
+  "current-process-id-read", "current-process-stat-read", "readiness-logcat-tail",
 ], V12_NATIVE_ADB_CALL_TIMEOUT_MS);
 const qualityColdLaunchProcessCycles = concat(...Array.from({ length: 20 }, () => qualityColdLaunchCycle));
 const qualityColdLaunchReadiness = commands(

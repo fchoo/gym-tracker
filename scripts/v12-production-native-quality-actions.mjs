@@ -178,10 +178,10 @@ function processFacts(adbPath, serial) {
   return { processId, processStartTicks };
 }
 
-async function waitForColdReady(adbPath, serial, nonce, sequence) {
+async function waitForColdReady(adbPath, serial, nonce, sequence, processId) {
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
-    const output = shell(adbPath, serial, "logcat", "-d", "-v", "monotonic", "ReactNativeJS:I", "*:S");
+    const output = shell(adbPath, serial, "logcat", "-d", "--pid", String(processId), "-v", "monotonic", "ReactNativeJS:I", "*:S");
     let ready; let routeCallback;
     for (const line of output.split(/\r?\n/u)) {
       const markerAt = line.indexOf("GYM_TRACKER_PHASE20_WORKLOAD:");
@@ -219,14 +219,13 @@ export async function collectV12ColdLaunchEvidence(serial, nonce, sourceTreeSha2
   if (previous === undefined) fail("cold_process_invalid");
   const cycles = [];
   for (let sequence = 1; sequence <= count; sequence += 1) {
-    shell(adbPath, serial, "logcat", "-c");
     shell(adbPath, serial, "am", "force-stop", PACKAGE);
     if (processFacts(adbPath, serial) !== undefined) fail("cold_force_stop_invalid");
     shell(adbPath, serial, "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d",
       `gymtracker-devtest://__phase20-quality-probe?nonce=${nonce}&action=performance&operation=launch-cold&sequence=${sequence}`, PACKAGE);
-    const ready = await waitForColdReady(adbPath, serial, nonce, sequence);
     const current = processFacts(adbPath, serial);
     if (current === undefined || (current.processId === previous.processId && current.processStartTicks === previous.processStartTicks)) fail("cold_process_not_restarted");
+    const ready = await waitForColdReady(adbPath, serial, nonce, sequence, current.processId);
     const processStartMs = current.processStartTicks * 1_000 / hertz;
     if (ready.readyMs <= processStartMs) fail("cold_clock_invalid");
     cycles.push({ sequence, operation: "launch-cold", previous_process_id: previous.processId, process_id: current.processId,
