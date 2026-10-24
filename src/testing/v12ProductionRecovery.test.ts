@@ -1,4 +1,17 @@
 import { describe, expect, it, jest } from "@jest/globals";
+import { createHash } from "node:crypto";
+
+jest.mock("expo-crypto", () => ({ CryptoDigestAlgorithm: { SHA256: "SHA-256" }, digestStringAsync: async (_algorithm: string, body: string) => require("node:crypto").createHash("sha256").update(body).digest("hex") }));
+
+function emittedResult(lines: readonly string[]): Record<string, unknown> {
+  const chunks = lines.filter((line) => line.startsWith("GYM_TRACKER_V12_DOMAIN_RESULT_CHUNK:")).map((line) => JSON.parse(line.slice("GYM_TRACKER_V12_DOMAIN_RESULT_CHUNK:".length)));
+  const terminal = JSON.parse(lines.find((line) => line.startsWith("GYM_TRACKER_V12_DOMAIN_RESULT:"))!.slice("GYM_TRACKER_V12_DOMAIN_RESULT:".length));
+  const body = chunks.map((chunk) => chunk.data).join("");
+  expect(terminal.sha256).toBe(createHash("sha256").update(body).digest("hex"));
+  expect(terminal.total).toBe(chunks.length);
+  expect(lines.every((line) => Buffer.byteLength(line, "utf8") < 3_500)).toBe(true);
+  return JSON.parse(body);
+}
 
 import {
   collectV12ProductionRecoveryPhase,
@@ -165,7 +178,7 @@ describe("v1.2 native Recovery producer boundary", () => {
     const executor: V12ProductionRecoveryExecutor = {
       arm: jest.fn(async (input: V12RecoveryExecutionIdentity) => {
         events.push("validation:started");
-        input.progress({
+        await input.progress({
           barrier_id: "wrong-barrier",
           process_state: "writer-open",
           acknowledgement: "pending",
@@ -228,7 +241,7 @@ describe("v1.2 native Recovery producer boundary", () => {
     const afterCut = snapshot(1, "b");
     const executor: V12ProductionRecoveryExecutor = {
       arm: jest.fn(async (input: V12RecoveryExecutionIdentity) => {
-        input.progress({
+        await input.progress({
           barrier_id: "commit-durable-ack-pending",
           process_state: "writer-open",
           acknowledgement: "pending",
@@ -245,15 +258,20 @@ describe("v1.2 native Recovery producer boundary", () => {
     };
     const lines: string[] = [];
 
+    const onArmed = jest.fn(() => {
+      expect(emittedResult(lines).kind).toBe("ARMED");
+    });
     await collectV12ProductionRecoveryPhase({
       identity,
       phase: "arm",
       emit: (line) => lines.push(line),
       signal: { aborted: false },
       executor,
+      onArmed,
     });
 
-    expect(JSON.parse(lines[0]!.slice("GYM_TRACKER_V12_DOMAIN_PROGRESS:".length)))
+    expect(onArmed).toHaveBeenCalledTimes(1);
+    expect(emittedResult(lines))
       .toEqual(expect.objectContaining({
         schema_version: 2,
         nonce: identity.nonce,
@@ -297,10 +315,8 @@ describe("v1.2 native Recovery producer boundary", () => {
       executor,
     })).resolves.toBe("observed");
 
-    expect(lines).toHaveLength(1);
-    const value = JSON.parse(lines[0]!.slice(
-      "GYM_TRACKER_V12_DOMAIN_RESULT:".length,
-    ));
+    expect(lines.length).toBeGreaterThan(1);
+    const value = emittedResult(lines);
     expect(value).toEqual({
       schema_version: 2,
       nonce: identity.nonce,

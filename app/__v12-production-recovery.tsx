@@ -7,6 +7,7 @@ import {
   collectV12ProductionRecoveryPhase,
   v12ProductionRecoveryEnabled,
 } from "../src/testing/v12ProductionRecovery";
+import { V12RecoveryRootContext } from "../src/testing/v12RecoveryRootContext";
 
 type RoutePhase = "arm" | "recover";
 type RouteState = "executing" | "armed" | "observed" | "failed";
@@ -21,12 +22,9 @@ function RecoveryExecution(input: Readonly<{
     void collectV12ProductionRecoveryPhase({
       identity: input.identity,
       phase: input.phase,
+      onArmed: () => { if (!controller.signal.aborted) setState("armed"); },
       emit: (line) => {
         console.info(line);
-        if (line.startsWith("GYM_TRACKER_V12_DOMAIN_PROGRESS:")
-          && line.includes('"kind":"ARMED"')) {
-          setState("armed");
-        }
       },
       signal: controller.signal,
     }).then((result) => {
@@ -60,6 +58,7 @@ function RecoveryExecution(input: Readonly<{
 }
 
 export default function V12ProductionRecoveryRoute() {
+  const rootScope = React.useContext(V12RecoveryRootContext);
   const {
     nonce,
     caseId,
@@ -87,5 +86,10 @@ export default function V12ProductionRecoveryRoute() {
   const enabled = (phase === "arm" || phase === "recover")
     && v12ProductionRecoveryEnabled(identity);
   if (!enabled) return <Redirect href="/" />;
+  // A deep link can mount the leaf in the previous navigator before the root
+  // replaces it. Only the validated isolated branch may start native work.
+  if (rootScope?.databaseName !== `gym-tracker-phase20-recovery-shell-${nonce}.db`) {
+    return <View><Text accessibilityRole="header">Preparing recovery route</Text></View>;
+  }
   return <RecoveryExecution identity={identity} phase={phase as RoutePhase} />;
 }

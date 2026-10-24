@@ -1371,14 +1371,14 @@ function cutDefinition(cutId: string) {
   return cut;
 }
 
-function emitArmed(
+async function emitArmed(
   input: V12RecoveryExecutionIdentity,
   before: V12RecoveryDurableSnapshot,
   afterCut: V12RecoveryDurableSnapshot,
   firstAttemptCode: string,
-): Promise<never> {
+): Promise<void> {
   const cut = cutDefinition(input.cutId);
-  input.progress({
+  await input.progress({
     barrier_id: cut.barrierId,
     process_state: cut.processState,
     acknowledgement: cut.acknowledgement,
@@ -1389,7 +1389,6 @@ function emitArmed(
     before,
     after_cut: afterCut,
   });
-  return holdOpen();
 }
 
 type RecoveryClosable = Readonly<{ close(): Promise<void> }>;
@@ -1485,9 +1484,9 @@ export function createV12ProductionRecoveryNativeExecutor(
         const armOnce = async (code: string) => {
           if (armed) throw new Error("v12_recovery_barrier_duplicate");
           const afterCut = await dependencies.readSnapshot(runtime.kernel, operation, input);
-          const barrier = emitArmed(input, before, afterCut, code);
+          await emitArmed(input, before, afterCut, code);
           armed = true;
-          return barrier;
+          return holdOpen();
         };
         const observer: SqliteKernelTestObserver = UNCOMMITTED_CUTS.has(input.cutId)
           && !["pre-transaction", "retry"].includes(input.cutId)
@@ -1510,9 +1509,9 @@ export function createV12ProductionRecoveryNativeExecutor(
             throw error;
           }
           const afterCut = await dependencies.readSnapshot(runtime.kernel, operation, input);
-          const barrier = emitArmed(input, before, afterCut, "first-attempt-failed");
+          await emitArmed(input, before, afterCut, "first-attempt-failed");
           armed = true;
-          return barrier;
+          return holdOpen();
         }
         if (input.cutId === "relaunch") {
           await closeRecoveryResources(resources);

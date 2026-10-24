@@ -57,6 +57,7 @@ import {
   createStrictIsolatedWorkoutRuntimeDependencies,
   resolveV12RecoveryIsolatedRuntime,
 } from "../src/testing/isolatedWorkoutRuntime";
+import { V12RecoveryRootContext } from "../src/testing/v12RecoveryRootContext";
 import {
   resolveV12NativeAcceptanceProductRequest,
   createV12NativeAcceptanceAppearanceStore,
@@ -822,7 +823,9 @@ function RootLayoutAttempt({
               <Redirect href="/" />
             ) : (
               <WorkoutAppRuntimeProvider dependencies={v12ProductionRecoveryDependencies}>
-                <V12ProductionRecoveryNavigator />
+                <V12RecoveryRootContext.Provider value={v12ProductionRecoveryRuntime}>
+                  <V12ProductionRecoveryNavigator />
+                </V12RecoveryRootContext.Provider>
               </WorkoutAppRuntimeProvider>
             )}
           </AppearanceProvider>

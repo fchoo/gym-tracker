@@ -61,7 +61,7 @@ function snapshot(): V12RecoveryDurableSnapshot {
   };
 }
 
-function armFailureFixture(stage: "setup" | "command" | "barrier" | "validation") {
+function armFailureFixture(stage: "setup" | "command" | "barrier" | "validation" | "publication" | "retry-publication") {
   const events: string[] = [];
   const closeable = (name: string) => ({
     close: jest.fn(async () => {
@@ -98,6 +98,7 @@ function armFailureFixture(stage: "setup" | "command" | "barrier" | "validation"
     runOperation: async () => {
       events.push("command");
       if (stage === "command") throw new Error("command_failed");
+      if (stage === "retry-publication") throw new Error("v12_recovery_first_attempt_failed");
       return "completed";
     },
   });
@@ -108,6 +109,20 @@ describe("v1.2 production Recovery native cleanup", () => {
   beforeEach(() => {
     jest.mocked(deleteDatabaseAsync).mockReset();
   });
+
+  it.each(["pre-transaction", "retry"] as const)(
+    "closes native resources when awaited %s ARMED publication rejects",
+    async (cutId) => {
+      const fixture = armFailureFixture(cutId === "retry" ? "retry-publication" : "publication");
+      const failure = new Error("publication_failed");
+      await expect(fixture.executor.arm({
+        ...identity, caseId: "restore", stepId: "restore-commit", cutId,
+        progress: async () => { throw failure; },
+      })).rejects.toBe(failure);
+      expect(fixture.runtime.close).toHaveBeenCalledTimes(1);
+      expect(fixture.events.at(-1)).toBe("close:runtime");
+    },
+  );
 
   it("accepts only Expo's missing-database result for fresh nonce-owned cleanup", async () => {
     jest.mocked(deleteDatabaseAsync).mockRejectedValue(Object.assign(new Error("Database not found"), { code: "ERR_DATABASE_NOT_FOUND" }));

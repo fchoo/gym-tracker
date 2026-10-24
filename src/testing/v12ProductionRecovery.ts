@@ -4,9 +4,8 @@ import {
   V12_RECOVERY_CUTS,
   V12_RECOVERY_SCENARIOS,
 } from "./contracts/v12Recovery.contract";
+import { publishV12RecoveryLog } from "./v12RecoveryLogTransport";
 
-const RESULT_PREFIX = "GYM_TRACKER_V12_DOMAIN_RESULT:";
-const PROGRESS_PREFIX = "GYM_TRACKER_V12_DOMAIN_PROGRESS:";
 const HASH = /^[a-f0-9]{64}$/u;
 const NONCE = /^[a-f0-9]{32}$/u;
 const caseIds = new Set<string>(V12_RECOVERY_CASES.map(({ id }) => id));
@@ -146,7 +145,7 @@ export type V12RecoveryExecutionIdentity = Readonly<{
   stepId: string;
   cutId: string;
   signal: Readonly<{ aborted: boolean }>;
-  progress(value: V12RecoveryArmProgress): void;
+  progress(value: V12RecoveryArmProgress): void | Promise<void>;
   setupStage?(stage: string): void;
 }>;
 
@@ -312,6 +311,7 @@ export async function collectV12ProductionRecoveryPhase(input: Readonly<{
   emit(line: string): void;
   signal: Readonly<{ aborted: boolean }>;
   executor?: V12ProductionRecoveryExecutor;
+  onArmed?(): void;
 }>): Promise<"armed" | "observed"> {
   if (!v12ProductionRecoveryEnabled(input.identity)) {
     throw new Error("v12_recovery_disabled");
@@ -329,7 +329,7 @@ export async function collectV12ProductionRecoveryPhase(input: Readonly<{
         input.emit(`GYM_TRACKER_V12_RECOVERY_SETUP:${JSON.stringify({ schema_version: 1, nonce: input.identity.nonce, stage })}`);
       } catch { /* diagnostics cannot change the setup outcome */ }
     },
-    progress: (value) => {
+    progress: async (value) => {
       const caseId = input.identity.caseId as string;
       const stepId = input.identity.stepId as string;
       const cutId = input.identity.cutId as string;
@@ -338,9 +338,9 @@ export async function collectV12ProductionRecoveryPhase(input: Readonly<{
       }
       const scenario = V12_RECOVERY_SCENARIOS.find(({ id }) => id === caseId)!;
       const step = scenario.steps.find(({ id }) => id === executionIdentity.stepId)!;
-      input.emit(`${PROGRESS_PREFIX}${JSON.stringify({
+      await publishV12RecoveryLog({
         schema_version: 2,
-        nonce: input.identity.nonce,
+        nonce: executionIdentity.nonce,
         sequence: 1,
         kind: "ARMED",
         case_id: caseId,
@@ -350,7 +350,8 @@ export async function collectV12ProductionRecoveryPhase(input: Readonly<{
         boundary_id: step.boundaryId,
         receipt_kind: step.receiptKind,
         ...value,
-      })}`);
+      }, input.emit, { assertCurrent: () => active(input.signal) });
+      input.onArmed?.();
     },
   });
   const executor = input.executor ?? nativeExecutor();
@@ -380,13 +381,13 @@ export async function collectV12ProductionRecoveryPhase(input: Readonly<{
     await executor.cleanup(executionIdentity);
   }
   active(input.signal);
-  input.emit(`${RESULT_PREFIX}${JSON.stringify({
+  await publishV12RecoveryLog({
     schema_version: 2,
     nonce: executionIdentity.nonce,
     kind: "recovery",
     case_id: executionIdentity.caseId,
     cut_id: executionIdentity.cutId,
     ...observation,
-  })}`);
+  }, input.emit, { assertCurrent: () => active(input.signal) });
   return "observed";
 }

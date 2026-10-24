@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals
 import React from "react";
 
 import V12ProductionRecoveryRoute from "../__v12-production-recovery";
+import { V12RecoveryRootContext } from "../../src/testing/v12RecoveryRootContext";
 
 let mockProfile = "development-test";
 let mockParams: Record<string, string>;
@@ -41,6 +42,9 @@ jest.mock("../../src/testing/v12ProductionRecovery", () => {
 });
 
 describe("V12ProductionRecoveryRoute", () => {
+  async function renderScopedRoute() {
+    return render(<V12RecoveryRootContext.Provider value={{ databaseName: `gym-tracker-phase20-recovery-shell-${mockParams.nonce}.db` }}><V12ProductionRecoveryRoute /></V12RecoveryRootContext.Provider>);
+  }
   beforeEach(() => {
     mockProfile = "development-test";
     mockParams = {
@@ -56,8 +60,22 @@ describe("V12ProductionRecoveryRoute", () => {
 
   afterEach(() => cleanup());
 
+  it("waits for the validated root scope before starting native Recovery", async () => {
+    const rendered = await render(<V12ProductionRecoveryRoute />);
+    expect(mockRun).not.toHaveBeenCalled();
+    expect(screen.getByText("Preparing recovery route")).toBeOnTheScreen();
+    await rendered.rerender(<V12RecoveryRootContext.Provider value={{ databaseName: `gym-tracker-phase20-recovery-shell-${mockParams.nonce}.db` }}><V12ProductionRecoveryRoute /></V12RecoveryRootContext.Provider>);
+    await waitFor(() => expect(mockRun).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not borrow a different nonce's root scope", async () => {
+    await render(<V12RecoveryRootContext.Provider value={{ databaseName: `gym-tracker-phase20-recovery-shell-${"b".repeat(32)}.db` }}><V12ProductionRecoveryRoute /></V12RecoveryRootContext.Provider>);
+    expect(mockRun).not.toHaveBeenCalled();
+    expect(screen.getByText("Preparing recovery route")).toBeOnTheScreen();
+  });
+
   it("executes the arm phase and exposes a concrete kill point", async () => {
-    await render(<V12ProductionRecoveryRoute />);
+    await renderScopedRoute();
 
     await waitFor(() => expect(screen.getByText("Recovery cut armed")).toBeOnTheScreen());
     expect(mockRun).toHaveBeenCalledWith(expect.objectContaining({
@@ -74,7 +92,7 @@ describe("V12ProductionRecoveryRoute", () => {
     mockParams.phase = "recover";
     mockRun.mockResolvedValue("observed");
 
-    await render(<V12ProductionRecoveryRoute />);
+    await renderScopedRoute();
 
     await waitFor(() => expect(screen.getByText("Recovery observation complete")).toBeOnTheScreen());
     expect(mockRun).toHaveBeenCalledWith(expect.objectContaining({ phase: "recover" }));
@@ -82,7 +100,7 @@ describe("V12ProductionRecoveryRoute", () => {
 
   it("cannot render or execute under the production identity", async () => {
     mockProfile = "production";
-    const rendered = await render(<V12ProductionRecoveryRoute />);
+    const rendered = await renderScopedRoute();
 
     expect(rendered.getByTestId("recovery-route-disabled")).toBeOnTheScreen();
     expect(mockRun).not.toHaveBeenCalled();
@@ -104,7 +122,7 @@ describe("V12ProductionRecoveryRoute", () => {
       });
 
       try {
-        await render(<V12ProductionRecoveryRoute />);
+        await renderScopedRoute();
         expect(terminal).toEqual([]);
         await act(async () => rejectAfterCleanup?.(new Error(`${stage}_failed`)));
         await waitFor(() => expect(screen.getByText("Recovery observation failed")).toBeOnTheScreen());
