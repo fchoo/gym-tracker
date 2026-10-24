@@ -367,6 +367,10 @@ test("Phase 20 fake-device pipeline exercises every CLI but cannot publish prese
   rmSync(path.join(root, "artifacts/native/v1.2", run, "failures/calendar.json"));
   pass(root, "scripts/v12-calendar-shard.mjs", ["--run", run, "--execute", "--test-fixture"]);
   for (const shard of ["multi-plan", "workout", "library-running"]) pass(root, "scripts/run-v12-maestro.mjs", ["--run", run, "--shard", shard]);
+  const sdkCalls = readFileSync(path.join(root, "artifacts/fake-sdk-calls.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
+  assert.equal(sdkCalls.length, 101);
+  assert.equal(new Set(sdkCalls.map(call => call.case_id)).size, 101);
+  assert.ok(sdkCalls.every(call => call.protocol === "sdk-flow" && call.deadline_ms === 594000));
   const published = shard => existsSync(path.join(root, "artifacts/native/v1.2", run, "publication", `${shard}.json`));
   for (const [script, execute, shard] of [["scripts/capture-v12-visual.mjs", "--all", "visual"], ["scripts/compare-v12-visual.mjs", "--all", "comparison"], ["scripts/v12-accessibility-shard.mjs", "--execute", "accessibility"], ["scripts/v12-performance-shard.mjs", "--execute", "performance"]]) {
     if (!published(shard)) pass(root, script, ["--run", run, execute]);

@@ -32,7 +32,19 @@ async function main() {
       output("2.8.0\n");
       return 0;
     }
-    const report = args[args.indexOf("--output") + 1];
+    if (args[0] === "sdk-flow") {
+      const { appendFileSync, mkdirSync } = await import("node:fs");
+      const { join } = await import("node:path");
+      const deadline = Number(args[args.indexOf("--deadline-ms") + 1]);
+      if (!Number.isSafeInteger(deadline) || deadline < 1 || deadline > 600000) return 64;
+      mkdirSync(join(process.cwd(), "artifacts"), { recursive: true });
+      appendFileSync(join(process.cwd(), "artifacts/fake-sdk-calls.jsonl"), `${JSON.stringify({
+        protocol: "sdk-flow", deadline_ms: deadline,
+        case_id: args.find(value => value.startsWith("V12_CASE_ID="))?.slice("V12_CASE_ID=".length) ?? null,
+      })}\n`, { mode: 0o600 });
+    }
+    const reportFlag = args[0] === "sdk-flow" ? "--junit" : "--output";
+    const report = args[args.indexOf(reportFlag) + 1];
     if (report) {
       const { mkdirSync, writeFileSync } = await import("node:fs");
       const { dirname } = await import("node:path");

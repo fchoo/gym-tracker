@@ -1,6 +1,6 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { accessSync, constants, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { accessSync, chmodSync, closeSync, constants, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { validateV12RunManifest as validateGenericV12RunManifest } from "./create-v12-run-manifest.mjs";
@@ -48,6 +48,8 @@ import {
   createV12PosixProcessTreeTracker,
   V12_POSIX_OWNERSHIP_ENV,
 } from "./v12-posix-process-tree.mjs";
+import { inspectSafeSdkToolchain, prepareSafeMaestroSdk, resolveSafeSdkToolchain, safeSdkArguments, verifySafeSdkBinding } from "./v12-maestro-safe-sdk.mjs";
+import { junitOutcome } from "./v12-production-domain-receipts.mjs";
 
 const ROOT = process.cwd();
 const FLOW = "maestro/v1.2/calendar.yaml";
@@ -96,6 +98,218 @@ export const V12_MAESTRO_COMMAND_BUDGETS = Object.freeze({
   term_grace_ms: 5_000,
   kill_grace_ms: 5_000,
 });
+
+const DIRECT_SDK_CLEANUP_MS = 6_000;
+const DIRECT_SDK_SOURCES = Object.freeze(["SafeFlow.kt", "SafeMaestro.kt", "SessionOwnedDriver.kt"]);
+const CONTROLLED_SDK_JAR = Buffer.from("NON_NATIVE_TEST_ONLY_DIRECT_SDK_FLOW/v1\n");
+
+function directSdkPaths(runId, shard) {
+  if (!V12_RUN_ID.test(runId ?? "") || ![...LIVE_GENERIC_SHARDS, "recovery"].includes(shard)) genericFail("safe_sdk_attestation_invalid");
+  const prefix = `artifacts/native/v1.2/${runId}/tools/direct-${shard}`;
+  return { receipt: `${prefix}-receipt.json`, jar: `${prefix}-runner.jar` };
+}
+
+function directSdkFile(root, relative, output = false) {
+  if (typeof relative !== "string" || path.isAbsolute(relative) || relative.includes("\\")
+    || relative.split("/").some(part => !part || part === "." || part === "..")) genericFail("safe_sdk_attestation_invalid");
+  const base = realpathSync(root);
+  let cursor = base;
+  for (const part of relative.split("/")) {
+    cursor = path.join(cursor, part);
+    const stat = lstatSync(cursor, { throwIfNoEntry: false });
+    if (stat?.isSymbolicLink() || (!output && stat === undefined)) genericFail("safe_sdk_attestation_invalid");
+  }
+  if (!output && !lstatSync(cursor).isFile()) genericFail("safe_sdk_attestation_invalid");
+  return cursor;
+}
+
+function sdkStableIdentity(receipt) {
+  const { jar_sha256: _jarHash, ...identity } = receipt;
+  return identity;
+}
+
+export function readV12DirectSafeSdkIdentity({ root = ROOT, toolchain = resolveSafeSdkToolchain(), runCommand } = {}) {
+  const tools = inspectSafeSdkToolchain(toolchain, runCommand);
+  return {
+    schema_version: 1, engine: "official-maestro-sdk/artifacts-disabled", node_version: process.versions.node,
+    wrapper_sha256: sourceSha256(path.join(root, "scripts/v12-maestro-safe-sdk.mjs")),
+    sources: Object.fromEntries(DIRECT_SDK_SOURCES.map(name => [name, sourceSha256(path.join(root, "scripts/maestro-safe-sdk", name))])),
+    toolchain: tools.receipt,
+  };
+}
+
+export function validateV12DirectSafeSdkAttestation(value, { root = ROOT, runId, shard, testOnly = false,
+  readIdentity = readV12DirectSafeSdkIdentity } = {}) {
+  try {
+    const paths = directSdkPaths(runId, shard);
+    if (!exactKeys(value, ["schema_version", "identity_sha256", "receipt_path", "receipt_sha256", "jar_path", "jar_sha256"])
+      || value.schema_version !== 1 || value.receipt_path !== paths.receipt || value.jar_path !== paths.jar
+      || ![value.identity_sha256, value.receipt_sha256, value.jar_sha256].every(hash => SHA256.test(hash ?? ""))) genericFail("safe_sdk_attestation_invalid");
+    const receiptBytes = readFileSync(directSdkFile(root, value.receipt_path));
+    const jar = readFileSync(directSdkFile(root, value.jar_path));
+    const receipt = JSON.parse(receiptBytes);
+    if (sha256(receiptBytes) !== value.receipt_sha256 || sha256(jar) !== value.jar_sha256
+      || receipt.jar_sha256 !== value.jar_sha256 || sha256(stableJson(sdkStableIdentity(receipt))) !== value.identity_sha256) genericFail("safe_sdk_attestation_invalid");
+    if (testOnly) {
+      if (!exactKeys(receipt, ["schema_version", "engine", "jar_sha256"]) || receipt.schema_version !== 1
+        || receipt.engine !== "test-controlled/sdk-flow" || !jar.equals(CONTROLLED_SDK_JAR)) genericFail("safe_sdk_attestation_invalid");
+    } else if (!exactKeys(receipt, ["schema_version", "engine", "node_version", "wrapper_sha256", "sources", "toolchain", "jar_sha256"])
+      || stableJson(sdkStableIdentity(receipt)) !== stableJson(readIdentity({ root }))) genericFail("safe_sdk_attestation_invalid");
+  } catch { genericFail("safe_sdk_attestation_invalid"); }
+  return true;
+}
+
+export function prepareV12DirectSafeSdkBinding({ root, runId, shard, tools, dependencies = {} }) {
+  const paths = directSdkPaths(runId, shard);
+  const binding = tools.test_only ? undefined : (dependencies.prepareSafeSdk ?? prepareSafeMaestroSdk)();
+  if (binding !== undefined) (dependencies.verifySafeSdk ?? verifySafeSdkBinding)(binding);
+  const jar = binding === undefined ? CONTROLLED_SDK_JAR : readFileSync(binding.jar);
+  const receipt = binding === undefined ? { schema_version: 1, engine: "test-controlled/sdk-flow", jar_sha256: sha256(jar) } : binding.receipt;
+  if (sha256(jar) !== receipt.jar_sha256) genericFail("safe_sdk_attestation_invalid");
+  const receiptBytes = Buffer.from(`${JSON.stringify(receipt, null, 2)}\n`);
+  for (const [relative, bytes] of [[paths.jar, jar], [paths.receipt, receiptBytes]]) {
+    const file = directSdkFile(root, relative, true);
+    mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    chmodSync(path.dirname(file), 0o700);
+    writeFileSync(file, bytes, { flag: "wx", mode: 0o400 });
+    chmodSync(file, 0o400);
+  }
+  const attestation = Object.freeze({ schema_version: 1, identity_sha256: sha256(stableJson(sdkStableIdentity(receipt))),
+    receipt_path: paths.receipt, receipt_sha256: sha256(receiptBytes), jar_path: paths.jar, jar_sha256: sha256(jar) });
+  const retainedBinding = binding === undefined ? undefined : Object.freeze({ ...binding,
+    jar: directSdkFile(root, paths.jar), receiptPath: directSdkFile(root, paths.receipt) });
+  validateV12DirectSafeSdkAttestation(attestation, { root, runId, shard, testOnly: tools.test_only,
+    readIdentity: dependencies.readSafeSdkIdentity });
+  return { binding, retainedBinding, attestation };
+}
+
+async function runDirectSafeSdkFlow({ root, runId, shard, tools, sdk, run, dependencies, serial, flow, junit, env }) {
+  const request = { serial, flow, junit, env,
+    deadlineMs: V12_MAESTRO_COMMAND_BUDGETS.maestro_case_ms - DIRECT_SDK_CLEANUP_MS };
+  validateV12DirectSafeSdkAttestation(sdk.attestation, { root, runId, shard, testOnly: tools.test_only,
+    readIdentity: dependencies.readSafeSdkIdentity });
+  let output; let processError; let dispatched = false;
+  try {
+    if (dependencies.signal?.aborted) throw new Error("v12_maestro_process_cancelled");
+    if (tools.test_only) {
+      dispatched = true;
+      output = await run(tools.maestro, ["sdk-flow", "--device", serial, "--flow", flow, "--junit", junit,
+      "--deadline-ms", String(request.deadlineMs), ...Object.entries(env).flatMap(([key, value]) => ["-e", `${key}=${value}`])],
+      { timeoutMs: request.deadlineMs + DIRECT_SDK_CLEANUP_MS, maxBuffer: 16 * 1024 * 1024 });
+    }
+    else {
+      const verify = dependencies.verifySafeSdk ?? verifySafeSdkBinding;
+      verify(sdk.binding);
+      verify(sdk.retainedBinding);
+      const args = (dependencies.safeSdkArguments ?? safeSdkArguments)(sdk.retainedBinding, request);
+      if (dependencies.signal?.aborted) throw new Error("v12_maestro_process_cancelled");
+      dispatched = true;
+      output = await run(sdk.retainedBinding.java, args,
+        { timeoutMs: request.deadlineMs + DIRECT_SDK_CLEANUP_MS, maxBuffer: 16 * 1024 * 1024 });
+    }
+  } catch (error) { processError = error; }
+  // The SDK's fixed cleanup failure means its device worker may still act even
+  // after the host process tree is empty. Never restore/remove that ownership.
+  const terminal = dispatched ? directSdkTerminalState(root, junit, processError === undefined ? 0 : 1) : "not-dispatched";
+  if (terminal === "unknown" || terminal === "cleanup-failed") {
+    const error = new Error(terminal === "cleanup-failed" ? "v12_maestro_safe_sdk_cleanup_failed"
+      : processError?.message ?? "v12_maestro_safe_sdk_terminal_missing");
+    error.remoteSdkClosureUnknown = true;
+    throw error;
+  }
+  if (processError !== undefined) throw processError;
+  return output;
+}
+
+function directSdkTerminalState(root, junit, exitCode) {
+  if (!existsSync(junit)) return "unknown";
+  try {
+    const file = directSdkFile(root, path.relative(realpathSync(root), junit));
+    chmodSync(file, 0o600);
+    if (statSync(file).size > 2_000_000) return "unknown";
+    const xml = readFileSync(file, "utf8");
+    let cleanupFailed = false; let recognizedFailure = false;
+    const status = junitOutcome(xml, exitCode, {
+      onSdkCleanupFailure: () => { cleanupFailed = true; },
+      onSdkTerminalFailure: () => { recognizedFailure = true; },
+    });
+    if (cleanupFailed) return "cleanup-failed";
+    return status === "PASS" || (status === "FAIL" && recognizedFailure) ? "closed" : "unknown";
+  } catch { return "unknown"; }
+}
+
+export function readV12DirectLeaseOwner({ platform = process.platform, pid = process.pid,
+  probe = spawnSync, readText = file => readFileSync(file, "utf8") } = {}) {
+  let birth;
+  try {
+    if (!Number.isSafeInteger(pid) || pid < 1) genericFail("lease_owner_invalid");
+    if (platform === "linux") {
+      const boot = readText("/proc/sys/kernel/random/boot_id").trim();
+      const stat = readText(`/proc/${pid}/stat`);
+      const fields = stat.slice(stat.lastIndexOf(") ") + 2).trim().split(/\s+/u);
+      if (!/^[a-f0-9-]{36}$/u.test(boot) || !/^\d+$/u.test(fields[19] ?? "")) genericFail("lease_owner_invalid");
+      birth = sha256(`linux-procfs-v1:${boot}:${pid}:${fields[19]}`);
+    } else {
+      const result = probe("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
+        encoding: "utf8", timeout: 5_000, maxBuffer: 16 * 1024, stdio: ["ignore", "pipe", "ignore"],
+      });
+      if (result.error || result.signal || result.status !== 0 || typeof result.stdout !== "string" || !result.stdout.trim()) genericFail("lease_owner_invalid");
+      birth = sha256(`ps-pid-v1:${pid}:${sha256(result.stdout.trim().replaceAll(/\s+/gu, " "))}`);
+    }
+  } catch { genericFail("lease_owner_invalid"); }
+  return Object.freeze({ pid, process_birth_sha256: birth, nonce: randomBytes(32).toString("hex") });
+}
+
+function acquireDirectLease({ root, runId, shard, serial, manifest, dependencies }) {
+  const relative = `artifacts/native/v1.2/${runId}/.leases/device-${sha256(serial)}.lease`;
+  const file = directSdkFile(root, relative, true);
+  const snapshotFile = directSdkFile(root, `${relative}.snapshot.json`, true);
+  const owner = (dependencies.readLeaseOwner ?? readV12DirectLeaseOwner)();
+  if (!exactKeys(owner, ["pid", "process_birth_sha256", "nonce"]) || !Number.isSafeInteger(owner.pid) || owner.pid < 1
+    || ![owner.process_birth_sha256, owner.nonce].every(value => SHA256.test(value ?? ""))) genericFail("lease_owner_invalid");
+  const identity = { schema_version: 2, run_id: runId, shard, serial_sha256: sha256(serial),
+    device_identity_sha256: manifest.device.identity_sha256, source_tree_sha256: manifest.source.tree_sha256,
+    apk_sha256: manifest.build.apk.sha256, owner };
+  const bytes = `${JSON.stringify(identity)}\n`;
+  mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  if (existsSync(snapshotFile)) genericFail("immutable_output_invalid");
+  try { writeFileSync(file, bytes, { flag: "wx", mode: 0o600 }); }
+  catch { genericFail("immutable_output_invalid"); }
+  syncDirectLease(file);
+  let snapshot;
+  const verifyOwner = () => {
+    if (readFileSync(directSdkFile(root, relative), "utf8") !== bytes) genericFail("lease_owner_changed");
+  };
+  return {
+    verifyOwner,
+    snapshot(value) {
+      verifyOwner();
+      if (snapshot !== undefined) {
+        if (stableJson(snapshot) !== stableJson(value)) genericFail("settings_snapshot_changed");
+        return;
+      }
+      writeFileSync(snapshotFile, `${JSON.stringify({ ...identity, original_settings: value })}\n`, { flag: "wx", mode: 0o600 });
+      syncDirectLease(snapshotFile);
+      snapshot = structuredClone(value);
+    },
+    release() {
+      verifyOwner();
+      if (snapshot !== undefined) {
+        const retained = JSON.parse(readFileSync(directSdkFile(root, `${relative}.snapshot.json`), "utf8"));
+        if (stableJson(retained) !== stableJson({ ...identity, original_settings: snapshot })) genericFail("lease_owner_changed");
+        unlinkSync(snapshotFile);
+      }
+      unlinkSync(file);
+    },
+  };
+}
+
+function syncDirectLease(file) {
+  for (const target of [file, path.dirname(file)]) {
+    const descriptor = openSync(target, "r");
+    try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
+  }
+}
 
 export const V12_MAESTRO_FLOW_CONTRACTS = Object.freeze({
   sqlite: Object.freeze({ flow: "maestro/v1.2/sqlite.yaml", sources: Object.freeze(["scripts/v12-sqlite-shard.mjs"]) }),
@@ -835,11 +1049,15 @@ async function toolVersionAsync(run, name, executable, testOnly) {
   return line;
 }
 
-export function createV12DirectMaestroToolAttestation({ execute = execFileSync, executionTools, shard } = {}) {
+export function createV12DirectMaestroToolAttestation({ execute = execFileSync, executionTools, shard,
+  root = ROOT, runId, retainedSafeSdk, readSafeSdkIdentity } = {}) {
   const tools = resolvedExecutionTools(executionTools);
   if (!LIVE_GENERIC_SHARDS.includes(shard)) genericFail("tool_attestation_invalid");
+  if (retainedSafeSdk !== undefined) validateV12DirectSafeSdkAttestation(retainedSafeSdk, {
+    root, runId, shard, testOnly: tools.test_only, readIdentity: readSafeSdkIdentity,
+  });
   return Object.freeze({
-    schema_version: 1,
+    schema_version: retainedSafeSdk === undefined ? 1 : 2,
     action: shard,
     execution_origin: tools.execution_origin,
     test_only: tools.test_only,
@@ -849,15 +1067,16 @@ export function createV12DirectMaestroToolAttestation({ execute = execFileSync, 
       executable_sha256: sourceSha256(tools[name]),
       version: toolVersion(execute, name, tools[name], tools.test_only),
     }))),
+    ...(retainedSafeSdk === undefined ? {} : { safe_sdk: retainedSafeSdk }),
   });
 }
 
-async function createV12DirectMaestroToolAttestationAsync({ run, executionTools, shard }) {
+async function createV12DirectMaestroToolAttestationAsync({ run, executionTools, shard, safeSdk }) {
   const tools = resolvedExecutionTools(executionTools);
   if (!LIVE_GENERIC_SHARDS.includes(shard)) genericFail("tool_attestation_invalid");
   const versions = await Promise.all(DIRECT_MAESTRO_TOOL_NAMES.map((name) => toolVersionAsync(run, name, tools[name], tools.test_only)));
   return Object.freeze({
-    schema_version: 1,
+    schema_version: 2,
     action: shard,
     execution_origin: tools.execution_origin,
     test_only: tools.test_only,
@@ -867,6 +1086,7 @@ async function createV12DirectMaestroToolAttestationAsync({ run, executionTools,
       executable_sha256: sourceSha256(tools[name]),
       version: versions[index],
     }))),
+    safe_sdk: safeSdk,
   });
 }
 
@@ -1021,9 +1241,10 @@ function assertDirectMaestroMeasurement(manifest, sourceIdentity, apkSha256, mea
   if (measurement.abi !== manifest.device.abi) genericFail("identity_mismatch");
 }
 
-function validateDirectMaestroToolAttestation(value, shard, executionOrigin, allowTest) {
-  if (!exactKeys(value, ["schema_version", "action", "execution_origin", "test_only", "tools"])
-    || value.schema_version !== 1 || value.action !== shard
+function validateDirectMaestroToolAttestation(value, shard, executionOrigin, allowTest, root, runId, readIdentity) {
+  const hasSdk = value?.schema_version === 2;
+  if (!exactKeys(value, ["schema_version", "action", "execution_origin", "test_only", "tools", ...(hasSdk ? ["safe_sdk"] : [])])
+    || ![1, 2].includes(value.schema_version) || (!hasSdk && (!allowTest || value.test_only !== true)) || value.action !== shard
     || value.execution_origin !== executionOrigin.toolchain_origin
     || value.test_only !== executionOrigin.test_only
     || (!allowTest && value.test_only !== false)
@@ -1037,6 +1258,7 @@ function validateDirectMaestroToolAttestation(value, shard, executionOrigin, all
       || /[\u0000-\u001f\u007f]/u.test(descriptor.version)
       || (value.test_only ? descriptor.version !== "test-controlled" : descriptor.version === "test-controlled")) genericFail("tool_attestation_invalid");
   }
+  if (hasSdk) validateV12DirectSafeSdkAttestation(value.safe_sdk, { root, runId, shard, testOnly: value.test_only, readIdentity });
 }
 
 function validateDirectMaestroMeasurement(value, manifest) {
@@ -1051,7 +1273,7 @@ function validateDirectMaestroMeasurement(value, manifest) {
     || value.configuration_id !== manifest.configuration.id) genericFail("measurement_invalid");
 }
 
-export function validateV12DirectMaestroMapping(mapping, { root = ROOT, manifest, shard, allowTest = false } = {}) {
+export function validateV12DirectMaestroMapping(mapping, { root = ROOT, manifest, shard, allowTest = false, readSafeSdkIdentity } = {}) {
   if (!LIVE_GENERIC_SHARDS.includes(shard)
     || !exactKeys(mapping, ["schema_version", "producer", "run_id", "shard", "identity", "git_attestation_sha256", "execution_origin", "tool_attestation", "flow_sha256", "source_sha256", "case_ids", "observations"])
     || mapping.schema_version !== 2 || mapping.producer !== "v12-maestro-source-map/v2" || mapping.shard !== shard
@@ -1071,7 +1293,7 @@ export function validateV12DirectMaestroMapping(mapping, { root = ROOT, manifest
     || origin.adapter_source_sha256 !== sourceSha256(path.join(root, V12_MAESTRO_SOURCE_PATHS[shard].adapter))
     || origin.launcher_source_sha256 !== sourceSha256(path.join(root, V12_MAESTRO_SOURCE_PATHS[shard].launcher))
     || origin.domain_source_sha256 !== sourceSha256(path.join(root, V12_MAESTRO_SOURCE_PATHS[shard].domain))) genericFail("mapping_origin_invalid");
-  validateDirectMaestroToolAttestation(mapping.tool_attestation, shard, origin, allowTest);
+  validateDirectMaestroToolAttestation(mapping.tool_attestation, shard, origin, allowTest, root, mapping.run_id, readSafeSdkIdentity);
   for (const observation of mapping.observations) {
     if (!exactKeys(observation, ["case_id", "ordinal", "fixture_id", "product_environment", "report_sha256", "device_measurement", "execution_receipt"])
       || !exactKeys(observation.device_measurement, ["before", "after"])) genericFail("measurement_invalid");
@@ -1213,7 +1435,8 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
     ? { ...dependencies, execFileSync } : dependencies;
   const run = commandRunner(runnerDependencies, dependencies.signal);
   await assertMaestroVersionAsync(run, tools.maestro);
-  const toolAttestation = await createV12DirectMaestroToolAttestationAsync({ run, executionTools: tools, shard });
+  const sdk = prepareV12DirectSafeSdkBinding({ root, runId, shard, tools, dependencies });
+  const toolAttestation = await createV12DirectMaestroToolAttestationAsync({ run, executionTools: tools, shard, safeSdk: sdk.attestation });
   const apkSha256 = retainedApkSha256(root, manifest);
   const outputRoot = `artifacts/native/v1.2/${runId}`;
   const reportPath = `${outputRoot}/maestro/${shard}.xml`;
@@ -1227,9 +1450,7 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
     catch { return true; }
   });
   if ([reportPath, mappingPath].some((file) => existsSync(path.join(root, file))) || legacyDeviceLeaseExists) genericFail("immutable_output_invalid");
-  mkdirSync(leaseDirectory, { recursive: true });
-  try { writeFileSync(leasePath, `${sha256(shard)}\n`, { flag: "wx" }); }
-  catch { genericFail("immutable_output_invalid"); }
+  const lease = acquireDirectLease({ root, runId, shard, serial, manifest, dependencies });
   const adb = dependencies.adb ?? directMaestroAdb(run, tools.adb, serial);
   const cleanupRun = commandRunner(runnerDependencies, undefined);
   const cleanupAdb = dependencies.adb ?? directMaestroAdb(cleanupRun, tools.adb, serial);
@@ -1244,37 +1465,50 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
       mkdirSync(path.dirname(temporary), { recursive: true });
       const before = await measureDirectMaestroDeviceAsync(adb, serial, manifest);
       assertDirectMaestroMeasurement(manifest, sourceIdentity, apkSha256, before.measurement);
+      lease.snapshot(before.settings);
+      lease.verifyOwner();
       const nonce = randomBytes(24).toString("hex");
       const productEnvironment = createV12ProductCaseEnvironment({ shard, caseId, nonce });
-      const prerequisiteEnvironmentArguments = Array.from({ length: V12_PRODUCT_PREREQUISITE_LIMIT }, (_, prerequisiteIndex) => {
+      const prerequisiteEnvironment = Object.fromEntries(Array.from({ length: V12_PRODUCT_PREREQUISITE_LIMIT }, (_, prerequisiteIndex) => {
         const number = prerequisiteIndex + 1;
-        return [
-          "-e", `V12_PRODUCT_PREREQ_${number}_INTERACTION=${productEnvironment[`prerequisite_${number}_interaction`]}`,
-          "-e", `V12_PRODUCT_PREREQ_${number}_KIND=${productEnvironment[`prerequisite_${number}_kind`]}`,
-          "-e", `V12_PRODUCT_PREREQ_${number}_VALUE=${productEnvironment[`prerequisite_${number}_value`]}`,
-          "-e", `V12_PRODUCT_PREREQ_${number}_INPUT_VALUE=${productEnvironment[`prerequisite_${number}_input_value`]}`,
-        ];
-      }).flat();
+        return ["interaction", "kind", "value", "input_value"].map(field => [
+          `V12_PRODUCT_PREREQ_${number}_${field.toUpperCase()}`, productEnvironment[`prerequisite_${number}_${field}`],
+        ]);
+      }).flat());
       const captureUiReadback = dependencies.captureUiReadback ?? ((input) => directMaestroUiReadback(input.adb, input.nonce));
       let after;
       let flowError;
       try {
-        await run(tools.maestro, ["test", "--device", serial, "-e", `V12_CASE_ID=${caseId}`, "-e", `V12_EVIDENCE_NONCE=${nonce}`, "-e", "V12_CONFIG_ID=AP-L-C390-P-F100", "-e", `V12_FIXTURE_ID=${V12_PRODUCT_FIXTURE_ID}`, "-e", `V12_PRODUCT_URL=${productEnvironment.product_url}`, "-e", `V12_PRODUCT_INTERACTION=${productEnvironment.interaction}`, "-e", `V12_PRODUCT_READY_KIND=${productEnvironment.ready_kind}`, "-e", `V12_PRODUCT_READY_VALUE=${productEnvironment.ready_value}`, ...prerequisiteEnvironmentArguments, "-e", `V12_PRODUCT_ACTION_KIND=${productEnvironment.action_kind}`, "-e", `V12_PRODUCT_ACTION_VALUE=${productEnvironment.action_value}`, "-e", `V12_PRODUCT_INPUT_VALUE=${productEnvironment.input_value}`, "-e", `V12_PRODUCT_RESULT_KIND=${productEnvironment.result_kind}`, "-e", `V12_PRODUCT_RESULT_VALUE=${productEnvironment.result_value}`, "--format", "junit", "--output", temporary, flowPath], { timeoutMs: V12_MAESTRO_COMMAND_BUDGETS.maestro_case_ms, maxBuffer: 16 * 1024 * 1024 });
+        await runDirectSafeSdkFlow({ root, runId, shard, tools, sdk, run, dependencies, serial, flow: flowPath, junit: temporary,
+          env: { V12_CASE_ID: caseId, V12_EVIDENCE_NONCE: nonce, V12_CONFIG_ID: "AP-L-C390-P-F100", V12_FIXTURE_ID: V12_PRODUCT_FIXTURE_ID,
+            V12_PRODUCT_URL: productEnvironment.product_url, V12_PRODUCT_INTERACTION: productEnvironment.interaction,
+            V12_PRODUCT_READY_KIND: productEnvironment.ready_kind, V12_PRODUCT_READY_VALUE: productEnvironment.ready_value,
+            ...prerequisiteEnvironment, V12_PRODUCT_ACTION_KIND: productEnvironment.action_kind, V12_PRODUCT_ACTION_VALUE: productEnvironment.action_value,
+            V12_PRODUCT_INPUT_VALUE: productEnvironment.input_value, V12_PRODUCT_RESULT_KIND: productEnvironment.result_kind,
+            V12_PRODUCT_RESULT_VALUE: productEnvironment.result_value } });
       } catch (error) {
-        if (/^v12_maestro_process_tree_(?:enumeration|termination)_failed$/u.test(error?.message ?? "")) {
+        if (error?.remoteSdkClosureUnknown === true || /^v12_maestro_(?:process_tree_(?:enumeration|termination)_failed|safe_sdk_cleanup_failed)$/u.test(error?.message ?? "")) {
           retainLease = true;
         }
         flowError = new Error(error?.message === "v12_maestro_process_timeout" ? "v12_maestro_native_command_timeout"
           : error?.message === "v12_maestro_process_cancelled" ? "v12_maestro_native_command_cancelled" : "v12_maestro_native_command_failed");
       }
       finally {
-        await restoreDirectMaestroSettings(cleanupAdb, before.settings);
-        after = await measureDirectMaestroDeviceAsync(cleanupAdb, serial, manifest);
-        assertDirectMaestroMeasurement(manifest, sourceIdentity, apkSha256, after.measurement);
-        if (JSON.stringify(before.measurement) !== JSON.stringify(after.measurement)) genericFail("measurement_drift");
+        // An unresolved worker tree may still act on this configuration. Keep
+        // its lease and snapshot instead of racing restoration against it.
+        if (!retainLease) {
+          try {
+            lease.verifyOwner();
+            await restoreDirectMaestroSettings(cleanupAdb, before.settings);
+            after = await measureDirectMaestroDeviceAsync(cleanupAdb, serial, manifest);
+            assertDirectMaestroMeasurement(manifest, sourceIdentity, apkSha256, after.measurement);
+            if (JSON.stringify(before.measurement) !== JSON.stringify(after.measurement)) genericFail("measurement_drift");
+          } catch (error) { retainLease = true; throw error; }
+        }
       }
       if (flowError !== undefined) throw flowError;
       if (!existsSync(temporary)) genericFail("report_missing");
+      chmodSync(temporary, 0o600);
       const report = readFileSync(temporary, "utf8");
       let uiHierarchy;
       if (tools.test_only && dependencies.captureUiReadback === undefined) {
@@ -1322,7 +1556,7 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
     const provenance = executionOrigin({ root, runId, shard, manifest, snapshot: sourceSnapshot, tools, gitAttestationSha256, toolAttestation, observations });
     const mapping = Object.freeze({ schema_version: 2, producer: "v12-maestro-source-map/v2", run_id: runId, shard, identity: measuredIdentity, git_attestation_sha256: gitAttestationSha256, execution_origin: provenance, tool_attestation: toolAttestation, flow_sha256: flowSha256, source_sha256: sourceSnapshot.source_sha256, case_ids: caseIds, observations });
     validateSourceOrderedObservations(observations, caseIds, shard);
-    validateV12DirectMaestroMapping(mapping, { root, manifest, shard, allowTest: tools.test_only });
+    validateV12DirectMaestroMapping(mapping, { root, manifest, shard, allowTest: tools.test_only, readSafeSdkIdentity: dependencies.readSafeSdkIdentity });
     const writeReport = dependencies.writeReport ?? ((file, value) => {
       const absoluteReport = path.join(root, file);
       mkdirSync(path.dirname(absoluteReport), { recursive: true });
@@ -1338,7 +1572,7 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
     }
     throw error;
   } finally {
-    if (!retainLease) unlinkSync(leasePath);
+    if (!retainLease) lease.release();
   }
   if (!restored) genericFail("settings_restore_failed");
   return outcome;
@@ -1438,6 +1672,7 @@ export async function executeLiveV12RecoveryMaestro(args = process.argv.slice(2)
     ? { ...dependencies, execFileSync } : dependencies;
   const run = commandRunner(runnerDependencies, dependencies.signal);
   await assertMaestroVersionAsync(run, tools.maestro);
+  const sdk = prepareV12DirectSafeSdkBinding({ root, runId, shard, tools, dependencies });
   const output = path.join(root, `artifacts/native/v1.2/${runId}/maestro/recovery.xml`);
   const writeReport = dependencies.writeReport ?? ((file, content) => {
     if (existsSync(file)) genericFail("immutable_output_invalid");
@@ -1448,29 +1683,34 @@ export async function executeLiveV12RecoveryMaestro(args = process.argv.slice(2)
   const adb = dependencies.adb ?? directMaestroAdb(run, tools.adb, serial);
   const cleanupRun = commandRunner(runnerDependencies, undefined);
   const cleanupAdb = dependencies.adb ?? directMaestroAdb(cleanupRun, tools.adb, serial);
-  const priorAirplane = await adb("shell", "settings", "get", "global", "airplane_mode_on");
+  const lease = acquireDirectLease({ root, runId, shard, serial, manifest, dependencies });
+  let priorAirplane;
   const reports = [];
   let restored = false;
+  let unresolvedWorker = false;
   try {
+    priorAirplane = await adb("shell", "settings", "get", "global", "airplane_mode_on");
+    if (!/^(?:0|1|null)$/u.test(priorAirplane)) genericFail("settings_invalid");
+    lease.snapshot({ airplane_mode_on: priorAirplane });
     for (const step of V12_RECOVERY_STEPS) {
       for (const cut of V12_RECOVERY_CUT_IDS) {
         const nonce = randomBytes(16).toString("hex");
         for (const phase of ["arm", "recover"]) {
           const temporary = path.join(root, `artifacts/native/v1.2/${runId}/maestro/.${step.case_id}-${step.id}-${cut}-${phase}.xml`);
           mkdirSync(path.dirname(temporary), { recursive: true });
-          try { await run(tools.maestro, ["test", "--device", serial,
-            "-e", `V12_DOMAIN_NONCE=${nonce}`,
-            "-e", `V12_RECOVERY_CASE=${step.case_id}`,
-            "-e", `V12_RECOVERY_STEP=${step.id}`,
-            "-e", `V12_RECOVERY_STAGE=${cut}`,
-            "-e", `V12_RECOVERY_PHASE=${phase}`,
-            "--format", "junit", "--output", temporary, path.join(root, flow)], { timeoutMs: V12_MAESTRO_COMMAND_BUDGETS.maestro_case_ms, maxBuffer: 16 * 1024 * 1024 }); }
+          lease.verifyOwner();
+          try { await runDirectSafeSdkFlow({ root, runId, shard, tools, sdk, run, dependencies, serial,
+            flow: path.join(root, flow), junit: temporary,
+            env: { V12_DOMAIN_NONCE: nonce, V12_RECOVERY_CASE: step.case_id, V12_RECOVERY_STEP: step.id,
+              V12_RECOVERY_STAGE: cut, V12_RECOVERY_PHASE: phase } }); }
           catch (error) {
+            if (error?.remoteSdkClosureUnknown === true || /^v12_maestro_(?:process_tree_(?:enumeration|termination)_failed|safe_sdk_cleanup_failed)$/u.test(error?.message ?? "")) unresolvedWorker = true;
             if (error?.message === "v12_maestro_process_timeout") genericFail("native_command_timeout");
             if (error?.message === "v12_maestro_process_cancelled") genericFail("native_command_cancelled");
             genericFail("native_command_failed");
           }
           if (!existsSync(temporary)) genericFail("report_missing");
+          chmodSync(temporary, 0o600);
           reports.push(readFileSync(temporary, "utf8"));
           unlinkSync(temporary);
         }
@@ -1478,12 +1718,19 @@ export async function executeLiveV12RecoveryMaestro(args = process.argv.slice(2)
     }
     writeReport(output, `<testsuites>${reports.join("")}</testsuites>\n`);
   } finally {
-    await cleanupAdb("shell", "settings", "put", "global", "airplane_mode_on", priorAirplane);
-    restored = await cleanupAdb("shell", "settings", "get", "global", "airplane_mode_on") === priorAirplane;
+    if (!unresolvedWorker) {
+      lease.verifyOwner();
+      if (priorAirplane !== undefined && /^(?:0|1|null)$/u.test(priorAirplane)) {
+        await cleanupAdb("shell", "settings", priorAirplane === "null" ? "delete" : "put", "global", "airplane_mode_on", ...(priorAirplane === "null" ? [] : [priorAirplane]));
+        restored = await cleanupAdb("shell", "settings", "get", "global", "airplane_mode_on") === priorAirplane;
+      }
+      if (restored || priorAirplane === undefined) lease.release();
+    }
   }
   if (!restored) genericFail("settings_restore_failed");
   return Object.freeze({ ok: true, run_id: runId, shard, report: path.relative(root, output), cases: V12_RECOVERY_CASE_IDS.length,
-    steps: V12_RECOVERY_STEPS.length, cuts: V12_RECOVERY_STEPS.length * V12_RECOVERY_CUT_IDS.length, executions: reports.length });
+    steps: V12_RECOVERY_STEPS.length, cuts: V12_RECOVERY_STEPS.length * V12_RECOVERY_CUT_IDS.length, executions: reports.length,
+    safe_sdk: sdk.attestation });
 }
 export const V12_CALENDAR_DIAGNOSTIC_STAGES = V12_CALENDAR_STAGE_IDS;
 
