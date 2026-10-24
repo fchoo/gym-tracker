@@ -49,8 +49,10 @@ function session(root, a, action, executionTools) {
   // encrypted-session lifecycle, sync, portability and matching pass. Both leave
   // explicit cleanup headroom inside the adapter's outer deadline.
   const deadline = Date.now() + (action === 'recovery' ? 40 : action === 'garmin' ? 12 : 3) * 60_000;
+  let sdkDispatchPending = false; let sdkDispatched = false;
   const command = (exe, args, { timeout = 20_000, binary = false, acceptFailure = false, cleanup = false } = {}) => {
     if (!cleanup && Date.now() >= deadline) fail('domain_timeout');
+    if (sdkDispatchPending) { sdkDispatchPending = false; sdkDispatched = true; }
     const result = spawnSync(exe, args, { cwd: root, encoding: binary ? undefined : 'utf8', timeout: cleanup ? timeout : Math.min(timeout, Math.max(1, deadline - Date.now())), maxBuffer: 8 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
     if (result.error || result.signal || (!acceptFailure && result.status !== 0)) fail('native_prerequisite_failed');
     return result;
@@ -60,6 +62,7 @@ function session(root, a, action, executionTools) {
   const cleanupShell = (...args) => command(executionTools.adb, ['-s', serial, 'shell', args.map(quote).join(' ')], { cleanup: true }).stdout.trim();
   let directory;
   let safeSdk;
+  let sdkCleanupUncertain = false;
   const retained = () => {
     if (!directory) {
       const parts = ['artifacts', 'native', 'v1.2', a.run_id]; let parent = root;
@@ -142,6 +145,7 @@ function session(root, a, action, executionTools) {
     const quarantine = mkdtempSync(path.join(tmpdir(), 'v12-recovery-junit-'));
     chmodSync(quarantine, 0o700);
     const report = path.join(quarantine, 'raw.xml');
+    sdkDispatched = false; sdkDispatchPending = true;
     try {
       const request = { serial, flow: path.join(root, flow), junit: report,
         deadlineMs: Math.min(174_000, Math.max(1, deadline - Date.now() - 6_000)),
@@ -156,9 +160,20 @@ function session(root, a, action, executionTools) {
         result = command(safeSdk.java, safeSdkArguments(safeSdk, request), { timeout: request.deadlineMs + 6_000, acceptFailure: true });
       }
       let xml; try { xml = readFileSync(report, 'utf8'); } catch { fail('junit_missing'); }
-      return junitOutcome(xml, result.status);
+      return junitOutcome(xml, result.status, { onSdkCleanupFailure: () => {
+        sdkCleanupUncertain = true;
+        fail('sdk_cleanup_uncertain');
+      } });
+    } catch (error) {
+      if (sdkDispatched) {
+        sdkCleanupUncertain = true;
+        fail('sdk_cleanup_uncertain');
+      }
+      throw error;
     } finally {
-      rmSync(quarantine, { recursive: true, force: true });
+      sdkDispatchPending = false;
+      try { rmSync(quarantine, { recursive: true, force: true }); }
+      finally { if (sdkCleanupUncertain) fail('sdk_cleanup_uncertain'); }
     }
   }
   function version() {
@@ -244,24 +259,26 @@ function session(root, a, action, executionTools) {
     if (!/^Airplane mode is (?:enabled|disabled)$/u.test(airplane)) fail('settings_invalid');
     try { return await operation(); }
     finally {
-      let failed = false;
-      // Restore the actual connectivity service, not only its settings database.
-      try { cleanupShell('cmd', 'connectivity', 'airplane-mode', airplane.endsWith(' enabled') ? 'enable' : 'disable'); } catch { failed = true; }
-      for (const [key, ns] of Object.entries(SETTINGS)) {
-        try { cleanupShell('settings', prior[key] === 'null' ? 'delete' : 'put', ns, key, ...(prior[key] === 'null' ? [] : [prior[key]])); } catch { failed = true; }
+      if (!sdkCleanupUncertain) {
+        let failed = false;
+        // Restore the actual connectivity service, not only its settings database.
+        try { cleanupShell('cmd', 'connectivity', 'airplane-mode', airplane.endsWith(' enabled') ? 'enable' : 'disable'); } catch { failed = true; }
+        for (const [key, ns] of Object.entries(SETTINGS)) {
+          try { cleanupShell('settings', prior[key] === 'null' ? 'delete' : 'put', ns, key, ...(prior[key] === 'null' ? [] : [prior[key]])); } catch { failed = true; }
+        }
+        for (const [key, ns] of Object.entries(SETTINGS)) {
+          try { if (cleanupShell('settings', 'get', ns, key) !== prior[key]) failed = true; } catch { failed = true; }
+        }
+        try { if (normalizeV12AirplaneModeStatus(cleanupShell('cmd', 'connectivity', 'airplane-mode')) !== airplane) failed = true; } catch { failed = true; }
+        if (failed) fail('settings_restore_failed');
       }
-      for (const [key, ns] of Object.entries(SETTINGS)) {
-        try { if (cleanupShell('settings', 'get', ns, key) !== prior[key]) failed = true; } catch { failed = true; }
-      }
-      try { if (normalizeV12AirplaneModeStatus(cleanupShell('cmd', 'connectivity', 'airplane-mode')) !== airplane) failed = true; } catch { failed = true; }
-      if (failed) fail('settings_restore_failed');
     }
   }
   return { get nonce() { return nonce; }, renewNonce: () => { nonce = randomBytes(16).toString('hex'); return nonce; },
     shell, marker, maestro, recoveryMaestro, version, standalone, restoreAround, retained,
     garminArm, launchGarmin, garminCleanup, garminProcessClaim, garminPrivacy,
     executionOrigin: executionTools.execution_origin,
-    stop: () => cleanupShell('am', 'force-stop', PACKAGE),
+    stop: () => { if (!sdkCleanupUncertain) cleanupShell('am', 'force-stop', PACKAGE); },
     screenshot: () => command(executionTools.adb, ['-s', serial, 'exec-out', 'screencap', '-p'], { binary: true }).stdout };
 }
 
@@ -483,7 +500,10 @@ export async function executeProductionDomainAction(action, payload, attestation
             finally { io.stop(); }
           })());
         } catch (error) {
-          restoreFailed = error?.message === 'v12_production_native_launcher_settings_restore_failed';
+          restoreFailed = error instanceof Error && [
+            'v12_production_native_launcher_settings_restore_failed',
+            'v12_production_native_launcher_sdk_cleanup_uncertain',
+          ].includes(error.message);
           throw error;
         }
       });

@@ -52,6 +52,8 @@ function recoverySnapshot(committed, phase) {
 }
 async function main() {
 try {
+state.domainCommandEvents = [...(state.domainCommandEvents ?? []), { tool, args }];
+save();
 if (tool === 'unzip') {
   if (args[0] === '-Z1') out(state.missingBundle ? 'assets/app.config\n' : 'assets/app.config\nassets/index.android.bundle\n');
   else out(JSON.stringify({ android: { package: 'com.fchoo.gymtracker.devtest' }, scheme: 'gymtracker-devtest', extra: { buildProfile: 'development-test', nativeContractsEnabled: true, nativeContractSuite: state.wrongSuite ? 'phase16-calendar' : 'v1.2-acceptance' } }));
@@ -76,10 +78,32 @@ if (tool === 'maestro') {
   state.cut = values.V12_RECOVERY_STAGE;
   state.recoveryPhase = values.V12_RECOVERY_PHASE;
   if (state.changeSettings) state.settings.font_scale = '2';
+  if (state.missingJunit || state.sdkProcessSignal) {
+    state.sdkFailureCommandIndex = state.domainCommandEvents.length;
+    state.lastJunitPath = args[args.indexOf(sdk ? '--junit' : '--output') + 1];
+  }
   save();
+  if (state.sdkProcessSignal) {
+    process.kill(process.pid, 'SIGTERM');
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    return 1;
+  }
   if (!state.missingJunit) {
-    const status = state.junitFailure ? '<failure message="private-native /Users/private bearer credential"/>' : state.junitSkip ? '<skipped/>' : '';
-    writeFileSync(args[args.indexOf(sdk ? '--junit' : '--output') + 1], `<testsuite tests="1"><testcase name="controlled">${status}</testcase></testsuite>`);
+    const cleanupFailure = state.sdkCleanupFailure && (!state.sdkCleanupPhase || state.sdkCleanupPhase === state.recoveryPhase);
+    const cleanupTag = state.sdkCleanupTag ?? 'failure';
+    const cleanupStatus = state.sdkCleanupRepresentation === 'text' ? `<${cleanupTag}>maestro_sdk_cleanup_failed</${cleanupTag}>`
+      : state.sdkCleanupRepresentation === 'cdata' ? `<${cleanupTag}><![CDATA[maestro_sdk_cleanup_failed]]></${cleanupTag}>`
+      : `<${cleanupTag} message="maestro_sdk_cleanup_failed"/>`;
+    const status = cleanupFailure ? cleanupStatus
+      : state.junitFailure ? '<failure message="private-native /Users/private bearer credential"/>' : state.junitSkip ? '<skipped/>' : '';
+    const report = args[args.indexOf(sdk ? '--junit' : '--output') + 1];
+    writeFileSync(report, state.junitOverride ?? `<testsuite tests="1"><testcase name="controlled">${status}</testcase></testsuite>`);
+    if (cleanupFailure || state.junitOverride) {
+      state.sdkFailureCommandIndex = state.domainCommandEvents.length;
+      state.lastJunitPath = report;
+      save();
+    }
+    return (cleanupFailure || state.junitOverride ? state.junitExit : undefined) ?? (cleanupFailure || state.junitFailure ? 1 : 0);
   }
   return state.junitFailure ? 1 : 0;
 }

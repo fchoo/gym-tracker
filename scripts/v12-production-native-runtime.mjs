@@ -197,14 +197,22 @@ export function createProductionNativeRuntime(attestation, {
     const lease = owned ? acquireLease() : payload.lease;
     leaseState(lease);
     let settings;
+    let sdkCleanupUncertain = false;
     try {
       verifyApk();
       settings = owned ? snapshotSettings(lease) : leaseState(lease).settings;
       if (!settings) nativeFailure("settings_snapshot_required");
       return await operation();
+    } catch (error) {
+      sdkCleanupUncertain = error instanceof Error && [
+        "v12_production_native_launcher_sdk_cleanup_uncertain",
+        "v12_production_native_launcher_visual_sdk_cleanup_uncertain",
+        "v12_production_native_launcher_calendar_action_sdk_cleanup_uncertain",
+      ].includes(error.message);
+      throw error;
     } finally {
       // On a restoration failure retain the lease and snapshot for recovery.
-      if (owned) {
+      if (owned && !sdkCleanupUncertain) {
         if (settings) restoreSettings(settings, lease);
         releaseLease(lease);
       }

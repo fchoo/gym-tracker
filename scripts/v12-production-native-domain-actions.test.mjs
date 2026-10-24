@@ -154,3 +154,119 @@ test('Recovery rejects missing cut and restores settings in finally', (t) => { c
 for (const key of ['junitFailure', 'junitSkip']) test(`Recovery preserves ${key} and restores settings`, (t) => { const r = fixture(t); r.updateState({ [key]: true, changeSettings: true }); const xml = success(r.invoke('recovery')).junit_xml; assert.equal((xml.match(key === 'junitFailure' ? /<failure\b/gu : /<skipped\b/gu) ?? []).length, 112); assert.doesNotMatch(xml, /private-native|bearer|\/Users\//u); assert.equal(r.readState().settings.font_scale, '1.15'); assert.equal(r.readState().settings.airplane_mode_on, '0'); });
 test('Recovery keeps the device lease when connectivity restore fails', (t) => { const r = fixture(t); r.updateState({ failAirplaneRestore: true, missingCut: true }); bounded(r.invoke('recovery'), 'settings_restore_failed'); assert.equal(existsSync(path.join(r.scratch, 'lock')), true); });
 for (const key of ['missingBundle', 'wrongSuite']) test(`standalone APK rejects ${key} before native actions`, (t) => { const r = fixture(t); r.updateState({ [key]: true }); bounded(r.invoke('garmin'), 'standalone_required'); assert.equal(r.readState().domainCalls.length, 0); });
+
+for (const [phase, tag, exit, useDefault, representation] of [
+  ['arm', 'failure', 1, false, 'attribute'], ['recover', 'error', 1, false, 'attribute'], ['arm', 'failure', 0, true, 'attribute'],
+  ['arm', 'failure', 1, false, 'text'], ['recover', 'error', 1, false, 'cdata'],
+]) test(`Recovery retains owned lease and frozen settings after validated SDK cleanup failure: ${phase}/${tag}/${exit}/${representation}`, (t) => {
+  const r = fixture(t); r.updateState({ sdkCleanupFailure: true, sdkCleanupPhase: phase, sdkCleanupTag: tag, sdkCleanupRepresentation: representation, junitExit: exit, changeSettings: true });
+  const result = useDefault ? r.invokeDefault('recovery') : r.invoke('recovery');
+  if (useDefault) {
+    assert.notEqual(result.status, 0); assert.equal(result.stdout, '');
+    assert.equal(result.stderr, 'v12_native_adapter_command_failed:sdk_cleanup_uncertain');
+  } else bounded(result, 'sdk_cleanup_uncertain');
+  const state = r.readState();
+  assert.equal(state.domainCalls.length, phase === 'arm' ? 1 : 2);
+  assert.deepEqual(state.domainCommandEvents.slice(state.sdkFailureCommandIndex), []);
+  assert.equal(state.settings.font_scale, '2');
+  assert.equal(state.restorationAttempts?.length ?? 0, 0);
+  assert.equal(existsSync(state.lastJunitPath), false);
+  const owner = JSON.parse(readFileSync(path.join(r.scratch, 'lock/owner.json'), 'utf8'));
+  assert.equal(owner.settings.font_scale, '1.15');
+  assert.match(owner.lease_id, /^[a-f0-9]{48}$/u);
+});
+
+for (const [xml, exit, code] of [
+  ['<testsuite tests="1"><testcase><failure message="maestro_sdk_cleanup_failed"/></testcase>', 1, 'junit_invalid'],
+  ['<testsuite tests="2"><testcase><failure message="maestro_sdk_cleanup_failed"/></testcase><testcase/></testsuite>', 1, 'junit_case_count_invalid'],
+  ['<testsuite tests="1" failures="0"><testcase><failure message="maestro_sdk_cleanup_failed"/></testcase></testsuite>', 1, 'junit_summary_mismatch'],
+  ['<testsuite tests="1"><testcase><failure message="maestro_sdk_cleanup_failed"/></testcase></testsuite>', 2, 'junit_exit_mismatch'],
+]) test(`Recovery retains uncertain SDK cleanup after post-dispatch corrupt JUnit: ${code}`, (t) => {
+  const r = fixture(t); r.updateState({ junitOverride: xml, junitExit: exit, changeSettings: true });
+  bounded(r.invoke('recovery'), 'sdk_cleanup_uncertain');
+  const state = r.readState();
+  assert.equal(state.domainCalls.length, 1);
+  assert.equal(state.settings.font_scale, '2');
+  assert.deepEqual(state.domainCommandEvents.slice(state.sdkFailureCommandIndex), []);
+  assert.equal(state.restorationAttempts?.length ?? 0, 0);
+  assert.equal(existsSync(path.join(r.scratch, 'lock/owner.json')), true);
+  assert.equal(existsSync(state.lastJunitPath), false);
+});
+
+test('Recovery treats a near-match failure message as ordinary JUnit failure and restores settings', (t) => {
+  const r = fixture(t); r.updateState({ junitOverride: '<testsuite tests="1"><testcase><failure message="prefix maestro_sdk_cleanup_failed"/></testcase></testsuite>', junitExit: 1, missingCut: true, changeSettings: true });
+  bounded(r.invoke('recovery'), 'recovery_receipt_invalid');
+  assert.equal(r.readState().settings.font_scale, '1.15');
+  assert.equal(existsSync(path.join(r.scratch, 'lock')), false);
+});
+
+for (const update of [{ missingJunit: true }, { sdkProcessSignal: true, missingJunit: true }]) test(`Recovery retains SDK ownership when dispatched execution cannot attest closure: ${JSON.stringify(update)}`, (t) => {
+  const r = fixture(t); r.updateState({ ...update, changeSettings: true });
+  bounded(r.invoke('recovery'), 'sdk_cleanup_uncertain');
+  const state = r.readState();
+  assert.equal(state.domainCalls.length, 1);
+  assert.equal(state.settings.font_scale, '2');
+  assert.deepEqual(state.domainCommandEvents.slice(state.sdkFailureCommandIndex), []);
+  assert.equal(state.restorationAttempts?.length ?? 0, 0);
+  assert.equal(existsSync(path.join(r.scratch, 'lock/owner.json')), true);
+});
+
+const preloadEnvironment = (source) => ({ NODE_OPTIONS: `--import=data:text/javascript,${encodeURIComponent(source)}` });
+for (const code of ['ETIMEDOUT', 'EPIPE']) test(`Recovery retains SDK ownership on a controlled post-dispatch transport error: ${code}`, (t) => {
+  const r = fixture(t);
+  const environment = preloadEnvironment(`
+    import childProcess from 'node:child_process'; import fs from 'node:fs'; import {syncBuiltinESMExports} from 'node:module';
+    const original=childProcess.spawnSync;
+    childProcess.spawnSync=(exe,args,options)=>{
+      if(args[0]==='sdk-flow'){
+        const file=process.env.V12_CONTROLLED_STATE+'/state.json';const state=JSON.parse(fs.readFileSync(file,'utf8'));
+        state.settings.font_scale='2';state.sdkFailureCommandIndex=state.domainCommandEvents.length;fs.writeFileSync(file,JSON.stringify(state));
+        return {error:Object.assign(new Error('controlled SDK transport failure'),{code:${JSON.stringify(code)}}),status:null,signal:null,stdout:'',stderr:''};
+      }
+      return original(exe,args,options);
+    };syncBuiltinESMExports();`);
+  bounded(r.invoke('recovery', {}, {}, environment), 'sdk_cleanup_uncertain');
+  const state = r.readState();
+  assert.equal(state.settings.font_scale, '2');
+  assert.deepEqual(state.domainCommandEvents.slice(state.sdkFailureCommandIndex), []);
+  assert.equal(state.restorationAttempts?.length ?? 0, 0);
+  assert.equal(existsSync(path.join(r.scratch, 'lock/owner.json')), true);
+});
+
+test('Recovery restores and releases when its deadline expires before SDK dispatch', (t) => {
+  const r = fixture(t);
+  const environment = preloadEnvironment(`
+    import fs from 'node:fs'; import {syncBuiltinESMExports} from 'node:module';
+    const original=fs.chmodSync;const originalNow=Date.now;
+    fs.chmodSync=(file,mode)=>{
+      const result=original(file,mode);
+      if(typeof file==='string'&&file.includes('/v12-recovery-junit-'))Date.now=()=>originalNow()+3_000_000;
+      return result;
+    };syncBuiltinESMExports();`);
+  bounded(r.invoke('recovery', {}, {}, environment), 'domain_timeout');
+  const state = r.readState();
+  assert.equal(state.domainCalls.length, 0);
+  assert.equal(state.settings.font_scale, '1.15');
+  assert.ok(state.restorationAttempts.length > 0);
+  assert.equal(existsSync(path.join(r.scratch, 'lock')), false);
+});
+
+test('Recovery cleanup uncertainty survives a local quarantine finalizer failure', (t) => {
+  const r = fixture(t); r.updateState({ sdkCleanupFailure: true, changeSettings: true });
+  const environment = preloadEnvironment(`
+    import fs from 'node:fs'; import {syncBuiltinESMExports} from 'node:module';
+    const original=fs.rmSync;
+    fs.rmSync=(file,options)=>{
+      if(typeof file==='string'&&file.includes('/v12-recovery-junit-'))throw new Error('controlled local quarantine failure');
+      return original(file,options);
+    };syncBuiltinESMExports();`);
+  bounded(r.invoke('recovery', {}, {}, environment), 'sdk_cleanup_uncertain');
+  const state = r.readState();
+  assert.equal(state.settings.font_scale, '2');
+  assert.deepEqual(state.domainCommandEvents.slice(state.sdkFailureCommandIndex), []);
+  assert.equal(state.restorationAttempts?.length ?? 0, 0);
+  assert.equal(existsSync(path.join(r.scratch, 'lock/owner.json')), true);
+  assert.equal(existsSync(state.lastJunitPath), true);
+  assert.match(readFileSync(state.lastJunitPath, 'utf8'), /maestro_sdk_cleanup_failed/u);
+  t.diagnostic(`preserved controlled host quarantine receipt: ${state.lastJunitPath}`);
+});

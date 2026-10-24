@@ -18,6 +18,35 @@ const test = (name, optionsOrFunction, maybeFunction) => typeof optionsOrFunctio
   : nodeTest(name, { timeout: TEST_TIMEOUT_MS, ...optionsOrFunction }, maybeFunction);
 
 function fixture(t) { const value = createControlledRunner(); t.after(value.cleanup); return value; }
+function runtimeLeaseScenario(runner, options = {}) {
+  const environment = { ...process.env, ...runner.executionEnvironment, NODE_ENV: "production",
+    V12_DEVICE_SERIAL: "controlled-device-20", V12_CONTROLLED_STATE: runner.scratch };
+  for (const key of ["V12_NATIVE_ADAPTER_COMMAND", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS", "NODE_TEST_CONTEXT"]) delete environment[key];
+  const program = `
+    import fs from 'node:fs';
+    import { createProductionNativeRuntime } from './scripts/v12-production-native-runtime.mjs';
+    const input=JSON.parse(fs.readFileSync(0,'utf8'));
+    const build=JSON.parse(fs.readFileSync(input.manifest,'utf8'));
+    const attestation={run_id:build.run_id,source_tree_sha256:build.source.tree_sha256,apk_sha256:build.build.apk.sha256,
+      installed_apk_sha256:build.device.installed_apk_sha256,apk_signature_sha256:build.build.apk.signature_sha256,device_identity_sha256:build.device.identity_sha256};
+    const runtime=createProductionNativeRuntime(attestation);
+    const lease=input.borrowed?runtime.acquireLease():undefined;
+    if(lease)runtime.snapshotSettings(lease);
+    const failure=input.kind==='record'?{message:input.code}:input.kind==='null'?null:new Error(input.code);
+    let error=null,result=null,same_error=false;
+    try { result=await runtime.withLease(lease?{lease}:{},async()=>{
+      const file=process.env.V12_CONTROLLED_STATE+'/state.json';const state=JSON.parse(fs.readFileSync(file,'utf8'));
+      state.settings.font_scale='2';state.failureCommandIndex=state.commands.length;fs.writeFileSync(file,JSON.stringify(state));
+      if(input.succeed)return 'completed';throw failure;
+    }); } catch(caught){error=caught?.message??String(caught);same_error=caught===failure;}
+    process.stdout.write(JSON.stringify({error,result,same_error,native_evidence:false}));`;
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", program], {
+    cwd: runner.root, env: environment, input: JSON.stringify({ manifest: runner.manifestPath, ...options }),
+    encoding: "utf8", timeout: 20_000, maxBuffer: 2 * 1024 * 1024,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout); assert.equal(output.native_evidence, false); return output;
+}
 function bounded(result, code = "command_failed") {
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, new RegExp(code, "u"));
@@ -169,6 +198,41 @@ test("Calendar restoration failure keeps the persisted snapshot and lease", (t) 
   const owner = JSON.parse(readFileSync(path.join(runner.scratch, "lock", "owner.json"), "utf8"));
   assert.equal(owner.calendar_restored, false);
   assert.deepEqual(owner.calendar_settings, output.calendar);
+});
+for (const code of [
+  "v12_production_native_launcher_sdk_cleanup_uncertain",
+  "v12_production_native_launcher_visual_sdk_cleanup_uncertain",
+  "v12_production_native_launcher_calendar_action_sdk_cleanup_uncertain",
+]) test(`runtime withLease retains its owned snapshot without post-failure device commands: ${code}`, (t) => {
+  const runner = fixture(t); const output = runtimeLeaseScenario(runner, { code });
+  assert.equal(output.error, code); assert.equal(output.same_error, true);
+  const state = runner.readState();
+  assert.deepEqual(state.commands.slice(state.failureCommandIndex), []);
+  assert.equal(state.settings.font_scale, "2");
+  assert.equal(state.restorationAttempts?.length ?? 0, 0);
+  const owner = JSON.parse(readFileSync(path.join(runner.scratch, "lock/owner.json"), "utf8"));
+  assert.equal(owner.settings.font_scale, "1.15");
+});
+for (const options of [
+  { code: "v12_production_native_launcher_route_error" },
+  { code: "prefix_v12_production_native_launcher_sdk_cleanup_uncertain" },
+  { code: "v12_production_native_launcher_sdk_cleanup_uncertain_suffix" },
+  { code: "v12_production_native_launcher_sdk_cleanup_uncertain", kind: "record" },
+  { kind: "null" },
+  { succeed: true },
+]) test(`runtime withLease restores and releases for ordinary operation results: ${JSON.stringify(options)}`, (t) => {
+  const runner = fixture(t); const output = runtimeLeaseScenario(runner, options);
+  if (options.succeed) assert.equal(output.result, "completed"); else assert.equal(output.same_error, true);
+  assert.equal(runner.readState().settings.font_scale, "1.15");
+  assert.equal(runner.readState().restorationAttempts.length, 7);
+  assert.equal(existsSync(path.join(runner.scratch, "lock")), false);
+});
+for (const code of ["v12_production_native_launcher_sdk_cleanup_uncertain", "ordinary_failure"]) test(`runtime withLease leaves borrowed lease and snapshot with its caller: ${code}`, (t) => {
+  const runner = fixture(t); const output = runtimeLeaseScenario(runner, { code, borrowed: true });
+  assert.equal(output.error, code); assert.equal(output.same_error, true);
+  const state = runner.readState(); assert.deepEqual(state.commands.slice(state.failureCommandIndex), []);
+  assert.equal(state.settings.font_scale, "2");
+  assert.equal(existsSync(path.join(runner.scratch, "lock/owner.json")), true);
 });
 for (const failure of ["failedSetting", "ignoredSetting"]) test(`${failure}: restoration cannot report success or relinquish the lease`, (t) => {
   const runner = fixture(t);
