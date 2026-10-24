@@ -20,6 +20,7 @@ const binding = Object.freeze({
   flow_sha256: "2".repeat(64),
   requirements_flow_sha256: "3".repeat(64),
   fixture_source_sha256: "4".repeat(64),
+  sdk_binding_sha256: "8".repeat(64),
   tool_facts: Object.freeze({ adb_sha256: "5".repeat(64), maestro_sha256: "6".repeat(64), unzip_sha256: "7".repeat(64) }),
 });
 
@@ -45,6 +46,10 @@ test("Calendar artifact transport recovers the result-before-manifest crash boun
   const wrongTools = structuredClone(binding);
   wrongTools.tool_facts.adb_sha256 = "8".repeat(64);
   assert.throws(() => createV12CalendarArtifactTransport({ root, runId: RUN_ID, binding: wrongTools }), /calendar_transport_binding_mismatch/u);
+  assert.throws(() => createV12CalendarArtifactTransport({ root, runId: RUN_ID, binding: { ...binding, sdk_binding_sha256: "9".repeat(64) } }), /calendar_transport_binding_mismatch/u);
+  for (const sdk_binding_sha256 of [undefined, "bad", 0]) {
+    assert.throws(() => createV12CalendarArtifactTransport({ root, runId: RUN_ID, binding: { ...binding, sdk_binding_sha256 } }), /calendar_transport_binding_invalid/u);
+  }
   const second = partiallyResumed.appendUnit({
     kind: "requirement",
     key: "CAL-01:probe-one",

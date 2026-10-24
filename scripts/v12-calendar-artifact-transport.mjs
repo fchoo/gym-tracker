@@ -23,7 +23,7 @@ const TRANSPORT_DIRECTORY = ".calendar-transport";
 const MAX_RESULT_BYTES = 16 * 1024 * 1024;
 const BINDING_KEYS = Object.freeze([
   "schema_version", "run_id", "execution_origin", "request_sha256", "flow_sha256",
-  "requirements_flow_sha256", "fixture_source_sha256", "tool_facts",
+  "requirements_flow_sha256", "fixture_source_sha256", "tool_facts", "sdk_binding_sha256",
 ]);
 
 const fail = (code) => { throw new Error(`calendar_transport_${code}`); };
@@ -38,7 +38,7 @@ function exact(value, keys) {
 function validateBinding(value, runId) {
   if (!exact(value, BINDING_KEYS) || value.schema_version !== 1 || value.run_id !== runId
     || !["production-attested/v1", "test-controlled/v1"].includes(value.execution_origin)
-    || ![value.request_sha256, value.flow_sha256, value.requirements_flow_sha256, value.fixture_source_sha256]
+    || ![value.request_sha256, value.flow_sha256, value.requirements_flow_sha256, value.fixture_source_sha256, value.sdk_binding_sha256]
       .every((digest) => HASH.test(digest ?? ""))
     || !exact(value.tool_facts, ["adb_sha256", "maestro_sha256", "unzip_sha256"])
     || !Object.values(value.tool_facts).every((digest) => HASH.test(digest ?? ""))) fail("binding_invalid");
