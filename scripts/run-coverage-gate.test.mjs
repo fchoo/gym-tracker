@@ -101,7 +101,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   ));
   assert.deepEqual(manifest.phase20, discoveredPhase20);
   assert.deepEqual(manifest.phase18, discoveredPhase18);
-  assert.equal(manifest.phase20.length, 62);
+  assert.equal(manifest.phase20.length, 63);
   assert.equal(manifest.phase18.length, 18);
   assert.ok(manifest.phase18.includes("scripts/phase18-garmin-proof.test.mjs"));
   assert.deepEqual(Object.keys(manifest.phase20_coverage).sort(), [
@@ -121,7 +121,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   assert.ok(manifest.phase20_coverage.jest_istanbul_modules.includes("src/testing/garminSyncDiagnostic.ts"));
   assert.ok(manifest.phase20_coverage.jest_istanbul_modules.includes("app/__garmin-sync-diagnostic.tsx"));
   const coverageProjects = manifest.phase20_coverage.node_v8_projects;
-  assert.equal(coverageProjects.length, 9);
+  assert.equal(coverageProjects.length, 10);
   assert.deepEqual(coverageProjects.map(({ name }) => name), [
     "contracts",
     "native-actions",
@@ -132,6 +132,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
     "cli-coverage",
     "fixture-coverage",
     "garmin-packaging",
+    "maestro-safe-sdk",
   ]);
   assert.deepEqual(
     coverageProjects.filter(({ coverage }) => coverage === false).map(({ name }) => name),
@@ -142,11 +143,15 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
     { name: "cli-blackbox", timeoutMs: 50 * 60_000 },
   ]);
   const registeredProjectTests = coverageProjects.flatMap(({ tests }) => tests);
-  assert.equal(registeredProjectTests.length, 62);
-  assert.equal(new Set(registeredProjectTests).size, 62);
+  assert.equal(registeredProjectTests.length, 63);
+  assert.equal(new Set(registeredProjectTests).size, 63);
   assert.deepEqual([...registeredProjectTests].sort(), manifest.phase20);
   const coveredModules = new Set(coverageProjects.flatMap(({ modules }) => modules));
-  assert.equal(coveredModules.size, 29);
+  assert.equal(coveredModules.size, 30);
+  const safeSdk = coverageProjects.find(({ name }) => name === "maestro-safe-sdk");
+  assert.equal(safeSdk.coverage, true);
+  assert.deepEqual(safeSdk.modules, ["scripts/v12-maestro-safe-sdk.mjs"]);
+  assert.deepEqual(safeSdk.tests, ["scripts/v12-maestro-safe-sdk.test.mjs"]);
   const calendarCoverage = coverageProjects.find(({ name }) => name === "calendar-coverage");
   assert.equal(calendarCoverage.coverage, true);
   assert.deepEqual(calendarCoverage.modules, ["scripts/v12-production-native-calendar-action.mjs"]);

@@ -59,6 +59,14 @@ if (tool === 'unzip') {
 }
 if (tool === 'maestro') {
   if (args[0] === '--version') { out('2.8.0'); return 0; }
+  const sdk = args[0] === 'sdk-flow';
+  const selectedFlow = sdk ? args[args.indexOf('--flow') + 1] : args.at(-1);
+  if (path.basename(selectedFlow) === 'recovery.yaml' && !sdk) throw new Error('unsafe_recovery_cli_forbidden');
+  if (sdk && (args[args.indexOf('--device') + 1] !== 'controlled-device-20'
+    || !Number.isInteger(Number(args[args.indexOf('--deadline-ms') + 1]))
+    || Number(args[args.indexOf('--deadline-ms') + 1]) < 1
+    || Number(args[args.indexOf('--deadline-ms') + 1]) > 174_000
+    || !path.isAbsolute(selectedFlow) || !path.isAbsolute(args[args.indexOf('--junit') + 1]))) throw new Error('sdk_contract_invalid');
   const values = Object.fromEntries(args.filter((_, i) => args[i - 1] === '-e').map((v) => { const i = v.indexOf('='); return [v.slice(0, i), v.slice(i + 1)]; }));
   state.domainCalls.push(values);
   state.nonce = values.V12_DOMAIN_NONCE;
@@ -71,7 +79,7 @@ if (tool === 'maestro') {
   save();
   if (!state.missingJunit) {
     const status = state.junitFailure ? '<failure message="private-native /Users/private bearer credential"/>' : state.junitSkip ? '<skipped/>' : '';
-    writeFileSync(args[args.indexOf('--output') + 1], `<testsuite tests="1"><testcase name="controlled">${status}</testcase></testsuite>`);
+    writeFileSync(args[args.indexOf(sdk ? '--junit' : '--output') + 1], `<testsuite tests="1"><testcase name="controlled">${status}</testcase></testsuite>`);
   }
   return state.junitFailure ? 1 : 0;
 }

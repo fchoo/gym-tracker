@@ -10,6 +10,7 @@ import { V12_RECOVERY_CASE_IDS, V12_RECOVERY_CUT_DEFINITIONS, V12_RECOVERY_CUT_I
 import { exact, fail, garminCases, hash, HASH, junitOutcome, worse } from './v12-production-domain-receipts.mjs';
 import { executeProductionCalendarAction } from './v12-production-native-calendar-action.mjs';
 import { resolveV12NativeExecutionTools } from './v12-native-execution-origin.mjs';
+import { prepareSafeMaestroSdk, safeSdkArguments, verifySafeSdkBinding } from './v12-maestro-safe-sdk.mjs';
 
 const PACKAGE = 'com.fchoo.gymtracker.devtest';
 const RESULT = 'GYM_TRACKER_V12_DOMAIN_RESULT:';
@@ -58,6 +59,7 @@ function session(root, a, action, executionTools) {
   const shell = (...args) => adb('shell', args.map(quote).join(' '));
   const cleanupShell = (...args) => command(executionTools.adb, ['-s', serial, 'shell', args.map(quote).join(' ')], { cleanup: true }).stdout.trim();
   let directory;
+  let safeSdk;
   const retained = () => {
     if (!directory) {
       const parts = ['artifacts', 'native', 'v1.2', a.run_id]; let parent = root;
@@ -141,16 +143,32 @@ function session(root, a, action, executionTools) {
     chmodSync(quarantine, 0o700);
     const report = path.join(quarantine, 'raw.xml');
     try {
-      const result = command(executionTools.maestro, ['test', '--device', serial,
-        ...Object.entries({ V12_DOMAIN_NONCE: nonce, ...variables }).flatMap(([key, value]) => ['-e', `${key}=${value}`]),
-        '--format', 'junit', '--output', report, path.join(root, flow)], { timeout: 180_000, acceptFailure: true });
+      const request = { serial, flow: path.join(root, flow), junit: report,
+        deadlineMs: Math.min(174_000, Math.max(1, deadline - Date.now() - 6_000)),
+        env: { V12_DOMAIN_NONCE: nonce, ...variables } };
+      let result;
+      if (executionTools.test_only) {
+        result = command(executionTools.maestro, ['sdk-flow', '--device', request.serial,
+          '--flow', request.flow, '--junit', request.junit, '--deadline-ms', String(request.deadlineMs),
+          ...Object.entries(request.env).flatMap(([key, value]) => ['-e', `${key}=${value}`])], { timeout: 180_000, acceptFailure: true });
+      } else {
+        verifySafeSdkBinding(safeSdk);
+        result = command(safeSdk.java, safeSdkArguments(safeSdk, request), { timeout: request.deadlineMs + 6_000, acceptFailure: true });
+      }
       let xml; try { xml = readFileSync(report, 'utf8'); } catch { fail('junit_missing'); }
       return junitOutcome(xml, result.status);
     } finally {
       rmSync(quarantine, { recursive: true, force: true });
     }
   }
-  function version() { if (command(executionTools.maestro, ['--version']).stdout.trim() !== '2.8.0') fail('maestro_version_invalid'); }
+  function version() {
+    if (executionTools.test_only) {
+      if (command(executionTools.maestro, ['--version']).stdout.trim() !== '2.8.0') fail('maestro_version_invalid');
+    } else {
+      safeSdk = prepareSafeMaestroSdk();
+      writeFileSync(path.join(retained(), 'maestro-sdk-tool-receipt.json'), `${JSON.stringify(safeSdk.receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+    }
+  }
   function standalone() {
     // withLease has already checked this manifest path and the retained APK hash.
     const manifest = JSON.parse(readFileSync(path.join(root, 'artifacts/native/v1.2', a.run_id, 'build.json'), 'utf8'));

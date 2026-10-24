@@ -203,6 +203,7 @@ const phase20EvidenceTests = Object.freeze([
   "scripts/v12-evidence-scripts.test.mjs",
   "scripts/v12-garmin-shard.test.mjs",
   "scripts/v12-maestro-route-contract.test.mjs",
+  "scripts/v12-maestro-safe-sdk.test.mjs",
   "scripts/v12-native-adapter-attestation.test.mjs",
   "scripts/v12-native-execution-origin.test.mjs",
   "scripts/v12-performance-shard.test.mjs",
@@ -258,6 +259,7 @@ function validateEvidenceTestManifest({ tests, isEvidenceTest, error, expectedCo
   return registered;
 }
 const phase20NativeActionTests = new Set([
+  "scripts/v12-maestro-safe-sdk.test.mjs",
   "scripts/v12-production-native-calendar-action.test.mjs",
   "scripts/v12-production-native-calendar-session.test.mjs",
   "scripts/v12-native-adapter-attestation.test.mjs",
@@ -333,6 +335,7 @@ const phase20EvidenceProjects = Object.freeze([
     concurrency: 1,
     coverage: false,
     tests: [...phase20NativeActionTests].filter((file) => !phase20NativeCoverageTests.has(file)
+      && file !== "scripts/v12-maestro-safe-sdk.test.mjs"
       && file !== "scripts/v12-production-native-quality-actions.test.mjs"
       && file !== "scripts/v12-production-native-calendar-action.test.mjs"
       && file !== "scripts/v12-production-native-calendar-session.test.mjs"),
@@ -407,6 +410,12 @@ const phase20EvidenceProjects = Object.freeze([
     }),
   }),
   garminPackagingCoverage,
+  Object.freeze({
+    name: "maestro-safe-sdk",
+    concurrency: 1,
+    modules: Object.freeze(["scripts/v12-maestro-safe-sdk.mjs"]),
+    tests: Object.freeze(["scripts/v12-maestro-safe-sdk.test.mjs"]),
+  }),
 ]);
 const phase20IntegrityCriticalFiles = [
   "src/bootstrap/v12AcceptanceBenchmark.ts",
@@ -878,7 +887,7 @@ const registeredPhase20EvidenceTests = validateEvidenceTestManifest({
   tests: phase20EvidenceTests,
   isEvidenceTest: isPhase20EvidenceTest,
   error: "phase20_evidence_test_manifest_drift",
-  expectedCount: 62,
+  expectedCount: 63,
 });
 const expectedPhase20ProjectNames = [
   "contracts",
@@ -890,14 +899,15 @@ const expectedPhase20ProjectNames = [
   "cli-coverage",
   "fixture-coverage",
   "garmin-packaging",
+  "maestro-safe-sdk",
 ];
 const assignedPhase20Tests = phase20EvidenceProjects.flatMap(({ tests }) => tests);
 const assignedPhase20Modules = new Set(phase20EvidenceProjects.flatMap(({ modules = [] }) => modules));
 if (JSON.stringify(phase20EvidenceProjects.map(({ name }) => name)) !== JSON.stringify(expectedPhase20ProjectNames)
-  || assignedPhase20Tests.length !== 62
-  || new Set(assignedPhase20Tests).size !== 62
+  || assignedPhase20Tests.length !== 63
+  || new Set(assignedPhase20Tests).size !== 63
   || JSON.stringify([...assignedPhase20Tests].sort()) !== JSON.stringify(registeredPhase20EvidenceTests)
-  || assignedPhase20Modules.size !== 29
+  || assignedPhase20Modules.size !== 30
   || phase20EvidenceProjects.find(({ name }) => name === "cli-blackbox")?.coverage !== false) {
   throw new Error(JSON.stringify({
     error: "phase20_coverage_project_manifest_invalid",
