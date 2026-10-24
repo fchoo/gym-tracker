@@ -2,6 +2,7 @@ import Constants from "expo-constants";
 import { Redirect, useLocalSearchParams } from "expo-router";
 import React from "react";
 import { Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   collectV12ProductionRecoveryPhase,
@@ -11,6 +12,21 @@ import { V12RecoveryRootContext } from "../src/testing/v12RecoveryRootContext";
 
 type RoutePhase = "arm" | "recover";
 type RouteState = "executing" | "armed" | "observed" | "failed";
+
+function RecoverySafeAreaFrame({ children }: Readonly<{ children: React.ReactNode }>) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={{
+      flex: 1,
+      paddingTop: insets.top,
+      paddingBottom: insets.bottom,
+      paddingLeft: insets.left,
+      paddingRight: insets.right,
+    }}>
+      {children}
+    </View>
+  );
+}
 
 function recoveryRouteObservationsEnabled(): boolean {
   const extra = Constants.expoConfig?.extra;
@@ -76,7 +92,7 @@ function RecoveryExecution(input: Readonly<{
         : input.phase === "arm"
           ? "Executing recovery cut"
           : "Reading recovery facts";
-  return <View><Text accessibilityRole="header">{heading}</Text></View>;
+  return <RecoverySafeAreaFrame><Text accessibilityRole="header">{heading}</Text></RecoverySafeAreaFrame>;
 }
 
 export default function V12ProductionRecoveryRoute() {
@@ -129,7 +145,7 @@ export default function V12ProductionRecoveryRoute() {
   // A deep link can mount the leaf in the previous navigator before the root
   // replaces it. Only the validated isolated branch may start native work.
   if (rootScope?.databaseName !== `gym-tracker-phase20-recovery-shell-${nonce}.db`) {
-    return <View><Text accessibilityRole="header">Preparing recovery route</Text></View>;
+    return <RecoverySafeAreaFrame><Text accessibilityRole="header">Preparing recovery route</Text></RecoverySafeAreaFrame>;
   }
   return <RecoveryExecution identity={identity} phase={phase as RoutePhase} />;
 }

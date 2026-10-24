@@ -1,12 +1,14 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react-native";
+import { act, cleanup, render as renderComponent, screen, waitFor } from "@testing-library/react-native";
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
+import { SafeAreaInsetsContext } from "react-native-safe-area-context";
 
 import V12ProductionRecoveryRoute from "../__v12-production-recovery";
 import { V12RecoveryRootContext } from "../../src/testing/v12RecoveryRootContext";
 
 let mockProfile = "development-test";
 let mockParams: Record<string, string>;
+let mockInsets = { top: 28, bottom: 24, left: 7, right: 11 };
 const mockRun = jest.fn<typeof import("../../src/testing/v12ProductionRecovery")["collectV12ProductionRecoveryPhase"]>();
 
 jest.mock("expo-constants", () => ({
@@ -42,11 +44,17 @@ jest.mock("../../src/testing/v12ProductionRecovery", () => {
 });
 
 describe("V12ProductionRecoveryRoute", () => {
+  async function render(element: React.ReactElement) {
+    return renderComponent(element, {
+      wrapper: ({ children }) => <SafeAreaInsetsContext.Provider value={mockInsets}>{children}</SafeAreaInsetsContext.Provider>,
+    });
+  }
   async function renderScopedRoute() {
     return render(<V12RecoveryRootContext.Provider value={{ databaseName: `gym-tracker-phase20-recovery-shell-${mockParams.nonce}.db` }}><V12ProductionRecoveryRoute /></V12RecoveryRootContext.Provider>);
   }
   beforeEach(() => {
     mockProfile = "development-test";
+    mockInsets = { top: 28, bottom: 24, left: 7, right: 11 };
     mockParams = {
       nonce: "a".repeat(32),
       caseId: "queued-callback",
@@ -59,6 +67,35 @@ describe("V12ProductionRecoveryRoute", () => {
   });
 
   afterEach(async () => { await cleanup(); jest.restoreAllMocks(); });
+
+  it("keeps preparation content inside the current safe-area edges and responds to inset changes", async () => {
+    const rendered = await render(<V12ProductionRecoveryRoute />);
+    expect(screen.getByRole("header").parent).toHaveStyle({
+      flex: 1, paddingTop: 28, paddingBottom: 24, paddingLeft: 7, paddingRight: 11,
+    });
+    mockInsets = { top: 0, bottom: 12, left: 32, right: 18 };
+    await rendered.rerender(<V12ProductionRecoveryRoute />);
+    expect(screen.getByRole("header").parent).toHaveStyle({
+      flex: 1, paddingTop: 0, paddingBottom: 12, paddingLeft: 32, paddingRight: 18,
+    });
+    expect(mockRun).not.toHaveBeenCalled();
+  });
+
+  it.each(["pending-arm", "pending-recovery", "armed", "observed", "failed"] as const)(
+    "keeps %s execution content inside all actual safe-area edges",
+    async (mode) => {
+      if (mode === "pending-arm" || mode === "pending-recovery") mockRun.mockImplementation(() => new Promise(() => undefined));
+      if (mode === "pending-recovery" || mode === "observed") mockParams.phase = "recover";
+      if (mode === "armed") mockRun.mockResolvedValue("armed");
+      if (mode === "observed") mockRun.mockResolvedValue("observed");
+      if (mode === "failed") mockRun.mockRejectedValue(new Error("synthetic-failure"));
+      await renderScopedRoute();
+      await waitFor(() => expect(screen.getByRole("header").parent).toHaveStyle({
+        flex: 1, paddingTop: 28, paddingBottom: 24, paddingLeft: 7, paddingRight: 11,
+      }));
+      expect(mockRun).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("waits for the validated root scope before starting native Recovery", async () => {
     const rendered = await render(<V12ProductionRecoveryRoute />);
