@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const SOURCE = fileURLToPath(new URL('./maestro-safe-sdk/', import.meta.url));
 const SOURCES = ['SafeFlow.kt', 'SafeMaestro.kt', 'SessionOwnedDriver.kt'];
+const MAX_DEADLINE_MS = 600_000;
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const fail = (code) => { throw new Error(`maestro_safe_sdk_${code}`); };
 
@@ -15,7 +16,7 @@ export function validateSafeSdkRequest(request) {
     || typeof request.flow !== 'string' || !path.isAbsolute(request.flow)
     || typeof request.junit !== 'string' || !path.isAbsolute(request.junit)
     || [request.flow, request.junit].some((value) => /[\u0000\r\n]/u.test(value))
-    || !Number.isSafeInteger(request.deadlineMs) || request.deadlineMs < 1 || request.deadlineMs > 180_000
+    || !Number.isSafeInteger(request.deadlineMs) || request.deadlineMs < 1 || request.deadlineMs > MAX_DEADLINE_MS
     || !request.env || Array.isArray(request.env) || typeof request.env !== 'object'
     || Object.entries(request.env).some(([key, value]) => !/^[A-Z][A-Z0-9_]{0,127}$/u.test(key)
       || typeof value !== 'string' || value.length > 4_096 || /[\u0000\r\n]/u.test(value))) fail('request_invalid');

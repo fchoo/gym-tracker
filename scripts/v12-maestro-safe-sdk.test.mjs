@@ -32,11 +32,16 @@ test('safe SDK contract carries the exact serial, YAML, explicit environment, JU
     '-cp', '/runner.jar:/sdk.jar', 'gymtracker.maestrosafe.SafeMaestroKt',
     'review-serial', '/flows/recovery.yaml', '/private/raw.xml', '180000', 'V12_DOMAIN_NONCE=ab', 'VALUE=a=b',
   ]);
+  for (const deadlineMs of [1, 174_000, 180_000, 594_000, 600_000]) {
+    const bounded = { ...request, deadlineMs };
+    assert.equal(validateSafeSdkRequest(bounded), bounded);
+    assert.equal(safeSdkArguments({ jar: '/runner.jar', classpath: '/sdk.jar' }, bounded)[6], String(deadlineMs));
+  }
 });
 
 test('safe SDK contract rejects missing identity, ambiguous environment and unbounded deadlines', () => {
   const request = { serial: 'review-serial', flow: '/flows/recovery.yaml', junit: '/private/raw.xml', deadlineMs: 180_000, env: {} };
-  for (const change of [{ serial: '' }, { serial: '-s' }, { serial: null }, { flow: null }, { flow: 'relative.yaml' }, { flow: '/bad\nflow' }, { junit: null }, { junit: 'relative.xml' }, { junit: '/bad\0report' }, { deadlineMs: 0 }, { deadlineMs: 180_001 }, { deadlineMs: 1.1 }, { env: null }, { env: 1 }, { env: [] }, { env: { 'BAD=KEY': 'x' } }, { env: { KEY: 1 } }, { env: { KEY: 'x\0y' } }, { env: { KEY: 'x'.repeat(4097) } }]) {
+  for (const change of [{ serial: '' }, { serial: '-s' }, { serial: null }, { flow: null }, { flow: 'relative.yaml' }, { flow: '/bad\nflow' }, { junit: null }, { junit: 'relative.xml' }, { junit: '/bad\0report' }, { deadlineMs: 0 }, { deadlineMs: 600_001 }, { deadlineMs: 1.1 }, { env: null }, { env: 1 }, { env: [] }, { env: { 'BAD=KEY': 'x' } }, { env: { KEY: 1 } }, { env: { KEY: 'x\0y' } }, { env: { KEY: 'x'.repeat(4097) } }]) {
     assert.throws(() => validateSafeSdkRequest({ ...request, ...change }), /maestro_safe_sdk_request_invalid/u);
   }
   assert.throws(() => validateSafeSdkRequest(null), /maestro_safe_sdk_request_invalid/u);

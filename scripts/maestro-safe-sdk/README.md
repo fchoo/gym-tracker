@@ -24,9 +24,13 @@ This pin set describes the inspected macOS toolchain; another host requires an
 independently verified toolchain pin set.
 
 The Node request contract requires an explicit device serial, absolute unchanged
-flow and fresh JUnit paths, a deadline from 1 to 180,000 ms, and explicit string
-environment values. Production Recovery allocates 174,000 ms for flow execution,
-5,000 ms for driver cleanup and 1,000 ms for reporting/process exit. Its existing
+flow and fresh JUnit paths, a shared deadline from 1 to 600,000 ms, and explicit
+string environment values. The limit accommodates the functional caller's
+already fixed 600,000 ms process budget: 594,000 ms for flow execution plus
+6,000 ms for cleanup, reporting and process exit. Each caller must reserve that
+headroom within its own existing budget; the shared maximum does not extend it.
+Recovery and Calendar keep their specific 174,000 ms flow deadlines, with
+5,000 ms for driver cleanup and 1,000 ms for reporting/process exit. Their existing
 outer deadline, exclusive lease, source/APK identity, flow, nonce and marker
 validators remain authoritative. Only actual `Orchestra.runFlow().success` can
 produce a successful testcase. Parse, connection, execution, timeout and cleanup
@@ -39,6 +43,10 @@ after writing official failing JUnit. This preserves the nonzero failure contrac
 without Kotlin `exitProcess` termination scaffolding. The existing process deadline
 still bounds JVM termination; lingering non-daemon driver threads are a diagnostic
 failure, not grounds to extend the budget or accept a JUnit-only success.
+Tests accept the existing 180,000 ms and functional 594,000 ms allocations and
+the exact shared 600,000 ms boundary; 600,001 ms remains invalid. This interface
+change leaves all three Kotlin sources, their cleanup algorithm and SDK pins
+byte-identical. Fresh build receipts bind the changed Node wrapper hash.
 
 Every compilation gets a fresh private build directory. It retains source
 snapshots, input identity, compiler diagnostics, and the completed source/JAR/
