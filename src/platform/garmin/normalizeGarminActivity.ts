@@ -94,12 +94,12 @@ function assignIfPresent<T extends object, K extends string, V>(target: T, key: 
 
 function parseUtcTimestamp(value: unknown): number {
   if (typeof value !== "string") invalid();
-  const iso = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d{3}))?Z?$/u.exec(value);
+  const iso = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z?$/u.exec(value);
   if (iso === null) invalid();
   const [, yearText, monthText, dayText, hourText, minuteText, secondText, millisecondText] = iso;
   const parts = [yearText, monthText, dayText, hourText, minuteText, secondText].map(Number);
   const [year, month, day, hour, minute, second] = parts;
-  const millisecond = millisecondText === undefined ? 0 : Number(millisecondText);
+  const millisecond = millisecondText === undefined ? 0 : Number(millisecondText.padEnd(3, "0"));
   const timestamp = Date.UTC(year!, month! - 1, day!, hour!, minute!, second!, millisecond);
   const date = new Date(timestamp);
   const expected = [year, month! - 1, day, hour, minute, second];

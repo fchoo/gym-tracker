@@ -86,6 +86,25 @@ function outdoorFixture(fetchTime = "2026-10-11T07:00:00.000Z") {
   };
 }
 
+describe("source UTC fractional precision", () => {
+  it.each([[".1Z", 100], [".12Z", 120], [".001Z", 1], [".0", 0], [".00", 0]] as [string, number][])(
+    "preserves millisecond value for %s without changing source identity", async (fraction, milliseconds) => {
+      const fixture = outdoorFixture();
+      fixture.activity.summaryDTO.startTimeGMT = `2026-10-05T23:30:00${fraction}`;
+      const result = await normalizeGarminActivity(fixture, sha256);
+      expect(result.normalized.started_at_ms).toBe(Date.UTC(2026, 9, 5, 23, 30, 0, milliseconds));
+      expect(result.external_activity_id).toBe(fixture.external_activity_id);
+      expect(result.normalization_version).toBe(1);
+    },
+  );
+  it.each(["2026-02-30T23:30:00.1Z", "2026-10-05T24:30:00.12Z", "2026-10-05T23:30:00.1234Z"])(
+    "keeps calendar and sub-millisecond rejection for %s", async timestamp => {
+      const fixture = outdoorFixture(); fixture.activity.summaryDTO.startTimeGMT = timestamp;
+      await expect(normalizeGarminActivity(fixture, sha256)).rejects.toMatchObject({ code: "garmin_source_invalid" });
+    },
+  );
+});
+
 const expectedNormalized = {
   version: 1 as const,
   started_at_ms: Date.UTC(2026, 9, 5, 23, 30),
