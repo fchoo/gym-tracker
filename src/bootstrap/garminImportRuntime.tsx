@@ -36,6 +36,10 @@ import {
   normalizeGarminActivity,
 } from "../platform/garmin/normalizeGarminActivity";
 
+// Owner-registered default for this personal app. Provider timezone evidence
+// still takes precedence, and a suggestion never commits an activity date.
+const REGISTERED_GARMIN_TIME_ZONE = "Asia/Singapore";
+
 export type GarminImportedActivityListItem = Readonly<{
   activityId: string;
   title: string;
@@ -222,17 +226,58 @@ function isoLocalParts(absoluteStartedAtMs: number): Readonly<{
   const iso = new Date(absoluteStartedAtMs).toISOString();
   return Object.freeze({
     localDate: iso.slice(0, 10),
-    localTime: iso.slice(11, 19),
+    localTime: iso.slice(11, 19) + (absoluteStartedAtMs % 1_000 === 0 ? "" : iso.slice(19, 23)),
   });
+}
+
+function timeZoneDateSuggestion(absoluteStartedAtMs: number, timeZone: string | undefined): Readonly<{
+  localDate: string;
+  localTime: string;
+  timeZone: string;
+  utcOffsetMinutes: number;
+}> | null {
+  if (timeZone === undefined || timeZone.length > 120
+    || !/^[A-Za-z][A-Za-z0-9._+-]*(?:\/[A-Za-z0-9._+-]+)*$/u.test(timeZone)) return null;
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA-u-ca-gregory-nu-latn", {
+      timeZone, calendar: "gregory", numberingSystem: "latn",
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+    }).formatToParts(new Date(absoluteStartedAtMs)).reduce<Record<string, string>>((values, part) => {
+      values[part.type] = part.value;
+      return values;
+    }, {});
+    const milliseconds = absoluteStartedAtMs % 1_000;
+    const local = new Date(0);
+    local.setUTCFullYear(Number(parts.year), Number(parts.month) - 1, Number(parts.day));
+    local.setUTCHours(Number(parts.hour), Number(parts.minute), Number(parts.second), milliseconds);
+    const utcOffsetMinutes = (local.getTime() - absoluteStartedAtMs) / 60_000;
+    if (!Number.isSafeInteger(utcOffsetMinutes) || utcOffsetMinutes < -840 || utcOffsetMinutes > 840) return null;
+    return Object.freeze({
+      localDate: `${parts.year!.padStart(4, "0")}-${parts.month}-${parts.day}`,
+      localTime: `${parts.hour}:${parts.minute}:${parts.second}${milliseconds === 0 ? "" : `.${String(milliseconds).padStart(3, "0")}`}`,
+      timeZone,
+      utcOffsetMinutes,
+    });
+  } catch {
+    return null;
+  }
 }
 
 function pendingDateReviewFromProposal(
   proposal: GarminImportPreparedDateProposal,
   activityId: string,
+  registeredTimeZone?: string,
 ): GarminPendingDateReview {
-  const fallback = isoLocalParts(proposal.date.absoluteStartedAtMs);
   const sourceLocalDateTime = proposal.date.sourceLocalDateTime;
   const sourceUtcOffsetMinutes = proposal.date.sourceUtcOffsetMinutes;
+  const zoneSuggestion = timeZoneDateSuggestion(proposal.date.absoluteStartedAtMs, proposal.date.sourceTimeZone ?? registeredTimeZone);
+  const compatibleSuggestion = zoneSuggestion !== null
+    && (sourceUtcOffsetMinutes === undefined || sourceUtcOffsetMinutes === zoneSuggestion.utcOffsetMinutes)
+    && (sourceLocalDateTime === undefined || sourceLocalDateTime === `${zoneSuggestion.localDate}T${zoneSuggestion.localTime}`)
+    ? zoneSuggestion
+    : null;
+  const fallback = compatibleSuggestion ?? isoLocalParts(proposal.date.absoluteStartedAtMs);
   return Object.freeze({
     activityId,
     absoluteStartedAtMs: proposal.date.absoluteStartedAtMs,
@@ -244,10 +289,11 @@ function pendingDateReviewFromProposal(
     suggestedLocalDate: sourceLocalDateTime?.slice(0, 10) ?? fallback.localDate,
     suggestedLocalTime: sourceLocalDateTime?.slice(11) ?? fallback.localTime,
     suggestedTimeZone: proposal.date.sourceTimeZone
+      ?? compatibleSuggestion?.timeZone
       ?? (sourceUtcOffsetMinutes === undefined
         ? "UTC+00:00"
         : sourceOffsetZone(sourceUtcOffsetMinutes)),
-    suggestedUtcOffsetMinutes: sourceUtcOffsetMinutes ?? 0,
+    suggestedUtcOffsetMinutes: sourceUtcOffsetMinutes ?? compatibleSuggestion?.utcOffsetMinutes ?? 0,
   });
 }
 
@@ -260,6 +306,7 @@ export function createGarminRootRuntime(input: Readonly<{
   loadLastSuccessfulSync?(): Promise<GarminDurableSyncSummary | null>;
   saveLastSuccessfulSync?(summary: GarminDurableSyncSummary): Promise<void>;
   enforceSourceDatePolicy?: boolean;
+  registeredTimeZone?: string;
 }>): GarminRootRuntime {
   const revisionReviews = new Set<string>();
   let pendingDateReview: PendingDateReviewState | null = null;
@@ -297,7 +344,7 @@ export function createGarminRootRuntime(input: Readonly<{
             proposal,
             request,
             assertCurrentGeneration,
-            review: pendingDateReviewFromProposal(proposal, confirmation.activityId),
+            review: pendingDateReviewFromProposal(proposal, confirmation.activityId, input.registeredTimeZone),
           });
           return Object.freeze({ kind: "date_confirmation_required" as const });
         }
@@ -456,6 +503,7 @@ function createProductionRequestFactory(sha256: GarminSha256): GarminSharedImpor
 
 export const __garminImportRuntimeTestOnly = Object.freeze({
   createProductionRequestFactory,
+  timeZoneDateSuggestion,
 });
 
 const productionSha256: GarminSha256 = (value) =>
@@ -483,6 +531,7 @@ export function useGarminImportRuntime(input: Readonly<{
   );
   return useMemo(() => createGarminRootRuntime({
     enforceSourceDatePolicy: true,
+    registeredTimeZone: REGISTERED_GARMIN_TIME_ZONE,
     source,
     services,
     sha256,

@@ -106,6 +106,96 @@ function envelopeWithSourceDate(input: Readonly<{
 }
 
 describe("Garmin import runtime", () => {
+  it.each([undefined, "", " Asia/Singapore", "+08", "x".repeat(121), "Asia/NotAZone"])(
+    "keeps an invalid registered timezone %j outside date suggestions", (timeZone) => {
+      expect(__garminImportRuntimeTestOnly.timeZoneDateSuggestion(Date.parse("2026-06-19T16:30:00.120Z"), timeZone)).toBeNull();
+    },
+  );
+
+  it("keeps malformed timezone formatter output outside date suggestions", () => {
+    const formatter = jest.spyOn(Intl, "DateTimeFormat").mockImplementation(() => ({ formatToParts: () => [] } as unknown as Intl.DateTimeFormat));
+    try {
+      expect(__garminImportRuntimeTestOnly.timeZoneDateSuggestion(Date.parse("2026-06-19T16:30:00.120Z"), "Asia/Singapore")).toBeNull();
+    } finally {
+      formatter.mockRestore();
+    }
+  });
+
+  it.each([15, -15])("rejects a registered timezone resolving outside the %s-hour offset limit", (hours) => {
+    const instant = Date.parse("2026-06-19T16:30:00.120Z");
+    const shifted = new Date(instant + hours * 3_600_000);
+    const parts = [
+      { type: "year", value: String(shifted.getUTCFullYear()) },
+      { type: "month", value: String(shifted.getUTCMonth() + 1).padStart(2, "0") },
+      { type: "day", value: String(shifted.getUTCDate()).padStart(2, "0") },
+      { type: "hour", value: String(shifted.getUTCHours()).padStart(2, "0") },
+      { type: "minute", value: String(shifted.getUTCMinutes()).padStart(2, "0") },
+      { type: "second", value: String(shifted.getUTCSeconds()).padStart(2, "0") },
+    ];
+    const formatter = jest.spyOn(Intl, "DateTimeFormat").mockImplementation(() => ({ formatToParts: () => parts } as unknown as Intl.DateTimeFormat));
+    try {
+      expect(__garminImportRuntimeTestOnly.timeZoneDateSuggestion(instant, "Asia/Singapore")).toBeNull();
+    } finally {
+      formatter.mockRestore();
+    }
+  });
+
+  it.each<[Parameters<typeof envelopeWithSourceDate>[0], string, string, string, number]>([
+    [{ sourceLocalDateTime: "2026-06-20T00:30:00.120", sourceUtcOffsetMinutes: 480 }, "2026-06-20", "00:30:00.120", "Asia/Singapore", 480],
+    [{}, "2026-06-20", "00:30:00.120", "Asia/Singapore", 480],
+    [{ sourceTimeZone: "America/New_York" }, "2026-06-19", "12:30:00.120", "America/New_York", -240],
+    [{ sourceLocalDateTime: "2026-06-19T12:30:00.120", sourceUtcOffsetMinutes: -240 }, "2026-06-19", "12:30:00.120", "UTC-04:00", -240],
+  ])("defaults to the registered zone only when consistent with historical source evidence %j", async (sourceDate, date, time, zone, offset) => {
+    const sourceEnvelope = envelopeWithSourceDate({
+      absoluteStartedAtMs: Date.parse("2026-06-19T16:30:00.120Z"),
+      ...sourceDate,
+    });
+    const imported = jest.fn(async () => ({ kind: "imported" as const, activityId: "registered-zone-activity", aggregateRevision: 1 }));
+    const runtime = createGarminRootRuntime({
+      enforceSourceDatePolicy: true,
+      registeredTimeZone: "Asia/Singapore",
+      services: { importedActivities: { confirmGarminImport: imported } },
+      sha256,
+      requestFor: async () => ({ requestId: "registered-zone-request", requestSha256: "9".repeat(64), activityId: "registered-zone-activity", expectedAggregateRevision: 0, confirmedLocalDate: "ignored" }),
+      loadActivities: async () => [],
+      source: {
+        connectionState: async () => ({ kind: "connected" as const, account_namespace: sourceEnvelope.account_namespace, generation: 1 }),
+        restoreSession: async () => ({ kind: "connected" as const, account_namespace: sourceEnvelope.account_namespace, generation: 1 }),
+        login: async () => ({ kind: "disconnected" as const }),
+        resumeMfa: async () => ({ kind: "disconnected" as const }),
+        logout: async () => undefined,
+        listRunningSummaries: async () => ({ items: [{ account_namespace: sourceEnvelope.account_namespace, external_activity_id: sourceEnvelope.external_activity_id }] }),
+        readActivity: async () => sourceEnvelope,
+      },
+    });
+    await expect(runtime.coordinator.syncNow()).resolves.toMatchObject({ failure: { code: "date_confirmation_required" } });
+    expect(runtime.getPendingDateReview()).toMatchObject({ suggestedLocalDate: date, suggestedLocalTime: time, suggestedTimeZone: zone, suggestedUtcOffsetMinutes: offset });
+    expect(imported).not.toHaveBeenCalled();
+  });
+
+  it("uses the configured Singapore registration through the production hook without changing imported history", async () => {
+    const sourceEnvelope = envelopeWithSourceDate({ absoluteStartedAtMs: Date.parse("2026-06-19T16:30:00.000Z"), sourceLocalDateTime: "2026-06-20T00:30:00", sourceUtcOffsetMinutes: 480 });
+    const imported = jest.fn(async () => ({ kind: "imported" as const, activityId: "registered-zone-activity", aggregateRevision: 1 }));
+    const history = [{ activityId: "existing-activity", title: "Running", activityType: "Running", confirmedLocalDate: "2026-06-01" }];
+    const rendered = await renderHook(() => useGarminImportRuntime({
+      application: { confirmGarminImport: imported, loadGarminActivities: async () => history, loadLastGarminSync: async () => null, saveLastGarminSync: async () => undefined },
+      sha256,
+      source: {
+        connectionState: async () => ({ kind: "connected" as const, account_namespace: sourceEnvelope.account_namespace, generation: 1 }),
+        restoreSession: async () => ({ kind: "connected" as const, account_namespace: sourceEnvelope.account_namespace, generation: 1 }),
+        login: async () => ({ kind: "disconnected" as const }), resumeMfa: async () => ({ kind: "disconnected" as const }), logout: async () => undefined,
+        listRunningSummaries: async () => ({ items: [{ account_namespace: sourceEnvelope.account_namespace, external_activity_id: sourceEnvelope.external_activity_id }] }),
+        readActivity: async () => sourceEnvelope,
+      },
+    }));
+    await act(async () => {
+      await expect(rendered.result.current.coordinator.syncNow()).resolves.toMatchObject({ failure: { code: "date_confirmation_required" } });
+    });
+    expect(rendered.result.current.getPendingDateReview()).toMatchObject({ suggestedTimeZone: "Asia/Singapore", suggestedUtcOffsetMinutes: 480 });
+    await expect(rendered.result.current.loadActivities()).resolves.toEqual(history);
+    expect(imported).not.toHaveBeenCalled();
+  });
+
   it("composes one source, coordinator, shared commit, and durable history reader", async () => {
     const sourceEnvelope = envelope();
     const durableActivities: Array<Readonly<{
