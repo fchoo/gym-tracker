@@ -205,6 +205,7 @@ test("Calendar shard streams compact staged artifacts without changing published
   const transport = createV12CalendarArtifactTransport({ root, runId, binding: {
     schema_version: 1, run_id: runId, execution_origin: "production-attested/v1", request_sha256: "1".repeat(64),
     flow_sha256: flowSha256, requirements_flow_sha256: "5".repeat(64), fixture_source_sha256: "4".repeat(64),
+    sdk_binding_sha256: createHash("sha256").update("v12-calendar-test-controlled-sdk-flow/v1").digest("hex"),
     tool_facts: { adb_sha256: "2".repeat(64), maestro_sha256: "3".repeat(64), unzip_sha256: "4".repeat(64) },
   } });
   const native = productionResult(flowSha256);
