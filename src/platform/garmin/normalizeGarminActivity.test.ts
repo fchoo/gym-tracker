@@ -126,6 +126,72 @@ const expectedNormalized = {
 };
 
 describe("normalize Garmin activity", () => {
+  it.each([127, null])("rejects nested-only original-index provenance without a transport tag: %s", async sourceMetricsIndex => {
+    const details = { metricDescriptors: [{ key: "sumElapsedDuration", metricsIndex: 0, sourceMetricsIndex }], activityDetailMetrics: [{ metrics: [1] }] };
+    const hash = jest.fn(sha256);
+    await expect(normalizeGarminActivity({ ...outdoorFixture(), details }, hash)).rejects.toMatchObject({ code: "garmin_source_invalid" });
+    expect(hash).not.toHaveBeenCalled();
+  });
+
+  it.each(["running", "treadmill_running"] as const)("validates every present tagged route time before the %s subtype decision", async subtype => {
+    for (const elapsedDuration of [true, "0", {}, -1, 31536001]) {
+      const fixture = outdoorFixture(); fixture.activity.activityTypeDTO.typeKey = subtype;
+      const details = { transportProjectionVersion: 1, metricDescriptors: [], sourceMetricDescriptorCount: 0,
+        geoPolylineDTO: { polyline: [[0, 0, elapsedDuration]] } };
+      const hash = jest.fn(sha256);
+      await expect(normalizeGarminActivity({ ...fixture, details }, hash)).rejects.toMatchObject({ code: "garmin_source_invalid" });
+      expect(hash).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each(["running", "treadmill_running"] as const)("preserves missing/null/zero tagged time for %s without coercion", async subtype => {
+    for (const tuple of [[0, 0], [0, 0, null], [0, 0, 0]]) {
+      const fixture = outdoorFixture(); fixture.activity.activityTypeDTO.typeKey = subtype;
+      const details = { transportProjectionVersion: 1, metricDescriptors: [], sourceMetricDescriptorCount: 0,
+        geoPolylineDTO: { polyline: [tuple] } };
+      const envelope = await normalizeGarminActivity({ ...fixture, details }, sha256);
+      if (subtype === "treadmill_running") expect(envelope.normalized).not.toHaveProperty("route");
+      else expect(envelope.normalized.route).toEqual([{
+        latitude_e6: 0, longitude_e6: 0, ...(tuple.length === 3 && tuple[2] === 0 ? { elapsed_ms: 0 } : {}),
+      }]);
+    }
+  });
+
+  it("retains the legacy treadmill route-time behavior", async () => {
+    for (const elapsedDuration of [true, "0", {}, -1, 31536001]) {
+      const fixture = outdoorFixture(); fixture.activity.activityTypeDTO.typeKey = "treadmill_running";
+      const details = { ...fixture.details, geoPolylineDTO: { polyline: [{ lat: 0, lon: 0, elapsedDuration }] } };
+      expect((await normalizeGarminActivity({ ...fixture, details }, sha256)).normalized).not.toHaveProperty("route");
+    }
+  });
+
+  it("derives legacy metrics from canonical descriptor values without reading a live proxy index", async () => {
+    const indexRead = jest.fn();
+    const metrics = new Proxy([1], { get(target, property, receiver) {
+      if (property === "0") { indexRead(); return 2; }
+      return Reflect.get(target, property, receiver);
+    } });
+    const details = { metricDescriptors: [{ key: "sumElapsedDuration", metricsIndex: 0 }], activityDetailMetrics: [{ metrics }] };
+    const expectedCanonical = canonicalizeGarminPayload({ ...details, activityDetailMetrics: [{ metrics: [1] }] });
+    const envelope = await normalizeGarminActivity({ ...outdoorFixture(), details }, sha256);
+    expect(envelope.normalized.samples).toEqual([{ elapsed_ms: 1000 }]);
+    expect(envelope.raw_component_sha256.details).toBe(await sha256(expectedCanonical));
+    expect(indexRead).not.toHaveBeenCalled();
+  });
+
+  it("derives activity facts from canonical object descriptors rather than live proxy get values", async () => {
+    const fixture = outdoorFixture(); const liveRead = jest.fn();
+    const expectedCanonical = canonicalizeGarminPayload(fixture.activity);
+    fixture.activity.summaryDTO = new Proxy(fixture.activity.summaryDTO, { get(target, property, receiver) {
+      if (property === "distance") { liveRead(); return 9000; }
+      return Reflect.get(target, property, receiver);
+    } });
+    const envelope = await normalizeGarminActivity(fixture, sha256);
+    expect(envelope.normalized.distance_meters).toBe(5000);
+    expect(envelope.raw_component_sha256.activity).toBe(await sha256(expectedCanonical));
+    expect(liveRead).not.toHaveBeenCalled();
+  });
+
   it("matches legacy row semantics with sparse source indexes, duplicate samples, nulls and route durations", async () => {
     const legacy = outdoorFixture();
     legacy.details.metricDescriptors = [

@@ -188,6 +188,7 @@ function metricDescriptors(details: PlainRecord): ReadonlyMap<string, number> {
   const keys = new Set<string>();
   for (const sourceDescriptor of sourceDescriptors) {
     const source = record(sourceDescriptor);
+    if ("sourceMetricsIndex" in source && details.transportProjectionVersion !== 1) invalid();
     const key = source.key;
     const index = source.metricsIndex;
     if (typeof key !== "string" || key.length < 1 || key.length > 64
@@ -303,6 +304,9 @@ function normalizeRoute(
     let source: PlainRecord;
     if (details.transportProjectionVersion === 1) {
       if (!Array.isArray(sourcePoint) || (sourcePoint.length !== 2 && sourcePoint.length !== 3)) invalid();
+      // A present compact time is reviewed data even when treadmill route
+      // positions are omitted from the normalized result.
+      if (sourcePoint.length === 3) secondsToMilliseconds({ value: sourcePoint[2] }, "value");
       source = { lat: sourcePoint[0], lon: sourcePoint[1],
         ...(sourcePoint.length === 3 ? { elapsedDuration: sourcePoint[2] } : {}) };
     } else source = record(sourcePoint);
@@ -356,13 +360,16 @@ export async function normalizeGarminActivity(
   const splitsCanonical = canonicalizeGarminPayload(input.splits);
   const detailsCanonical = canonicalizeGarminPayload(input.details);
 
-  const activity = record(input.activity);
+  // Facts and hashes consume the same guarded descriptor-value snapshots;
+  // live proxies or later digest callbacks cannot provide different values.
+  const activity = record(JSON.parse(activityCanonical));
+  const splits = record(JSON.parse(splitsCanonical));
+  const details = record(JSON.parse(detailsCanonical));
   if (normalizeActivityId(activity.activityId) !== externalActivityId) invalid();
   const activityType = record(activity.activityTypeDTO);
   const subtype = normalizeSubtype(activityType.typeKey);
   const summary = record(activity.summaryDTO);
-  const laps = normalizeLaps(record(input.splits));
-  const details = record(input.details);
+  const laps = normalizeLaps(splits);
   const descriptors = metricDescriptors(details);
   const samples = normalizeSamples(details, descriptors);
   const route = normalizeRoute(details, subtype);
