@@ -254,6 +254,32 @@ test("a nonzero Maestro exit returns its failed JUnit outcome without hiding too
   assert.deepEqual(session.maestro(invocation()), { status: "FAIL", xml });
 });
 
+test("fixed SDK cleanup failure aborts either Calendar flow and marks remote cleanup uncertain", (t) => {
+  for (const input of [invocation(), probeInvocation()]) {
+    const { session, state, calls } = controlledSession(t);
+    state.junit = '<testsuite><testcase><failure message="maestro_sdk_cleanup_failed"/></testcase></testsuite>';
+    assert.throws(() => session.maestro(input), /^Error: calendar_action_sdk_cleanup_uncertain$/u);
+    assert.equal(session.cleanupUncertain, true);
+    const report = calls.at(-1).args[calls.at(-1).args.indexOf("--junit") + 1];
+    assert.equal(fs.existsSync(path.dirname(report)), false, "only local JUnit quarantine is cleaned");
+  }
+});
+
+test("ordinary failures and cleanup words outside a failure message do not mark remote cleanup uncertain", (t) => {
+  const { session, state } = controlledSession(t);
+  for (const xml of [
+    '<testsuite><testcase><failure message="maestro_ui_flow_failed"/></testcase></testsuite>',
+    '<testsuite message="maestro_sdk_cleanup_failed"><testcase><failure message="other"/></testcase></testsuite>',
+    '<testsuite><testcase><!-- <failure message="maestro_sdk_cleanup_failed"/> --><failure message="other"/></testcase></testsuite>',
+    '<testsuite><testcase><failure message="maestro_sdk_cleanup_failed_extra"/></testcase></testsuite>',
+    '<testsuite><testcase><failure message="other"><![CDATA[maestro_sdk_cleanup_failed]]></failure></testcase></testsuite>',
+  ]) {
+    state.junit = xml;
+    assert.equal(session.maestro(invocation()).status, "FAIL");
+    assert.equal(session.cleanupUncertain, false);
+  }
+});
+
 test("both Calendar flows use only the controlled SDK protocol with exact environment and bounded private JUnit", (t) => {
   const { session, calls, root } = controlledSession(t);
   for (const input of [invocation(), probeInvocation()]) {
@@ -465,13 +491,13 @@ async function executeFixtureCase(scenario, fileUrl) {
     return { loadCompleted: () => ["resumed", "production-resumed", "production-resume-recompiled"].includes(scenario) ? resumed : null,
       resumeUnit: ({ kind, ordinal, key }) => {
         if (scenario === "collect-failed") throw new Error("calendar_observation_marker_invalid");
-        if (scenario === "production-flow") return undefined;
+        if (scenario === "production-flow" || (scenario.endsWith("cleanup-failed") && ordinal === 0)) return undefined;
         if (kind === "stage") return { payload: { stage: result.stages[ordinal], junit: result.junit_cases[ordinal] }, artifacts: [] };
         const [requirementId, probeId] = key.split(":");
         const definition = requirements.V12_CALENDAR_REQUIREMENT_DEFINITIONS.find((item) => item.requirement_id === requirementId);
         const receipt = requirements.createV12CalendarProbeReceipt({ nonce: ordinal.toString(16).padStart(32, "0"), flowSha256: binding.requirements_flow_sha256, fixtureSourceSha256: binding.fixture_source_sha256, requirementId, evidenceId: definition.evidence_id, probeId });
         return { payload: { receipt, junit: { id: key, status: "PASS" } }, artifacts: [] };
-      }, appendUnit(unit) { assert.equal(scenario, "production-flow"); return { payload: unit.payload, artifacts: unit.artifacts.map(({ bytes, ...descriptor }) => ({ ...descriptor, sha256: hash(bytes), size_bytes: bytes.length })) }; }, complete(value) { events.push("complete"); completed = value; if (scenario === "complete-failed") throw new Error("calendar_action_transport_invalid"); } };
+      }, appendUnit(unit) { assert.ok(scenario === "production-flow" || scenario.endsWith("cleanup-failed")); return { payload: unit.payload, artifacts: unit.artifacts.map(({ bytes, ...descriptor }) => ({ ...descriptor, sha256: hash(bytes), size_bytes: bytes.length })) }; }, complete(value) { events.push("complete"); completed = value; if (scenario === "complete-failed") throw new Error("calendar_action_transport_invalid"); } };
   } } });
   mock.module("node:child_process", { namedExports: { ...processBoundary, spawnSync(executable, args) {
     assert.equal(args.includes("test") || args.includes("-c") || args.includes("--test-output-dir"), false, "shared log buffer must be preserved");
@@ -483,7 +509,8 @@ async function executeFixtureCase(scenario, fileUrl) {
       assert.equal(request.serial, "test-only-device");
       assert.ok(request.deadlineMs > 0 && request.deadlineMs <= 174_000);
       assert.equal(fs.statSync(path.dirname(request.junit)).mode & 0o777, 0o700);
-      fs.writeFileSync(request.junit, "<testsuite><testcase/></testsuite>");
+      const cleanupFailed = scenario.endsWith("cleanup-failed") && sdkRequests.length === 1;
+      fs.writeFileSync(request.junit, cleanupFailed ? '<testsuite><testcase><failure message="maestro_sdk_cleanup_failed"/></testcase></testsuite>' : "<testsuite><testcase/></testsuite>");
       if (request.env.V12_CALENDAR_STAGE) {
         const id = request.env.V12_CALENDAR_STAGE;
         device.logs += `${contracts.encodeV12CalendarTerminalMarkerChunks(fixtures.createV12CalendarMarkerFixture(id, contracts.V12_CALENDAR_STAGE_IDS.indexOf(id), request.env.V12_CALENDAR_FLOW_SHA256, request.env.V12_CALENDAR_NONCE)).join("\n")}\n`;
@@ -491,7 +518,7 @@ async function executeFixtureCase(scenario, fileUrl) {
         const receipt = requirements.createV12CalendarProbeReceipt({ nonce: request.env.V12_CALENDAR_EVIDENCE_NONCE, flowSha256: request.env.V12_CALENDAR_REQUIREMENTS_SHA256, fixtureSourceSha256: request.env.V12_CALENDAR_FIXTURE_SOURCE_SHA256, requirementId: request.env.V12_CALENDAR_REQUIREMENT, evidenceId: request.env.V12_CALENDAR_EVIDENCE_ID, probeId: request.env.V12_CALENDAR_PROBE });
         device.logs += `${requirements.V12_CALENDAR_PROBE_RECEIPT_MARKER}${JSON.stringify(receipt)}\n`;
       }
-      return { status: 0, stdout: "" };
+      return { status: cleanupFailed ? 1 : 0, stdout: "" };
     }
     if (executable === tools.adb) {
       assert.equal(args[0], "-s"); assert.equal(args[1], "test-only-device");
@@ -515,7 +542,7 @@ async function executeFixtureCase(scenario, fileUrl) {
   process.env.V12_DEVICE_SERIAL = "test-only-device";
   for (const key of ["NODE_ENV", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS", "V12_NATIVE_ADAPTER_COMMAND"]) delete process.env[key];
   if (scenario.startsWith("forbidden:")) { const key = scenario.slice(10); process.env[key] = key === "NODE_ENV" ? "test" : ""; }
-  if (scenario === "borrowed") payload.lease = lease;
+  if (scenario === "borrowed" || scenario === "production-borrowed-cleanup-failed") payload.lease = lease;
   try {
     const { executeProductionCalendarAction, createV12CalendarDeviceSession, createV12CalendarStageInvocation, createV12CalendarProbeInvocation } = await import(actionUrl);
     if (scenario === "production-session") {
@@ -528,6 +555,13 @@ async function executeFixtureCase(scenario, fileUrl) {
       assert.equal(events.filter((event) => event === "sdk-prepare").length, 1);
       assert.equal(sdkRequests.length, 2);
       assert.ok(sdkRequests.every(({ junit }) => !fs.existsSync(path.dirname(junit))));
+    } else if (scenario.endsWith("cleanup-failed")) {
+      await assert.rejects(executeProductionCalendarAction(payload, proof), (error) => error.message === "v12_production_native_launcher_calendar_action_sdk_cleanup_uncertain");
+      assert.equal(sdkRequests.length, 1, "uncertain remote driver cleanup must stop further execution");
+      assert.equal(events.includes("calendar-snapshot"), true);
+      for (const event of ["calendar-restore", "restore", "release", "complete"]) assert.equal(events.includes(event), false, `${event} must not run while SDK ownership is uncertain`);
+      if (scenario === "production-borrowed-cleanup-failed") assert.equal(events.includes("acquire") || events.includes("snapshot"), false);
+      assert.equal(fs.existsSync(path.dirname(sdkRequests[0].junit)), false);
     } else if (scenario === "production-resume-recompiled") {
       assert.equal(await executeProductionCalendarAction(payload, proof), resumed);
       sdkBinding.receipt.jar_sha256 = "c".repeat(64);
@@ -574,7 +608,7 @@ async function executeFixtureCase(scenario, fileUrl) {
   } finally { process.chdir(originalCwd); fs.rmSync(root, { recursive: true, force: true }); }
 }
 
-for (const scenario of ["success", "borrowed", "resumed", "production-session", "production-flow", "production-resumed", "production-resume-recompiled", "sdk-prepare-failed", "sdk-verify-failed", "snapshot-failed", "collect-failed", "complete-failed", "calendar-restore-failed", "restore-failed", "preserved-error", "unknown-error", "generic-error", ...["NODE_ENV", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS", "V12_NATIVE_ADAPTER_COMMAND"].map((key) => `forbidden:${key}`)]) {
+for (const scenario of ["success", "borrowed", "resumed", "production-session", "production-flow", "production-cleanup-failed", "production-borrowed-cleanup-failed", "production-resumed", "production-resume-recompiled", "sdk-prepare-failed", "sdk-verify-failed", "snapshot-failed", "collect-failed", "complete-failed", "calendar-restore-failed", "restore-failed", "preserved-error", "unknown-error", "generic-error", ...["NODE_ENV", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS", "V12_NATIVE_ADAPTER_COMMAND"].map((key) => `forbidden:${key}`)]) {
   test(`action lifecycle isolates ${scenario} and preserves native authority guards`, () => {
     const child = spawnSync(process.execPath, ["--experimental-test-module-mocks", "--input-type=module", "--eval", `await (${executeFixtureCase.toString()})(${JSON.stringify(scenario)}, ${JSON.stringify(import.meta.url)});`], { encoding: "utf8", timeout: 30_000, env: { ...process.env, NODE_TEST_CONTEXT: undefined } });
     assert.equal(child.error, undefined);

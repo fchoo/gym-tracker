@@ -204,6 +204,7 @@ export function createV12CalendarDeviceSession(root, runId, executionTools, {
   const adb = (...args) => command(executionTools.adb, ["-s", serial, ...args]).stdout.trim();
   const shell = (...args) => adb("shell", args.map(quote).join(" "));
   let temporaryDirectory;
+  let cleanupUncertain = false;
   const temporary = () => {
     if (temporaryDirectory !== undefined) return temporaryDirectory;
     temporaryDirectory = mkdtempSync(path.join(tmpdir(), `v12-calendar-${runId}-`));
@@ -317,7 +318,11 @@ export function createV12CalendarDeviceSession(root, runId, executionTools, {
       let xml;
       try { xml = readFileSync(report, "utf8"); chmodSync(report, 0o600); }
       catch { fail("junit_missing"); }
-      return Object.freeze({ status: junitOutcome(xml, result.status), xml });
+      const status = junitOutcome(xml, result.status, { onSdkCleanupFailure: () => {
+        cleanupUncertain = true;
+        fail("sdk_cleanup_uncertain");
+      } });
+      return Object.freeze({ status, xml });
     } finally {
       rmSync(quarantine, { recursive: true, force: true });
     }
@@ -354,6 +359,7 @@ export function createV12CalendarDeviceSession(root, runId, executionTools, {
     fail("probe_receipt_timeout");
   };
   return Object.freeze({ cleanup, configureStage, drive, logs, maestro, awaitMarker, awaitProbeReceipt, temporary, screenshot, settings, uiDump,
+    get cleanupUncertain() { return cleanupUncertain; },
     version: () => {
       if (executionTools.test_only) {
         if (command(executionTools.maestro, ["--version"]).stdout.trim() !== "2.8.0") fail("maestro_version_invalid");
@@ -521,7 +527,7 @@ export async function executeProductionCalendarAction(payload, attestation) {
     const transport = createV12CalendarArtifactTransport({ root, runId: attestation.run_id, binding });
     const ownedLease = payload.lease === undefined;
     const lease = ownedLease ? runtime.acquireLease() : payload.lease;
-    let runtimeSettings;
+    let runtimeSettings; let retainLease = false;
     try {
       if (ownedLease) runtimeSettings = runtime.snapshotSettings(lease);
       return await runtime.withLease({ ...payload, lease }, async () => {
@@ -547,12 +553,15 @@ export async function executeProductionCalendarAction(payload, attestation) {
           return result;
         }
         finally {
-          try { runtime.restoreCalendarSettings(deviceSettings, lease); }
+          // Failed SDK ownership teardown cannot race device restoration. Keep
+          // both durable snapshots and the device lease for explicit recovery.
+          if (io.cleanupUncertain) retainLease = true;
+          try { if (!retainLease) runtime.restoreCalendarSettings(deviceSettings, lease); }
           finally { io.cleanup(); }
         }
       });
     } finally {
-      if (ownedLease && runtimeSettings !== undefined) {
+      if (ownedLease && runtimeSettings !== undefined && !retainLease) {
         runtime.restoreSettings(runtimeSettings, lease);
         runtime.releaseLease(lease);
       }
