@@ -408,3 +408,24 @@ test("Calendar shard retains the lease when settings read-back restoration fails
   }), /calendar_settings_restore_failed/u);
   assert.equal(released, false);
 });
+test("Calendar shard retains persisted settings without mutation on exact SDK cleanup uncertainty", async () => {
+  const runId = "phase20-20261014T031137Z-5917481c1fd1";
+  const manifest = {
+    run_id: runId, source: { tree_sha256: "a".repeat(64), head: "5917481c1fd1" + "b".repeat(28) }, fixtures: { registry_sha256: "b".repeat(64) },
+    build: { package: "com.fchoo.gymtracker.devtest", apk: { sha256: "c".repeat(64), signature_sha256: "1".repeat(64) } },
+    device: { installed_apk_sha256: "c".repeat(64), identity_sha256: "d".repeat(64), settings_sha256: "e".repeat(64), restoration_sha256: "f".repeat(64) }, configuration: { id: "AP-L-C390-P-F100" },
+  };
+  for (const code of ["v12_production_native_launcher_calendar_action_sdk_cleanup_uncertain", "v12_native_adapter_command_failed:calendar_action_sdk_cleanup_uncertain", "ordinary_native_failure", "v12_native_adapter_command_failed:calendar_action_sdk_cleanup_uncertain_extra"]) {
+    let restored = 0; let released = 0;
+    const failure = new Error(code);
+    await assert.rejects(executeV12CalendarShardCli(["--run", runId, "--execute"], {
+      root: "/fixture-root", flowSha256: "9".repeat(64), readBuild: () => manifest, sourceDigest: manifest.source.tree_sha256,
+      currentHead: manifest.source.head, isAncestor: () => true, acquireLease: () => ({ opaque: true }), releaseLease: () => { released += 1; },
+      snapshotSettings: () => ({ all: "persisted-under-lease" }), restoreSettings: () => { restored += 1; return true; }, executeNative: () => { throw failure; },
+      writeImmutable: () => {}, outputExists: () => false,
+    }), (error) => error === failure);
+    const expected = code === "ordinary_native_failure" || code.endsWith("_extra") ? 1 : 0;
+    assert.equal(restored, expected);
+    assert.equal(released, expected);
+  }
+});

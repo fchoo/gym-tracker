@@ -295,7 +295,7 @@ export async function executeV12CalendarShardCli(args = process.argv.slice(2), d
   const writeNativeArtifact = dependencies.writeNativeArtifact
     ?? ((file, descriptor) => write(file, artifactBytes(descriptor, readTransportArtifact)));
   const writeFailure = dependencies.writeFailureReceipt ?? ((value) => write(outputPath(runId, "calendar-failure.json"), value));
-  let lease; let settings; let restored = false;
+  let lease; let settings; let restored = false; let sdkCleanupUncertain = false;
   try {
     lease = await acquireLease();
     settings = await snapshotSettings(lease);
@@ -315,15 +315,21 @@ export async function executeV12CalendarShardCli(args = process.argv.slice(2), d
     await write(files[2], xml(native.stages, id, flowSha256)); await write(files[3], requirementsXml(native.requirements, id)); await write(files[4], registry);
     return Object.freeze({ ok: true, mode, run_id: runId });
   } catch (error) {
+    sdkCleanupUncertain = error instanceof Error && [
+      "v12_production_native_launcher_calendar_action_sdk_cleanup_uncertain",
+      "v12_native_adapter_command_failed:calendar_action_sdk_cleanup_uncertain",
+    ].includes(error.message);
     try { await writeFailure({ schema_version: 1, producer: "v12-calendar-shard/v6", run_id: runId, identity: id,
       failure_stage: settings === undefined ? "lease" : "native", failure_code: "execution_failed",
       failure_digest: sha({ runId, source: id.source_digest, code: "execution_failed" }) }); }
     catch { fail("failure_receipt_write_failed"); }
     throw error;
   } finally {
-    if (settings !== undefined) restored = await restoreSettings(settings, lease) === true;
-    if (lease !== undefined && restored) await releaseLease(lease);
-    if (settings !== undefined && !restored) fail("settings_restore_failed");
+    if (!sdkCleanupUncertain) {
+      if (settings !== undefined) restored = await restoreSettings(settings, lease) === true;
+      if (lease !== undefined && restored) await releaseLease(lease);
+      if (settings !== undefined && !restored) fail("settings_restore_failed");
+    }
   }
 }
 
