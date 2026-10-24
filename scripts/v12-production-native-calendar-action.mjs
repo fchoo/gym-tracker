@@ -38,7 +38,7 @@ import {
   createV12CalendarProbeReceipt,
   validateV12CalendarProbeReceipt,
 } from "./v12-calendar-requirement-map.mjs";
-import { prepareSafeMaestroSdk, safeSdkArguments, verifySafeSdkBinding } from "./v12-maestro-safe-sdk.mjs";
+import { prepareSafeMaestroSdk, safeSdkArguments, validateSafeSdkRequest, verifySafeSdkBinding } from "./v12-maestro-safe-sdk.mjs";
 
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const FLOW = "maestro/v1.2/calendar.yaml";
@@ -189,8 +189,9 @@ export function createV12CalendarDeviceSession(root, runId, executionTools, {
     || ![executionTools.adb, executionTools.maestro, executionTools.unzip].every((file) => typeof file === "string" && path.isAbsolute(file))) fail("toolchain_invalid");
   const deadline = Math.min(preparationStartedAt, Date.now())
     + 35 * (180_000 + 60_000) + V12_CALENDAR_REQUIREMENT_PROBE_COUNT * (180_000 + 60_000);
-  const command = (executable, args, { timeout = 180_000, binary = false, acceptFailure = false, cleanup = false } = {}) => {
+  const command = (executable, args, { timeout = 180_000, binary = false, acceptFailure = false, cleanup = false, sdkDispatch = false } = {}) => {
     if (!cleanup && Date.now() >= deadline) fail("timeout");
+    if (sdkDispatch) cleanupUncertain = true;
     const result = spawn(executable, args, {
       cwd: root,
       encoding: binary ? undefined : "utf8",
@@ -295,6 +296,7 @@ export function createV12CalendarDeviceSession(root, runId, executionTools, {
       || Number(configured.values.animator_duration_scale) !== Number(animationScale)) fail("settings_invalid");
   };
   const maestro = (invocation) => {
+    if (cleanupUncertain) fail("sdk_cleanup_uncertain");
     const quarantine = mkdtempSync(path.join(temporary(), "junit-"));
     chmodSync(quarantine, 0o700);
     const report = path.join(quarantine, "raw.xml");
@@ -305,15 +307,16 @@ export function createV12CalendarDeviceSession(root, runId, executionTools, {
         deadlineMs: remaining - 6_000, env: invocation.variables };
       let result;
       if (executionTools.test_only) {
+        validateSafeSdkRequest(request);
         result = command(executionTools.maestro, ["sdk-flow", "--device", serial,
           "--flow", request.flow, "--junit", request.junit, "--deadline-ms", String(request.deadlineMs),
           ...Object.entries(request.env).flatMap(([key, value]) => ["-e", `${key}=${value}`])],
-        { timeout: request.deadlineMs + 6_000, acceptFailure: true });
+        { timeout: request.deadlineMs + 6_000, acceptFailure: true, sdkDispatch: true });
       } else {
         const binding = sdk();
         verifySafeSdkBinding(binding);
         result = command(binding.java, safeSdkArguments(binding, request),
-          { timeout: request.deadlineMs + 6_000, acceptFailure: true });
+          { timeout: request.deadlineMs + 6_000, acceptFailure: true, sdkDispatch: true });
       }
       let xml;
       try { xml = readFileSync(report, "utf8"); chmodSync(report, 0o600); }
@@ -322,6 +325,7 @@ export function createV12CalendarDeviceSession(root, runId, executionTools, {
         cleanupUncertain = true;
         fail("sdk_cleanup_uncertain");
       } });
+      cleanupUncertain = false;
       return Object.freeze({ status, xml });
     } finally {
       rmSync(quarantine, { recursive: true, force: true });
