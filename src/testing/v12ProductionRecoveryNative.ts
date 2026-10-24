@@ -1408,9 +1408,19 @@ async function deleteRecoveryDatabases(names: Readonly<{
   target: string;
   source: string;
 }>, removeDatabase: (name: string) => Promise<void>): Promise<void> {
+  const removeIfPresent = async (name: string): Promise<void> => {
+    try {
+      await removeDatabase(name);
+    } catch (error) {
+      // A fresh nonce has no database yet, and some scenarios never create a
+      // source database. Open/cached databases and failed unlinks stay errors.
+      if (!(error instanceof Error)
+        || (error as Error & Readonly<{ code?: unknown }>).code !== "ERR_DATABASE_NOT_FOUND") throw error;
+    }
+  };
   const results = await Promise.allSettled([
-    removeDatabase(names.target),
-    removeDatabase(names.source),
+    removeIfPresent(names.target),
+    removeIfPresent(names.source),
   ]);
   const failure = results.find((result) => result.status === "rejected");
   if (failure?.status === "rejected") throw failure.reason;

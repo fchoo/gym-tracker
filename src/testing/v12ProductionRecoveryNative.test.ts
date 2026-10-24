@@ -109,6 +109,39 @@ describe("v1.2 production Recovery native cleanup", () => {
     jest.mocked(deleteDatabaseAsync).mockReset();
   });
 
+  it("accepts only Expo's missing-database result for fresh nonce-owned cleanup", async () => {
+    jest.mocked(deleteDatabaseAsync).mockRejectedValue(Object.assign(new Error("Database not found"), { code: "ERR_DATABASE_NOT_FOUND" }));
+    await expect(createV12ProductionRecoveryNativeExecutor().cleanup(identity)).resolves.toBeUndefined();
+    expect(deleteDatabaseAsync).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["ERR_DELETE_DATABASE", "ERR_DELETE_DATABASE_FILE", "ERR_INTERNAL_SQLITE_ERROR", undefined])(
+    "preserves strict cleanup failure for %s", async (code) => {
+      const failure = Object.assign(new Error("delete failed"), code === undefined ? {} : { code });
+      jest.mocked(deleteDatabaseAsync).mockRejectedValue(failure);
+      await expect(createV12ProductionRecoveryNativeExecutor().cleanup(identity)).rejects.toBe(failure);
+      expect(deleteDatabaseAsync).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it.each([null, "ERR_DATABASE_NOT_FOUND", { code: "ERR_DATABASE_NOT_FOUND" }])(
+    "does not suppress non-Error cleanup rejection %j", async (failure) => {
+      jest.mocked(deleteDatabaseAsync).mockRejectedValue(failure);
+      await expect(createV12ProductionRecoveryNativeExecutor().cleanup(identity)).rejects.toBe(failure);
+      expect(deleteDatabaseAsync).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("reaches native migration after both fresh nonce databases are absent", async () => {
+    jest.mocked(deleteDatabaseAsync).mockRejectedValue(Object.assign(new Error("Database not found"), { code: "ERR_DATABASE_NOT_FOUND" }));
+    const reachedMigration = new Error("migration_reached");
+    const migrateDatabase = jest.fn(async () => { throw reachedMigration; });
+    const executor = createV12ProductionRecoveryNativeExecutor({ migrateDatabase });
+    await expect(executor.arm(identity)).rejects.toBe(reachedMigration);
+    expect(migrateDatabase).toHaveBeenCalledTimes(1);
+    expect(deleteDatabaseAsync).toHaveBeenCalledTimes(2);
+  });
+
   it.each(["setup", "command", "barrier", "validation"] as const)(
     "closes every native connection before database cleanup after %s failure",
     async (stage) => {
