@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 import { collectPhase20SubprocessCoverage, runPhase20SubprocessCoverage } from "../phase20-subprocess-coverage.mjs";
-import { GARMIN_CLI_EVIDENCE_DIRECTORY, GARMIN_CLI_EVIDENCE_SHA256, loadGarminCliCoverageEvidence } from "../garmin-cli-coverage-evidence.mjs";
+import { assertGarminCliProcessReceipt, GARMIN_CLI_EVIDENCE_DIRECTORY, GARMIN_CLI_EVIDENCE_SHA256, loadGarminCliCoverageEvidence } from "../garmin-cli-coverage-evidence.mjs";
 
 const root = process.cwd();
 const evidence = process.env.PHASE20_GARMIN_CLI_COVERAGE_DIRECTORY ?? path.join(root, GARMIN_CLI_EVIDENCE_DIRECTORY);
@@ -17,7 +17,18 @@ const sha = bytes => createHash("sha256").update(bytes).digest("hex");
 function fixture(t) {
   const target = realpathSync(mkdtempSync(path.join(tmpdir(), "garmin-cli-proof-")));
   t.after(() => rmSync(target, { recursive: true, force: true }));
-  cpSync(evidence, path.join(target, GARMIN_CLI_EVIDENCE_DIRECTORY), { recursive: true });
+  const copiedEvidence = path.join(target, GARMIN_CLI_EVIDENCE_DIRECTORY);
+  cpSync(evidence, copiedEvidence, { recursive: true });
+  // Fault injection modifies only this disposable copy. The reviewed original
+  // keeps its immutable modes and hash-bound bytes throughout the suite.
+  const makeWritable = directory => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const file = path.join(directory, entry.name);
+      if (entry.isDirectory()) makeWritable(file);
+      else if (entry.isFile()) chmodSync(file, 0o600);
+    }
+  };
+  makeWritable(copiedEvidence);
   for (const file of [...modules, ...tests, descriptor.manifest.path]) {
     mkdirSync(path.dirname(path.join(target, file)), { recursive: true });
     writeFileSync(path.join(target, file), readFileSync(path.join(root, file)));
@@ -58,12 +69,39 @@ test("evidence rejects missing, tampered, malformed, added and symlinked raw str
     ["receipt", directory => writeFileSync(path.join(directory, descriptor.receipt.path), "{}")],
     ["stdout", directory => writeFileSync(path.join(directory, "cli.stdout"), "{}")],
     ["stderr", directory => writeFileSync(path.join(directory, "cli.stderr"), "failure")],
+    ["producer", directory => writeFileSync(path.join(directory, descriptor.producerScript.path), "changed producer")],
+    ["process receipt", directory => writeFileSync(path.join(directory, descriptor.invocations[0].processReceipt.path), "{}")],
     ["tests", directory => writeFileSync(path.join(directory, "tests.stdout"), `# tests ${descriptor.tests.total}\n# pass ${descriptor.tests.total}\n# skipped 1\n`)],
   ]) await t.test(name, t => {
     const options = fixture(t);
     mutate(path.join(options.projectRoot, GARMIN_CLI_EVIDENCE_DIRECTORY));
     assert.throws(() => loadGarminCliCoverageEvidence({ ...options, evidenceDirectory: path.join(options.projectRoot, GARMIN_CLI_EVIDENCE_DIRECTORY) }), /phase20_garmin_cli_evidence_invalid/u);
   });
+});
+
+test("reviewed process receipts require observed births and verified empty closure", async t => {
+  const invocation = descriptor.invocations[0];
+  const processReceipt = JSON.parse(readFileSync(path.join(evidence, invocation.processReceipt.path), "utf8"));
+  assert.doesNotThrow(() => assertGarminCliProcessReceipt(processReceipt, invocation));
+  const mutations = {
+    null: () => null, array: () => [], kind: r => { r.kind = "unknown"; },
+    ownership: r => { r.ownershipSha256 = "a".repeat(64); },
+    cleanup: r => { r.cleanup = "unverified"; }, supervisor: r => { r.boundedSupervisorResolved = false; },
+    live_group: r => { r.finalGroupRows = [{ pid: r.leaderPid }]; },
+    leader_type: r => { r.leaderPid = 0.1; }, leader_range: r => { r.leaderPid = 0; },
+    token_probes_type: r => { r.markerProbes = 0.1; }, token_probes_count: r => { r.markerProbes = 1; },
+    snapshots_type: r => { r.snapshots = 0.1; }, snapshots_count: r => { r.snapshots = 0; },
+    births_type: r => { r.observedProcessBirths = null; }, missing_leader: r => { r.observedProcessBirths = []; },
+    child_pid_type: r => { r.observedProcessBirths[0].pid = 0.1; }, child_pid_range: r => { r.observedProcessBirths[0].pid = 0; },
+    child_group: r => { r.observedProcessBirths[0].group = 0; }, birth_type: r => { r.observedProcessBirths[0].birth = null; },
+    birth_empty: r => { r.observedProcessBirths[0].birth = ""; }, command_hash: r => { r.observedProcessBirths[0].commandSha256 = "bad"; },
+  };
+  for (const [name, mutate] of Object.entries(mutations)) await t.test(name, () => {
+    const copy = structuredClone(processReceipt);
+    const changed = mutate(copy);
+    assert.throws(() => assertGarminCliProcessReceipt(changed === undefined ? copy : changed, invocation));
+  });
+  assert.throws(() => assertGarminCliProcessReceipt({ ...processReceipt, ownershipSha256: "bad" }, { ...invocation, ownershipSha256: "bad" }), /process ownership hash/u);
 });
 
 test("all source/test, manifest and committed/output wheel bytes remain binding", async t => {

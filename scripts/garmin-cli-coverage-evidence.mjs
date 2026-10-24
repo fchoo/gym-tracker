@@ -6,9 +6,27 @@ import { pathToFileURL } from "node:url";
 
 // Real, exclusively owned public-input CLI build. Never a numeric coverage fixture.
 // Renew this seal only with a new reviewed producer stream when any bound input changes.
-export const GARMIN_CLI_EVIDENCE_SHA256 = "0ec87d8658679a5669eba85973bbe0d3c5468fda3604f26ae5a325c8bdd73641";
-export const GARMIN_CLI_EVIDENCE_DIRECTORY = "artifacts/host/garmin-cli-coverage";
+export const GARMIN_CLI_EVIDENCE_SHA256 = "b769d4dcdd93e29644f8fa922912ca70b6f0e8151f43558c8bc5c636a9a3da26";
+export const GARMIN_CLI_EVIDENCE_DIRECTORY = "artifacts/host/garmin-cli-proof-current-fd";
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
+
+export function assertGarminCliProcessReceipt(receipt, invocation) {
+  assert.ok(receipt !== null && typeof receipt === "object" && !Array.isArray(receipt), "process receipt object");
+  assert.equal(receipt.kind, invocation.kind, "process invocation kind");
+  assert.equal(receipt.ownershipSha256, invocation.ownershipSha256, "process ownership binding");
+  assert.match(receipt.ownershipSha256, /^[a-f0-9]{64}$/u, "process ownership hash");
+  assert.equal(receipt.cleanup, "verified-empty", "process cleanup");
+  assert.equal(receipt.boundedSupervisorResolved, true, "bounded supervisor closure");
+  assert.deepEqual(receipt.finalGroupRows, [], "final owned process group empty");
+  assert.ok(Number.isSafeInteger(receipt.leaderPid) && receipt.leaderPid > 0, "process leader identity");
+  assert.ok(Number.isSafeInteger(receipt.markerProbes) && receipt.markerProbes >= 2, "process token probes");
+  assert.ok(Number.isSafeInteger(receipt.snapshots) && receipt.snapshots >= 1, "process group snapshots");
+  assert.ok(Array.isArray(receipt.observedProcessBirths), "process birth observations");
+  assert.ok(receipt.observedProcessBirths.every(row => Number.isSafeInteger(row.pid) && row.pid > 0
+    && row.group === receipt.leaderPid && typeof row.birth === "string" && row.birth.length > 0
+    && /^[a-f0-9]{64}$/u.test(row.commandSha256)), "process birth binding");
+  assert.ok(receipt.observedProcessBirths.some(row => row.pid === receipt.leaderPid), "process leader observed");
+}
 
 function assertCompleteTests(report, total) {
   for (const [field, expected] of Object.entries({ tests: total, pass: total, fail: 0, cancelled: 0, skipped: 0, todo: 0 })) {
@@ -35,6 +53,7 @@ export function loadGarminCliCoverageEvidence({ projectRoot, targetFiles, tests,
     // A changed descriptor is rejected before parsing; there is no trust in percentages.
     const sealed = readBound({ path: "evidence.json", sha256: GARMIN_CLI_EVIDENCE_SHA256 });
     const proof = JSON.parse(sealed);
+    readBound(proof.producerScript);
     assert.equal(proof.proof, "NON_NATIVE_HOST_ONLY");
     assert.equal(process.versions.node, proof.runtime.node, "pinned Node version");
     assert.equal(process.versions.v8, proof.runtime.v8, "pinned V8 version");
@@ -61,11 +80,14 @@ export function loadGarminCliCoverageEvidence({ projectRoot, targetFiles, tests,
     for (const invocation of proof.invocations) {
       assert.equal(invocation.exitCode, 0); assert.equal(invocation.signal, null);
       assert.equal(invocation.cleanup, "verified-empty");
+      assertGarminCliProcessReceipt(JSON.parse(readBound(invocation.processReceipt)), invocation);
       const stdout = readBound(invocation.stdout).toString("utf8");
       readBound(invocation.stderr);
       if (invocation.kind === "tests") assertCompleteTests(stdout, proof.tests.total);
       else assert.deepEqual(JSON.parse(stdout), receipt, "successful CLI publication receipt");
     }
+    // The sealed producer records the supervisor bytes actually used. Current
+    // caller supervisors may evolve without changing these helper sources.
     assertCompleteTests(readFileSync(testReportPath, "utf8"), proof.tests.total);
     assert.deepEqual(readdirSync(path.join(directory, "raw")).sort(), proof.raw.map(entry => path.basename(entry.path)).sort(), "exact retained raw set");
     const urls = new Map(sourceFiles.map(entry => [pathToFileURL(path.join(proof.source.root, entry.path)).href,
