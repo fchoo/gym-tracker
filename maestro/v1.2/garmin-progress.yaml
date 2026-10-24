@@ -8,7 +8,7 @@ tags: [garmin, progress, native-only, development-test, phase-20, observe-only]
 - openLink: "gymtracker-devtest://garmin?phase20GarminStage=${PHASE20_GARMIN_STAGE}"
 - assertVisible: "Garmin Sync"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_STAGE == 'packaging-auth'} }
+    when: { true: "${PHASE20_GARMIN_STAGE == 'packaging-auth'}" }
     commands:
       - assertVisible: "Connect Garmin"
       - tapOn: "Connect Garmin"
@@ -27,19 +27,19 @@ tags: [garmin, progress, native-only, development-test, phase-20, observe-only]
             - tapOn: "Verify"
       - extendedWaitUntil: { visible: "Connected to Garmin", timeout: 30000 }
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_CASE == 'packaging'} }
+    when: { true: "${PHASE20_GARMIN_CASE == 'packaging'}" }
     commands:
       - assertVisible: "Garmin Sync"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_CASE == 'bridge-allowlist'} }
+    when: { true: "${PHASE20_GARMIN_CASE == 'bridge-allowlist'}" }
     commands:
       - assertVisible: "Connect Garmin"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_CASE == 'canonical-json'} }
+    when: { true: "${PHASE20_GARMIN_CASE == 'canonical-json'}" }
     commands:
       - assertVisible: "Garmin Sync"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_STAGE == 'sync-read-dedupe-match'} }
+    when: { true: "${PHASE20_GARMIN_STAGE == 'sync-read-dedupe-match'}" }
     commands:
       - tapOn: "Sync now"
       - extendedWaitUntil: { visible: "Imported activities", timeout: 30000 }
@@ -50,55 +50,55 @@ tags: [garmin, progress, native-only, development-test, phase-20, observe-only]
       - tapOn: "Confirm match"
       - assertVisible: "Matched"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_CASE == 'sync-read'} }
+    when: { true: "${PHASE20_GARMIN_CASE == 'sync-read'}" }
     commands:
       - assertVisible: "Imported activities"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_CASE == 'dedupe-restart'} }
+    when: { true: "${PHASE20_GARMIN_CASE == 'dedupe-restart'}" }
     commands:
       - assertVisible: "Imported activities"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_CASE == 'dedupe-restore'} }
+    when: { true: "${PHASE20_GARMIN_CASE == 'dedupe-restore'}" }
     commands:
       - assertVisible: "Imported activities"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_CASE == 'dedupe-merge'} }
+    when: { true: "${PHASE20_GARMIN_CASE == 'dedupe-merge'}" }
     commands:
       - assertVisible: "Imported activities"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_CASE == 'match-zero'} }
+    when: { true: "${PHASE20_GARMIN_CASE == 'match-zero'}" }
     commands:
       - assertVisible: "Match to scheduled workout"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_CASE == 'match-one'} }
+    when: { true: "${PHASE20_GARMIN_CASE == 'match-one'}" }
     commands:
       - assertVisible: "Match to scheduled workout"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_CASE == 'match-many'} }
+    when: { true: "${PHASE20_GARMIN_CASE == 'match-many'}" }
     commands:
       - assertVisible: "Match to scheduled workout"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_CASE == 'match-stale'} }
+    when: { true: "${PHASE20_GARMIN_CASE == 'match-stale'}" }
     commands:
       - assertVisible: "Match to scheduled workout"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_CASE == 'match-alternate'} }
+    when: { true: "${PHASE20_GARMIN_CASE == 'match-alternate'}" }
     commands:
       - assertVisible: "Match to scheduled workout"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_CASE == 'match-cancel'} }
+    when: { true: "${PHASE20_GARMIN_CASE == 'match-cancel'}" }
     commands:
       - assertVisible: "Match to scheduled workout"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_CASE == 'match-confirm'} }
+    when: { true: "${PHASE20_GARMIN_CASE == 'match-confirm'}" }
     commands:
       - assertVisible: "Match to scheduled workout"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_CASE == 'match-reassign'} }
+    when: { true: "${PHASE20_GARMIN_CASE == 'match-reassign'}" }
     commands:
       - assertVisible: "Match to scheduled workout"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_STAGE == 'restart-logout'} }
+    when: { true: "${PHASE20_GARMIN_STAGE == 'restart-logout'}" }
     commands:
       - stopApp
       - launchApp: { clearState: false }
@@ -107,15 +107,15 @@ tags: [garmin, progress, native-only, development-test, phase-20, observe-only]
       - tapOn: { text: "Disconnect Garmin", index: 1 }
       - assertVisible: "Garmin not connected"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_CASE == 'account-lifecycle'} }
+    when: { true: "${PHASE20_GARMIN_CASE == 'account-lifecycle'}" }
     commands:
       - assertVisible: "Garmin Sync"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_CASE == 'recovery'} }
+    when: { true: "${PHASE20_GARMIN_CASE == 'recovery'}" }
     commands:
       - assertVisible: "Garmin Sync"
 - runFlow:
-    when: { true: ${PHASE20_GARMIN_CASE == 'privacy'} }
+    when: { true: "${PHASE20_GARMIN_CASE == 'privacy'}" }
     commands:
       - assertVisible: "Garmin Sync"
 - takeScreenshot: "garmin-${PHASE20_GARMIN_STAGE}"

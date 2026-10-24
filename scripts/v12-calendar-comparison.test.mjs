@@ -554,7 +554,7 @@ test("the Phase 20 Calendar runner exposes every real stage but cannot award a n
   assert.equal(validateV12CalendarFlow(flow), true);
   assert.throws(
     () => validateV12CalendarFlow(flow.replace(
-      '- swipe: { start: "80%, 45%", end: "70.9231%, 45%", duration: 500 }',
+      '- swipe: { start: "${Math.round(780 * 0.8)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.709231)}, ${Math.round(1688 * 0.45)}", duration: 500 }',
       '- assertVisible: "October 2026"',
     )),
     /v12_calendar_flow_stage_invalid:drag-forward-10/u,
