@@ -1127,7 +1127,8 @@ export function validateV12ProductionPublicationOrigins(root, runId, shards = V1
       let tools; let currentToolAttestation; let currentDeviceMeasurement;
       try {
         tools = dependencies.executionTools ?? resolveV12NativeExecutionTools({ domain: true });
-        currentToolAttestation = createV12DirectMaestroToolAttestation({ execute: dependencies.execFileSync, executionTools: tools, shard });
+        currentToolAttestation = createV12DirectMaestroToolAttestation({ execute: dependencies.execFileSync, executionTools: tools, shard,
+          root, runId, retainedSafeSdk: mapping.tool_attestation.safe_sdk });
         currentDeviceMeasurement = readV12DirectMaestroDeviceMeasurement(manifest, {
           serial: dependencies.serial,
           execute: dependencies.execFileSync,
