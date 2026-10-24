@@ -188,7 +188,7 @@ test("the Calendar action stages every raw trace and realistic screenshot withou
     version: () => undefined,
     standalone: () => undefined,
     configureStage: () => { if (resumed) throw new Error("completed units must not execute again"); },
-    clearLogs: () => undefined,
+    clearLogs: () => { throw new Error("shared_calendar_log_clear_forbidden"); },
     logs: () => "",
     maestro: (invocation) => { if (resumed) throw new Error("completed units must not execute again"); invocations.push(invocation); return { status: "PASS", xml: "<testsuite><testcase/></testsuite>" }; },
     drive: (driver) => { driven.push(driver); },
@@ -284,9 +284,11 @@ test("Calendar device commands use only resolver-owned absolute native tools", (
     return { status: 0, signal: null, error: undefined, stdout: "", stderr: "" };
   };
   const session = createV12CalendarDeviceSession(root, RUN_ID, tools, { serial: "device-1", spawn });
-  session.clearLogs();
+  assert.equal(Object.hasOwn(session, "clearLogs"), false);
+  session.logs();
   session.version();
   session.standalone();
   session.cleanup();
   assert.deepEqual(commands.map(([executable]) => executable), [tools.adb, tools.maestro, tools.unzip, tools.unzip]);
+  assert.equal(commands.some((command) => command.includes("-c")), false);
 });

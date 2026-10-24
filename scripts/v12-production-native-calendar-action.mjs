@@ -209,7 +209,6 @@ export function createV12CalendarDeviceSession(root, runId, executionTools, {
   };
   const cleanup = () => { if (temporaryDirectory !== undefined) rmSync(temporaryDirectory, { recursive: true, force: true }); };
   const logs = () => adb("logcat", "-d", "-v", "raw", "ReactNativeJS:I", "*:S");
-  const clearLogs = () => { adb("logcat", "-c"); };
   const screenshot = () => command(executionTools.adb, ["-s", serial, "exec-out", "screencap", "-p"], { binary: true }).stdout;
   const uiDump = () => command(executionTools.adb, ["-s", serial, "exec-out", "uiautomator", "dump", "/dev/tty"]).stdout;
   const boundsFor = (testId) => {
@@ -329,7 +328,7 @@ export function createV12CalendarDeviceSession(root, runId, executionTools, {
     }
     fail("probe_receipt_timeout");
   };
-  return Object.freeze({ clearLogs, cleanup, configureStage, drive, logs, maestro, awaitMarker, awaitProbeReceipt, temporary, screenshot, settings, uiDump,
+  return Object.freeze({ cleanup, configureStage, drive, logs, maestro, awaitMarker, awaitProbeReceipt, temporary, screenshot, settings, uiDump,
     version: () => { if (command(executionTools.maestro, ["--version"]).stdout.trim() !== "2.8.0") fail("maestro_version_invalid"); },
     standalone: () => {
       const manifest = JSON.parse(readFileSync(path.join(root, "artifacts/native/v1.2", runId, "build.json"), "utf8"));
@@ -374,7 +373,6 @@ export async function collectV12ProductionCalendarStages({ root, payload, io, tr
     const invocation = createV12CalendarStageInvocation({ stageId, order, nonce, flowSha256 });
     const driver = createV12CalendarDriverReceipt(stageId);
     io.configureStage(stageId);
-    io.clearLogs();
     const beforeLogs = io.logs();
     const junit = io.maestro(invocation);
     if (driver.protocol !== "maestro/v1") io.drive(driver);
@@ -423,7 +421,6 @@ export async function collectV12ProductionCalendarStages({ root, payload, io, tr
       }
       const invocation = createV12CalendarProbeInvocation({ definition, probeId, order: probeOrder, nonce: randomBytes(16).toString("hex"), flowSha256: requirementsFlowSha256, fixtureSourceSha256: fixtureSha256 });
       io.configureStage("requirement");
-      io.clearLogs();
       const beforeLogs = io.logs();
       const junit = io.maestro(invocation);
       const receipt = await io.awaitProbeReceipt(beforeLogs, invocation);
