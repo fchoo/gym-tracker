@@ -87,8 +87,16 @@ export function junitOutcome(xml, exitCode, { onSdkCleanupFailure, onSdkTerminal
   for (const match of xml.matchAll(tokens)) {
     if (match.index !== consumed) fail('junit_invalid');
     const token = match[0]; consumed += token.length;
-    if (token.startsWith('<?xml') || token.startsWith('<!--') || token.startsWith('<![CDATA[')) continue;
-    if (!token.startsWith('<')) { if (stack.length === 1 && token.trim()) fail('junit_invalid'); continue; }
+    if (token.startsWith('<?xml') || token.startsWith('<!--')) continue;
+    if (token.startsWith('<![CDATA[')) {
+      if (['failure', 'error'].includes(stack.at(-1).name)) stack.at(-1).text += token.slice(9, -3);
+      continue;
+    }
+    if (!token.startsWith('<')) {
+      if (stack.length === 1 && token.trim()) fail('junit_invalid');
+      if (['failure', 'error'].includes(stack.at(-1).name)) stack.at(-1).text += token;
+      continue;
+    }
     if (token.startsWith('</')) {
       const name = /^<\/([A-Za-z][\w.-]*)\s*>$/u.exec(token)?.[1];
       if (stack.length === 1 || stack.pop().name !== name) fail('junit_invalid');
@@ -102,7 +110,7 @@ export function junitOutcome(xml, exitCode, { onSdkCleanupFailure, onSdkTerminal
       if (!attr || names.has(attr[1])) fail('junit_invalid');
       names.add(attr[1]); values[attr[1]] = attr[2] ?? attr[3]; attributes = attributes.slice(attr[0].length);
     }
-    const node = { name: tag[1], children: [], attributes: values };
+    const node = { name: tag[1], children: [], attributes: values, text: '' };
     stack.at(-1).children.push(node);
     if (!tag[3]) stack.push(node);
     if (stack.length > 24) fail('junit_invalid');
@@ -129,12 +137,13 @@ export function junitOutcome(xml, exitCode, { onSdkCleanupFailure, onSdkTerminal
   }
   summary(document.children[0]);
   if (![0, 1].includes(exitCode) || (exitCode !== 0 && status !== 'FAIL')) fail('junit_exit_mismatch');
+  const sdkCode = (node) => node.attributes.message ?? node.text.trim();
   if (cases[0].children.some((node) => ['failure', 'error'].includes(node.name)
-    && node.attributes.message === 'maestro_sdk_cleanup_failed')) onSdkCleanupFailure?.();
+    && sdkCode(node) === 'maestro_sdk_cleanup_failed')) onSdkCleanupFailure?.();
   for (const node of cases[0].children) {
     if (['failure', 'error'].includes(node.name) && [
       'maestro_ui_flow_failed', 'maestro_sdk_execution_failed', 'maestro_sdk_cleanup_failed',
-    ].includes(node.attributes.message)) onSdkTerminalFailure?.(node.attributes.message);
+    ].includes(sdkCode(node))) onSdkTerminalFailure?.(sdkCode(node));
   }
   return status;
 }

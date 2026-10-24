@@ -99,4 +99,12 @@ test('SDK terminal notifications return only fixed known codes after complete JU
   assert.throws(() => junitOutcome('<testsuite tests="2"><testcase><failure message="maestro_sdk_execution_failed"/></testcase></testsuite>', 1, options), /junit_summary_mismatch/u);
   assert.equal(codes.length, 3);
   assert.equal(junitOutcome('<testsuite><testcase><failure message="maestro_ui_flow_failed"/></testcase></testsuite>', 1), 'FAIL');
+  assert.equal(junitOutcome('<testsuites><testsuite tests="1" failures="1"><testcase><failure>maestro_sdk_execution_failed</failure></testcase></testsuite></testsuites>', 1, options), 'FAIL');
+  assert.equal(junitOutcome('<testsuite><testcase><error><![CDATA[maestro_ui_flow_failed]]></error></testcase></testsuite>', 1, options), 'FAIL');
+  assert.deepEqual(codes.slice(-2), ['maestro_sdk_execution_failed', 'maestro_ui_flow_failed']);
+  let cleanup = 0;
+  assert.equal(junitOutcome('<testsuite><testcase><failure>maestro_sdk_cleanup_failed</failure></testcase></testsuite>', 1, { onSdkCleanupFailure: () => { cleanup += 1; } }), 'FAIL');
+  assert.equal(cleanup, 1);
+  assert.equal(junitOutcome('<testsuite><testcase><failure message="other">maestro_sdk_cleanup_failed</failure></testcase></testsuite>', 1, { onSdkCleanupFailure: () => { cleanup += 1; } }), 'FAIL');
+  assert.equal(cleanup, 1);
 });
