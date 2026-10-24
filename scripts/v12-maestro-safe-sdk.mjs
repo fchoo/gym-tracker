@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SOURCE = fileURLToPath(new URL('./maestro-safe-sdk/', import.meta.url));
-const SOURCES = ['SafeFlow.kt', 'SafeMaestro.kt'];
+const SOURCES = ['SafeFlow.kt', 'SafeMaestro.kt', 'SessionOwnedDriver.kt'];
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const fail = (code) => { throw new Error(`maestro_safe_sdk_${code}`); };
 

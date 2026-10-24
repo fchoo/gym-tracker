@@ -14,7 +14,7 @@ function fixture() {
   mkdirSync(lib); mkdirSync(path.join(jdk, 'bin'), { recursive: true });
   writeFileSync(path.join(lib, 'sdk.jar'), 'sdk'); writeFileSync(path.join(jdk, 'bin/java'), 'java'); writeFileSync(compiler, 'compiler');
   const source = path.join(root, 'source'); mkdirSync(source);
-  for (const name of ['SafeFlow.kt', 'SafeMaestro.kt']) writeFileSync(path.join(source, name), name);
+  for (const name of ['SafeFlow.kt', 'SafeMaestro.kt', 'SessionOwnedDriver.kt']) writeFileSync(path.join(source, name), name);
   const pins = { maestro_version: '2.8.0', compiler: { version: '2.2.0', sha256: sha('compiler') },
     jdk: { version: '17.0.20+8', files: { 'bin/java': sha('java') } }, jars: { 'sdk.jar': sha('sdk') } };
   const runCommand = (_command, args) => {
@@ -67,7 +67,7 @@ test('source-owned builds retain immutable inputs, compiler failures and tamper-
   const f = fixture(); const binding = prepareSafeMaestroSdk(f);
   assert.equal(verifySafeSdkBinding(binding), true);
   assert.equal(binding.receipt.jar_sha256, sha('compiled-source'));
-  assert.deepEqual(Object.keys(binding.receipt.sources), ['SafeFlow.kt', 'SafeMaestro.kt']);
+  assert.deepEqual(Object.keys(binding.receipt.sources), ['SafeFlow.kt', 'SafeMaestro.kt', 'SessionOwnedDriver.kt']);
   chmodSync(binding.jar, 0o600); writeFileSync(binding.jar, 'altered');
   assert.throws(() => verifySafeSdkBinding(binding), /maestro_safe_sdk_toolchain_invalid/u);
   writeFileSync(binding.jar, 'compiled-source'); chmodSync(binding.receiptPath, 0o600); writeFileSync(binding.receiptPath, '{}');
@@ -107,7 +107,7 @@ test('source-owned builds retain immutable inputs, compiler failures and tamper-
   const captured = prepareSafeMaestroSdk({ ...drift, runCommand: (exe, args) => {
     if (args[0] !== '-version') {
       writeFileSync(path.join(drift.source, 'SafeMaestro.kt'), 'changed during compiler startup');
-      assert.equal(readFileSync(args.at(-1), 'utf8'), 'SafeMaestro.kt');
+      assert.equal(readFileSync(args.at(-1), 'utf8'), 'SessionOwnedDriver.kt');
     }
     return drift.runCommand(exe, args);
   } });
@@ -134,7 +134,7 @@ test('pinned Kotlin runner executes real YAML/Env/Orchestra/JUnit and verifies c
   const testJar = path.join(root, 'host-tests.jar');
   checkedRun(binding.java, ['-cp', `${tools.compiler}:${binding.classpath}`, 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
     '-jvm-target', '17', '-no-stdlib', '-no-reflect', '-classpath', `${binding.jar}:${binding.classpath}`,
-    '-d', testJar, path.join(source, 'SafeFlowTest.kt')]);
+    '-d', testJar, path.join(source, 'SafeFlowTest.kt'), path.join(source, 'SessionOwnedDriverTest.kt')]);
   const agentJar = cachedJar('org.jacoco', 'org.jacoco.agent', '0.8.13');
   checkedRun('/usr/bin/unzip', ['-o', agentJar, 'jacocoagent.jar', '-d', root]);
   assert.equal(sha(readFileSync(path.join(root, 'jacocoagent.jar'))), tools.pins.coverage.agent_runtime_sha256);
@@ -142,6 +142,9 @@ test('pinned Kotlin runner executes real YAML/Env/Orchestra/JUnit and verifies c
   const host = checkedRun(binding.java, [`-javaagent:${root}/jacocoagent.jar=destfile=${exec},includes=gymtracker.maestrosafe.*`,
     '-cp', `${testJar}:${binding.jar}:${binding.classpath}`, 'gymtracker.maestrosafe.SafeFlowTestKt', root]);
   assert.match(host.stdout, /safe_sdk_host_cases=11/u);
+  const ownership = checkedRun(binding.java, [`-javaagent:${root}/jacocoagent.jar=destfile=${exec},append=true,includes=gymtracker.maestrosafe.*`,
+    '-cp', `${testJar}:${binding.jar}:${binding.classpath}`, 'gymtracker.maestrosafe.SessionOwnedDriverTestKt', root]);
+  assert.match(ownership.stdout, /safe_sdk_owned_driver_cases=complete/u);
   const jacoco = ['org.jacoco.core', 'org.jacoco.report'].map((name) => cachedJar('org.jacoco', name, '0.8.13'));
   const asm = ['asm', 'asm-tree', 'asm-commons'].map((name) => cachedJar('org.ow2.asm', name, '9.8'));
   const reportClasspath = [...jacoco, ...asm].join(':');
@@ -149,8 +152,10 @@ test('pinned Kotlin runner executes real YAML/Env/Orchestra/JUnit and verifies c
   const report = path.join(root, 'host-jacoco.xml');
   checkedRun(binding.java, ['-cp', `${root}:${reportClasspath}`, 'gymtracker.maestrosafe.CoverageReport', exec, binding.jar, source, report]);
   const xml = readFileSync(report, 'utf8');
-  const sourceFile = /<sourcefile name="SafeFlow.kt">([\s\S]*?)<\/sourcefile>/u.exec(xml)[1];
-  const metrics = Object.fromEntries([...sourceFile.matchAll(/<counter type="([A-Z]+)" missed="(\d+)" covered="(\d+)"\/>/gu)].map((m) => [m[1], { missed: Number(m[2]), covered: Number(m[3]) }]));
-  console.log(JSON.stringify({ host_kotlin_source: 'SafeFlow.kt', metrics, report }));
-  for (const type of ['INSTRUCTION', 'BRANCH', 'METHOD', 'LINE']) assert.equal(metrics[type].missed, 0, `${type} coverage incomplete; report ${report}`);
+  for (const name of ['SafeFlow.kt', 'SessionOwnedDriver.kt']) {
+    const sourceFile = [...xml.matchAll(/<sourcefile name="([^"]+)">([\s\S]*?)<\/sourcefile>/gu)].find((m) => m[1] === name)[2];
+    const metrics = Object.fromEntries([...sourceFile.matchAll(/<counter type="([A-Z]+)" missed="(\d+)" covered="(\d+)"\/>/gu)].map((m) => [m[1], { missed: Number(m[2]), covered: Number(m[3]) }]));
+    console.log(JSON.stringify({ host_kotlin_source: name, metrics, report }));
+    for (const type of ['INSTRUCTION', 'BRANCH', 'METHOD', 'LINE']) assert.equal(metrics[type].missed, 0, `${name} ${type} coverage incomplete; report ${report}`);
+  }
 });

@@ -6,6 +6,14 @@ Orchestra with `artifactsDir = null` and `captureFullArtifacts = false`. This
 bypasses the SDK artifact listener that otherwise clears the shared log buffer.
 The runner does not invoke the Maestro CLI test command or TestSuiteInteractor.
 
+`SessionOwnedDriver.kt` delegates actual SDK commands and owns only the
+`dev.mobile.maestro` process absent before this driver's open. It rejects an
+existing target, captures a single PID/birth/cmdline claim after normal or partial
+open, and rechecks the claim before a guarded target stop. Target absence and SDK
+transport close are required; failures remain failing official JUnit. The complete
+operation stays inside the existing five-second cleanup future. Transport close
+always runs in finally, and combined ownership/transport errors remain preserved.
+
 The production domain action prepares the source-owned runner once, retains its
 tool receipt, and verifies the compiled JAR, live source, compiler, all 194 SDK
 JARs, and JDK files before every flow. Source bytes are captured into immutable
@@ -68,8 +76,12 @@ failed/slow cleanup, execution timeout, delayed connection after cancellation,
 throwing host-port reads and official reporter write failures. JaCoCo's normal
 Kotlin mapping is used; no generated instructions or branches are excluded.
 The suite requires zero missed INSTRUCTION, BRANCH, METHOD and LINE counters for
-`SafeFlow.kt`, including `FlowRequest` and coroutine classes. It prints the full
-source report path.
+`SafeFlow.kt` and `SessionOwnedDriver.kt`, including their data/state classes.
+The ownership suite covers uncertain/preexisting/reused identity, partial starts,
+open/close races, transport failures and persistent targets, and executes the
+guard shell against synthetic proc files. Real official SDK/JUnit tests verify
+that an otherwise passing flow fails when cleanup leaves its target present.
+The suite prints the full source report path.
 
 `SafeMaestro.kt` remains in that report. Host tests do not execute its real
 AndroidDeviceConnection/AndroidDriver binding. Its normal pass/fail termination
@@ -89,6 +101,19 @@ this gap. Main now uses natural success return and a fixed failure exception;
 the repair changes termination only and preserves actual SDK/JUnit/cleanup.
 Keep the old diagnostic as failed exact-instruction coverage evidence and use a
 fresh source/JAR receipt and execution merge for the repaired entrypoint.
+
+Verified host checkpoint at 2026-10-24 15:33:34 UTC: SDK suite 5/5, zero skips.
+Node wrapper: 114/114 statements, 82/82 branches, 9/9 functions, 114/114 lines.
+Kotlin SafeFlow: 469/469 instructions, 12/12 branches, 16/16 methods, 45/45 lines.
+Kotlin ownership helper: 492/492 instructions, 60/60 branches, 16/16 methods,
+68/68 lines. Normal JaCoCo 0.8.13 mapping remains unchanged. The prior natural
+entry's complete parent-native proof is preserved in
+`artifacts/native/host/safe-sdk-native-binding-natural-diagnostic/merged-jacoco.xml`.
+The fresh ownership runner is `build-8AZulh` in the private SDK build root; its
+JAR digest is `bd09914187eefb1dd187a2574ca4c9297fb362bf035e2245d1df745a8eb6b458`.
+Its current thin Android entry/shell adapter has 125 instructions, four branches,
+three methods and 12 lines awaiting the parent's fresh native proof. Use the new
+host execution data and receipt; preserve the previous native report separately.
 
 ## Parent-exclusive native coverage diagnostic
 
@@ -151,7 +176,7 @@ java -cp <host-build>:<cached-jacoco-and-asm-classpath>
   scripts/maestro-safe-sdk <diagnostic>/merged-jacoco.xml
 ```
 
-Inspect **every** class and both source files in the normal JaCoCo XML. Require
+Inspect **every** class and all three source files in the normal JaCoCo XML. Require
 zero missed INSTRUCTION, BRANCH, METHOD and LINE counters for the complete runner.
 If an SDK/provider/UI error prevents actual success, preserve the failure and
 leave the missing native counters open. Do not reinterpret a host test double,

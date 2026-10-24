@@ -13,7 +13,10 @@ fun main(args: Array<String>) {
     val request = FlowRequest(args[0], Path.of(args[1]), Path.of(args[2]), args[3].toLong(), env)
     val passed = executeFlow(request) { serial, port ->
         val connection = requireNotNull(AndroidDeviceConnection.byId(serial, "localhost", port))
-        AndroidDriver(connection, serial, false)
+        SessionOwnedDriver(AndroidDriver(connection, serial, false)) { command ->
+            val response = connection.shell(command)
+            ShellResult(response.exitCode, response.output)
+        }
     }
     if (!passed) throw IllegalStateException("maestro_sdk_flow_failed")
 }
