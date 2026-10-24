@@ -71,3 +71,20 @@ for (const xml of [
   '<testsuite tests="1" failures="1"><testcase/></testsuite>',
 ]) test('malformed or substituted JUnit cannot pass', () => { assert.throws(() => junitOutcome(xml, 0), /junit_/u); });
 test('nonzero exit without a failing case cannot pass', () => { assert.throws(() => junitOutcome('<testsuite><testcase/></testsuite>', 1), /junit_exit_mismatch/u); });
+test('SDK cleanup notification requires a fully validated sole-case failure with the exact code', () => {
+  let calls = 0;
+  const options = { onSdkCleanupFailure: () => { calls += 1; } };
+  const xml = '<testsuite tests="1" failures="1"><testcase><failure message="maestro_sdk_cleanup_failed"/></testcase></testsuite>';
+  assert.equal(junitOutcome(xml, 1, options), 'FAIL');
+  assert.equal(calls, 1);
+  assert.equal(junitOutcome('<testsuite><testcase><error message="maestro_sdk_cleanup_failed"/></testcase></testsuite>', 1, options), 'FAIL');
+  assert.equal(calls, 2);
+  for (const message of ['maestro_sdk_execution_failed', 'prefix_maestro_sdk_cleanup_failed', 'maestro_sdk_cleanup_failed_suffix']) {
+    assert.equal(junitOutcome(`<testsuite><testcase><failure message="${message}"/></testcase></testsuite>`, 1, options), 'FAIL');
+  }
+  assert.equal(calls, 2);
+  assert.throws(() => junitOutcome(xml.replace('tests="1"', 'tests="2"'), 1, options), /junit_summary_mismatch/u);
+  assert.throws(() => junitOutcome(xml, 2, options), /junit_exit_mismatch/u);
+  assert.equal(calls, 2);
+  assert.equal(junitOutcome(xml, 1), 'FAIL');
+});
