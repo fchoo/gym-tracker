@@ -71,6 +71,28 @@ const isolatedNativeAppearanceStore = createMemoryAppearanceStore();
 const APPROVED_ROOT_HEADER_HEIGHT = 56;
 const APPROVED_ROOT_NAVIGATION_HEIGHT = 74;
 
+function observeRecoveryRootCommit(stage: "root-enter" | "root-exit", nonce: unknown): void {
+  const extra = Constants.expoConfig?.extra;
+  if (Constants.expoConfig?.android?.package !== "com.fchoo.gymtracker.devtest"
+    || extra?.buildProfile !== "development-test" || extra?.nativeContractsEnabled !== true
+    || extra?.nativeContractSuite !== "v1.2-acceptance"
+    || typeof nonce !== "string" || !/^[a-f0-9]{32}$/u.test(nonce)) return;
+  try {
+    console.info(`GYM_TRACKER_V12_RECOVERY_ROUTE:${JSON.stringify({ schema_version: 1, nonce, stage })}`);
+  } catch { /* Observation must not change root selection or cleanup. */ }
+}
+
+function RecoveryRootCommitObservations({ nonce, children }: Readonly<{
+  nonce: unknown;
+  children: React.ReactNode;
+}>) {
+  React.useEffect(() => {
+    observeRecoveryRootCommit("root-enter", nonce);
+    return () => observeRecoveryRootCommit("root-exit", nonce);
+  }, [nonce]);
+  return <>{children}</>;
+}
+
 type KeyboardFrame = KeyboardEvent["endCoordinates"];
 
 function keyboardBottomOverlap(
@@ -824,7 +846,9 @@ function RootLayoutAttempt({
             ) : (
               <WorkoutAppRuntimeProvider dependencies={v12ProductionRecoveryDependencies}>
                 <V12RecoveryRootContext.Provider value={v12ProductionRecoveryRuntime}>
-                  <V12ProductionRecoveryNavigator />
+                  <RecoveryRootCommitObservations nonce={searchParams.nonce}>
+                    <V12ProductionRecoveryNavigator />
+                  </RecoveryRootCommitObservations>
                 </V12RecoveryRootContext.Provider>
               </WorkoutAppRuntimeProvider>
             )}

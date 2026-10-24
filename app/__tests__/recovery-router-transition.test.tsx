@@ -262,6 +262,18 @@ describe("Recovery route transitions with the actual Expo Router", () => {
     expect(mockNativeCalls).toEqual([{ ...identity, phase: "arm" }]);
   });
 
+  it("preserves real marker publication when only the route diagnostic logger throws", async () => {
+    jest.spyOn(console, "info").mockImplementation((line) => {
+      if (String(line).startsWith("GYM_TRACKER_V12_RECOVERY_ROUTE:")) throw new Error("diagnostic-logger-failed");
+      mockPublishedLines.push(String(line));
+    });
+    const router = renderRouter(context, { initialUrl: urlFor() });
+    await router;
+    await settle(router);
+    expect(mockNativeCalls).toEqual([{ ...identity, phase: "arm" }]);
+    expect(mockPublishedLines.some((line) => line.startsWith("GYM_TRACKER_V12_DOMAIN_RESULT:"))).toBe(true);
+  });
+
   it.each(["gymtracker-devtest://", "gymtracker-devtest:///"])(
     "retains the Recovery page when a ready root receives a native link through %s",
     async (prefix) => {

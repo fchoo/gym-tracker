@@ -673,6 +673,67 @@ describe("RootLayout attended preview isolation", () => {
     expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
   });
 
+  it("observes only committed Recovery root entry and exit under a validated nonce", async () => {
+    mockPathname = "/__v12-production-recovery";
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockSearchParams = {
+      nonce: "a".repeat(32), caseId: "legacy-playback", stepId: "legacy-start",
+      cutId: "pre-transaction", phase: "arm", stage: "unknown-request-label",
+    };
+    const lines: string[] = [];
+    jest.spyOn(console, "info").mockImplementation((line) => { lines.push(String(line)); });
+    const rendered = await render(<RootLayout />);
+    expect(lines.map((line) => JSON.parse(line.slice("GYM_TRACKER_V12_RECOVERY_ROUTE:".length))))
+      .toEqual([{ schema_version: 1, nonce: "a".repeat(32), stage: "root-enter" }]);
+    mockPathname = "/";
+    mockSearchParams = {};
+    await rendered.rerender(<RootLayout />);
+    expect(lines.every((line) => line.startsWith("GYM_TRACKER_V12_RECOVERY_ROUTE:"))).toBe(true);
+    expect(lines.map((line) => JSON.parse(line.slice("GYM_TRACKER_V12_RECOVERY_ROUTE:".length))))
+      .toEqual([
+        { schema_version: 1, nonce: "a".repeat(32), stage: "root-enter" },
+        { schema_version: 1, nonce: "a".repeat(32), stage: "root-exit" },
+      ]);
+    expect(lines.join("\n")).not.toMatch(/unknown-request-label|caseId|stepId|databaseName|PROGRESS/u);
+  });
+
+  it.each(["profile", "hooks", "suite", "nonce", "nonce-array"])(
+    "does not observe a disabled or malformed Recovery root identity: %s",
+    async (variant) => {
+      mockPathname = "/__v12-production-recovery";
+      mockNativeContractSuite = "v1.2-acceptance";
+      mockSearchParams = {
+        nonce: "a".repeat(32), caseId: "legacy-playback", stepId: "legacy-start",
+        cutId: "pre-transaction", phase: "arm",
+      };
+      if (variant === "profile") mockBuildProfile = "production";
+      if (variant === "hooks") mockNativeContractsEnabled = false;
+      if (variant === "suite") mockNativeContractSuite = "other-suite";
+      if (variant === "nonce") mockSearchParams.nonce = "A".repeat(32);
+      if (variant === "nonce-array") mockSearchParams.nonce = ["a".repeat(32)] as unknown as string;
+      const info = jest.spyOn(console, "info").mockImplementation(() => undefined);
+      await render(<RootLayout />);
+      expect(info).not.toHaveBeenCalled();
+      expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps Recovery root selection and exit unchanged when diagnostic logging throws", async () => {
+    mockPathname = "/__v12-production-recovery";
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockSearchParams = {
+      nonce: "a".repeat(32), caseId: "legacy-playback", stepId: "legacy-start",
+      cutId: "pre-transaction", phase: "arm",
+    };
+    jest.spyOn(console, "info").mockImplementation(() => { throw new Error("logger-failed"); });
+    const rendered = await render(<RootLayout />);
+    expect(screen.getByTestId("root-stack-screen-__v12-production-recovery")).toBeOnTheScreen();
+    mockPathname = "/";
+    mockSearchParams = {};
+    await rendered.rerender(<RootLayout />);
+    expect(screen.queryByTestId("root-stack-screen-__v12-production-recovery")).not.toBeOnTheScreen();
+  });
+
   it.each([
     ["malformed", { nonce: "short" }, true],
     ["disabled", {}, false],

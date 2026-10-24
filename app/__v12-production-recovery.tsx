@@ -12,11 +12,33 @@ import { V12RecoveryRootContext } from "../src/testing/v12RecoveryRootContext";
 type RoutePhase = "arm" | "recover";
 type RouteState = "executing" | "armed" | "observed" | "failed";
 
+function recoveryRouteObservationsEnabled(): boolean {
+  const extra = Constants.expoConfig?.extra;
+  return Constants.expoConfig?.android?.package === "com.fchoo.gymtracker.devtest"
+    && extra?.buildProfile === "development-test" && extra?.nativeContractsEnabled === true
+    && extra?.nativeContractSuite === "v1.2-acceptance";
+}
+
+function observeRecoveryLeafCommit(nonce: unknown, observation:
+  | Readonly<{ stage: "leaf-identity"; validity: boolean; contextMatch: boolean }>
+  | Readonly<{ stage: "leaf-armed-rendered" | "leaf-unmount" }>): void {
+  if (!recoveryRouteObservationsEnabled() || typeof nonce !== "string" || !/^[a-f0-9]{32}$/u.test(nonce)) return;
+  const fields = observation.stage === "leaf-identity"
+    ? { stage: observation.stage, validity: observation.validity, contextMatch: observation.contextMatch }
+    : { stage: observation.stage };
+  try {
+    console.info(`GYM_TRACKER_V12_RECOVERY_ROUTE:${JSON.stringify({ schema_version: 1, nonce, ...fields })}`);
+  } catch { /* Observation must not change route or native execution outcomes. */ }
+}
+
 function RecoveryExecution(input: Readonly<{
   identity: Parameters<typeof v12ProductionRecoveryEnabled>[0];
   phase: RoutePhase;
 }>) {
   const [state, setState] = React.useState<RouteState>("executing");
+  React.useEffect(() => {
+    if (state === "armed") observeRecoveryLeafCommit(input.identity.nonce, { stage: "leaf-armed-rendered" });
+  }, [input.identity.nonce, state]);
   React.useEffect(() => {
     const controller = new AbortController();
     void collectV12ProductionRecoveryPhase({
@@ -59,6 +81,7 @@ function RecoveryExecution(input: Readonly<{
 
 export default function V12ProductionRecoveryRoute() {
   const rootScope = React.useContext(V12RecoveryRootContext);
+  const retainedNonce = React.useRef<string | null>(null);
   const {
     nonce,
     caseId,
@@ -85,6 +108,23 @@ export default function V12ProductionRecoveryRoute() {
   }), [caseId, cutId, extra, nonce, stepId]);
   const enabled = (phase === "arm" || phase === "recover")
     && v12ProductionRecoveryEnabled(identity);
+  const scopeName = typeof rootScope?.databaseName === "string" ? rootScope.databaseName : "";
+  const contextMatch = typeof nonce === "string" && scopeName === `gym-tracker-phase20-recovery-shell-${nonce}.db`;
+  // Scope is supplied only by the validated root. Retention is diagnostic-only;
+  // missing leaf parameters still take the unchanged fail-closed route below.
+  const scopePrefix = "gym-tracker-phase20-recovery-shell-";
+  const scopeNonce = scopeName.startsWith(scopePrefix) && scopeName.endsWith(".db")
+    ? scopeName.slice(scopePrefix.length, -3) : undefined;
+  const diagnosticNonce = enabled ? nonce : scopeNonce ?? retainedNonce.current;
+  React.useEffect(() => {
+    if (!recoveryRouteObservationsEnabled() || typeof diagnosticNonce !== "string"
+      || !/^[a-f0-9]{32}$/u.test(diagnosticNonce)) return;
+    retainedNonce.current = diagnosticNonce;
+    observeRecoveryLeafCommit(diagnosticNonce, { stage: "leaf-identity", validity: enabled, contextMatch });
+  }, [contextMatch, diagnosticNonce, enabled]);
+  React.useEffect(() => () => {
+    observeRecoveryLeafCommit(retainedNonce.current, { stage: "leaf-unmount" });
+  }, []);
   if (!enabled) return <Redirect href="/" />;
   // A deep link can mount the leaf in the previous navigator before the root
   // replaces it. Only the validated isolated branch may start native work.

@@ -58,7 +58,7 @@ describe("V12ProductionRecoveryRoute", () => {
     mockRun.mockResolvedValue("armed");
   });
 
-  afterEach(() => cleanup());
+  afterEach(async () => { await cleanup(); jest.restoreAllMocks(); });
 
   it("waits for the validated root scope before starting native Recovery", async () => {
     const rendered = await render(<V12ProductionRecoveryRoute />);
@@ -104,6 +104,89 @@ describe("V12ProductionRecoveryRoute", () => {
 
     expect(rendered.getByTestId("recovery-route-disabled")).toBeOnTheScreen();
     expect(mockRun).not.toHaveBeenCalled();
+  });
+
+  it("observes leaf identity and ARMED UI commits without publishing acceptance progress", async () => {
+    let armed: (() => void) | undefined;
+    mockRun.mockImplementation((input) => {
+      armed = input.onArmed;
+      return new Promise(() => undefined);
+    });
+    mockParams.stage = "unknown-request-label";
+    const lines: string[] = [];
+    jest.spyOn(console, "info").mockImplementation((line) => { lines.push(String(line)); });
+    const rendered = await renderScopedRoute();
+    const rows = () => lines.map((line) => JSON.parse(line.slice("GYM_TRACKER_V12_RECOVERY_ROUTE:".length)));
+    expect(rows()).toEqual([{
+      schema_version: 1, nonce: mockParams.nonce, stage: "leaf-identity", validity: true, contextMatch: true,
+    }]);
+    await act(async () => armed?.());
+    await waitFor(() => expect(screen.getByText("Recovery cut armed")).toBeOnTheScreen());
+    expect(rows().at(-1)).toEqual({ schema_version: 1, nonce: mockParams.nonce, stage: "leaf-armed-rendered" });
+    await rendered.unmount();
+    expect(rows().at(-1)).toEqual({ schema_version: 1, nonce: mockParams.nonce, stage: "leaf-unmount" });
+    expect(lines.every((line) => line.startsWith("GYM_TRACKER_V12_RECOVERY_ROUTE:"))).toBe(true);
+    expect(lines.join("\n")).not.toMatch(/unknown-request-label|caseId|stepId|databaseName|PROGRESS/u);
+  });
+
+  it("observes lost leaf identity using only the retained validated nonce", async () => {
+    const nonce = mockParams.nonce!;
+    const lines: string[] = [];
+    jest.spyOn(console, "info").mockImplementation((line) => { lines.push(String(line)); });
+    const rendered = await renderScopedRoute();
+    mockParams = {};
+    await rendered.rerender(
+      <V12RecoveryRootContext.Provider value={{ databaseName: `gym-tracker-phase20-recovery-shell-${nonce}.db` }}>
+        <V12ProductionRecoveryRoute />
+      </V12RecoveryRootContext.Provider>,
+    );
+    const rows = lines.map((line) => JSON.parse(line.slice("GYM_TRACKER_V12_RECOVERY_ROUTE:".length)));
+    expect(rows.at(-1)).toEqual({ schema_version: 1, nonce, stage: "leaf-identity", validity: false, contextMatch: false });
+    expect(screen.getByTestId("recovery-route-disabled")).toBeOnTheScreen();
+    expect(mockRun).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["", "short", "A".repeat(32), "a".repeat(33), ["a".repeat(32)], null,
+    { toString: () => { throw new Error("must-not-stringify-invalid-nonce"); } },
+  ])(
+    "does not observe an initially invalid nonce %j",
+    async (nonce) => {
+      mockParams.nonce = nonce as unknown as string;
+      const info = jest.spyOn(console, "info").mockImplementation(() => undefined);
+      await render(<V12ProductionRecoveryRoute />);
+      expect(info).not.toHaveBeenCalled();
+      expect(mockRun).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not observe the Recovery leaf under a disabled build identity", async () => {
+    mockProfile = "production";
+    const info = jest.spyOn(console, "info").mockImplementation(() => undefined);
+    await renderScopedRoute();
+    expect(info).not.toHaveBeenCalled();
+    expect(mockRun).not.toHaveBeenCalled();
+  });
+
+  it("does not stringify an invalid root scope while observing a valid leaf", async () => {
+    const info = jest.spyOn(console, "info").mockImplementation(() => undefined);
+    await render(
+      <V12RecoveryRootContext.Provider value={{
+        databaseName: { toString: () => { throw new Error("must-not-stringify-invalid-scope"); } } as unknown as string,
+      }}>
+        <V12ProductionRecoveryRoute />
+      </V12RecoveryRootContext.Provider>,
+    );
+    expect(screen.getByText("Preparing recovery route")).toBeOnTheScreen();
+    expect(mockRun).not.toHaveBeenCalled();
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('"contextMatch":false'));
+  });
+
+  it("keeps the ARMED page and native outcome unchanged when diagnostic logging throws", async () => {
+    jest.spyOn(console, "info").mockImplementation(() => { throw new Error("logger-failed"); });
+    const rendered = await renderScopedRoute();
+    await waitFor(() => expect(screen.getByText("Recovery cut armed")).toBeOnTheScreen());
+    expect(mockRun).toHaveBeenCalledTimes(1);
+    await rendered.unmount();
   });
 
   it.each(["setup", "command", "barrier", "validation", "delete"])(
