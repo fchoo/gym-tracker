@@ -1218,10 +1218,12 @@ function PopulatedWorkoutOverview({
 
   const runRest = (
     command: () => Promise<RestCommandResult>,
+    isStillApplicable: () => boolean = () => true,
   ) => {
     restPendingCountRef.current += 1;
     setRestBusy(true);
     const task = restCommandQueueRef.current.then(async () => {
+      if (!isStillApplicable()) return;
       acceptanceBenchmark?.markInputStart("rest-control");
       applyRestResult(await command());
       setRestFailure(false);
@@ -1235,6 +1237,8 @@ function PopulatedWorkoutOverview({
   };
 
   useEffect(() => {
+    if (initialView.id === viewRef.current.id
+      && initialView.revision < viewRef.current.revision) return;
     const previousActiveSetId = parentActiveSetIdRef.current;
     parentActiveSetIdRef.current = initialView.activeSetId;
     viewRef.current = initialView;
@@ -2167,10 +2171,13 @@ function PopulatedWorkoutOverview({
                 void runRest(() => commands.adjustRest({
                   ...restInput(),
                   deltaMs,
-                }));
+                }), () => viewRef.current.rest.state === "running"
+                  || viewRef.current.rest.state === "paused");
               }}
               onExpired={(feedback) => {
-                void runRest(() => commands.expireRest({ ...restInput(), ...feedback }));
+                void runRest(() => commands.expireRest({ ...restInput(), ...feedback }),
+                  () => viewRef.current.rest.state === "running"
+                    && nowMs() >= viewRef.current.rest.endsAtMs);
               }}
               onOpenSettings={onOpenNotificationSettings}
               onPause={() => {

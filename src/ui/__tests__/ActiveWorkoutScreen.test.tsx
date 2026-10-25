@@ -8,6 +8,7 @@ import type { ActiveWorkoutView, CompleteSetResult } from "../../domains/workout
 import { ActiveWorkoutScreen, type ActiveWorkoutCommands } from "../screens/ActiveWorkoutScreen";
 import { AppearanceProvider } from "../theme";
 import { SemanticToastProvider } from "../components/SemanticToast";
+import { RestDock } from "../components/RestDock";
 
 jest.mock("expo-crypto", () => ({
   CryptoDigestAlgorithm: { SHA256: "SHA-256" },
@@ -228,6 +229,112 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     await waitFor(() => expect(adjustRest).toHaveBeenCalledTimes(2));
     expect(adjustRest).toHaveBeenNthCalledWith(2, expect.objectContaining({ expectedSessionRevision: 2, expectedRestRevision: 2, deltaMs: -15_000 }));
     expect(screen.getByLabelText("00:30 remaining")).toBeOnTheScreen();
+  });
+
+  it("ignores a deferred stale parent refresh after rest commits while accepting a new session", async () => {
+    const initial = workoutView({ rest: { version: 1, state: "running", revision: 1, startedAtMs: 3_000, endsAtMs: 63_000, nextSetId: "working-1" } });
+    let resolveFirst!: (result: import("../../domains/rest").RestCommandResult) => void;
+    const first = new Promise<import("../../domains/rest").RestCommandResult>((resolve) => { resolveFirst = resolve; });
+    const adjusted = { state: { ...initial.rest, state: "running" as const, startedAtMs: 3_000, endsAtMs: 48_000, revision: 2 }, sessionRevision: 2,
+      invalidationScopes: [["active-workout", "session-1"], ["today"]] as const };
+    const adjustRest = jest.fn<ActiveWorkoutCommands["adjustRest"]>().mockImplementationOnce(() => first)
+      .mockImplementationOnce(async (input) => {
+        if (input.expectedSessionRevision !== 2 || input.expectedRestRevision !== 2) throw new Error("revision_conflict");
+        return { ...adjusted, sessionRevision: 3, state: { ...adjusted.state, revision: 3, endsAtMs: 33_000 } };
+      });
+    const renderedCommands = commands(initial, { adjustRest });
+    const present = (view: ActiveWorkoutView) => <AppearanceProvider><ActiveWorkoutScreen
+      commands={renderedCommands} nowMs={() => 3_000} onFinishLater={jest.fn()} onGoBack={jest.fn()} sessionId={view.id} view={view}
+    /></AppearanceProvider>;
+    const rendered = await render(present(initial));
+    await fireEvent.press(screen.getByRole("button", { name: "Subtract 15 seconds from rest" }));
+    await act(() => { resolveFirst(adjusted); });
+    await waitFor(() => expect(screen.getByLabelText("00:45 remaining")).toBeOnTheScreen());
+    await rendered.rerender(present({ ...initial }));
+    expect(screen.getByLabelText("00:45 remaining")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Subtract 15 seconds from rest" }));
+    await waitFor(() => expect(adjustRest).toHaveBeenCalledTimes(2));
+    expect(adjustRest.mock.calls[1]![0]).toMatchObject({ expectedSessionRevision: 2, expectedRestRevision: 2 });
+    await waitFor(() => expect(screen.getByLabelText("00:30 remaining")).toBeOnTheScreen());
+    expect(screen.queryByText("Rest timer was not changed")).not.toBeOnTheScreen();
+    const newSession = { ...initial, id: "session-2", revision: 1,
+      rest: { ...initial.rest, state: "running" as const, startedAtMs: 3_000, endsAtMs: 123_000 } };
+    await rendered.rerender(present(newSession));
+    expect(screen.getByLabelText("02:00 remaining")).toBeOnTheScreen();
+  });
+
+  it("skips obsolete adjustments and duplicate expiry queued after rest reaches zero", async () => {
+    const initial = workoutView({ rest: { version: 1, state: "running", revision: 1, startedAtMs: 3_000, endsAtMs: 13_000, nextSetId: "working-1" } });
+    let resolveFirst!: (result: import("../../domains/rest").RestCommandResult) => void;
+    const first = new Promise<import("../../domains/rest").RestCommandResult>((resolve) => { resolveFirst = resolve; });
+    const expired = { state: { version: 1 as const, state: "expired" as const, revision: 2, expiredAtMs: 3_000, nextSetId: "working-1" },
+      sessionRevision: 2, invalidationScopes: [["active-workout", "session-1"], ["today"]] as const };
+    const adjustRest = jest.fn<ActiveWorkoutCommands["adjustRest"]>().mockImplementationOnce(() => first)
+      .mockRejectedValue(new Error("rest_not_adjustable"));
+    const expireRest = jest.fn<ActiveWorkoutCommands["expireRest"]>().mockRejectedValue(new Error("rest_not_running"));
+    let dockProps!: React.ComponentProps<typeof RestDock>;
+    const actualDock = RestDock;
+    const dockSpy = jest.spyOn(require("../components/RestDock") as typeof import("../components/RestDock"), "RestDock")
+      .mockImplementation((props) => { dockProps = props; return React.createElement(actualDock, props); });
+    try {
+      await render(<AppearanceProvider><ActiveWorkoutScreen commands={commands(initial, { adjustRest, expireRest })}
+        nowMs={() => 3_000} onFinishLater={jest.fn()} onGoBack={jest.fn()} sessionId={initial.id} view={initial}
+      /></AppearanceProvider>);
+      await act(() => {
+        dockProps.onAdjust(-15_000);
+        dockProps.onAdjust(-15_000);
+        dockProps.onExpired({ foregroundCountdownTone: true });
+      });
+      await waitFor(() => expect(adjustRest).toHaveBeenCalledTimes(1));
+      await act(() => { resolveFirst(expired); });
+      expect(adjustRest).toHaveBeenCalledTimes(1);
+      expect(expireRest).not.toHaveBeenCalled();
+      expect(screen.queryByText("Rest timer was not changed")).not.toBeOnTheScreen();
+      expect(screen.getByRole("button", { name: "Complete Set 1" })).toBeOnTheScreen();
+    } finally { dockSpy.mockRestore(); }
+  });
+
+  it("skips queued expiry after an extension and forwards foreground feedback only when the latest rest is due", async () => {
+    let clockMs = 3_000;
+    const initial = workoutView({ rest: { version: 1, state: "running", revision: 1, startedAtMs: 3_000, endsAtMs: 13_000, nextSetId: "working-1" } });
+    let resolveAdjustment!: (result: import("../../domains/rest").RestCommandResult) => void;
+    const pending = new Promise<import("../../domains/rest").RestCommandResult>((resolve) => { resolveAdjustment = resolve; });
+    const extended = { state: { ...initial.rest, state: "running" as const, revision: 2, startedAtMs: 3_000, endsAtMs: 28_000 },
+      sessionRevision: 2, invalidationScopes: [["active-workout", "session-1"], ["today"]] as const };
+    const adjustRest = jest.fn<ActiveWorkoutCommands["adjustRest"]>().mockImplementationOnce(() => pending);
+    const expireRest = jest.fn<ActiveWorkoutCommands["expireRest"]>().mockResolvedValue({ ...extended, sessionRevision: 3,
+      state: { version: 1, state: "expired", revision: 3, expiredAtMs: 29_000, nextSetId: "working-1" } });
+    let dockProps!: React.ComponentProps<typeof RestDock>;
+    const actualDock = RestDock;
+    const dockSpy = jest.spyOn(require("../components/RestDock") as typeof import("../components/RestDock"), "RestDock")
+      .mockImplementation((props) => { dockProps = props; return React.createElement(actualDock, props); });
+    try {
+      await render(<AppearanceProvider><ActiveWorkoutScreen commands={commands(initial, { adjustRest, expireRest })}
+        nowMs={() => clockMs} onFinishLater={jest.fn()} onGoBack={jest.fn()} sessionId={initial.id} view={initial}
+      /></AppearanceProvider>);
+      await act(() => { dockProps.onAdjust(15_000); });
+      await waitFor(() => expect(adjustRest).toHaveBeenCalledTimes(1));
+      clockMs = 14_000;
+      await act(() => { dockProps.onExpired({ foregroundCountdownTone: true }); });
+      await act(() => { resolveAdjustment(extended); });
+      expect(expireRest).not.toHaveBeenCalled();
+      expect(screen.queryByText("Rest timer was not changed")).not.toBeOnTheScreen();
+      clockMs = 29_000;
+      await act(() => { dockProps.onExpired({ foregroundCountdownTone: true }); });
+      expect(expireRest).toHaveBeenCalledTimes(1);
+      expect(expireRest).toHaveBeenCalledWith({ sessionId: "session-1", expectedSessionRevision: 2,
+        expectedRestRevision: 2, nowMs: 29_000, foregroundCountdownTone: true });
+    } finally { dockSpy.mockRestore(); }
+  });
+
+  it("still reports a real revision conflict while rest remains adjustable", async () => {
+    const initial = workoutView({ rest: { version: 1, state: "running", revision: 1, startedAtMs: 3_000, endsAtMs: 63_000, nextSetId: "working-1" } });
+    const adjustRest = jest.fn<ActiveWorkoutCommands["adjustRest"]>().mockRejectedValue(new Error("session_revision_conflict"));
+    await renderScreen(initial, { adjustRest });
+    await fireEvent.press(screen.getByRole("button", { name: "Subtract 15 seconds from rest" }));
+    await waitFor(() => expect(screen.getByText("Rest timer was not changed")).toBeOnTheScreen());
+    expect(adjustRest).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("01:00 remaining")).toBeOnTheScreen();
   });
   it("focuses the real Active header action before publishing a resumed-route receipt", async () => {
     const onInitialHeaderFocused = jest.fn();
