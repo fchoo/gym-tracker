@@ -4011,7 +4011,6 @@ describe("WorkoutAppRuntimeProvider", () => {
     expect(events).toEqual([
       "replace",
       "replace-active-read",
-      "trusted-read",
     ]);
 
     events.splice(0);
@@ -4033,7 +4032,6 @@ describe("WorkoutAppRuntimeProvider", () => {
     expect(events).toEqual([
       "remove",
       "remove-active-read",
-      "trusted-read",
     ]);
   });
 
@@ -4103,7 +4101,6 @@ describe("WorkoutAppRuntimeProvider", () => {
     expect(events).toEqual([
       "reorder",
       "reorder-active-read",
-      "trusted-read",
     ]);
   });
 
@@ -4227,11 +4224,11 @@ describe("WorkoutAppRuntimeProvider", () => {
     });
     expect(committed!).toMatchObject({ committedSetId: "warmup-committed" });
     await waitFor(() => {
-      expect(repository.getTodayView).toHaveBeenCalledTimes(2);
+      expect(repository.getTodayView).toHaveBeenCalledTimes(1);
     });
   });
 
-  it("returns the committed active view only after the removal, active read, and trusted refresh", async () => {
+  it("returns the committed active view after the removal and its scoped authoritative read", async () => {
     const repository = runtimeRepository([activeView, activeView], [activation]);
     const lifecycle = runtimeLifecycle();
     const events: string[] = [];
@@ -4306,8 +4303,8 @@ describe("WorkoutAppRuntimeProvider", () => {
     expect(removed!).toBe(refreshedActiveView);
     expect(workoutRepository.removeWarmup).toHaveBeenCalledWith(warmupInput);
     expect(workoutRepository.getActiveWorkout).toHaveBeenCalledWith("session-1");
-    expect(events).toEqual(["remove-warmup", "active-read", "trusted-read"]);
-    expect(captured.workoutRefreshGeneration).toBe(2);
+    expect(events).toEqual(["remove-warmup", "active-read"]);
+    expect(captured.workoutRefreshGeneration).toBe(0);
     await waitFor(() => {
       expect(lifecycle.trigger).toHaveBeenCalledWith("post_commit", {});
     });
@@ -4333,7 +4330,7 @@ describe("WorkoutAppRuntimeProvider", () => {
     expect(rejected).toBe(conflict);
     expect(workoutRepository.removeWorkingSet).toHaveBeenCalledWith(workingInput);
     expect(events).toEqual(["remove-working"]);
-    expect(captured.workoutRefreshGeneration).toBe(2);
+    expect(captured.workoutRefreshGeneration).toBe(0);
     expect(captured.mutationFailure).toEqual({
       kind: "conflict",
       code: "remove_set_conflict",
@@ -4391,7 +4388,7 @@ describe("WorkoutAppRuntimeProvider", () => {
     expect(captured.mutationFailure).toBeUndefined();
   });
 
-  it("preserves a committed removal when the trusted global refresh fails", async () => {
+  it("returns committed removal without reading unrelated global state", async () => {
     const repository = runtimeRepository([activeView], [activation]);
     const workoutRepository = runtimeActiveWorkoutRepository();
     let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
@@ -4429,12 +4426,7 @@ describe("WorkoutAppRuntimeProvider", () => {
       result = await captured!.removeWorkingSet(input);
     });
 
-    expect(result!).toEqual({
-      outcome: "committed_refresh_failed",
-      sessionId: "session-1",
-      setId: "set-1",
-      sessionRevision: 2,
-    });
+    expect(result!).toBe(activeWorkoutView);
     expect(workoutRepository.removeWorkingSet).toHaveBeenCalledTimes(1);
     expect(workoutRepository.getActiveWorkout).toHaveBeenCalledWith("session-1");
     expect(captured.mutationFailure).toBeUndefined();
@@ -6159,7 +6151,7 @@ describe("WorkoutAppRuntimeProvider", () => {
     });
   });
 
-  it("returns committed workout source state when a secondary Today refresh fails", async () => {
+  it("uses committed workout state without secondary Today rereads", async () => {
     const repository = runtimeRepository([activeView], [activation]);
     let reads = 0;
     repository.getTodayView = jest.fn(async () => {
@@ -6187,7 +6179,7 @@ describe("WorkoutAppRuntimeProvider", () => {
     await waitFor(() => {
       expect(workoutRepository.updateActiveSetDraft).toHaveBeenCalledTimes(1);
       expect(screen.getByTestId("runtime-action-failure"))
-        .toHaveTextContent("GT-ACTION01");
+        .toHaveTextContent("none");
     });
   });
 

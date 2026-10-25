@@ -194,6 +194,15 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     expect(reorderExercises).not.toHaveBeenCalled();
     await act(() => { gesture.handlers.onEnd({ translationY: 160 }, true); gesture.handlers.onFinalize({ translationY: 160 }, true); });
     await waitFor(() => expect(reorderExercises).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("reorder-row-exercise-exercise-1")).toHaveStyle({ transform: [{ translateY: 160 }] });
+    expect(screen.getByTestId("reorder-row-exercise-exercise-2")).toHaveStyle({ transform: [{ translateY: -160 }] });
+    expect(screen.queryByText("Back Squat moved to 2 of 2")).not.toBeOnTheScreen();
+    await act(() => {
+      gesture.handlers.onEnd({ translationY: 160 }, true);
+      gesture.handlers.onFinalize({ translationY: 160 }, false);
+    });
+    expect(reorderExercises).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("reorder-row-exercise-exercise-1")).toHaveStyle({ transform: [{ translateY: 160 }] });
     const request = reorderExercises.mock.calls[0]![0];
     expect(request).toMatchObject({ expectedSessionRevision: 1, orderedSessionExerciseIds: ["exercise-2", "exercise-1"],
       expectedSessionExerciseRevisions: [{ sessionExerciseId: "exercise-2", revision: 1 }, { sessionExerciseId: "exercise-1", revision: 1 }] });
@@ -203,6 +212,8 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     await act(() => { resolveWrite(persisted); });
     await waitFor(() => expect(screen.getAllByTestId(/^workout-presentation-exercise-/u).map(({ props }) => props.testID))
       .toEqual(["workout-presentation-exercise-exercise-2", "workout-presentation-exercise-exercise-1"]));
+    expect(screen.getByTestId("reorder-row-exercise-exercise-1")).toHaveStyle({ transform: [{ translateY: 0 }] });
+    expect(screen.getByTestId("reorder-row-exercise-exercise-2")).toHaveStyle({ transform: [{ translateY: 0 }] });
     await fireEvent.press(screen.getByRole("button", { name: "Move Back Squat up" }));
     await waitFor(() => expect(reorderExercises).toHaveBeenCalledTimes(2));
     expect(reorderExercises.mock.calls[1]![0]).toMatchObject({ expectedSessionRevision: 2,
@@ -212,6 +223,51 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     expect(screen.queryByTestId("active-workout-exercise-2-working-sets-card")).not.toBeOnTheScreen();
     expect(persisted.activeSetId).toBe("working-1");
     expect(persisted.currentExercise).toBe(initial.currentExercise);
+  });
+
+  it("rolls back a failed drag without acknowledging it and retries the same authoritative request", async () => {
+    const initial = workoutView();
+    const future = { ...initial.currentExercise, id: "exercise-2", exerciseId: "cable-row", name: "Cable Row",
+      status: "planned" as const, ordinal: 1, workingSets: [{ ...initial.currentExercise.workingSets[0]!, id: "working-2" }] };
+    const start = { ...initial, exercises: [initial.currentExercise, future] };
+    let rejectWrite!: (error: Error) => void;
+    const pendingWrite = new Promise<ActiveWorkoutView>((_resolve, reject) => { rejectWrite = reject; });
+    const reordered = { ...start, revision: 2, exercises: [future, initial.currentExercise] };
+    const reorderExercises = jest.fn<NonNullable<ActiveWorkoutCommands["reorderExercises"]>>()
+      .mockImplementationOnce(() => pendingWrite).mockResolvedValue(reordered);
+    await renderScreen(start, { reorderExercises });
+    await fireEvent.press(screen.getByRole("button", { name: "Reorder Back Squat" }));
+    await fireEvent(screen.getByTestId("reorder-row-exercise-exercise-1"), "layout", {
+      nativeEvent: { layout: { height: 100, width: 320, x: 0, y: 0 } },
+    });
+    const gesture = getByGestureTestId("reorder-gesture-exercise-exercise-1") as unknown as {
+      handlers: { onStart(event: { translationY: number }): void; onUpdate(event: { translationY: number }): void;
+        onEnd(event: { translationY: number }, success: boolean): void; onFinalize(event: { translationY: number }, success: boolean): void };
+    };
+    await act(() => {
+      gesture.handlers.onStart({ translationY: 0 }); gesture.handlers.onUpdate({ translationY: 80 });
+      gesture.handlers.onEnd({ translationY: 80 }, true); gesture.handlers.onFinalize({ translationY: 80 }, true);
+    });
+    await waitFor(() => expect(reorderExercises).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("reorder-row-exercise-exercise-1")).toHaveStyle({ transform: [{ translateY: 100 }] });
+    expect(screen.getByTestId("reorder-row-exercise-exercise-2")).toHaveStyle({ transform: [{ translateY: -100 }] });
+    await act(() => { rejectWrite(new Error("storage_failed")); });
+    const retry = await screen.findByRole("button", { name: "Retry reordering exercise" });
+    expect(screen.getByTestId("reorder-row-exercise-exercise-1")).toHaveStyle({ transform: [{ translateY: 0 }] });
+    expect(screen.getByTestId("reorder-row-exercise-exercise-2")).toHaveStyle({ transform: [{ translateY: 0 }] });
+    expect(screen.getAllByTestId(/^workout-presentation-exercise-/u).map(({ props }) => props.testID))
+      .toEqual(["workout-presentation-exercise-exercise-1", "workout-presentation-exercise-exercise-2"]);
+    expect(screen.queryByText("Back Squat moved to 2 of 2")).not.toBeOnTheScreen();
+    expect(reorderExercises.mock.calls[0]![0]).toMatchObject({ expectedSessionRevision: 1,
+      expectedSessionExerciseRevisions: [{ sessionExerciseId: "exercise-2", revision: 1 }, { sessionExerciseId: "exercise-1", revision: 1 }] });
+    await fireEvent.press(retry);
+    await waitFor(() => expect(reorderExercises).toHaveBeenCalledTimes(2));
+    expect(reorderExercises.mock.calls[1]).toEqual(reorderExercises.mock.calls[0]);
+    expect(screen.getByText("Back Squat moved to 2 of 2")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Done reordering" }));
+    expect(screen.getByTestId("active-workout-exercise-1-working-sets-card")).toBeOnTheScreen();
+    expect(reordered.activeSetId).toBe("working-1");
+    expect(reordered.currentExercise).toBe(initial.currentExercise);
   });
 
   it("queues rapid rest adjustments with the latest committed revisions", async () => {

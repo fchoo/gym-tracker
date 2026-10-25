@@ -1810,6 +1810,7 @@ function PopulatedWorkoutOverview({
       });
     } finally {
       exerciseReorderInFlightRef.current = false;
+      setExerciseReorderPreview(null);
       setExerciseReorderBusy(false);
     }
   };
@@ -2250,9 +2251,8 @@ function PopulatedWorkoutOverview({
                     onMoveDown={() => {
                       void submitExerciseReorder(index, index + 1);
                     }}
-                    onMoveTo={(targetPosition, method) => {
-                      void submitExerciseReorder(index, targetPosition, method);
-                    }}
+                    onMoveTo={(targetPosition, method) =>
+                      submitExerciseReorder(index, targetPosition, method)}
                     onMoveUp={() => {
                       void submitExerciseReorder(index, index - 1);
                     }}

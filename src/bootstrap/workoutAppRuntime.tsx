@@ -2121,6 +2121,10 @@ export function WorkoutAppRuntimeProvider({
   const restCommandQueueRef = useRef<Promise<void>>(Promise.resolve());
   const postCommitReconciliationQueueRef = useRef<Promise<void>>(Promise.resolve());
   const restReconciliationGenerationRef = useRef(0);
+  const selectionRefreshGenerationRef = useRef(0);
+  const workoutSummaryGenerationRef = useRef(0);
+  const selectionRefreshQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const committedWorkoutRevisionsRef = useRef(new Map<string, number>());
   const contentUpdateResultRef = useRef<ContentUpdateResult | undefined>(
     undefined,
   );
@@ -2142,6 +2146,10 @@ export function WorkoutAppRuntimeProvider({
     restCommandQueueRef.current = Promise.resolve();
     postCommitReconciliationQueueRef.current = Promise.resolve();
     restReconciliationGenerationRef.current += 1;
+    selectionRefreshGenerationRef.current += 1;
+    workoutSummaryGenerationRef.current += 1;
+    selectionRefreshQueueRef.current = Promise.resolve();
+    committedWorkoutRevisionsRef.current.clear();
     pendingActivityMatchRef.current = null;
     progressBodyweightCommandsRef.current.clear();
     try {
@@ -2210,6 +2218,76 @@ export function WorkoutAppRuntimeProvider({
       workoutRefreshGeneration: workoutRefreshGenerationRef.current,
     };
   }, [dependencies]);
+
+  // Product mutations refresh only the Today selection they can change. Backup
+  // metadata and OS permission reads belong to launch/settings, not save clicks.
+  const refreshTodaySelection = useCallback(async (
+    services: RuntimeServices,
+    plansChanged = false,
+  ) => {
+    const generation = ++selectionRefreshGenerationRef.current;
+    const summaryGeneration = workoutSummaryGenerationRef.current;
+    const context = localContext(dependencies.now());
+    const [legacyView, scheduledToday, activation] = await Promise.all([
+      services.repository.getTodayView({ localDate: context.localDate, weekday: context.weekday }),
+      services.schedules.loadToday(dependencies.nowMs()),
+      plansChanged ? services.repository.getActivation() : Promise.resolve(undefined),
+    ]);
+    if (servicesRef.current !== services || generation !== selectionRefreshGenerationRef.current) return;
+    setState((current) => {
+      const { scheduleToday: _scheduleToday, ...preserved } = current;
+      return {
+        ...preserved,
+        ...(summaryGeneration !== workoutSummaryGenerationRef.current ? {} : {
+          view: legacyView.state === "active_workout" || legacyView.state === "saved_partial"
+            ? legacyView : scheduledToday?.view ?? legacyView,
+        }),
+        planDays: scheduledToday?.planDays ?? (plansChanged ? activation?.days ?? [] : current.planDays),
+        selectedStrengthOccurrence: scheduledToday?.selectedStrengthOccurrence ?? null,
+        ...(scheduledToday === null ? {} : { scheduleToday: scheduledToday.scheduleToday }),
+        workoutRefreshGeneration: workoutRefreshGenerationRef.current,
+      };
+    });
+  }, [dependencies]);
+
+  const queueTodaySelectionRefresh = useCallback((services: RuntimeServices, plansChanged = false) => {
+    const generation = ++selectionRefreshGenerationRef.current;
+    selectionRefreshQueueRef.current = selectionRefreshQueueRef.current.then(async () => {
+      if (servicesRef.current !== services || generation !== selectionRefreshGenerationRef.current) return;
+      await refreshTodaySelection(services, plansChanged);
+    }).catch(() => undefined);
+  }, [refreshTodaySelection]);
+
+  const publishCommittedWorkout = useCallback((services: RuntimeServices, view: ActiveWorkoutView) => {
+    if (servicesRef.current !== services) return;
+    const previousRevision = committedWorkoutRevisionsRef.current.get(view.id) ?? -1;
+    if (view.revision < previousRevision) return;
+    committedWorkoutRevisionsRef.current.set(view.id, view.revision);
+    workoutSummaryGenerationRef.current += 1;
+    const exercises = view.exercises.length > 0 ? view.exercises : [view.currentExercise];
+    const exercise = exercises.find(({ id }) => id === view.activeExerciseId);
+    const set = exercise === undefined ? undefined : [...exercise.warmups, ...exercise.workingSets]
+      .find(({ id }) => id === view.activeSetId);
+    setState((current) => {
+      if (current.view?.state === "active_workout"
+        && current.view.sessionId === view.id
+        && current.view.exerciseName === (exercise?.name ?? null)
+        && current.view.setLabel === (set === undefined ? null : `${set.kind === "warmup" ? "Warm-up" : "Working set"} ${set.ordinal + 1}`)
+        && current.view.restStatus === view.rest.state
+        && current.actionFailure === undefined && current.mutationFailure === undefined) return current;
+      const { actionFailure: _actionFailure, mutationFailure: _mutationFailure, ...preserved } = current;
+      return {
+        ...preserved,
+        view: {
+          state: "active_workout",
+          sessionId: view.id,
+          exerciseName: exercise?.name ?? null,
+          setLabel: set === undefined ? null : `${set.kind === "warmup" ? "Warm-up" : "Working set"} ${set.ordinal + 1}`,
+          restStatus: view.rest.state,
+        },
+      };
+    });
+  }, []);
 
   const initialize = useCallback(async () => {
     const generation = generationRef.current + 1;
@@ -2605,7 +2683,9 @@ export function WorkoutAppRuntimeProvider({
             : {}),
         },
       });
-      setState(await trustedRead(services));
+      const readContext = localContext(dependencies.now());
+      const view = await services.repository.getTodayView({ localDate: readContext.localDate, weekday: readContext.weekday });
+      if (servicesRef.current === services) setState((current) => ({ ...current, view }));
       return session.id;
     } catch {
       setState((current) => ({
@@ -2617,7 +2697,7 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw new Error("workout_action_failed");
     }
-  }, [dependencies, requireServices, trustedRead]);
+  }, [dependencies, requireServices]);
 
   const startSelectedStrengthOccurrence = useCallback(async (
     occurrence: SelectedStrengthOccurrence,
@@ -2637,7 +2717,9 @@ export function WorkoutAppRuntimeProvider({
           commandIdentity: dependencies.nowMs().toString(16).padStart(64, "0"),
         },
       });
-      setState(await trustedRead(services));
+      const readContext = localContext(dependencies.now());
+      const view = await services.repository.getTodayView({ localDate: readContext.localDate, weekday: readContext.weekday });
+      if (servicesRef.current === services) setState((current) => ({ ...current, view }));
       return session.id;
     } catch {
       setState((current) => ({
@@ -2649,7 +2731,7 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw new Error("workout_action_failed");
     }
-  }, [dependencies, requireServices, trustedRead]);
+  }, [dependencies, requireServices]);
 
   const startEmptyWorkout = useCallback(async (): Promise<string> => {
     const services = requireServices();
@@ -2664,7 +2746,9 @@ export function WorkoutAppRuntimeProvider({
           startedAtMs: dependencies.nowMs(),
         },
       });
-      setState(await trustedRead(services));
+      const readContext = localContext(dependencies.now());
+      const view = await services.repository.getTodayView({ localDate: readContext.localDate, weekday: readContext.weekday });
+      if (servicesRef.current === services) setState((current) => ({ ...current, view }));
       return session.id;
     } catch {
       setState((current) => ({
@@ -2676,7 +2760,7 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw new Error("workout_action_failed");
     }
-  }, [dependencies, requireServices, trustedRead]);
+  }, [dependencies, requireServices]);
 
   const getActiveWorkout = useCallback((sessionId: string) => {
     return requireServices().workoutRepository.getWorkoutSession(sessionId);
@@ -3006,7 +3090,7 @@ export function WorkoutAppRuntimeProvider({
     await services.lifecycle.trigger("post_commit").catch(() => undefined);
     workoutRefreshGenerationRef.current += 1;
     try {
-      setState(await trustedRead(services));
+      await refreshTodaySelection(services);
     } catch {
       setState((current) => ({
         ...current,
@@ -3014,21 +3098,21 @@ export function WorkoutAppRuntimeProvider({
       }));
     }
     return result;
-  }, [dependencies, requireServices, trustedRead]);
+  }, [dependencies, requireServices, refreshTodaySelection]);
 
   const refreshAfterHistoryLifecycleCommit = useCallback(async () => {
     const services = requireServices();
     await services.lifecycle.trigger("post_commit").catch(() => undefined);
     workoutRefreshGenerationRef.current += 1;
     try {
-      setState(await trustedRead(services));
+      await refreshTodaySelection(services);
     } catch {
       setState((current) => ({
         ...current,
         workoutRefreshGeneration: workoutRefreshGenerationRef.current,
       }));
     }
-  }, [requireServices, trustedRead]);
+  }, [requireServices, refreshTodaySelection]);
 
   const removeRuntimeHistorySession = useCallback(async (
     input: Omit<VoidHistorySessionInput, "nowMs">,
@@ -3215,11 +3299,10 @@ export function WorkoutAppRuntimeProvider({
       nowMs: dependencies.nowMs,
     }).deletePlan(input);
     if (result.outcome === "deleted") {
-      workoutRefreshGenerationRef.current += 1;
-      setState(await trustedRead(services));
+      queueTodaySelectionRefresh(services, true);
     }
     return result;
-  }, [dependencies, requireServices, trustedRead]);
+  }, [dependencies, queueTodaySelectionRefresh, requireServices]);
 
   const loadStarterPlan = useCallback(async (
     templateId: string,
@@ -3633,10 +3716,10 @@ export function WorkoutAppRuntimeProvider({
       result.outcome === "committed"
       || result.outcome === "already_committed"
     ) {
-      setState(await trustedRead(services));
+      queueTodaySelectionRefresh(services, true);
     }
     return result;
-  }, [requireServices, trustedRead]);
+  }, [queueTodaySelectionRefresh, requireServices]);
 
   const createOwnedDraft = useCallback(async (
     input: Readonly<{ name: string; dayName: string }>,
@@ -3696,10 +3779,10 @@ export function WorkoutAppRuntimeProvider({
       result.outcome === "committed"
       || result.outcome === "already_committed"
     ) {
-      setState(await trustedRead(services));
+      queueTodaySelectionRefresh(services, true);
     }
     return result;
-  }, [requireServices, trustedRead]);
+  }, [queueTodaySelectionRefresh, requireServices]);
 
   const previewOwnedExerciseReplacement = useCallback((
     input: Readonly<{ planId: string; occurrenceId: string }>,
@@ -3715,10 +3798,10 @@ export function WorkoutAppRuntimeProvider({
       result.outcome === "committed"
       || result.outcome === "already_committed"
     ) {
-      setState(await trustedRead(services));
+      queueTodaySelectionRefresh(services, true);
     }
     return result;
-  }, [requireServices, trustedRead]);
+  }, [queueTodaySelectionRefresh, requireServices]);
 
   const reconcileAfterCommit = useCallback((
     services: RuntimeServices,
@@ -3759,11 +3842,13 @@ export function WorkoutAppRuntimeProvider({
       // RestCommandResult already updates the timer and Today rest status.
       // Reloading the full workout/progress tree here would reintroduce lag.
       if (refreshWorkout) workoutRefreshGenerationRef.current += 1;
-      setState((current) => ({
-        ...current,
-        notificationPermission: lifecycleResult?.permission ?? permission,
-        workoutRefreshGeneration: workoutRefreshGenerationRef.current,
-      }));
+      setState((current) => current.notificationPermission === (lifecycleResult?.permission ?? permission)
+        && current.workoutRefreshGeneration === workoutRefreshGenerationRef.current
+        ? current : {
+          ...current,
+          notificationPermission: lifecycleResult?.permission ?? permission,
+          workoutRefreshGeneration: workoutRefreshGenerationRef.current,
+        });
     }).catch(() => undefined);
   }, []);
 
@@ -3778,11 +3863,16 @@ export function WorkoutAppRuntimeProvider({
       if (servicesRef.current !== services) throw new Error("workout_runtime_not_trusted");
       const result = await command(services.restRepository);
       if (servicesRef.current !== services) return result;
+      committedWorkoutRevisionsRef.current.set(sessionId, Math.max(
+        committedWorkoutRevisionsRef.current.get(sessionId) ?? -1,
+        result.sessionRevision,
+      ));
+      workoutSummaryGenerationRef.current += 1;
       // The repository resolves only after its exclusive transaction commits.
       // Use that acknowledgement directly, keeping unrelated reads and effect
       // adapters off the rest-control path. Expected revisions are never rebased.
       setState((current) => current.view?.state === "active_workout"
-        && current.view.sessionId === sessionId
+        && current.view.sessionId === sessionId && current.view.restStatus !== result.state.state
         ? { ...current, view: { ...current.view, restStatus: result.state.state } }
         : current);
       reconcileAfterCommit(services, result.state.state === "expired"
@@ -4056,24 +4146,12 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw error;
     }
-    reconcileAfterCommit(services);
-    workoutRefreshGenerationRef.current += 1;
-    try {
-      setState(await trustedRead(services));
-    } catch {
-      setState((current) => ({
-        ...current,
-        actionFailure: {
-          code: "workout_action_failed",
-          correlationCode: "GT-ACTION01",
-        },
-        workoutRefreshGeneration: workoutRefreshGenerationRef.current,
-      }));
-    }
+    publishCommittedWorkout(services, view);
+    reconcileAfterCommit(services, undefined, false);
     return committedSetId === undefined
       ? view
       : Object.freeze({ ...view, committedSetId });
-  }, [reconcileAfterCommit, requireServices, trustedRead]);
+  }, [publishCommittedWorkout, reconcileAfterCommit, requireServices]);
 
   const runWorkoutRemoval = useCallback(async (
     input: RemoveWarmupInput | RemoveWorkingSetInput,
@@ -4097,13 +4175,12 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw error;
     }
-    reconcileAfterCommit(services);
+    reconcileAfterCommit(services, undefined, false);
 
     let activeView: ActiveWorkoutView;
     try {
       activeView = await services.workoutRepository.getActiveWorkout(input.sessionId);
-      workoutRefreshGenerationRef.current += 1;
-      setState(await trustedRead(services));
+      publishCommittedWorkout(services, activeView);
     } catch {
       workoutRefreshGenerationRef.current += 1;
       setState((current) => ({
@@ -4122,7 +4199,7 @@ export function WorkoutAppRuntimeProvider({
       });
     }
     return activeView;
-  }, [reconcileAfterCommit, requireServices, trustedRead]);
+  }, [publishCommittedWorkout, reconcileAfterCommit, requireServices]);
 
   const runExerciseEdit = useCallback(async (
     input: ReplaceExerciseInput | RemoveExerciseInput,
@@ -4146,14 +4223,13 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw error;
     }
-    reconcileAfterCommit(services);
+    reconcileAfterCommit(services, undefined, false);
 
     try {
       const activeView = await services.workoutRepository.getActiveWorkout(
         input.sessionId,
       );
-      workoutRefreshGenerationRef.current += 1;
-      setState(await trustedRead(services));
+      publishCommittedWorkout(services, activeView);
       return activeView;
     } catch {
       workoutRefreshGenerationRef.current += 1;
@@ -4172,7 +4248,7 @@ export function WorkoutAppRuntimeProvider({
         sessionRevision: committed.sessionRevision,
       });
     }
-  }, [reconcileAfterCommit, requireServices, trustedRead]);
+  }, [publishCommittedWorkout, reconcileAfterCommit, requireServices]);
 
   const updateDraft = useCallback((input: UpdateActiveSetDraftInput) =>
     runWorkoutMutation((repository) =>
@@ -4220,7 +4296,9 @@ export function WorkoutAppRuntimeProvider({
     }
     workoutRefreshGenerationRef.current += 1;
     try {
-      setState(await trustedRead(services));
+      const context = localContext(dependencies.now());
+      const view = await services.repository.getTodayView({ localDate: context.localDate, weekday: context.weekday });
+      if (servicesRef.current === services) setState((current) => ({ ...current, view, workoutRefreshGeneration: workoutRefreshGenerationRef.current }));
     } catch {
       setState((current) => ({
         ...current,
@@ -4232,7 +4310,7 @@ export function WorkoutAppRuntimeProvider({
       }));
     }
     return result;
-  }, [requireServices, trustedRead]);
+  }, [dependencies, requireServices]);
 
   const replaceWorkoutExercise = useCallback((input: ReplaceExerciseInput) =>
     runExerciseEdit(input, (repository) => replaceExercise({
@@ -4270,14 +4348,13 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw error;
     }
-    reconcileAfterCommit(services);
+    reconcileAfterCommit(services, undefined, false);
 
     try {
       const activeView = await services.workoutRepository.getActiveWorkout(
         input.sessionId,
       );
-      workoutRefreshGenerationRef.current += 1;
-      setState(await trustedRead(services));
+      publishCommittedWorkout(services, activeView);
       return activeView;
     } catch {
       workoutRefreshGenerationRef.current += 1;
@@ -4295,7 +4372,7 @@ export function WorkoutAppRuntimeProvider({
         sessionRevision: committed.sessionRevision,
       });
     }
-  }, [reconcileAfterCommit, requireServices, trustedRead]);
+  }, [publishCommittedWorkout, reconcileAfterCommit, requireServices]);
 
   const removeWorkoutWarmup = useCallback((input: RemoveWarmupInput) =>
     runWorkoutRemoval(input, (repository) => removeWarmup({ repository, input })),
@@ -4330,25 +4407,14 @@ export function WorkoutAppRuntimeProvider({
     return completeSet({
       repository: services.workoutRepository,
       haptics: createExpoHapticsAdapter(),
-      invalidate: async () => {
-        try {
-          setState(await trustedRead(services));
-        } catch {
-          setState((current) => ({
-            ...current,
-            actionFailure: {
-              code: "workout_action_failed",
-              correlationCode: "GT-ACTION01",
-            },
-          }));
-        }
-      },
-      drainEffects: async () => {
-        reconcileAfterCommit(services);
-      },
+      invalidate: async () => undefined,
+      drainEffects: async () => { reconcileAfterCommit(services, undefined, false); },
       input,
+    }).then((result) => {
+      publishCommittedWorkout(services, result.view);
+      return result;
     });
-  }, [reconcileAfterCommit, requireServices, trustedRead]);
+  }, [publishCommittedWorkout, reconcileAfterCommit, requireServices]);
 
   const updateWorkoutSessionExerciseDefaultRest = useCallback(
     async (input: UpdateSessionExerciseDefaultRestInput) => {
@@ -4371,33 +4437,23 @@ export function WorkoutAppRuntimeProvider({
   const setWorkoutPreferences = useCallback(async (input: WorkoutPreferenceWrite) => {
     const services = requireServices();
     const saved = await services.workoutPreferenceRepository.write(input);
-    await services.lifecycle.trigger("post_commit").catch(() => undefined);
+    reconcileAfterCommit(services, undefined, false);
     return saved;
-  }, [requireServices]);
+  }, [reconcileAfterCommit, requireServices]);
 
   const undoWorkoutSet = useCallback((input: UndoCompletedSetInput) => {
     const services = requireServices();
     return undoCompletedSet({
       repository: services.workoutRepository,
       input,
-    }).then(async (result) => {
+    }).then((result) => {
       if (result.outcome === "undone") {
-        reconcileAfterCommit(services);
-        try {
-          setState(await trustedRead(services));
-        } catch {
-          setState((current) => ({
-            ...current,
-            actionFailure: {
-              code: "workout_action_failed",
-              correlationCode: "GT-ACTION01",
-            },
-          }));
-        }
+        publishCommittedWorkout(services, result.view);
+        reconcileAfterCommit(services, undefined, false);
       }
       return result;
     });
-  }, [reconcileAfterCommit, requireServices, trustedRead]);
+  }, [publishCommittedWorkout, reconcileAfterCommit, requireServices]);
 
   const runOutcomeMutation = useCallback(async <Result,>(
     mutation: (
@@ -4409,7 +4465,7 @@ export function WorkoutAppRuntimeProvider({
     await services.lifecycle.trigger("post_commit").catch(() => undefined);
     workoutRefreshGenerationRef.current += 1;
     try {
-      setState(await trustedRead(services));
+      await refreshTodaySelection(services);
     } catch {
       setState((current) => ({
         ...current,
@@ -4421,7 +4477,7 @@ export function WorkoutAppRuntimeProvider({
       }));
     }
     return result;
-  }, [requireServices, trustedRead]);
+  }, [requireServices, refreshTodaySelection]);
 
   const finishWorkoutCompleted = useCallback(async (
     input: FinishCompletedInput,
