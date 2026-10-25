@@ -31,6 +31,8 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
 
   const playback = useMemo(() => {
     let generation = 0;
+    let countdownGeneration = 0;
+    const countdownTimers = new Set<ReturnType<typeof setTimeout>>();
     let soundOwnership: ReturnType<typeof claimForegroundRestSound> | undefined;
     const pendingLoads = new Set<() => void>();
     const rewinds = new Map<AudioPlayer, Promise<void>>();
@@ -93,7 +95,14 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
       }
     };
 
+    const cancelCountdown = () => {
+      countdownGeneration += 1;
+      for (const timer of countdownTimers) clearTimeout(timer);
+      countdownTimers.clear();
+    };
+
     const cancelPendingCues = (clearOwnership = true) => {
+      cancelCountdown();
       if (clearOwnership) soundOwnership?.clear();
       else soundOwnership?.release();
       soundOwnership = undefined;
@@ -118,12 +127,17 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
         // players share the audio session and must never play over each other.
         shortPlayer.pause();
         longPlayer.pause();
-        if (!player.isLoaded) await waitUntilLoaded(player, maxWaitMs);
-        if (requestGeneration !== generation) return;
+        // Android's isLoaded getter excludes STATE_ENDED. Prepare the position
+        // first: waiting for readiness before this seek can never ready an
+        // ended player when its finish event has not reached JS yet.
         const pendingRewind = rewinds.get(player);
         const neededRewind = pendingRewind ?? (player.currentTime > 0 ? rewind(player) : undefined);
         if (neededRewind !== undefined) {
           await waitForRewind(neededRewind, maxWaitMs - (Date.now() - requestedAtMs));
+        }
+        if (requestGeneration !== generation) return;
+        if (!player.isLoaded) {
+          await waitUntilLoaded(player, Math.max(0, maxWaitMs - (Date.now() - requestedAtMs)));
         }
         if (
           requestGeneration !== generation
@@ -147,6 +161,39 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
         playShortCue: () => replay(shortPlayer, 350),
         playLongCue: () => replay(longPlayer, 1_000),
         cancelPendingCues: () => cancelPendingCues(),
+        scheduleCountdown: (input: Parameters<NonNullable<RestCountdownCuePort["scheduleCountdown"]>>[0]) => {
+          cancelCountdown();
+          const scheduleGeneration = countdownGeneration;
+          const scheduledAtMs = input.nowMs();
+          const emitted = new Set(input.emitted);
+          for (const seconds of [2, 1, 0] as const) {
+            const dueAtMs = input.endsAtMs - seconds * 1_000;
+            // Manual adjustments and foreground return never backfill tones.
+            if (dueAtMs <= scheduledAtMs || emitted.has(seconds)) continue;
+            const timer = setTimeout(() => {
+              countdownTimers.delete(timer);
+              if (scheduleGeneration !== countdownGeneration
+                || AppState.currentState !== "active") return;
+              // A stalled JS turn skips a stale short instead of playing a
+              // burst at expiry. The final cue still gets its bounded attempt.
+              if (seconds !== 0 && input.nowMs() - dueAtMs > 350) return;
+              emitted.add(seconds);
+              input.onCue(seconds);
+              void replay(seconds === 0 ? longPlayer : shortPlayer, seconds === 0 ? 1_000 : 350)
+                .catch(() => {
+                  if (scheduleGeneration === countdownGeneration) input.onError();
+                });
+            }, Math.max(0, dueAtMs - scheduledAtMs));
+            countdownTimers.add(timer);
+          }
+          return () => {
+            // Parent expiry can remove the dock in the same turn as the final
+            // deadline. Retain that route-owned callback and any loading wait.
+            if (scheduleGeneration === countdownGeneration && input.nowMs() < input.endsAtMs) {
+              cancelPendingCues();
+            }
+          };
+        },
         claimForegroundRestSound: (input: RestCountdownSoundOwnership) => {
           // A consecutive rest may begin before the previous deadline's queued
           // notification arrives. Retain only its bounded natural-expiry grace.

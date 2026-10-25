@@ -295,6 +295,32 @@ export function RestDock({
     });
   }, [countdownCue, foregroundActive, restSoundEnabled, sessionId, state.revision, state.state]);
 
+  useEffect(() => {
+    if (state.state !== "running" || !restSoundEnabled || !foregroundActive
+      || state.endsAtMs <= nowMs() || countdownCue?.scheduleCountdown === undefined) return;
+    let mounted = true;
+    const cueRestGeneration = cueRestGenerationRef.current;
+    const release = countdownCue.scheduleCountdown({
+      endsAtMs: state.endsAtMs,
+      nowMs,
+      emitted: cueLedgerRef.current?.emitted ?? new Set(),
+      onCue: (seconds) => {
+        const ledger = cueLedgerRef.current;
+        if (ledger !== null) {
+          cueLedgerRef.current = { emitted: new Set([...ledger.emitted, seconds]) };
+        }
+        if (seconds === 0) finalCueDispatchedRef.current = true;
+      },
+      onError: () => {
+        if (mounted && cueRestGeneration === cueRestGenerationRef.current) setCueFailure(true);
+      },
+    });
+    return () => {
+      mounted = false;
+      release();
+    };
+  }, [countdownCue, foregroundActive, nowMs, restSoundEnabled, state.revision, state.state]);
+
   const cancelPendingCues = () => {
     previousRemainingSecondsRef.current = null;
     countdownCueRef.current?.cancelPendingCues?.();
@@ -332,6 +358,7 @@ export function RestDock({
       state.state !== "running"
       || !restSoundEnabled
       || countdownCue === undefined
+      || countdownCue.scheduleCountdown !== undefined
       || appStateRef.current !== "active"
       || previousSeconds === null
       || ledger === null

@@ -1,8 +1,11 @@
-import { act, renderHook } from "@testing-library/react-native";
+import { act, render, renderHook } from "@testing-library/react-native";
+import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { AppState, type AppStateStatus } from "react-native";
 import { useAudioPlayer, type AudioStatus } from "expo-audio";
 import { useExpoRestCountdownCueAdapter } from "./expoRestCountdownCueAdapter";
+import { RestDock } from "../../ui/components/RestDock";
+import { AppearanceProvider } from "../../ui/theme";
 
 const SHORT_CUE_ASSET = require("../../../assets/audio/rest-cue-short.wav");
 const LONG_CUE_ASSET = require("../../../assets/audio/rest-cue-long.wav");
@@ -92,6 +95,119 @@ async function renderAdapter(shortPlayer = cuePlayer(), longPlayer = cuePlayer()
 }
 
 describe("Expo rest countdown cue adapter", () => {
+  it("plays deadline cues once on a nonaligned clock independently of display renders", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(10_025);
+    const shortPlayer = androidCuePlayer(120);
+    const longPlayer = androidCuePlayer(360);
+    const { rendered } = await renderAdapter(shortPlayer, longPlayer);
+    const onCue = jest.fn();
+    const onError = jest.fn();
+    rendered.result.current.scheduleCountdown!({ endsAtMs: 14_567, nowMs: () => Date.now(), emitted: new Set(), onCue, onError });
+    await act(async () => { await jest.advanceTimersByTimeAsync(8_000); });
+    expect(shortPlayer.audibleStarts).toEqual([12_567, 13_567]);
+    expect(longPlayer.audibleStarts).toEqual([14_567]);
+    expect(onCue.mock.calls).toEqual([[2], [1], [0]]);
+    expect(onError).not.toHaveBeenCalled();
+    expect(shortPlayer.playing || longPlayer.playing).toBe(false);
+    await rendered.unmount();
+  });
+
+  it("retains a final cue loading at the deadline after the natural dock lease releases", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(10_000);
+    const longPlayer = cuePlayer();
+    longPlayer.isLoaded = false;
+    const { rendered } = await renderAdapter(cuePlayer(), longPlayer);
+    const release = rendered.result.current.scheduleCountdown!({ endsAtMs: 13_000, nowMs: () => Date.now(), emitted: new Set(), onCue: jest.fn(), onError: jest.fn() });
+    await act(async () => { await jest.advanceTimersByTimeAsync(3_000); });
+    release();
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(400);
+      longPlayer.emit({ isLoaded: true });
+    });
+    expect(longPlayer.play).toHaveBeenCalledTimes(1);
+    await rendered.unmount();
+  });
+
+  it("cancels superseded deadlines, preserves emitted history, and never backfills after manual adjustments", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(10_000);
+    const { rendered, shortPlayer, longPlayer } = await renderAdapter();
+    const emitted = new Set<number>();
+    const schedule = (endsAtMs: number) => rendered.result.current.scheduleCountdown!({
+      endsAtMs, nowMs: () => Date.now(), emitted,
+      onCue: (seconds) => { emitted.add(seconds); }, onError: jest.fn(),
+    });
+    const oldRelease = schedule(100_000);
+    for (const deadline of [85_000, 70_000, 55_000, 40_000, 25_000]) {
+      rendered.result.current.cancelPendingCues?.();
+      schedule(deadline);
+      oldRelease();
+    }
+    await act(async () => { await jest.advanceTimersByTimeAsync(13_000); });
+    expect(shortPlayer.play).toHaveBeenCalledTimes(1);
+    rendered.result.current.cancelPendingCues?.();
+    schedule(40_000);
+    await act(async () => { await jest.advanceTimersByTimeAsync(16_000); });
+    expect(shortPlayer.play).toHaveBeenCalledTimes(2);
+    await act(async () => { await jest.advanceTimersByTimeAsync(1_000); });
+    expect(longPlayer.play).toHaveBeenCalledTimes(1);
+    rendered.result.current.cancelPendingCues?.();
+    schedule(Date.now() + 500);
+    expect(shortPlayer.play).toHaveBeenCalledTimes(2);
+    await act(async () => { await jest.advanceTimersByTimeAsync(1_000); });
+    expect(longPlayer.play).toHaveBeenCalledTimes(1);
+    await rendered.unmount();
+  });
+
+  it("cancels scheduled cues on background and only schedules future cues on foreground return", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(10_000);
+    let change: ((state: AppStateStatus) => void) | undefined;
+    appStateListener.mockImplementation((_event, listener) => { change = listener; return { remove: jest.fn() }; });
+    const { rendered, shortPlayer, longPlayer } = await renderAdapter();
+    const schedule = () => rendered.result.current.scheduleCountdown!({ endsAtMs: 14_000, nowMs: () => Date.now(), emitted: new Set(), onCue: jest.fn(), onError: jest.fn() });
+    schedule();
+    change?.("background");
+    await act(async () => { await jest.advanceTimersByTimeAsync(3_500); });
+    expect(shortPlayer.play).not.toHaveBeenCalled();
+    change?.("active");
+    schedule();
+    expect(shortPlayer.play).not.toHaveBeenCalled();
+    await act(async () => { await jest.advanceTimersByTimeAsync(1_000); });
+    expect(longPlayer.play).toHaveBeenCalledTimes(1);
+    await rendered.unmount();
+  });
+
+  it("keeps exact final playback when the parent removes the expired dock before its render effects", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(96_000);
+    const { rendered, shortPlayer, longPlayer } = await renderAdapter();
+    const dock = await render(createElement(AppearanceProvider, null,
+      createElement(RestDock, {
+        state: { version: 1, state: "running", revision: 3, startedAtMs: 96_000, endsAtMs: 100_000, nextSetId: "next" },
+        sessionId: "scheduled-rest",
+        nowMs: () => Date.now(),
+        nextSetIndex: 2,
+        nextTarget: "60 kg × 8",
+        notificationPermission: "granted",
+        restSoundEnabled: true,
+        countdownCue: rendered.result.current,
+        onAdjust: jest.fn(), onExpired: jest.fn(), onOpenSettings: jest.fn(),
+        onPause: jest.fn(), onResume: jest.fn(), onSkip: jest.fn(),
+      }),
+    ));
+    await act(async () => { await jest.advanceTimersByTimeAsync(3_000); });
+    await act(async () => {
+      jest.advanceTimersByTime(1_000);
+      await dock.unmount();
+    });
+    expect(longPlayer.play).toHaveBeenCalledTimes(1);
+    expect(shortPlayer.play).toHaveBeenCalledTimes(2);
+    await rendered.unmount();
+  });
+
   it("produces exactly two 120ms shorts and one 360ms long, then silence on Android", async () => {
     jest.useFakeTimers();
     jest.setSystemTime(10_000);
@@ -142,6 +258,27 @@ describe("Expo rest countdown cue adapter", () => {
     await act(async () => { jest.advanceTimersByTime(1_000); });
     expect(shortPlayer.audibleStarts).toHaveLength(2);
     expect(shortPlayer.playing).toBe(false);
+    await rendered.unmount();
+  });
+
+  it("prepares an ended native player before waiting for readiness when its finish event is delayed", async () => {
+    jest.useFakeTimers();
+    const shortPlayer = cuePlayer();
+    const { rendered } = await renderAdapter(shortPlayer);
+    await rendered.result.current.playShortCue();
+    // Expo's synchronous Android isLoaded getter is false at STATE_ENDED,
+    // although its finish-event status reports isLoaded:true. JS may not have
+    // received that event by the next cue request.
+    shortPlayer.currentTime = 0.12;
+    shortPlayer.isLoaded = false;
+    shortPlayer.seekTo.mockImplementation(async () => {
+      shortPlayer.currentTime = 0;
+      shortPlayer.emit({ isLoaded: true });
+    });
+    const next = rendered.result.current.playShortCue().then(() => true, () => false);
+    await act(async () => { await jest.advanceTimersByTimeAsync(350); });
+    expect(await next).toBe(true);
+    expect(shortPlayer.play).toHaveBeenCalledTimes(2);
     await rendered.unmount();
   });
 
