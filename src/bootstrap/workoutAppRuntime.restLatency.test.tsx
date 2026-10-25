@@ -111,6 +111,30 @@ const revisionInput = {
 };
 
 describe("rest command acknowledgement latency", () => {
+  it("coalesces obsolete notification reconciliation after a burst of committed adjustments", async () => {
+    const input = fixture();
+    const runtime = await mount(input);
+    const effects = deferred<WorkoutLifecycleResult>();
+    input.lifecycle.trigger.mockReturnValueOnce(effects.promise);
+    jest.mocked(input.rest.adjustRest).mockResolvedValueOnce(committed()).mockResolvedValueOnce(committed(9, 13)).mockResolvedValueOnce(committed(10, 14));
+    try {
+      await act(async () => {
+        await runtime.current().adjustRest({ ...revisionInput, deltaMs: -15_000 });
+      });
+      await waitFor(() => expect(input.lifecycle.trigger).toHaveBeenCalledTimes(2));
+      await act(async () => {
+        await runtime.current().adjustRest({ ...revisionInput, expectedSessionRevision: 12, expectedRestRevision: 8, deltaMs: -15_000 });
+        await runtime.current().adjustRest({ ...revisionInput, expectedSessionRevision: 13, expectedRestRevision: 9, deltaMs: -15_000 });
+      });
+      expect(input.rest.adjustRest).toHaveBeenCalledTimes(3);
+      await act(async () => { effects.resolve(input.lifecycleResult); });
+      await waitFor(() => expect(input.lifecycle.trigger).toHaveBeenCalledTimes(3)); // launch, first active pass, latest queued pass
+      expect(runtime.current().workoutRefreshGeneration).toBe(0);
+    } finally {
+      effects.resolve(input.lifecycleResult);
+      await runtime.rendered.unmount();
+    }
+  });
   it("acknowledges only committed state while unrelated schedule reads remain pending", async () => {
     const input = fixture();
     const runtime = await mount(input);

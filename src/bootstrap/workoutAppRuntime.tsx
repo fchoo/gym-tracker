@@ -2119,6 +2119,7 @@ export function WorkoutAppRuntimeProvider({
   const workoutRefreshGenerationRef = useRef(0);
   const restCommandQueueRef = useRef<Promise<void>>(Promise.resolve());
   const postCommitReconciliationQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const restReconciliationGenerationRef = useRef(0);
   const contentUpdateResultRef = useRef<ContentUpdateResult | undefined>(
     undefined,
   );
@@ -2139,6 +2140,7 @@ export function WorkoutAppRuntimeProvider({
     servicesRef.current = null;
     restCommandQueueRef.current = Promise.resolve();
     postCommitReconciliationQueueRef.current = Promise.resolve();
+    restReconciliationGenerationRef.current += 1;
     pendingActivityMatchRef.current = null;
     progressBodyweightCommandsRef.current.clear();
     try {
@@ -3722,11 +3724,16 @@ export function WorkoutAppRuntimeProvider({
     foregroundExpiry?: Readonly<{ sessionId: string; restRevision: number }>,
     refreshWorkout = true,
   ) => {
+    const restGeneration = !refreshWorkout && foregroundExpiry === undefined
+      ? ++restReconciliationGenerationRef.current
+      : null;
+    const isSuperseded = () => restGeneration !== null
+      && restGeneration !== restReconciliationGenerationRef.current;
     // Native notification and durable effect work is serialized independently
     // of command acknowledgement. Every pass reads the latest authoritative
     // rest state; a failed pass leaves its transactional effects replayable.
     postCommitReconciliationQueueRef.current = postCommitReconciliationQueueRef.current.then(async () => {
-      if (servicesRef.current !== services) return;
+      if (servicesRef.current !== services || isSuperseded()) return;
       const sessionIds = await services.restRepository.listActiveSessionIds()
         .catch(() => []);
       const hasRunningRest = (
@@ -3742,7 +3749,7 @@ export function WorkoutAppRuntimeProvider({
         permission = await services.notifications.requestPermission()
           .catch(() => "denied" as const);
       }
-      if (servicesRef.current !== services) return;
+      if (servicesRef.current !== services || isSuperseded()) return;
       const lifecycleResult = await services.lifecycle.trigger("post_commit", {
         ...(foregroundExpiry === undefined ? {} : { foregroundExpiry }),
       })
