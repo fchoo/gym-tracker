@@ -49,6 +49,33 @@ function configForProfile(
 }
 
 describe("Android lifecycle configuration", () => {
+  it("packages the 360ms completion tone as an Android raw notification resource", () => {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("node:path") as typeof import("node:path");
+    const os = require("node:os") as typeof import("node:os");
+    const notificationPlugin = configForProfile(undefined).plugins?.find((plugin) =>
+      Array.isArray(plugin) && plugin[0] === "expo-notifications"
+    );
+    expect(notificationPlugin).toEqual([
+      "expo-notifications",
+      expect.objectContaining({ sounds: ["./assets/audio/rest_complete.wav"] }),
+    ]);
+    const { setNotificationSounds } = require("expo-notifications/plugin/build/withNotificationsAndroid") as {
+      setNotificationSounds(projectRoot: string, sounds: string[]): void;
+    };
+    const temporaryProject = fs.mkdtempSync(path.join(os.tmpdir(), "gym-rest-sound-plugin-"));
+    try {
+      const source = path.resolve(__dirname, "../../assets/audio/rest_complete.wav");
+      setNotificationSounds(temporaryProject, [source]);
+      const packaged = fs.readFileSync(path.join(temporaryProject, "android/app/src/main/res/raw/rest_complete.wav"));
+      const longCue = fs.readFileSync(path.resolve(__dirname, "../../assets/audio/rest-cue-long.wav"));
+      expect(packaged.equals(longCue)).toBe(true);
+      expect(packaged.readUInt32LE(40) / packaged.readUInt32LE(28)).toBeCloseTo(0.36, 5);
+    } finally {
+      fs.rmSync(temporaryProject, { recursive: true, force: true });
+    }
+  });
+
   it("allows rotation and blocks exact-alarm permissions", () => {
     const config = configForProfile(undefined);
 
@@ -62,7 +89,7 @@ describe("Android lifecycle configuration", () => {
     expect(config.plugins).toEqual(expect.arrayContaining([
       [
         "expo-notifications",
-        { defaultChannel: "workout-rest-v2-sound-vibration" },
+        { defaultChannel: "workout-rest-v2-sound-vibration", sounds: ["./assets/audio/rest_complete.wav"] },
       ],
     ]));
   });

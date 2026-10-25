@@ -101,6 +101,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         'expo-notifications',
         {
           defaultChannel: 'workout-rest-v2-sound-vibration',
+          // Expo copies these files into Android res/raw during native prebuild.
+          // https://docs.expo.dev/versions/latest/sdk/notifications/#set-custom-notification-sounds
+          sounds: ['./assets/audio/rest_complete.wav'],
         },
       ],
       './plugins/withAndroidBackupRules.ts',
