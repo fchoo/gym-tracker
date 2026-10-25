@@ -98,15 +98,15 @@ async function renderAdapter(shortPlayer = cuePlayer(), longPlayer = cuePlayer()
 }
 
 describe("Expo rest countdown cue adapter", () => {
-  it("plays the complete 2360ms countdown once without inter-tone player restarts", async () => {
+  it("plays the complete 2660ms countdown once without inter-tone player restarts", async () => {
     jest.useFakeTimers();
     jest.setSystemTime(10_000);
-    const sequence = androidCuePlayer(2_360);
+    const sequence = androidCuePlayer(2_660);
     const { rendered, shortPlayer, longPlayer } = await renderAdapter(cuePlayer(), cuePlayer(), sequence);
     const onCue = jest.fn();
     rendered.result.current.scheduleCountdown!({ endsAtMs: 14_000, nowMs: () => Date.now(), emitted: new Set(), onCue, onError: jest.fn() });
     await act(async () => { await jest.advanceTimersByTimeAsync(8_000); });
-    expect(sequence.audibleStarts).toEqual([12_000]);
+    expect(sequence.audibleStarts).toEqual([11_700]);
     expect(sequence.play).toHaveBeenCalledTimes(1);
     expect(shortPlayer.play).not.toHaveBeenCalled();
     expect(longPlayer.play).not.toHaveBeenCalled();
@@ -120,10 +120,13 @@ describe("Expo rest countdown cue adapter", () => {
     jest.useFakeTimers();
     jest.setSystemTime(12_500);
     const { rendered, sequencePlayer, shortPlayer, longPlayer } = await renderAdapter();
+    const starts: number[] = [];
+    sequencePlayer.play.mockImplementation(() => { starts.push(Date.now()); });
     const onCue = jest.fn();
     rendered.result.current.scheduleCountdown!({ endsAtMs: 14_000, nowMs: () => Date.now(), emitted: new Set(), onCue, onError: jest.fn() });
     await act(async () => { await jest.advanceTimersByTimeAsync(3_000); });
     expect(sequencePlayer.seekTo).toHaveBeenCalledWith(1);
+    expect(starts).toEqual([12_700]);
     expect(sequencePlayer.play).toHaveBeenCalledTimes(1);
     expect(onCue.mock.calls).toEqual([[1], [0]]);
     expect(shortPlayer.play).not.toHaveBeenCalled();
@@ -131,10 +134,21 @@ describe("Expo rest countdown cue adapter", () => {
     await rendered.unmount();
   });
 
+  it("does not backfill a short when the silent preparation window has already elapsed", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(12_900);
+    const { rendered, sequencePlayer, longPlayer } = await renderAdapter();
+    rendered.result.current.scheduleCountdown!({ endsAtMs: 14_000, nowMs: () => Date.now(), emitted: new Set(), onCue: jest.fn(), onError: jest.fn() });
+    await act(async () => { await jest.advanceTimersByTimeAsync(2_000); });
+    expect(sequencePlayer.play).not.toHaveBeenCalled();
+    expect(longPlayer.play).toHaveBeenCalledTimes(1);
+    await rendered.unmount();
+  });
+
   it("cuts the active sequence immediately on a manual change and cannot emit its old final tone", async () => {
     jest.useFakeTimers();
     jest.setSystemTime(10_000);
-    const sequence = androidCuePlayer(2_360);
+    const sequence = androidCuePlayer(2_660);
     const { rendered } = await renderAdapter(cuePlayer(), cuePlayer(), sequence);
     const onCue = jest.fn();
     rendered.result.current.scheduleCountdown!({ endsAtMs: 14_000, nowMs: () => Date.now(), emitted: new Set(), onCue, onError: jest.fn() });
@@ -144,7 +158,7 @@ describe("Expo rest countdown cue adapter", () => {
     expect(sequence.playing).toBe(false);
     await act(async () => { await jest.advanceTimersByTimeAsync(4_000); });
     expect(onCue.mock.calls).toEqual([[2]]);
-    expect(sequence.audibleStarts).toEqual([12_000]);
+    expect(sequence.audibleStarts).toEqual([11_700]);
     await rendered.unmount();
   });
 
@@ -157,12 +171,14 @@ describe("Expo rest countdown cue adapter", () => {
     const long = readFileSync(join(root, "assets/audio/rest-cue-long.wav")).subarray(44);
     const pcm = sequence.subarray(44);
     const secondBytes = sequence.readUInt32LE(28);
-    expect(sequence.readUInt32LE(40) / secondBytes).toBeCloseTo(2.36, 5);
-    expect(pcm.subarray(0, short.length).equals(short)).toBe(true);
-    expect(pcm.subarray(short.length, secondBytes).every((value) => value === 0)).toBe(true);
-    expect(pcm.subarray(secondBytes, secondBytes + short.length).equals(short)).toBe(true);
-    expect(pcm.subarray(secondBytes + short.length, secondBytes * 2).every((value) => value === 0)).toBe(true);
-    expect(pcm.subarray(secondBytes * 2).equals(long)).toBe(true);
+    const prerollBytes = secondBytes * 0.3;
+    expect(sequence.readUInt32LE(40) / secondBytes).toBeCloseTo(2.66, 5);
+    expect(pcm.subarray(0, prerollBytes).every((value) => value === 0)).toBe(true);
+    expect(pcm.subarray(prerollBytes, prerollBytes + short.length).equals(short)).toBe(true);
+    expect(pcm.subarray(prerollBytes + short.length, prerollBytes + secondBytes).every((value) => value === 0)).toBe(true);
+    expect(pcm.subarray(prerollBytes + secondBytes, prerollBytes + secondBytes + short.length).equals(short)).toBe(true);
+    expect(pcm.subarray(prerollBytes + secondBytes + short.length, prerollBytes + secondBytes * 2).every((value) => value === 0)).toBe(true);
+    expect(pcm.subarray(prerollBytes + secondBytes * 2).equals(long)).toBe(true);
   });
 
   it("prepares mixing before any audible cue so short sounds never interrupt workout music", async () => {
@@ -216,13 +232,13 @@ describe("Expo rest countdown cue adapter", () => {
     jest.setSystemTime(10_025);
     const shortPlayer = androidCuePlayer(120);
     const longPlayer = androidCuePlayer(360);
-    const sequencePlayer = androidCuePlayer(2_360);
+    const sequencePlayer = androidCuePlayer(2_660);
     const { rendered } = await renderAdapter(shortPlayer, longPlayer, sequencePlayer);
     const onCue = jest.fn();
     const onError = jest.fn();
     rendered.result.current.scheduleCountdown!({ endsAtMs: 14_567, nowMs: () => Date.now(), emitted: new Set(), onCue, onError });
     await act(async () => { await jest.advanceTimersByTimeAsync(8_000); });
-    expect(sequencePlayer.audibleStarts).toEqual([12_567]);
+    expect(sequencePlayer.audibleStarts).toEqual([12_267]);
     expect(shortPlayer.audibleStarts).toEqual([]);
     expect(longPlayer.audibleStarts).toEqual([]);
     expect(onCue.mock.calls).toEqual([[2], [1], [0]]);
@@ -285,7 +301,7 @@ describe("Expo rest countdown cue adapter", () => {
     jest.setSystemTime(10_000);
     let change: ((state: AppStateStatus) => void) | undefined;
     appStateListener.mockImplementation((_event, listener) => { change = listener; return { remove: jest.fn() }; });
-    const sequencePlayer = androidCuePlayer(2_360);
+    const sequencePlayer = androidCuePlayer(2_660);
     const { rendered, shortPlayer, longPlayer } = await renderAdapter(cuePlayer(), cuePlayer(), sequencePlayer);
     const schedule = () => rendered.result.current.scheduleCountdown!({ endsAtMs: 14_000, nowMs: () => Date.now(), emitted: new Set(), onCue: jest.fn(), onError: jest.fn() });
     schedule();
@@ -303,7 +319,7 @@ describe("Expo rest countdown cue adapter", () => {
   it("keeps exact final playback when the parent removes the expired dock before its render effects", async () => {
     jest.useFakeTimers();
     jest.setSystemTime(96_000);
-    const sequencePlayer = androidCuePlayer(2_360);
+    const sequencePlayer = androidCuePlayer(2_660);
     const { rendered, shortPlayer, longPlayer } = await renderAdapter(cuePlayer(), cuePlayer(), sequencePlayer);
     const dock = await render(createElement(AppearanceProvider, null,
       createElement(RestDock, {

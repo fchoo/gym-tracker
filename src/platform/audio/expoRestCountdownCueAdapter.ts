@@ -19,6 +19,7 @@ import type {
 import { claimForegroundRestSound } from "./foregroundRestSoundOwnership";
 
 const STATUS_EVENT = "playbackStatusUpdate";
+const SEQUENCE_PREROLL_MS = 300;
 
 export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
   // The route owns these players, so a natural-expiry dock unmount cannot release
@@ -227,6 +228,27 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
           const scheduledAtMs = input.nowMs();
           const emitted = new Set(input.emitted);
           let sequenceStarted = false;
+          // The output path needs a short silent lead-in before its first
+          // pulse. Start that single track early; cue/expiry callbacks remain
+          // on the saved deadline, and every timer shares cancellation.
+          for (const seconds of [2, 1] as const) {
+            const startAtMs = input.endsAtMs - seconds * 1_000 - SEQUENCE_PREROLL_MS;
+            if (startAtMs <= scheduledAtMs || emitted.has(seconds) || emitted.has(0)
+              || (seconds === 2 && emitted.has(1))) continue;
+            const timer = setTimeout(() => {
+              countdownTimers.delete(timer);
+              if (sequenceStarted || scheduleGeneration !== countdownGeneration
+                || AppState.currentState !== "active" || input.nowMs() - startAtMs > 350) return;
+              sequenceStarted = true;
+              if (__DEV__) trace("sequence-preroll", sequencePlayer, { seconds, latenessMs: input.nowMs() - startAtMs });
+              // Tail offset 1.0 keeps 300ms silence before the second pulse at
+              // position 1.3, aligning it with deadline minus one second.
+              void replay(sequencePlayer, 350, seconds === 1 ? 1 : 0).catch(() => {
+                if (scheduleGeneration === countdownGeneration) input.onError();
+              });
+            }, startAtMs - scheduledAtMs);
+            countdownTimers.add(timer);
+          }
           if (__DEV__) trace("schedule", undefined, { remainingMs: input.endsAtMs - scheduledAtMs, emitted: [...emitted] });
           for (const seconds of [2, 1, 0] as const) {
             const dueAtMs = input.endsAtMs - seconds * 1_000;
@@ -256,11 +278,10 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
               // long tone. Later deadlines only update the ledger/expiry, so
               // they never stop/restart native playback between pulses.
               if (sequenceStarted) return;
-              const canStartSequence = (seconds === 2 && !emitted.has(1) && !emitted.has(0))
-                || (seconds === 1 && !emitted.has(0));
-              if (canStartSequence) sequenceStarted = true;
-              void replay(canStartSequence ? sequencePlayer : seconds === 0 ? longPlayer : shortPlayer,
-                seconds === 0 ? 1_000 : 350, canStartSequence && seconds === 1 ? 1 : 0)
+              // A late mount never starts a sequence without its silent lead
+              // or backfills an earlier short. Its final long remains valid.
+              if (seconds !== 0) return;
+              void replay(longPlayer, 1_000)
                 .catch(() => {
                   if (scheduleGeneration === countdownGeneration) input.onError();
                 });
