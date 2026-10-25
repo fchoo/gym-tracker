@@ -74,7 +74,8 @@ describe("SettingsScreen", () => {
   it("offers precise alarm access explicitly without changing sound or vibration preferences", async () => {
     const openSettings = jest.fn(async () => undefined);
     preciseAlerts.mockReturnValue({ access: "denied", opening: false, openFailed: false, refreshFailed: false, retryRefresh: jest.fn(async () => undefined), openSettings });
-    const props = createProps();
+    const refresh = jest.fn(async () => undefined);
+    const props = createProps({ onRefreshPreciseRestAlarms: refresh });
     await renderScreen(props);
     expect(screen.getByText("Precise background alerts")).toBeOnTheScreen();
     expect(openSettings).not.toHaveBeenCalled();
@@ -83,6 +84,7 @@ describe("SettingsScreen", () => {
     await fireEvent.press(action);
     expect(openSettings).toHaveBeenCalledTimes(1);
     expect(props.onChangeRestAlertPreferences).not.toHaveBeenCalled();
+    expect(preciseAlerts).toHaveBeenCalledWith(undefined, refresh);
   });
 
   it("shows granted precise access without another permission action", async () => {

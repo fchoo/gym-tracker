@@ -6,14 +6,27 @@ import type { ExactRestAlarmAccessPort } from "../platform/notifications/exactAl
 
 afterEach(() => { jest.restoreAllMocks(); });
 describe("exact rest alarm access controller", () => {
+  it("keeps permission status usable without an injected runtime refresh callback", async () => {
+    let change: ((value: AppStateStatus) => void) | undefined;
+    jest.spyOn(AppState, "addEventListener").mockImplementation((_event, listener) => { change = listener; return { remove: jest.fn() }; });
+    const read = jest.fn<ExactRestAlarmAccessPort["read"]>(() => "denied");
+    const port = { read, openSettings: jest.fn(async () => true) };
+    const hook = await renderHook(() => useExactRestAlarmAccess(port));
+    read.mockReturnValue("allowed");
+    await act(async () => { change?.("active"); await hook.result.current.retryRefresh(); });
+    expect(hook.result.current.access).toBe("allowed");
+    expect(hook.result.current.refreshFailed).toBe(false);
+    await hook.unmount();
+  });
+
   it("does not reissue pending alarms on an already-allowed mount and exposes retry after transition failure", async () => {
     let change: ((value: AppStateStatus) => void) | undefined;
     jest.spyOn(AppState, "addEventListener").mockImplementation((_event, listener) => { change = listener; return { remove: jest.fn() }; });
     const read = jest.fn<ExactRestAlarmAccessPort["read"]>(() => "allowed");
-    const refreshPendingAlarms = jest.fn<ExactRestAlarmAccessPort["refreshPendingAlarms"]>()
+    const refreshPendingAlarms = jest.fn<() => Promise<void>>()
       .mockRejectedValueOnce(new Error("schedule_failed")).mockResolvedValue(undefined);
-    const port = { read, refreshPendingAlarms, openSettings: jest.fn(async () => true) };
-    const hook = await renderHook(() => useExactRestAlarmAccess(port));
+    const port = { read, openSettings: jest.fn(async () => true) };
+    const hook = await renderHook(() => useExactRestAlarmAccess(port, refreshPendingAlarms));
     await act(async () => { change?.("active"); });
     expect(refreshPendingAlarms).not.toHaveBeenCalled();
     read.mockReturnValue("denied");
@@ -34,8 +47,8 @@ describe("exact rest alarm access controller", () => {
     const read = jest.fn<ExactRestAlarmAccessPort["read"]>(() => "denied");
     const openSettings = jest.fn(async () => true);
     const refreshPendingAlarms = jest.fn(async () => undefined);
-    const port = { read, openSettings, refreshPendingAlarms };
-    const hook = await renderHook(() => useExactRestAlarmAccess(port));
+    const port = { read, openSettings };
+    const hook = await renderHook(() => useExactRestAlarmAccess(port, refreshPendingAlarms));
     expect(hook.result.current.access).toBe("denied");
     read.mockReturnValue("allowed");
     await act(async () => { change?.("background"); change?.("active"); });
@@ -51,7 +64,7 @@ describe("exact rest alarm access controller", () => {
     expect(remove).toHaveBeenCalled();
   });
   it("opens Android settings explicitly and keeps denied access until Android grants it", async () => {
-    const port = { read: () => "denied" as const, openSettings: jest.fn(async () => true), refreshPendingAlarms: jest.fn(async () => undefined) };
+    const port = { read: () => "denied" as const, openSettings: jest.fn(async () => true) };
     const hook = await renderHook(() => useExactRestAlarmAccess(port));
     await act(async () => { await hook.result.current.openSettings(); });
     expect(port.openSettings).toHaveBeenCalledTimes(1);
@@ -60,7 +73,7 @@ describe("exact rest alarm access controller", () => {
     await hook.unmount();
   });
   it("reports settings-open failure without changing access", async () => {
-    const port = { read: () => "denied" as const, openSettings: jest.fn(async () => false), refreshPendingAlarms: jest.fn(async () => undefined) };
+    const port = { read: () => "denied" as const, openSettings: jest.fn(async () => false) };
     const hook = await renderHook(() => useExactRestAlarmAccess(port));
     await act(async () => { await hook.result.current.openSettings(); });
     expect(hook.result.current.access).toBe("denied");

@@ -74,6 +74,7 @@ export type SettingsScreenProps = Readonly<{
     preferences: RestAlertPreferences,
   ): void | Promise<void | RestAlertPreferenceSaveResult>;
   onOpenNotificationSettings(): void | Promise<void>;
+  onRefreshPreciseRestAlarms?(): Promise<void>;
   onOpenRemovedSessions(): void;
   onOpenDataAndRecovery(): void;
   width?: number;
@@ -93,6 +94,7 @@ export function AppSettingsContent({
   notificationPermission,
   onChangeRestAlertPreferences,
   onOpenNotificationSettings,
+  onRefreshPreciseRestAlarms,
   onOpenRemovedSessions,
   onOpenDataAndRecovery,
   onNavigate,
@@ -101,7 +103,7 @@ export function AppSettingsContent({
 }: AppSettingsContentProps) {
   const { appearance, colors, setAppearance } = useAppTheme();
   const displayTimeZone = useDeviceTimeZone();
-  const preciseAlerts = useExactRestAlarmAccess();
+  const preciseAlerts = useExactRestAlarmAccess(undefined, onRefreshPreciseRestAlarms);
   const latestPreferencesRef = useRef(preferences);
   const latestExternalPreferencesRef = useRef(preferences);
   const pendingExternalPreferencesRef = useRef<RestAlertPreferences | null>(null);

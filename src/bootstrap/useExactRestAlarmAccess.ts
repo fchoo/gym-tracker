@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { createExactRestAlarmAccessPort, type ExactRestAlarmAccess, type ExactRestAlarmAccessPort } from "../platform/notifications/exactAlarmAccess";
 
-export function useExactRestAlarmAccess(injected?: ExactRestAlarmAccessPort) {
+export function useExactRestAlarmAccess(injected?: ExactRestAlarmAccessPort, refreshCurrentRestAlarms?: () => Promise<void>) {
   const port = useMemo(() => injected ?? createExactRestAlarmAccessPort(), [injected]);
   const [access, setAccess] = useState<ExactRestAlarmAccess>(() => port.read());
   const [opening, setOpening] = useState(false);
@@ -10,10 +10,15 @@ export function useExactRestAlarmAccess(injected?: ExactRestAlarmAccessPort) {
   const [refreshFailed, setRefreshFailed] = useState(false);
   const previousAccess = useRef(access);
   const mounted = useRef(true);
+  const refreshCallback = useRef(refreshCurrentRestAlarms);
+  refreshCallback.current = refreshCurrentRestAlarms;
   const refreshPending = useCallback(async () => {
-    try { await port.refreshPendingAlarms(); if (mounted.current) setRefreshFailed(false); }
+    if (refreshCallback.current === undefined) return;
+    // The runtime reads current rest facts in its serialized reconciliation
+    // queue. This controller never replays captured native notifications.
+    try { await refreshCallback.current(); if (mounted.current) setRefreshFailed(false); }
     catch { if (mounted.current) setRefreshFailed(true); }
-  }, [port]);
+  }, []);
   useEffect(() => {
     mounted.current = true;
     setAccess(port.read());
