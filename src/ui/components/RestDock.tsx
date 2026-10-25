@@ -444,7 +444,7 @@ export function RestDock({
       <View style={styles.controls} testID="rest-controls">
         <RestTextControl
           accessibilityLabel="Subtract 15 seconds from rest"
-          disabled={busy || remainingMs === 0}
+          disabled={remainingMs === 0}
           label="−15"
           onPress={() => {
             cancelPendingCues();
@@ -464,7 +464,7 @@ export function RestDock({
         />
         <RestTextControl
           accessibilityLabel="Add 15 seconds to rest"
-          disabled={busy || remainingMs === 0}
+          disabled={remainingMs === 0}
           label="+15"
           onPress={() => {
             cancelPendingCues();

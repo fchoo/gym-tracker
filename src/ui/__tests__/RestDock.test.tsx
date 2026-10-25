@@ -106,6 +106,16 @@ afterEach(() => {
 });
 
 describe("Plan 02-29 RestDock", () => {
+  it("accepts every adjustment tap while committed rest changes are queued", async () => {
+    const { props } = await renderDock(running, { busy: true });
+    const subtract = screen.getByRole("button", { name: "Subtract 15 seconds from rest" });
+    expect(subtract).not.toBeDisabled();
+    await fireEvent.press(subtract);
+    await fireEvent.press(subtract);
+    await fireEvent.press(subtract);
+    expect(props.onAdjust).toHaveBeenCalledTimes(3);
+    expect(screen.getByRole("button", { name: "Pause rest" })).toBeDisabled();
+  });
   it("keeps the full durable dock reachable with exercise-aware context and ordered controls", async () => {
     const { rendered } = await renderDock(running);
 
