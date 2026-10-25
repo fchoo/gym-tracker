@@ -3,6 +3,7 @@ import React, { forwardRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import { sizes, space, typeScale, useAppTheme } from "../theme";
+import { markKeyboardFocusModality, markPointerFocusModality, shouldShowFocusRing } from "./focusVisibility";
 
 export type NavigationRowIcon = "chevron" | "download" | "share" | "retry";
 
@@ -43,11 +44,21 @@ export const NavigationRow = forwardRef<View, NavigationRowProps>(function Navig
       accessibilityState={{ busy, disabled: inactive }}
       disabled={inactive}
       nativeID={nativeID}
-      onFocus={() => setFocused(true)}
+      onFocus={() => setFocused(!inactive && shouldShowFocusRing())}
       onBlur={() => setFocused(false)}
       {...({ onKeyDown: (event: { nativeEvent: { key: string } }) => {
+        markKeyboardFocusModality();
+        setFocused(!inactive);
         if (!inactive && (event.nativeEvent.key === "Enter" || event.nativeEvent.key === " ")) onPress();
       } } as unknown as object)}
+      onPointerDown={() => {
+        markPointerFocusModality();
+        setFocused(false);
+      }}
+      onTouchStart={() => {
+        markPointerFocusModality();
+        setFocused(false);
+      }}
       onPress={onPress}
       ref={ref}
       style={({ pressed }) => [

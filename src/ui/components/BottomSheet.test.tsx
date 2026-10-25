@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -16,9 +17,10 @@ import {
   BottomSheetFocusContext,
   useBottomSheetFocusRegistration,
 } from "./bottomSheetFocus";
-import { FocusablePressable, FocusClearanceProvider } from "./index";
+import { FocusablePressable, FocusClearanceProvider, PrimaryAction } from "./index";
 import { AppearanceProvider, radius, sizes } from "../theme";
 import { Phase20VisualContextProvider } from "../../testing/phase20VisualContext";
+import { markKeyboardFocusModality } from "./focusVisibility";
 
 const phase20VisualRequest = {
   appearance: "Light",
@@ -80,6 +82,7 @@ function FocusTrapProbe({
 
 describe("BottomSheet", () => {
   beforeEach(() => {
+    markKeyboardFocusModality();
     jest.restoreAllMocks();
     mockRequestAndroidViewFocus.mockClear();
     Dimensions.set({
@@ -454,6 +457,115 @@ describe("BottomSheet", () => {
     const [registeredRef] = register.mock.calls[0] ?? [undefined];
     const [focusedRef] = onFocus.mock.calls[0] ?? [undefined];
     expect(focusedRef).toBe(registeredRef);
+  });
+
+  it("suppresses persistent touch and mouse focus outlines while retaining keyboard activation and callbacks", async () => {
+    const onTouchStart = jest.fn();
+    const onPointerDown = jest.fn();
+    const onFocus = jest.fn();
+    const onPress = jest.fn();
+    await render(
+      <SheetTestProviders>
+        <FocusablePressable
+          accessibilityLabel="Save settings"
+          accessibilityRole="button"
+          onFocus={onFocus}
+          onPointerDown={onPointerDown}
+          onPress={onPress}
+          onTouchStart={onTouchStart}
+        >
+          <Text>Save settings</Text>
+        </FocusablePressable>
+      </SheetTestProviders>,
+    );
+    const action = screen.getByRole("button", { name: "Save settings" });
+    await fireEvent(action, "focus");
+    expect(action).toHaveStyle({ outlineWidth: sizes.focusRing });
+    await fireEvent(action, "touchStart", { nativeEvent: {} });
+    await fireEvent.press(action);
+    await fireEvent(action, "focus");
+    expect(action).toHaveStyle({ outlineWidth: 0, outlineOffset: 0 });
+    expect(onTouchStart).toHaveBeenCalledTimes(1);
+    expect(onPress).toHaveBeenCalledTimes(1);
+    expect(onFocus).toHaveBeenCalledTimes(2);
+
+    await fireEvent(action, "keyDown", { nativeEvent: { key: "Enter" } });
+    expect(action).toHaveStyle({ outlineWidth: sizes.focusRing });
+    expect(onPress).toHaveBeenCalledTimes(2);
+    await fireEvent(action, "pointerDown", { nativeEvent: { pointerType: "mouse" } });
+    await fireEvent(action, "focus");
+    expect(action).toHaveStyle({ outlineWidth: 0 });
+    expect(onPointerDown).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows keyboard focus when the sheet trap revisits an action previously tapped", async () => {
+    const registered: { ref?: { current: { focus?: () => void } | null } } = {};
+    const register = jest.fn((ref: NonNullable<typeof registered.ref>) => {
+      registered.ref = ref;
+      return jest.fn();
+    });
+    await render(
+      <SheetTestProviders>
+        <BottomSheetFocusContext.Provider value={{ moveFocus: () => true, onFocus: jest.fn(), register }}>
+          <FocusablePressable accessibilityLabel="Keep changes" accessibilityRole="button" onPress={jest.fn()}>
+            <Text>Keep changes</Text>
+          </FocusablePressable>
+        </BottomSheetFocusContext.Provider>
+      </SheetTestProviders>,
+    );
+    const action = screen.getByRole("button", { name: "Keep changes" });
+    await fireEvent(action, "touchStart", { nativeEvent: {} });
+    await fireEvent(action, "focus");
+    expect(action).toHaveStyle({ outlineWidth: 0 });
+    await act(() => registered.ref?.current?.focus?.());
+    await fireEvent(action, "focus");
+    expect(action).toHaveStyle({ outlineWidth: sizes.focusRing });
+  });
+
+  it("keeps the close action outline clear after touch and visible for keyboard focus", async () => {
+    await render(
+      <SheetTestProviders>
+        <BottomSheet heading="Edit filters" onCancel={jest.fn()} visible>
+          <Text>Filters</Text>
+        </BottomSheet>
+      </SheetTestProviders>,
+    );
+    const close = screen.getByTestId("bottom-sheet-close-action");
+    await fireEvent(close, "touchStart", { nativeEvent: {} });
+    await fireEvent(close, "focus");
+    expect(close).toHaveStyle({ outlineWidth: 0 });
+    await fireEvent(close, "keyDown", { nativeEvent: { key: "ArrowLeft" } });
+    expect(close).toHaveStyle({ outlineWidth: sizes.focusRing });
+  });
+
+  it("restores native trigger focus after a touch-opened sheet without restoring its blue outline", async () => {
+    function TouchOpenedSheet() {
+      const [visible, setVisible] = React.useState(false);
+      const triggerRef = React.useRef<View>(null);
+      return <>
+        <PrimaryAction label="Open settings" onPress={() => setVisible(true)} ref={triggerRef} />
+        <BottomSheet
+          heading="Settings"
+          onCancel={() => setVisible(false)}
+          requestNativeFocus={mockRequestAndroidViewFocus}
+          restoreFocusNativeID="settings-trigger"
+          restoreFocusRef={triggerRef}
+          visible={visible}
+        ><Text>Settings stay reachable</Text></BottomSheet>
+      </>;
+    }
+    await render(<SheetTestProviders><TouchOpenedSheet /></SheetTestProviders>);
+    const trigger = screen.getByRole("button", { name: "Open settings" });
+    await fireEvent(trigger, "touchStart", { nativeEvent: {} });
+    await fireEvent.press(trigger);
+    const close = screen.getByRole("button", { name: "Close settings" });
+    await fireEvent(close, "touchStart", { nativeEvent: {} });
+    await fireEvent.press(close);
+    await waitFor(() => expect(mockRequestAndroidViewFocus).toHaveBeenCalledWith("settings-trigger"));
+    await fireEvent(trigger, "focus");
+    expect(trigger).toHaveStyle({ outlineWidth: 0 });
+    await fireEvent(trigger, "keyDown", { nativeEvent: { key: "Tab" } });
+    expect(trigger).toHaveStyle({ outlineWidth: sizes.focusRing });
   });
 
   it("keeps long sheet content unbounded and reserves the actual bottom inset inside its scroll owner", async () => {

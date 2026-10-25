@@ -28,6 +28,7 @@ import {
   useFocusClearance,
 } from "./bottomSheetFocus";
 import { AndroidEscapeBoundary } from "./AndroidEscapeBoundary";
+import { markKeyboardFocusModality, markPointerFocusModality, shouldShowFocusRing } from "./focusVisibility";
 import { usePhase20VisualScrollReporter } from "../../testing/phase20VisualContext";
 import { radius, sizes, space, typeScale, useAppTheme } from "../theme";
 
@@ -88,6 +89,8 @@ function BottomSheetCloseAction({
 
   focusableRef.current = {
     focus: () => {
+      markKeyboardFocusModality();
+      setFocused(true);
       setPreferredFocus(true);
       nativeRef.current?.setNativeProps?.({ hasTVPreferredFocus: true });
       nativeRef.current?.focus?.();
@@ -111,6 +114,8 @@ function BottomSheetCloseAction({
       hasTVPreferredFocus={preferredFocus}
       {...({
         onKeyDown: (event: NativeSyntheticEvent<{ key?: string }>) => {
+          markKeyboardFocusModality();
+          setFocused(!isDisabled);
           if (!isDisabled && (event.nativeEvent.key === "Enter" || event.nativeEvent.key === " ")) {
             onPress();
           }
@@ -118,11 +123,21 @@ function BottomSheetCloseAction({
       } as unknown as React.ComponentProps<typeof Pressable>)}
       onBlur={() => setFocused(false)}
       onFocus={() => {
-        setFocused(true);
+        setFocused(!isDisabled && shouldShowFocusRing());
         setPreferredFocus(false);
         focusRegistration?.onFocus(focusableRef);
       }}
       onPress={onPress}
+      onPointerDown={() => {
+        markPointerFocusModality();
+        setFocused(false);
+        setPreferredFocus(false);
+      }}
+      onTouchStart={() => {
+        markPointerFocusModality();
+        setFocused(false);
+        setPreferredFocus(false);
+      }}
       ref={nativeRef}
       style={({ pressed }) => [
         styles.closeAction,
@@ -320,6 +335,7 @@ export function BottomSheet({
       return false;
     }
     currentFocusedRef.current = nextEntry;
+    markKeyboardFocusModality();
     nextEntry.current?.focus?.();
     return true;
   }, []);
@@ -364,6 +380,7 @@ export function BottomSheet({
     shiftKey?: boolean;
     preventDefault?: () => void;
   }>) => {
+    markKeyboardFocusModality();
     const key = event.nativeEvent.key;
     if (key === "Escape") {
       event.nativeEvent.preventDefault?.();
@@ -383,6 +400,11 @@ export function BottomSheet({
       event.nativeEvent.preventDefault?.();
     }
   }, [cancel, moveFocus]);
+
+  const escape = React.useCallback(() => {
+    markKeyboardFocusModality();
+    cancel();
+  }, [cancel]);
 
   return (
     <BottomSheetDepthContext.Provider value={depth + 1}>
@@ -410,6 +432,8 @@ export function BottomSheet({
                 accessibilityRole="button"
                 importantForAccessibility="no-hide-descendants"
                 onPress={cancel}
+                onPointerDown={markPointerFocusModality}
+                onTouchStart={markPointerFocusModality}
                 style={StyleSheet.absoluteFill}
                 testID="bottom-sheet-scrim"
               />
@@ -437,7 +461,7 @@ export function BottomSheet({
                   <AndroidEscapeBoundary
                     accessibilityViewIsModal
                     importantForAccessibility="yes"
-                    onEscape={cancel}
+                    onEscape={escape}
                     onKeyDown={containTraversal as never}
                     style={[styles.shrinkBoundary, compactLandscape ? styles.compactBoundary : undefined]}
                     testID="bottom-sheet-frame"

@@ -68,6 +68,7 @@ import { BottomSheet } from "./BottomSheet";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 import { rootTabNativeID } from "../shell/rootFocus";
 import { fitTabLabelFontSize } from "./tabLabelFit";
+import { markKeyboardFocusModality, markPointerFocusModality, shouldShowFocusRing } from "./focusVisibility";
 
 export {
   ImpactPreview,
@@ -243,7 +244,9 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
       onBlur,
       onFocus,
       onKeyDown,
+      onPointerDown,
       onPress,
+      onTouchStart,
       style,
       ...props
     },
@@ -265,27 +268,37 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
             () => (onPress as unknown as () => void)(),
           )
       : { onKeyDown };
-    const registrationRef = internalRef as BottomSheetFocusableRef;
+    const onActionKeyDown = (keyboardProps as FocusablePressableProps).onKeyDown;
+    const requestFocus = useCallback(() => {
+      setPreferredFocus(true);
+      internalRef.current?.setNativeProps?.({ hasTVPreferredFocus: true });
+      internalRef.current?.focus?.();
+      let node: number | null = null;
+      try {
+        node = findNodeHandle(internalRef.current);
+      } catch {
+        // Host renderers and caller-owned focus seams may not expose a native handle.
+      }
+      if (typeof node === "number" && node > 0) {
+        AccessibilityInfo.setAccessibilityFocus(node);
+      }
+    }, []);
+    const registrationRef = useRef({ focus: () => undefined }) as BottomSheetFocusableRef;
+    registrationRef.current = {
+      focus: () => {
+        markKeyboardFocusModality();
+        setFocused(true);
+        requestFocus();
+      },
+    };
 
     useImperativeHandle(ref, () => ({
-      focus: () => {
-        setPreferredFocus(true);
-        internalRef.current?.setNativeProps?.({ hasTVPreferredFocus: true });
-        internalRef.current?.focus?.();
-        let node: number | null = null;
-        try {
-          node = findNodeHandle(internalRef.current);
-        } catch {
-          // Host renderers and caller-owned focus seams may not expose a native handle.
-        }
-        if (typeof node === "number" && node > 0) {
-          AccessibilityInfo.setAccessibilityFocus(node);
-        }
-      },
+      // Restoring focus after a touch-opened modal must preserve touch modality.
+      focus: requestFocus,
       setNativeProps: (nativeProps: Readonly<Record<string, unknown>>) => {
         internalRef.current?.setNativeProps?.(nativeProps);
       },
-    }) as unknown as View, []);
+    }) as unknown as View, [requestFocus]);
 
     useEffect(() => {
       if (focusRegistration === null || !participatesInFocusTrap) {
@@ -310,12 +323,29 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
       disabled: isDisabled,
       hasTVPreferredFocus: preferredFocus,
       ...keyboardProps,
+      onKeyDown: onActionKeyDown === undefined ? undefined : (event: { nativeEvent: { key: string } }) => {
+        markKeyboardFocusModality();
+        setFocused(!isDisabled);
+        onActionKeyDown(event);
+      },
+      onPointerDown: (event: Parameters<NonNullable<PressableProps["onPointerDown"]>>[0]) => {
+        markPointerFocusModality();
+        setFocused(false);
+        setPreferredFocus(false);
+        onPointerDown?.(event);
+      },
+      onTouchStart: (event: Parameters<NonNullable<PressableProps["onTouchStart"]>>[0]) => {
+        markPointerFocusModality();
+        setFocused(false);
+        setPreferredFocus(false);
+        onTouchStart?.(event);
+      },
       onBlur: (event: Parameters<NonNullable<PressableProps["onBlur"]>>[0]) => {
         setFocused(false);
         onBlur?.(event);
       },
       onFocus: (event: Parameters<NonNullable<PressableProps["onFocus"]>>[0]) => {
-        setFocused(true);
+        setFocused(!isDisabled && shouldShowFocusRing());
         setPreferredFocus(false);
         if (focusRegistration !== null && participatesInFocusTrap) {
           focusRegistration.onFocus(registrationRef);
