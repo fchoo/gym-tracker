@@ -112,9 +112,9 @@ describe("Calendar phone navigation", () => {
         nativeEvent: { layout: { height: 420, width: 360, x: 0, y: 0 } },
       });
       const swipe = async (dx: number) => {
-        const handlers = (latestPan as unknown as { handlers: { onBegin(): void; onEnd(event: { translationX: number; translationY: number }): void } }).handlers;
+        const handlers = (latestPan as unknown as { handlers: { onStart(): void; onEnd(event: { translationX: number; translationY: number }): void } }).handlers;
         await act(async () => {
-          handlers.onBegin();
+          handlers.onStart();
           handlers.onEnd({ translationX: dx, translationY: 0 });
         });
       };

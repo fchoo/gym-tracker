@@ -74,7 +74,7 @@ function harness(command: CalendarMotionCommand | null = null) {
   }
 
   const gesture: Record<string, any> = {};
-  for (const method of ["enabled", "manualActivation", "onTouchesDown", "onTouchesMove", "onBegin", "onChange", "onEnd", "onFinalize"]) {
+  for (const method of ["enabled", "manualActivation", "onTouchesDown", "onTouchesMove", "onStart", "onChange", "onEnd", "onFinalize"]) {
     gesture[method] = (callback: unknown) => {
       if (typeof callback === "function") handlers[method] = callback as Worklet;
       return gesture;
@@ -137,6 +137,7 @@ function harness(command: CalendarMotionCommand | null = null) {
     setTimeout: () => 1,
     clearTimeout: () => undefined,
   });
+  const onCancel = jest.fn();
   const onPreview = jest.fn();
   const onRelease = jest.fn();
   const onComplete = jest.fn();
@@ -146,13 +147,13 @@ function harness(command: CalendarMotionCommand | null = null) {
       selectedDates: [], followingDates: [],
       selectedGeometry: { y: 70, height: 70, generation: 0 }, followingGeometry: { y: 140, height: 70, generation: 0 },
     } : null,
-    month: "2026-11-01", onCancel: jest.fn(), onComplete, onPreview, onRelease, onInteractionDiagnosticComplete,
+    month: "2026-11-01", onCancel, onComplete, onPreview, onRelease, onInteractionDiagnosticComplete,
     renderMonth: () => null, renderWeek: () => null,
     transition: { mode: "month", phase: command === null ? "idle" : "settling", epoch: command !== null && "epoch" in command ? command.epoch : 0, reducedMotion: false },
   });
   tree.props.children.props.children.props.onLayout({ nativeEvent: { layout: { width: 400, height: 500 } } });
   return {
-    handlers, animations, refs, records, onPreview, onRelease, onComplete, onInteractionDiagnosticComplete,
+    handlers, animations, refs, records, onCancel, onPreview, onRelease, onComplete, onInteractionDiagnosticComplete,
     runEffects: () => effects.forEach((effect) => effect()),
     runUI: (callback: Worklet, ...args: unknown[]) => {
       expect(callback.__initData?.code).toBeDefined();
@@ -163,13 +164,21 @@ function harness(command: CalendarMotionCommand | null = null) {
 }
 
 describe("Calendar Android production worklet boundaries", () => {
+  it("does not cancel a date selection when a non-drag tap fails the manual pan", () => {
+    const h = harness();
+    h.runEffects();
+    h.runUI(h.handlers.onTouchesDown!, { allTouches: [{ absoluteX: 200, absoluteY: 100 }] });
+    h.runUI(h.handlers.onFinalize!, {}, false);
+    h.flushRN();
+    expect(h.onCancel).not.toHaveBeenCalled();
+  });
   it.each([-1, 1])("executes the full swipe at every marker in direction %i without a synchronous JS call", (direction) => {
     const h = harness();
     h.runEffects();
     const manager = { activate: jest.fn(), fail: jest.fn() };
     h.runUI(h.handlers.onTouchesDown!, { allTouches: [{ absoluteX: 200, absoluteY: 100 }] });
     h.runUI(h.handlers.onTouchesMove!, { allTouches: [{ absoluteX: 200 + direction * 10, absoluteY: 100 }] }, manager);
-    h.runUI(h.handlers.onBegin!);
+    h.runUI(h.handlers.onStart!);
     for (const distance of [39.6, 40, 99.6, 100, 100.4, 140]) {
       h.runUI(h.handlers.onChange!, { translationX: direction * distance, translationY: 0 });
     }

@@ -242,6 +242,7 @@ export function CalendarMonthViewport({
   const focusProgress = useSharedValue(0);
   const agendaOpacity = useSharedValue(transition.mode === "focused" ? 1 : 0);
   const released = useSharedValue(false);
+  const dragActivated = useSharedValue(false);
   const diagnosticThresholdMask = useSharedValue(0);
   const touchStartX = useSharedValue(0);
   const touchStartY = useSharedValue(0);
@@ -486,6 +487,7 @@ export function CalendarMonthViewport({
     .enabled(!disabled && calendarMonthPanEnabled(transition.phase))
     .manualActivation(true)
     .onTouchesDown((event) => {
+      dragActivated.value = false;
       const touch = event.allTouches[0];
       if (touch === undefined) return;
       touchStartX.value = touch.absoluteX;
@@ -540,8 +542,9 @@ export function CalendarMonthViewport({
       if (owner === "horizontal") manager.activate();
       else manager.fail();
     })
-    .onBegin(() => {
+    .onStart(() => {
       if (!panEnabled.value) return;
+      dragActivated.value = true;
       released.value = false;
       diagnosticThresholdMask.value = 0;
       completionEpoch.value += 1;
@@ -633,6 +636,9 @@ export function CalendarMonthViewport({
       });
     })
     .onFinalize((_event, success) => {
+      // A date/button tap also fails the manual Pan. It owns no drag to cancel.
+      if (!dragActivated.value) return;
+      dragActivated.value = false;
       const finalizedAsRelease = released.value && success !== false;
       scheduleOnRN(recordPhase20CalendarPointer, {
         callback: "onFinalize",

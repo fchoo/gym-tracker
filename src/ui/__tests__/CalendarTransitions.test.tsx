@@ -131,13 +131,13 @@ describe("Calendar semantic transitions", () => {
       nativeEvent: { layout: { height: 500, width: 400, x: 0, y: 0 } },
     });
     const handlers = (latestPan as { handlers: {
-      onBegin?: () => void;
+      onStart?: () => void;
       onEnd?: (event: Readonly<{ translationX: number; translationY: number }>, success: boolean) => void;
     } }).handlers;
 
-    handlers.onBegin?.();
+    handlers.onStart?.();
     handlers.onEnd?.({ translationX: -100, translationY: 0 }, true);
-    handlers.onBegin?.();
+    handlers.onStart?.();
     handlers.onEnd?.({ translationX: -140, translationY: 0 }, true);
 
     expect(onRelease).toHaveBeenCalledTimes(1);
@@ -255,7 +255,7 @@ describe("Calendar semantic transitions", () => {
     const handlers = (latestPan as { handlers: {
       onTouchesDown?: (event: Readonly<{ allTouches: readonly Readonly<{ absoluteX: number; absoluteY: number }>[] }>) => void;
       onTouchesMove?: (event: Readonly<{ allTouches: readonly Readonly<{ absoluteX: number; absoluteY: number }>[] }>, manager: Readonly<{ activate(): void; fail(): void }>) => void;
-      onBegin?: () => void;
+      onStart?: () => void;
       onChange?: (event: Readonly<{ translationX: number }>) => void;
       onFinalize?: () => void;
     } }).handlers;
@@ -266,7 +266,7 @@ describe("Calendar semantic transitions", () => {
     handlers.onTouchesDown?.({ allTouches: [{ absoluteX: 200, absoluteY: 100 }] });
     handlers.onTouchesMove?.({ allTouches: [{ absoluteX: 202, absoluteY: 110 }] }, manager);
     expect(manager.fail).toHaveBeenCalledTimes(1);
-    handlers.onBegin?.();
+    handlers.onStart?.();
     handlers.onChange?.({ translationX: -100 });
     expect(onPreview).toHaveBeenCalledWith(-100, 400);
     handlers.onFinalize?.();
@@ -420,8 +420,8 @@ describe("Calendar semantic transitions", () => {
     } as const;
     const rendered = await render(<CalendarMonthViewport {...common} command={null} transition={initial()} />);
     await fireEvent(screen.getByTestId("calendar-month-viewport"), "layout", { nativeEvent: { layout: { height: 500, width: 400, x: 0, y: 0 } } });
-    const handlers = (latestPan as { handlers: { onBegin?: () => void; onEnd?: (event: Readonly<{ translationX: number; translationY: number }>, success: boolean) => void } }).handlers;
-    handlers.onBegin?.();
+    const handlers = (latestPan as { handlers: { onStart?: () => void; onEnd?: (event: Readonly<{ translationX: number; translationY: number }>, success: boolean) => void } }).handlers;
+    handlers.onStart?.();
     handlers.onEnd?.({ translationX: -100, translationY: 0 }, true);
 
     const expanding = Object.freeze({ ...initial(), mode: "focused" as const, phase: "settling" as const, epoch: 1 });
