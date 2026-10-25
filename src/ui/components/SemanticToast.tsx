@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Pressable, StyleSheet, Text, View, type TextStyle } from "react-native";
 
+import { ActionLabel } from "./ActionLabel";
 import { space, typeScale, useAppTheme } from "../theme";
 
 export type SemanticToastSeverity = "success" | "progress" | "error";
@@ -171,9 +172,7 @@ export function SemanticToastProvider({
                 }}
                 style={styles.action}
               >
-                <Text style={[typeScale.label as TextStyle, { color: colors.toastText }]}>
-                  {current.action.label}
-                </Text>
+                <ActionLabel color={colors.toastText} label={current.action.label} typography={typeScale.label as TextStyle} />
               </Pressable>
             )}
           </Animated.View>

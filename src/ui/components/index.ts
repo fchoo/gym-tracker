@@ -23,6 +23,8 @@ import {
 } from "lucide-react-native";
 import React, {
   Children,
+  createContext,
+  useContext,
   forwardRef,
   useCallback,
   useEffect,
@@ -65,6 +67,7 @@ import {
   type BottomSheetFocusableRef,
 } from "./bottomSheetFocus";
 import { BottomSheet } from "./BottomSheet";
+import { ActionLabel, isCompactActionLabel } from "./ActionLabel";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 import { rootTabNativeID } from "../shell/rootFocus";
 import { fitTabLabelFontSize } from "./tabLabelFit";
@@ -100,6 +103,7 @@ export { FocusClearanceProvider } from "./bottomSheetFocus";
 
 type ActionProps = Readonly<{
   label: string;
+  visibleLabel?: string | undefined;
   onPress: () => void;
   accessibilityHint?: string;
   accessibilityActions?: PressableProps["accessibilityActions"];
@@ -218,24 +222,33 @@ export function ContentCard({
   );
 }
 
-export function ActionCluster({
-  children,
-  style,
-  testID,
-}: Readonly<{
-  children: React.ReactNode;
-  style?: ViewStyle;
-  testID?: string;
-}>) {
-  return h(
-    View,
-    {
-      style: [styles.actionCluster, style],
-      testID,
-    },
-    children,
+const ActionRowContext = createContext(false);
+
+function actionRowChildren(children: React.ReactNode): React.ReactNode[] {
+  return Children.toArray(children).flatMap((child) =>
+    React.isValidElement<{ children?: React.ReactNode }>(child) && child.type === React.Fragment
+      ? actionRowChildren(child.props.children)
+      : [child],
   );
 }
+
+/** Related decisions share one row; each action keeps its touch and focus target. */
+export function ActionRow({ children, style, testID }: Readonly<{
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+  testID?: string | undefined;
+}>) {
+  return h(View, { style: [style, styles.actionRow], testID },
+    h(ActionRowContext.Provider, { value: true },
+      actionRowChildren(children).map((child, index) => h(View, {
+        key: React.isValidElement(child) ? child.key ?? index : index,
+        style: styles.actionCell,
+      }, child)),
+    ),
+  );
+}
+
+export const ActionCluster = ActionRow;
 
 export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
   function FocusablePressableElement(
@@ -318,8 +331,23 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
       }
     }, [ref]);
 
+    const captionChild = React.isValidElement<{ children?: React.ReactNode; style?: StyleProp<TextStyle>; numberOfLines?: number; accessibilityElementsHidden?: boolean }>(props.children)
+      && props.children.type === Text && typeof props.children.props.children === "string"
+      && props.accessibilityRole === "button" && props.children.props.numberOfLines === undefined
+      && props.children.props.accessibilityElementsHidden !== true
+      && isCompactActionLabel(props.accessibilityLabel ?? String(props.children.props.children))
+      ? props.children : null;
+    const captionStyle = captionChild === null ? undefined : StyleSheet.flatten(captionChild.props.style);
+    const children = captionChild === null ? props.children : h(ActionLabel, {
+      label: props.accessibilityLabel ?? String(captionChild.props.children),
+      visibleLabel: String(captionChild.props.children),
+      color: typeof captionStyle?.color === "string" ? captionStyle.color : colors.textPrimary,
+      typography: captionStyle,
+    });
+
     return h(Pressable, {
       ...props,
+      children,
       disabled: isDisabled,
       hasTVPreferredFocus: preferredFocus,
       ...keyboardProps,
@@ -392,24 +420,15 @@ function iconElement(
   });
 }
 
-function actionText(label: string, color: string) {
-  return h(
-    Text,
-    {
-      style: [
-        typeScale.sectionTitle as TextStyle,
-        styles.actionLabel,
-        { color },
-      ],
-    },
-    label,
-  );
+function actionText(label: string, color: string, visibleLabel?: string) {
+  return h(ActionLabel, { label, color, visibleLabel });
 }
 
 export const PrimaryAction = forwardRef<View, ActionProps>(
   function PrimaryActionElement(
     {
       label,
+      visibleLabel,
       onPress,
       accessibilityHint,
       accessibilityActions,
@@ -423,6 +442,7 @@ export const PrimaryAction = forwardRef<View, ActionProps>(
     ref,
   ) {
     const { colors } = useAppTheme();
+    const inRow = useContext(ActionRowContext);
     const isDisabled = disabled || busy;
 
     return h(
@@ -442,6 +462,7 @@ export const PrimaryAction = forwardRef<View, ActionProps>(
         ref,
         style: ({ pressed }: { pressed: boolean }) => [
           styles.primaryAction,
+          inRow && styles.rowAction,
           style,
           {
             backgroundColor: pressed ? colors.actionPressed : colors.action,
@@ -450,7 +471,7 @@ export const PrimaryAction = forwardRef<View, ActionProps>(
         ],
         testID,
       },
-      actionText(label, colors.onAction),
+      actionText(label, colors.onAction, visibleLabel),
     );
   },
 );
@@ -458,10 +479,11 @@ export const PrimaryAction = forwardRef<View, ActionProps>(
 /** Workout-root-only primary action. Orange is reserved for this hierarchy. */
 export const WorkoutPrimaryAction = forwardRef<View, ActionProps>(
   function WorkoutPrimaryActionElement(
-    { label, onPress, accessibilityHint, busy = false, disabled = false, style, testID },
+    { label, visibleLabel, onPress, accessibilityHint, busy = false, disabled = false, style, testID },
     ref,
   ) {
     const { colors } = useAppTheme();
+    const inRow = useContext(ActionRowContext);
     const isDisabled = disabled || busy;
     return h(
       FocusablePressable,
@@ -477,6 +499,7 @@ export const WorkoutPrimaryAction = forwardRef<View, ActionProps>(
         ref,
         style: ({ pressed }: { pressed: boolean }) => [
           styles.primaryAction,
+          inRow && styles.rowAction,
           styles.workoutPrimaryAction,
           style,
           {
@@ -486,13 +509,7 @@ export const WorkoutPrimaryAction = forwardRef<View, ActionProps>(
         ],
         testID,
       },
-      h(Text, {
-        style: [
-          workoutTypeScale.emphasis as TextStyle,
-          styles.actionLabel,
-          { color: colors.onWorkoutPrimaryAction },
-        ],
-      }, label),
+      h(ActionLabel, { label, visibleLabel, color: colors.onWorkoutPrimaryAction, typography: workoutTypeScale.emphasis as TextStyle }),
     );
   },
 );
@@ -503,6 +520,7 @@ export const SecondaryAction = forwardRef<
 >(function SecondaryActionElement(
   {
     label,
+    visibleLabel,
     onPress,
     accessibilityHint,
     busy = false,
@@ -515,6 +533,7 @@ export const SecondaryAction = forwardRef<
   ref,
 ) {
   const { colors } = useAppTheme();
+  const inRow = useContext(ActionRowContext);
   const isDisabled = disabled || busy;
   const foreground = destructive ? colors.destructive : colors.textPrimary;
 
@@ -533,6 +552,7 @@ export const SecondaryAction = forwardRef<
       ref,
       style: ({ pressed }: { pressed: boolean }) => [
         styles.secondaryAction,
+        inRow && styles.rowAction,
         style,
         {
           backgroundColor: pressed ? colors.surfaceSubtle : colors.surface,
@@ -542,7 +562,7 @@ export const SecondaryAction = forwardRef<
       ],
       testID,
     },
-    actionText(label, foreground),
+    actionText(label, foreground, visibleLabel),
   );
 });
 
@@ -1714,13 +1734,15 @@ const styles = StyleSheet.create({
     minHeight: sizes.minimumTarget,
     padding: space[4],
   },
-  actionCluster: {
+  actionRow: {
     alignItems: "stretch",
     flexDirection: "row",
-    flexWrap: "wrap",
+    flexWrap: "nowrap",
     gap: space[2],
-    justifyContent: "flex-end",
+    width: "100%",
   },
+  actionCell: { flexBasis: 0, flexGrow: 1, minWidth: sizes.minimumTarget },
+  rowAction: { flexGrow: 1, width: "100%", paddingHorizontal: space[2] },
 });
 
 export {

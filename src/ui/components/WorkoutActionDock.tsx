@@ -51,12 +51,12 @@ export function WorkoutActionDock({
 const styles = StyleSheet.create({
   dock: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    flexWrap: "nowrap",
     gap: space[2],
     paddingHorizontal: space[2],
     paddingVertical: space[1],
   },
-  action: { flexBasis: 0, flexGrow: 1, minWidth: 0 },
-  addAction: { flexBasis: 128, minWidth: 128 },
+  action: { flexBasis: 0, flexGrow: 1, minWidth: 128 },
+  addAction: { minWidth: 128 },
   compactAction: { minHeight: 56 },
 });

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Text, View, type TextStyle } from "react-native";
 
 import { BottomSheet, useBottomSheetCancel } from "./BottomSheet";
-import { SecondaryAction } from "./index";
+import { ActionRow, SecondaryAction } from "./index";
 import { typeScale, useAppTheme } from "../theme";
 
 type FocusTarget = Readonly<{ focus?: () => void }>;
@@ -39,7 +39,7 @@ function ConfirmationDialogActions({
 
   return (
     <>
-      <SecondaryAction
+      <ActionRow><SecondaryAction
         busy={busy}
         disabled={busy}
         label={cancelLabel}
@@ -62,7 +62,7 @@ function ConfirmationDialogActions({
         label={confirmLabel}
         onPress={onConfirm}
         {...(confirmTestID === undefined ? {} : { testID: confirmTestID })}
-      />
+      /></ActionRow>
     </>
   );
 }

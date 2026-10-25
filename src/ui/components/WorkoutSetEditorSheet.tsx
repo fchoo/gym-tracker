@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import type { ActiveWorkoutSet, SetObservation } from "../../domains/workout";
 import { BottomSheet } from "./BottomSheet";
-import { FocusablePressable, PrimaryAction, SecondaryAction } from "./index";
+import { ActionRow, FocusablePressable, PrimaryAction, SecondaryAction } from "./index";
 import { SemanticNumberField } from "./SemanticNumberField";
 import { observationForSet } from "./SetRow";
 import { space, workoutTypeScale, useAppTheme } from "../theme";
@@ -90,7 +90,7 @@ export function WorkoutSetEditorSheet({ exerciseName, onCancel, onSave, restoreF
     switch (set.target.profile) {
       case "load_reps": case "added_load_reps": case "assisted_reps": return loadAndReps;
       case "bodyweight_reps": return <SemanticNumberField kind="integer" label="Repetitions" minimum={1} onChangeText={(reps) => update({ reps })} value={draft.reps} />;
-      case "timed_hold": return <><SemanticNumberField kind="decimal" label="Duration (sec)" minimum={0} onChangeText={(duration) => update({ duration })} value={draft.duration} /><View style={styles.stepper}><SecondaryAction label="−5 sec" onPress={() => update({ duration: String(Math.max(0, Number(draft.duration || "0") - 5)) })} /><SecondaryAction label="+5 sec" onPress={() => update({ duration: String(Number(draft.duration || "0") + 5) })} /></View></>;
+      case "timed_hold": return <><SemanticNumberField kind="decimal" label="Duration (sec)" minimum={0} onChangeText={(duration) => update({ duration })} value={draft.duration} /><ActionRow><SecondaryAction label="−5 sec" onPress={() => update({ duration: String(Math.max(0, Number(draft.duration || "0") - 5)) })} /><SecondaryAction label="+5 sec" onPress={() => update({ duration: String(Number(draft.duration || "0") + 5) })} /></ActionRow></>;
       case "fixed_distance": return <SemanticNumberField kind="decimal" label="Duration (sec)" minimum={1} onChangeText={(duration) => update({ duration })} value={draft.duration} />;
       case "fixed_time": return <SemanticNumberField kind="integer" label="Distance (m)" minimum={0} onChangeText={(distance) => update({ distance })} value={draft.distance} />;
       case "intervals": return <><SemanticNumberField kind="integer" label="Completed rounds" minimum={0} onChangeText={(rounds) => update({ rounds })} value={draft.rounds} /><SemanticNumberField kind="decimal" label="Completed work (sec)" minimum={0} onChangeText={(duration) => update({ duration })} value={draft.duration} /></>;
@@ -109,7 +109,7 @@ export function WorkoutSetEditorSheet({ exerciseName, onCancel, onSave, restoreF
       })}</View></View>}
       {metricFields}
       {error === undefined ? null : <Text accessibilityLiveRegion="polite" style={[workoutTypeScale.secondary as TextStyle, { color: colors.destructive }]}>{error}</Text>}
-      <View style={styles.actions}><SecondaryAction disabled={saving} label="Return to Workout" onPress={onCancel} /><PrimaryAction busy={saving} disabled={saving} label={set.status === "completed" ? "Save committed set edit" : "Save set values"} onPress={() => { void save(); }} /></View>
+      <ActionRow><SecondaryAction disabled={saving} label="Return to Workout" visibleLabel="Back" onPress={onCancel} /><PrimaryAction busy={saving} disabled={saving} label={set.status === "completed" ? "Save committed set edit" : "Save set values"} visibleLabel={set.status === "completed" ? "Save edit" : "Save values"} onPress={() => { void save(); }} /></ActionRow>
     </View>
   </BottomSheet>;
 }
