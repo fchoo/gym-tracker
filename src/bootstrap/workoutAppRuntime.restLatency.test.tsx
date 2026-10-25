@@ -209,7 +209,7 @@ describe("rest command acknowledgement latency", () => {
       });
       expect(input.lifecycle.trigger).toHaveBeenCalledTimes(2); // launch + first deferred reconciliation
       await act(async () => { effects.resolve(input.lifecycleResult); });
-      expect(input.lifecycle.trigger).toHaveBeenCalledTimes(3);
+      expect(input.lifecycle.trigger).toHaveBeenCalledTimes(2); // obsolete rest passes coalesce into the latest one
       expect(runtime.current().workoutRefreshGeneration).toBe(0);
     } finally {
       firstWrite.resolve(committed());

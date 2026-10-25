@@ -163,7 +163,7 @@ const identity = {
   nonce: "a".repeat(32), caseId: "legacy-playback", stepId: "legacy-start",
   cutId: "pre-transaction", phase: "arm",
 };
-const urlFor = (params = identity) => `/__v12-production-recovery?${new URLSearchParams(params)}`;
+const urlFor = (params = identity) => `/__v12-production-recovery?${new URLSearchParams(params)}` as const;
 
 async function settle(router: ReturnType<typeof renderRouter>) {
   await waitFor(() => expect(screen.getByText("Recovery cut armed")).toBeOnTheScreen());
