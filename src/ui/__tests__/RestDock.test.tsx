@@ -21,6 +21,7 @@ import {
 import type {
   RestStateV1,
 } from "../../domains/rest";
+import type { RestCountdownCuePort } from "../../domains/rest/restCountdownCuePort";
 import {
   RestDock,
 } from "../components/RestDock";
@@ -116,6 +117,73 @@ describe("Plan 02-29 RestDock", () => {
     expect(props.onAdjust).toHaveBeenCalledTimes(3);
     expect(screen.getByRole("button", { name: "Pause rest" })).toBeDisabled();
   });
+  it("waits for the scheduler final callback before claiming foreground expiry", async () => {
+    jest.useFakeTimers();
+    try {
+      jest.setSystemTime(99_500);
+      let scheduled: Parameters<NonNullable<RestCountdownCuePort["scheduleCountdown"]>>[0] | undefined;
+      const countdownCue: RestCountdownCuePort = {
+        playShortCue: jest.fn(async () => undefined), playLongCue: jest.fn(async () => undefined),
+        cancelPendingCues: jest.fn(),
+        scheduleCountdown: (input) => { scheduled = input; return jest.fn(); },
+      };
+      const onExpired = jest.fn();
+      await renderDock(running, { nowMs: () => Date.now(), countdownCue, restSoundEnabled: true, onExpired });
+      await act(async () => { jest.advanceTimersByTime(500); });
+      expect(screen.getByText("00:00")).toBeOnTheScreen();
+      expect(onExpired).not.toHaveBeenCalled();
+      await act(async () => { scheduled?.onCue(0); });
+      expect(onExpired).toHaveBeenCalledTimes(1);
+      expect(onExpired).toHaveBeenCalledWith({ foregroundCountdownTone: true });
+      await act(async () => { scheduled?.onCue(0); jest.advanceTimersByTime(2_000); });
+      expect(onExpired).toHaveBeenCalledTimes(1);
+    } finally { jest.useRealTimers(); }
+  });
+
+  it.each(["throw", "error"] as const)("expires through fallback when the scheduler fails by %s before its final cue", async (failure) => {
+    jest.useFakeTimers();
+    try {
+      jest.setSystemTime(99_000);
+      let scheduled: Parameters<NonNullable<RestCountdownCuePort["scheduleCountdown"]>>[0] | undefined;
+      const countdownCue: RestCountdownCuePort = {
+        playShortCue: jest.fn(async () => undefined), playLongCue: jest.fn(async () => undefined),
+        cancelPendingCues: jest.fn(),
+        scheduleCountdown: (input) => {
+          if (failure === "throw") throw new Error("scheduler_unavailable");
+          scheduled = input;
+          return jest.fn();
+        },
+      };
+      const onExpired = jest.fn();
+      await renderDock(running, { nowMs: () => Date.now(), countdownCue, restSoundEnabled: true, onExpired });
+      if (failure === "error") await act(async () => { scheduled?.onError(); });
+      await act(async () => { jest.advanceTimersByTime(1_000); });
+      expect(onExpired).toHaveBeenCalledTimes(1);
+      expect(onExpired.mock.calls).toEqual([[]]);
+      expect(countdownCue.cancelPendingCues).toHaveBeenCalled();
+    } finally { jest.useRealTimers(); }
+  });
+
+  it("stops display polling in background and refreshes timestamp truth on foreground return", async () => {
+    jest.useFakeTimers();
+    try {
+      jest.setSystemTime(40_000);
+      let change: ((state: AppStateStatus) => void) | undefined;
+      addEventListener.mockImplementation((_event, listener) => { change = listener; return { remove: jest.fn() }; });
+      const clock = jest.fn(() => Date.now());
+      const onExpired = jest.fn();
+      await renderDock(running, { nowMs: clock, onExpired });
+      await act(async () => { change?.("background"); });
+      clock.mockClear();
+      await act(async () => { jest.advanceTimersByTime(70_000); });
+      expect(clock).not.toHaveBeenCalled();
+      expect(onExpired).not.toHaveBeenCalled();
+      await act(async () => { change?.("active"); });
+      expect(screen.getByText("00:00")).toBeOnTheScreen();
+      expect(onExpired).toHaveBeenCalledTimes(1);
+    } finally { jest.useRealTimers(); }
+  });
+
   it("keeps the full durable dock reachable with exercise-aware context and ordered controls", async () => {
     const { rendered } = await renderDock(running);
 

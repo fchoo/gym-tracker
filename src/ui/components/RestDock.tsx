@@ -210,6 +210,9 @@ export function RestDock({
   const [displayNowMs, setDisplayNowMs] = useState(nowMs());
   const expiredRef = useRef(false);
   const finalCueDispatchedRef = useRef(false);
+  const schedulerOwnsExpiryRef = useRef(false);
+  const onExpiredRef = useRef(onExpired);
+  onExpiredRef.current = onExpired;
   const countdownCueRef = useRef(countdownCue);
   countdownCueRef.current = countdownCue;
   const announcedRef = useRef<string | null>(null);
@@ -226,6 +229,13 @@ export function RestDock({
   const cueRestGenerationRef = useRef(0);
   const previousRemainingSecondsRef = useRef<number | null>(null);
   const [cueFailure, setCueFailure] = useState(false);
+  const dispatchExpired = (withCountdown: boolean) => {
+    if (expiredRef.current || appStateRef.current !== "active") return;
+    expiredRef.current = true;
+    traceRestDock("expiry-dispatched", { finalCueDispatched: withCountdown });
+    if (withCountdown) onExpiredRef.current({ foregroundCountdownTone: true });
+    else onExpiredRef.current();
+  };
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
@@ -304,11 +314,27 @@ export function RestDock({
   }, [countdownCue, foregroundActive, restSoundEnabled, sessionId, state.revision, state.state]);
 
   useEffect(() => {
+    schedulerOwnsExpiryRef.current = false;
     if (state.state !== "running" || !restSoundEnabled || !foregroundActive
       || state.endsAtMs <= nowMs() || countdownCue?.scheduleCountdown === undefined) return;
+    schedulerOwnsExpiryRef.current = true;
     let mounted = true;
     const cueRestGeneration = cueRestGenerationRef.current;
-    const release = countdownCue.scheduleCountdown({
+    const handleSchedulerError = () => {
+      traceRestDock("scheduled-cue-failed", { mounted });
+      if (!mounted || cueRestGeneration !== cueRestGenerationRef.current) return;
+      setCueFailure(true);
+      if (!finalCueDispatchedRef.current) {
+        // A failed short/setup relinquishes the remaining cue schedule so the
+        // normal expiry fallback cannot be followed by a second long tone.
+        schedulerOwnsExpiryRef.current = false;
+        countdownCue.cancelPendingCues?.();
+        if (nowMs() >= state.endsAtMs) dispatchExpired(false);
+      }
+    };
+    let release: (() => void) | undefined;
+    try {
+      release = countdownCue.scheduleCountdown({
       endsAtMs: state.endsAtMs,
       nowMs,
       emitted: cueLedgerRef.current?.emitted ?? new Set(),
@@ -318,29 +344,39 @@ export function RestDock({
         if (ledger !== null) {
           cueLedgerRef.current = { emitted: new Set([...ledger.emitted, seconds]) };
         }
-        if (seconds === 0) finalCueDispatchedRef.current = true;
+        if (seconds === 0) {
+          finalCueDispatchedRef.current = true;
+          // The same deadline callback owns the cue and foreground expiry.
+          // Commit expiry before awaiting native loading/seek, without letting
+          // a display tick start the default feedback path first.
+          if (mounted && nowMs() >= state.endsAtMs) {
+            setDisplayNowMs(nowMs());
+            dispatchExpired(true);
+          }
+        }
       },
-      onError: () => {
-        traceRestDock("scheduled-cue-failed", { mounted });
-        if (mounted && cueRestGeneration === cueRestGenerationRef.current) setCueFailure(true);
-      },
-    });
+      onError: handleSchedulerError,
+      });
+    } catch {
+      handleSchedulerError();
+    }
     return () => {
       if (__DEV__) traceRestDock("countdown-observer-cleanup", { remainingMs: remainingRestMs(state, nowMs()) });
       mounted = false;
-      release();
+      release?.();
     };
   }, [countdownCue, foregroundActive, nowMs, restSoundEnabled, state.revision, state.state]);
 
   const cancelPendingCues = () => {
     traceRestDock("manual-control-cancel");
+    schedulerOwnsExpiryRef.current = false;
     previousRemainingSecondsRef.current = null;
     countdownCueRef.current?.cancelPendingCues?.();
   };
 
   useEffect(() => {
     setDisplayNowMs(nowMs());
-    if (state.state === "paused") {
+    if (state.state === "paused" || !foregroundActive) {
       return;
     }
     const interval = setInterval(() => {
@@ -353,7 +389,7 @@ export function RestDock({
       clearInterval(interval);
       clearTimeout(deadline);
     };
-  }, [nowMs, state.revision, state.state]);
+  }, [foregroundActive, nowMs, state.revision, state.state]);
 
   const remainingMs = remainingRestMs(state, displayNowMs);
   const remainingSeconds = Math.ceil(remainingMs / 1_000);
@@ -411,19 +447,16 @@ export function RestDock({
       state.state === "running"
       && remainingMs === 0
       && !expiredRef.current
+      && foregroundActive
+      && (!schedulerOwnsExpiryRef.current || finalCueDispatchedRef.current)
     ) {
-      expiredRef.current = true;
-      traceRestDock("expiry-dispatched", { finalCueDispatched: finalCueDispatchedRef.current });
-      if (finalCueDispatchedRef.current) {
-        onExpired({ foregroundCountdownTone: true });
-      } else {
-        onExpired();
-      }
+      dispatchExpired(finalCueDispatchedRef.current);
     }
-    if (remainingMs > 0) {
+    if (remainingMs > 0 && foregroundActive
+      && (state.state !== "running" || nowMs() < state.endsAtMs)) {
       expiredRef.current = false;
     }
-  }, [announcement, onExpired, remainingMs, state.state]);
+  }, [announcement, cueFailure, foregroundActive, onExpired, remainingMs, state.state]);
 
   const status = state.state === "paused" ? "REST PAUSED" : "RESTING";
   const context = `${exerciseName ?? "Next exercise"} · working set ${nextSetIndex} next`;
