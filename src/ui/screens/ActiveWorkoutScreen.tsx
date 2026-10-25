@@ -149,7 +149,7 @@ export interface ActiveWorkoutCommands {
   resumeRest(input: RestRevisionInput): Promise<RestCommandResult>;
   adjustRest(input: AdjustRestInput): Promise<RestCommandResult>;
   skipRest(input: RestRevisionInput): Promise<RestCommandResult>;
-  expireRest(input: RestRevisionInput): Promise<RestCommandResult>;
+  expireRest(input: RestRevisionInput & Readonly<{ foregroundCountdownTone?: true }>): Promise<RestCommandResult>;
   updateSessionExerciseDefaultRest?(
     input: UpdateSessionExerciseDefaultRestInput,
   ): Promise<ActiveWorkoutView>;
@@ -976,6 +976,7 @@ function PopulatedWorkoutOverview({
   const [correctionFailure, setCorrectionFailure] =
     useState<Readonly<{ setId: string; retry: () => void }> | null>(null);
   const [restBusy, setRestBusy] = useState(false);
+  const [restFailure, setRestFailure] = useState(false);
   const [moreVisible, setMoreVisible] = useState(false);
   const [outcomeConfirmation, setOutcomeConfirmation] =
     useState<OutcomeConfirmation>(null);
@@ -1044,7 +1045,8 @@ function PopulatedWorkoutOverview({
   const saveZeroSetInputRef = useRef<SaveZeroSetInput | null>(null);
   const discardWorkoutInputRef = useRef<DiscardWorkoutInput | null>(null);
   const correctionSetIdRef = useRef<string | null>(null);
-  const restCommandInFlightRef = useRef(false);
+  const restCommandQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const restPendingCountRef = useRef(0);
   const overviewExercises = React.useMemo(() => exercisesFor(view), [view]);
   const presentationModel = React.useMemo(() => presentWorkoutSession(view), [view]);
   const replacementCandidates = availableExercises.filter((exercise) =>
@@ -1176,6 +1178,7 @@ function PopulatedWorkoutOverview({
     : formatObservation(observationForSet(activeSet));
 
   const applyRestResult = (result: RestCommandResult) => {
+    if (result.sessionRevision < viewRef.current.revision) return;
     const nextView = {
       ...viewRef.current,
       revision: result.sessionRevision,
@@ -1187,27 +1190,27 @@ function PopulatedWorkoutOverview({
 
   const restInput = (): RestRevisionInput => ({
     sessionId,
-    expectedSessionRevision: view.revision,
-    expectedRestRevision: view.rest.revision,
+    expectedSessionRevision: viewRef.current.revision,
+    expectedRestRevision: viewRef.current.rest.revision,
     nowMs: nowMs(),
   });
 
-  const runRest = async (
+  const runRest = (
     command: () => Promise<RestCommandResult>,
   ) => {
-    if (restCommandInFlightRef.current) {
-      return;
-    }
-    restCommandInFlightRef.current = true;
+    restPendingCountRef.current += 1;
     setRestBusy(true);
-    try {
+    const task = restCommandQueueRef.current.then(async () => {
       acceptanceBenchmark?.markInputStart("rest-control");
       applyRestResult(await command());
+      setRestFailure(false);
       requestAnimationFrame(() => acceptanceBenchmark?.markInputVisible("rest-control"));
-    } finally {
-      restCommandInFlightRef.current = false;
-      setRestBusy(false);
-    }
+    });
+    restCommandQueueRef.current = task.then(() => undefined, () => undefined);
+    return task.catch(() => { setRestFailure(true); }).finally(() => {
+      restPendingCountRef.current -= 1;
+      if (restPendingCountRef.current === 0) setRestBusy(false);
+    });
   };
 
   useEffect(() => {
@@ -2142,8 +2145,8 @@ function PopulatedWorkoutOverview({
                   deltaMs,
                 }));
               }}
-              onExpired={() => {
-                void runRest(() => commands.expireRest(restInput()));
+              onExpired={(feedback) => {
+                void runRest(() => commands.expireRest({ ...restInput(), ...feedback }));
               }}
               onOpenSettings={onOpenNotificationSettings}
               onPause={() => {
@@ -2184,6 +2187,7 @@ function PopulatedWorkoutOverview({
         )}
         primary={
           <>
+            {restFailure ? <InlineNotice heading="Rest timer was not changed" body="Try the rest control again." tone="error" /> : null}
             {activeSet === undefined ? null : <TargetContext set={activeSet} />}
             <WorkoutSessionPresentation
               exerciseAccessibilityLabel={(presentationExercise, expanded, index) => {

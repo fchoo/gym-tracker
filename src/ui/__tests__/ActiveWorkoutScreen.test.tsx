@@ -92,6 +92,22 @@ async function renderScreen(view = workoutView(), commandOverrides: Partial<Acti
 }
 
 describe("ActiveWorkoutScreen explicit-save editor", () => {
+  it("queues rapid rest adjustments with the latest committed revisions", async () => {
+    const initial = workoutView({ rest: { version: 1, state: "running", revision: 1, startedAtMs: 3_000, endsAtMs: 63_000, nextSetId: "working-1" } });
+    let resolveFirst!: (result: import("../../domains/rest").RestCommandResult) => void;
+    const first = new Promise<import("../../domains/rest").RestCommandResult>((resolve) => { resolveFirst = resolve; });
+    const adjusted = { state: { ...initial.rest, state: "running" as const, startedAtMs: 3_000, endsAtMs: 48_000, revision: 2 }, sessionRevision: 2, invalidationScopes: [["active-workout", "session-1"], ["today"]] as const };
+    const adjustRest = jest.fn().mockImplementationOnce(() => first).mockImplementationOnce(async () => ({ ...adjusted, state: { ...adjusted.state, endsAtMs: 33_000, revision: 3 }, sessionRevision: 3 }));
+    await renderScreen(initial, { adjustRest });
+    const control = screen.getByRole("button", { name: "Subtract 15 seconds from rest" });
+    await act(async () => { await Promise.all([fireEvent.press(control), fireEvent.press(control)]); });
+    expect(adjustRest).toHaveBeenCalledTimes(1);
+    expect(adjustRest).toHaveBeenNthCalledWith(1, expect.objectContaining({ expectedSessionRevision: 1, expectedRestRevision: 1, deltaMs: -15_000 }));
+    await act(() => { resolveFirst(adjusted); });
+    await waitFor(() => expect(adjustRest).toHaveBeenCalledTimes(2));
+    expect(adjustRest).toHaveBeenNthCalledWith(2, expect.objectContaining({ expectedSessionRevision: 2, expectedRestRevision: 2, deltaMs: -15_000 }));
+    expect(screen.getByLabelText("00:30 remaining")).toBeOnTheScreen();
+  });
   it("focuses the real Active header action before publishing a resumed-route receipt", async () => {
     const onInitialHeaderFocused = jest.fn();
     const view = workoutView();

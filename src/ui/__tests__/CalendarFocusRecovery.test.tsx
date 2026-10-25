@@ -5,8 +5,26 @@ import { View } from "react-native";
 import * as Reanimated from "react-native-reanimated";
 import { CalendarMonthViewport } from "../calendar/CalendarMonthViewport";
 import { createCalendarTransitionState } from "../calendar/calendarTransitionController";
+import { CalendarScreen } from "../screens/CalendarScreen";
+import { AppearanceProvider } from "../theme";
 
 describe("Calendar focused day completion", () => {
+  it("collapses a last-week detail and keeps another date selectable", async () => {
+    await render(<AppearanceProvider reduceMotion={false}><CalendarScreen
+      initialDate="2026-10-31" today="2026-10-25"
+      loadCalendarRange={jest.fn(async () => ({ days: [], events: [] }))} onOpenEvent={jest.fn()}
+    /></AppearanceProvider>);
+    await screen.findByTestId("calendar-month-viewport");
+    const lastRow = screen.getAllByTestId("calendar-week-row-2026-10-26").find((row) => typeof row.props.onLayout === "function")!;
+    await fireEvent(lastRow, "layout", { nativeEvent: { layout: { x: 0, y: 280, width: 360, height: 70 } } });
+    await fireEvent.press(screen.getByTestId("calendar-day-2026-10-31"));
+    await fireEvent.press(screen.getByRole("button", { name: "Collapse day and return to month" }));
+    expect(screen.queryByRole("button", { name: "Collapse day and return to month" })).toBeNull();
+    await fireEvent.press(screen.getByTestId("calendar-day-2026-10-27"));
+    expect(screen.getByRole("button", { name: "Collapse day and return to month" })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Collapse day and return to month" }));
+    expect(screen.queryByRole("button", { name: "Collapse day and return to month" })).toBeNull();
+  });
   it("does not restart a week transition just because its parent supplies a new completion callback", async () => {
     const timing = jest.spyOn(Reanimated, "withTiming");
     const animatedRefs: Array<ReturnType<typeof Reanimated.useAnimatedRef>> = [];
