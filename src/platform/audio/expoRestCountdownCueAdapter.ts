@@ -29,6 +29,9 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
   const longPlayer = useAudioPlayer(
     require("../../../assets/audio/rest-cue-long.wav"),
   );
+  const sequencePlayer = useAudioPlayer(
+    require("../../../assets/audio/rest-countdown.wav"),
+  );
 
   const playback = useMemo(() => {
     let generation = 0;
@@ -44,7 +47,7 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
       let native: Record<string, unknown> = {};
       try {
         if (player !== undefined) native = {
-          cue: player === shortPlayer ? "short" : "long",
+          cue: player === shortPlayer ? "short" : player === longPlayer ? "long" : "sequence",
           isLoaded: player.isLoaded, currentTime: player.currentTime, playing: player.playing,
         };
       } catch { native = { snapshotUnavailable: true }; }
@@ -142,7 +145,7 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
       soundOwnership = undefined;
       generation += 1;
       for (const cancel of [...pendingLoads]) cancel();
-      for (const player of [shortPlayer, longPlayer]) {
+      for (const player of [shortPlayer, longPlayer, sequencePlayer]) {
         try {
           player.pause();
         } catch {
@@ -151,21 +154,22 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
       }
     };
 
-    const replay = async (player: AudioPlayer, maxWaitMs: number) => {
+    const replay = async (player: AudioPlayer, maxWaitMs: number, offsetSeconds = 0) => {
       // A later cue supersedes a late short rather than queuing a catch-up burst.
       const requestGeneration = ++generation;
       for (const cancel of [...pendingLoads]) cancel();
       const requestedAtMs = Date.now();
-      trace("request", player, { requestGeneration, maxWaitMs });
+      trace("request", player, { requestGeneration, maxWaitMs, offsetSeconds });
       try {
         if (!audioModeReady) {
           await waitForRewind(prepareAudioMode(), maxWaitMs, "rest_countdown_audio_mode_timeout");
           if (requestGeneration !== generation) return;
         }
-        // Supersede audible playback as well as pending loads/seeks. Two native
+        // Supersede audible playback as well as pending loads/seeks. The native
         // players share the audio session and must never play over each other.
         shortPlayer.pause();
         longPlayer.pause();
+        sequencePlayer.pause();
         trace("exclusive-pause-done", player, { requestGeneration });
         // Android's isLoaded getter excludes STATE_ENDED. Prepare the position
         // first: waiting for readiness before this seek can never ready an
@@ -174,6 +178,9 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
         const neededRewind = pendingRewind ?? (player.currentTime > 0 ? rewind(player) : undefined);
         if (neededRewind !== undefined) {
           await waitForRewind(neededRewind, maxWaitMs - (Date.now() - requestedAtMs));
+        }
+        if (offsetSeconds > 0 && requestGeneration === generation) {
+          await waitForRewind(player.seekTo(offsetSeconds), maxWaitMs - (Date.now() - requestedAtMs));
         }
         if (requestGeneration !== generation) {
           trace("request-superseded-after-seek", player, { requestGeneration });
@@ -219,6 +226,7 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
           const scheduleGeneration = countdownGeneration;
           const scheduledAtMs = input.nowMs();
           const emitted = new Set(input.emitted);
+          let sequenceStarted = false;
           if (__DEV__) trace("schedule", undefined, { remainingMs: input.endsAtMs - scheduledAtMs, emitted: [...emitted] });
           for (const seconds of [2, 1, 0] as const) {
             const dueAtMs = input.endsAtMs - seconds * 1_000;
@@ -244,7 +252,15 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
               }
               emitted.add(seconds);
               input.onCue(seconds);
-              void replay(seconds === 0 ? longPlayer : shortPlayer, seconds === 0 ? 1_000 : 350)
+              // One prepared PCM track carries both short tones and the final
+              // long tone. Later deadlines only update the ledger/expiry, so
+              // they never stop/restart native playback between pulses.
+              if (sequenceStarted) return;
+              const canStartSequence = (seconds === 2 && !emitted.has(1) && !emitted.has(0))
+                || (seconds === 1 && !emitted.has(0));
+              if (canStartSequence) sequenceStarted = true;
+              void replay(canStartSequence ? sequencePlayer : seconds === 0 ? longPlayer : shortPlayer,
+                seconds === 0 ? 1_000 : 350, canStartSequence && seconds === 1 ? 1 : 0)
                 .catch(() => {
                   if (scheduleGeneration === countdownGeneration) input.onError();
                 });
@@ -273,12 +289,12 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
         },
       }),
     };
-  }, [longPlayer, shortPlayer]);
+  }, [longPlayer, sequencePlayer, shortPlayer]);
 
   useEffect(() => {
     // Prepare once when the workout route mounts, ahead of its first deadline.
     void playback.prepareAudioMode().catch(() => { playback.trace("audio-mode-failed"); });
-    const subscriptions = [shortPlayer, longPlayer].map((player) =>
+    const subscriptions = [shortPlayer, longPlayer, sequencePlayer].map((player) =>
       player.addListener(STATUS_EVENT, (status) => {
         if (__DEV__ && (status.didJustFinish || status.playing !== undefined)) playback.trace("native-status", player, {
           didJustFinish: status.didJustFinish, reportedPlaying: status.playing,
@@ -302,7 +318,7 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
       appStateSubscription.remove();
       subscriptions.forEach((subscription) => subscription.remove());
     };
-  }, [longPlayer, playback, shortPlayer]);
+  }, [longPlayer, playback, sequencePlayer, shortPlayer]);
 
   return playback.port;
 }
