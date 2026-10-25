@@ -55,6 +55,18 @@ export function calendarWeekGeometryForGeneration(
   return geometry?.generation === generation ? geometry : null;
 }
 
+/** The following overlay uses the same week track even beyond the month's grid. */
+export function calendarFollowingWeekGeometry(
+  selected: CalendarWeekGeometry | null | undefined,
+  following: CalendarWeekGeometry | null | undefined,
+  generation: number,
+): CalendarWeekGeometry | null {
+  const measured = calendarWeekGeometryForGeneration(following, generation);
+  if (measured !== null) return measured;
+  const anchor = calendarWeekGeometryForGeneration(selected, generation);
+  return anchor === null ? null : { y: anchor.y + anchor.height, height: anchor.height, generation };
+}
+
 /** The three panels are always separated by one measured viewport width. */
 export function calendarPanelTranslate(offset: PanelOffset, dx: number, viewportWidth: number): number {
   return offset * viewportWidth + clampMonthDrag(dx, viewportWidth);
@@ -240,6 +252,8 @@ export function CalendarMonthViewport({
   const touchIntent = useSharedValue<"undetermined" | "horizontal" | "vertical" | "diagonal">("undetermined");
   const panEnabled = useSharedValue(!disabled && calendarMonthPanEnabled(transition.phase));
   const mounted = useRef(true);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
   const monthCompletionRef = useRef<Readonly<{
     activeEpoch: number | null;
     deliveredEpoch: number | null;
@@ -335,8 +349,8 @@ export function CalendarMonthViewport({
       timer: null,
     });
     recordPhase20CalendarCallback({ callback: "month-settle", epoch, callbackGeneration: epoch });
-    onComplete(epoch);
-  }, [onComplete]);
+    onCompleteRef.current(epoch);
+  }, []);
 
   const cancelWeekCompletion = useCallback(() => {
     weekCompletionRef.current = Object.freeze({
@@ -350,8 +364,8 @@ export function CalendarMonthViewport({
     if (current.activeEpoch !== epoch || current.deliveredEpoch === epoch) return;
     weekCompletionRef.current = Object.freeze({ activeEpoch: epoch, deliveredEpoch: epoch });
     recordPhase20CalendarCallback({ callback: "week-settle", epoch, callbackGeneration: epoch });
-    onComplete(epoch);
-  }, [onComplete]);
+    onCompleteRef.current(epoch);
+  }, []);
 
   useEffect(() => () => {
     mounted.current = false;
@@ -401,7 +415,7 @@ export function CalendarMonthViewport({
       ? withDelay(agendaMotion.delayMs, withTiming(agendaMotion.opacity, { duration: agendaMotion.durationMs }))
       : withTiming(agendaMotion.opacity, { duration: agendaMotion.durationMs });
     const selectedGeometry = calendarWeekGeometryForGeneration(focusedWeek?.selectedGeometry, layoutGeneration);
-    const followingGeometry = calendarWeekGeometryForGeneration(focusedWeek?.followingGeometry, layoutGeneration);
+    const followingGeometry = calendarFollowingWeekGeometry(selectedGeometry, focusedWeek?.followingGeometry, layoutGeneration);
     if (selectedGeometry === null || followingGeometry === null) {
       return;
     }
@@ -647,6 +661,7 @@ export function CalendarMonthViewport({
     viewportHeight.value = nextHeight;
     if (nextWidth <= 0 || nextHeight <= 0 || (nextWidth === lastWidth.current && nextHeight === lastHeight.current)) return;
     const hadMeasurement = lastWidth.current > 0 && lastHeight.current > 0;
+    const widthChanged = nextWidth !== lastWidth.current;
     lastWidth.current = nextWidth;
     lastHeight.current = nextHeight;
     viewportWidth.value = nextWidth;
@@ -666,7 +681,7 @@ export function CalendarMonthViewport({
     cancelAnimation(pointerX);
     pointerX.value = 0;
     previewPanel.value = 0;
-    if (hadMeasurement && mounted.current) onCancel();
+    if (hadMeasurement && widthChanged && mounted.current) onCancel();
     const diagnosticSteps = phase16CalendarGestureDriver(diagnosticStage);
     if (diagnosticSteps === null || diagnosticStageDriven.current) return;
     diagnosticStageDriven.current = true;
@@ -707,7 +722,7 @@ export function CalendarMonthViewport({
     generation: layoutGeneration,
   });
   const selectedGeometry = focusedWeek?.selectedGeometry ?? fallbackSelectedGeometry;
-  const followingGeometry = focusedWeek?.followingGeometry ?? fallbackFollowingGeometry;
+  const followingGeometry = calendarFollowingWeekGeometry(focusedWeek?.selectedGeometry, focusedWeek?.followingGeometry, layoutGeneration) ?? fallbackFollowingGeometry;
   const hasFocusedComposition = focusedWeek !== null
     && (command?.kind === "settle-week" || transition.mode === "focused");
 

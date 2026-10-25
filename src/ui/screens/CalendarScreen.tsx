@@ -40,6 +40,7 @@ import {
   CalendarMonthViewport,
   calendarHorizontalInsetForSafeWidth,
   calendarWeekGeometryForGeneration,
+  calendarFollowingWeekGeometry,
   type CalendarWeekGeometry,
 } from "../calendar/CalendarMonthViewport";
 import { CalendarWeekRow, type CalendarDateCellHandle } from "../calendar/CalendarWeekRow";
@@ -693,7 +694,7 @@ export function CalendarScreen({
       selectedDates: selectedWeek,
       followingDates: followingWeek,
       selectedGeometry: calendarWeekGeometryForGeneration(weekMeasurements.get(selectedWeek[0]!), layoutGeneration),
-      followingGeometry: calendarWeekGeometryForGeneration(weekMeasurements.get(followingWeek[0]!), layoutGeneration),
+      followingGeometry: calendarFollowingWeekGeometry(weekMeasurements.get(selectedWeek[0]!), weekMeasurements.get(followingWeek[0]!), layoutGeneration),
     });
 
   useEffect(() => {
