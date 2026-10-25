@@ -816,7 +816,9 @@ type RuntimeValue = RuntimeState & Readonly<{
     input: ReviseCompletedSetInput,
   ): Promise<CommittedWorkoutMutationResult>;
   adjustRest(input: AdjustRestInput): Promise<RestCommandResult>;
-  expireRest(input: RestRevisionInput): Promise<RestCommandResult>;
+  expireRest(input: RestRevisionInput & Readonly<{
+    foregroundCountdownTone?: true;
+  }>): Promise<RestCommandResult>;
   exerciseNotificationExpiry(
     mode: NotificationExpiryExerciseMode,
   ): Promise<NotificationExpiryExerciseCode>;
@@ -2115,6 +2117,8 @@ export function WorkoutAppRuntimeProvider({
   const automaticBackupUnsubscribeRef = useRef<(() => void) | null>(null);
   const generationRef = useRef(0);
   const workoutRefreshGenerationRef = useRef(0);
+  const restCommandQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const postCommitReconciliationQueueRef = useRef<Promise<void>>(Promise.resolve());
   const contentUpdateResultRef = useRef<ContentUpdateResult | undefined>(
     undefined,
   );
@@ -2133,6 +2137,8 @@ export function WorkoutAppRuntimeProvider({
     automaticBackupUnsubscribeRef.current = null;
     const services = servicesRef.current;
     servicesRef.current = null;
+    restCommandQueueRef.current = Promise.resolve();
+    postCommitReconciliationQueueRef.current = Promise.resolve();
     pendingActivityMatchRef.current = null;
     progressBodyweightCommandsRef.current.clear();
     try {
@@ -3714,8 +3720,13 @@ export function WorkoutAppRuntimeProvider({
   const reconcileAfterCommit = useCallback((
     services: RuntimeServices,
     foregroundExpiry?: Readonly<{ sessionId: string; restRevision: number }>,
+    refreshWorkout = true,
   ) => {
-    void (async () => {
+    // Native notification and durable effect work is serialized independently
+    // of command acknowledgement. Every pass reads the latest authoritative
+    // rest state; a failed pass leaves its transactional effects replayable.
+    postCommitReconciliationQueueRef.current = postCommitReconciliationQueueRef.current.then(async () => {
+      if (servicesRef.current !== services) return;
       const sessionIds = await services.restRepository.listActiveSessionIds()
         .catch(() => []);
       const hasRunningRest = (
@@ -3731,17 +3742,21 @@ export function WorkoutAppRuntimeProvider({
         permission = await services.notifications.requestPermission()
           .catch(() => "denied" as const);
       }
+      if (servicesRef.current !== services) return;
       const lifecycleResult = await services.lifecycle.trigger("post_commit", {
         ...(foregroundExpiry === undefined ? {} : { foregroundExpiry }),
       })
         .catch(() => null);
-      workoutRefreshGenerationRef.current += 1;
+      if (servicesRef.current !== services) return;
+      // RestCommandResult already updates the timer and Today rest status.
+      // Reloading the full workout/progress tree here would reintroduce lag.
+      if (refreshWorkout) workoutRefreshGenerationRef.current += 1;
       setState((current) => ({
         ...current,
         notificationPermission: lifecycleResult?.permission ?? permission,
         workoutRefreshGeneration: workoutRefreshGenerationRef.current,
       }));
-    })();
+    }).catch(() => undefined);
   }, []);
 
   const runRestCommand = useCallback((
@@ -3751,24 +3766,25 @@ export function WorkoutAppRuntimeProvider({
     ) => Promise<RestCommandResult>,
   ): Promise<RestCommandResult> => {
     const services = requireServices();
-    return command(services.restRepository).then(async (result) => {
+    const committed = restCommandQueueRef.current.then(async () => {
+      if (servicesRef.current !== services) throw new Error("workout_runtime_not_trusted");
+      const result = await command(services.restRepository);
+      if (servicesRef.current !== services) return result;
+      // The repository resolves only after its exclusive transaction commits.
+      // Use that acknowledgement directly, keeping unrelated reads and effect
+      // adapters off the rest-control path. Expected revisions are never rebased.
+      setState((current) => current.view?.state === "active_workout"
+        && current.view.sessionId === sessionId
+        ? { ...current, view: { ...current.view, restStatus: result.state.state } }
+        : current);
       reconcileAfterCommit(services, result.state.state === "expired"
         ? { sessionId, restRevision: result.state.revision }
-        : undefined);
-      try {
-        setState(await trustedRead(services));
-      } catch {
-        setState((current) => ({
-          ...current,
-          actionFailure: {
-            code: "workout_action_failed",
-            correlationCode: "GT-ACTION01",
-          },
-        }));
-      }
+        : undefined, false);
       return result;
     });
-  }, [reconcileAfterCommit, requireServices, trustedRead]);
+    restCommandQueueRef.current = committed.then(() => undefined, () => undefined);
+    return committed;
+  }, [reconcileAfterCommit, requireServices]);
 
   const openRestNotificationSettings = useCallback(() => {
     return requireServices().notifications.openSettings();
@@ -3962,21 +3978,29 @@ export function WorkoutAppRuntimeProvider({
       skipRest({ repository, input })),
   [runRestCommand]);
 
-  const expireWorkoutRest = useCallback((input: RestRevisionInput) => {
-    const services = requireServices();
-    const preferences = services.restAlertPreferenceStore.read();
-    const appState = (require("react-native") as typeof import("react-native"))
-      .AppState.currentState;
-    if (appState === "background" || appState === "inactive") {
-      return runRestCommand(input.sessionId, (repository) =>
-        expireRest({ repository, input }));
-    }
-    return runRestCommand(input.sessionId, (repository) =>
-      expireRestWithForegroundFeedback({
+  const expireWorkoutRest = useCallback((input: RestRevisionInput & Readonly<{
+    foregroundCountdownTone?: true;
+  }>) => runRestCommand(input.sessionId, (repository) => {
+      const { foregroundCountdownTone, ...revisionInput } = input;
+      const appState = (require("react-native") as typeof import("react-native"))
+        .AppState.currentState;
+      if (appState === "background" || appState === "inactive") {
+        return expireRest({ repository, input: revisionInput });
+      }
+      const preferences = requireServices().restAlertPreferenceStore.read();
+      return expireRestWithForegroundFeedback({
         repository,
-        input: { ...input, preferences },
-      }));
-  }, [requireServices, runRestCommand]);
+        input: {
+          ...revisionInput,
+          // The dock dispatched its foreground long-cue attempt before expiry.
+          // Keep the durable feedback/vibration claim, with that tone owned by
+          // the countdown. Background notifications retain saved preferences.
+          preferences: foregroundCountdownTone === true
+            ? { ...preferences, soundEnabled: false }
+            : preferences,
+        },
+      });
+    }), [requireServices, runRestCommand]);
 
   const runWorkoutMutation = useCallback(async (
     mutation: (
