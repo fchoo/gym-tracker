@@ -23,6 +23,7 @@ import {
   classifyWidth,
 } from "../layout/AdaptiveScreen";
 import {
+  ActionRow,
   ContentCard,
   InlineNotice,
   PrimaryAction,
@@ -293,7 +294,7 @@ export function StarterPlanDetailScreen({
           tone="error"
         />
       ) : null}
-      <SecondaryAction
+      <ActionRow><SecondaryAction
         busy={copyState === "saving"}
         label="Save editable copy"
         onPress={() => {
@@ -308,7 +309,7 @@ export function StarterPlanDetailScreen({
       <PrimaryAction
         label="Activate plan"
         onPress={() => onActivate(template.id)}
-      />
+      /></ActionRow>
     </>
   );
 

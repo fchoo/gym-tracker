@@ -18,6 +18,7 @@ import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
 import {
+  ActionRow,
   ConfirmationSheet,
   ContentCard,
   EmptyState,
@@ -582,7 +583,7 @@ export function ExerciseDetailScreen({
                 />
               ) : (
                 <>
-                  <PrimaryAction
+                  <ActionRow><PrimaryAction
                     label="Edit exercise"
                     onPress={() => onEdit(snapshot.exerciseId)}
                   />
@@ -609,7 +610,7 @@ export function ExerciseDetailScreen({
                       }}
                       ref={archiveActionRef}
                     />
-                  )}
+                  )}</ActionRow>
                 </>
               )}
             </View>

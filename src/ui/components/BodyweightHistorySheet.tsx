@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import { BottomSheet } from "./BottomSheet";
-import { FocusablePressable, PrimaryAction, SecondaryAction } from "./index";
+import { ActionRow, FocusablePressable, PrimaryAction, SecondaryAction } from "./index";
 import { radius, sizes, space, typeScale, useAppTheme } from "../theme";
 
 export type BodyweightHistoryEntry = Readonly<{
@@ -139,9 +139,9 @@ export function BodyweightHistorySheet({ visible, entries, editorRestoreFocusRef
                       <Text accessibilityRole="alert" style={[typeScale.body as TextStyle, { color: colors.destructive }]}>{failure}</Text>
                       <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Your saved bodyweight history and workout targets were not changed.</Text>
                     </>}
-                    <SecondaryAction disabled={deleting} label="Keep bodyweight entry" onPress={() => { setPendingEntry(null); setFailure(null); }} />
+                    <ActionRow><SecondaryAction disabled={deleting} label="Keep bodyweight entry" onPress={() => { setPendingEntry(null); setFailure(null); }} />
                     <PrimaryAction busy={deleting} disabled={deleting} label="Delete bodyweight entry" onPress={() => { void removePending(); }} />
-                    {failure === null ? null : <SecondaryAction disabled={deleting} label="Retry deleting entry" onPress={() => { void removePending(); }} />}
+                    {failure === null ? null : <SecondaryAction disabled={deleting} label="Retry deleting entry" onPress={() => { void removePending(); }} />}</ActionRow>
                   </View>
                 ) : (
                   <View style={styles.actions}>

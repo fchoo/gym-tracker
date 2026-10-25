@@ -28,6 +28,7 @@ import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
 import {
+  ActionRow,
   ConfirmationSheet,
   CalendarField,
   FocusablePressable,
@@ -731,7 +732,7 @@ export function StarterActivationScreen({
               <InlineNotice
                 action={
                   <View style={styles.blockActions}>
-                    <PrimaryAction
+                    <ActionRow><PrimaryAction
                       label="Resume"
                       onPress={() => onResume(activeWorkout.sessionId)}
                     />
@@ -751,7 +752,7 @@ export function StarterActivationScreen({
                           setRetryGeneration((value) => value + 1)
                         );
                       }}
-                    />
+                    /></ActionRow>
                   </View>
                 }
                 body="Finish the current workout before switching plans."

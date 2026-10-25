@@ -67,6 +67,7 @@ import type {
   ReplaceExerciseInput,
 } from "../../domains/workout/activeWorkout";
 import {
+  ActionRow,
   ConfirmationSheet,
   ContentCard,
   ActionCluster,
@@ -855,7 +856,7 @@ function EmptyWorkoutOverview({
                 ) : null}
               </ContentCard>
             ) : null}
-            <PrimaryAction
+            <ActionRow><PrimaryAction
               busy={outcomeBusy}
               label="Save zero-set workout"
               onPress={() => setOutcomeConfirmation("zero_sets")}
@@ -870,7 +871,7 @@ function EmptyWorkoutOverview({
               disabled={outcomeBusy}
               label="Discard workout"
               onPress={() => setOutcomeConfirmation("discard")}
-            />
+            /></ActionRow>
           </>
         )}
         testID="active-workout"
@@ -2327,7 +2328,7 @@ function PopulatedWorkoutOverview({
                     </Text>
                   </PlanEditorReorderableRow>
                   <View style={styles.reorderFallbackActions}>
-                    <SecondaryAction
+                    <ActionRow><SecondaryAction
                       disabled={exerciseReorderBusy || index === 0}
                       label={`Move ${exercise.name} up`}
                       onPress={() => {
@@ -2341,7 +2342,7 @@ function PopulatedWorkoutOverview({
                         void submitExerciseReorder(index, index + 1);
                       }}
                       testID="workout-reorder-exercise-down"
-                    />
+                    /></ActionRow>
                   </View>
                   {exerciseReorderAnnouncement?.sessionExerciseId === exercise.id
                     ? (

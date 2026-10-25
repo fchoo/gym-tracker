@@ -10,6 +10,7 @@ import {
 } from "react-native";
 
 import {
+  ActionRow,
   InlineNotice,
   AppTabs,
   EmptyState,
@@ -124,6 +125,7 @@ export function StartupReadinessGate({
             }
             tone="attention"
           />
+          <ActionRow>
           {!denied ? (
             <PrimaryAction
               busy={busy}
@@ -150,6 +152,7 @@ export function StartupReadinessGate({
             label="Continue without alerts"
             onPress={continueWithoutAlerts}
           />
+          </ActionRow>
         </>
       }
     />

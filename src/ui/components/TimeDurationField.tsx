@@ -8,6 +8,7 @@ import {
 } from "react-native";
 
 import {
+  ActionRow,
   FocusablePressable,
   PrimaryAction,
   SecondaryAction,
@@ -223,10 +224,10 @@ export function TimeDurationField({
                 {draftError}
               </Text>
             )}
-            <View style={styles.actions}>
+            <ActionRow>
               <DurationCancelAction label={`Cancel ${label.toLocaleLowerCase("en")}`} />
               <PrimaryAction label={`Confirm ${label.toLocaleLowerCase("en")}`} onPress={confirm} />
-            </View>
+            </ActionRow>
       </BottomSheet>
     </View>
   );

@@ -19,6 +19,7 @@ import {
   formatLoadGrams,
 } from "./SetRow";
 import {
+  ActionRow,
   FocusablePressable,
   InlineNotice,
   PrimaryAction,
@@ -292,7 +293,7 @@ function ReviewSurface({
                 tone="error"
               />
             ) : null}
-            <View style={styles.actions}>
+            <ActionRow>
               <SecondaryAction
                 busy={selectedDecision === "keep" && commandBusy}
                 disabled={commandBusy}
@@ -305,7 +306,7 @@ function ReviewSurface({
                 label={selectedLabel("use", "Use target", "Saving use target")}
                 onPress={() => submit("use", onAccept)}
               />
-            </View>
+            </ActionRow>
           </View>
         </BottomSheet>
       </>
@@ -404,10 +405,10 @@ function LegacySurface({
         {proposedLoad} · aim for {reps(recommendation.proposedTargetReps)}
       </Text>
       {recommendation.status === "pending" ? (
-        <View style={styles.actions}>
+        <ActionRow>
           <PrimaryAction busy={busy} label="Use this target next time" onPress={onAccept} />
           <SecondaryAction disabled={busy} label="Keep current target" onPress={onKeepCurrent} />
-        </View>
+        </ActionRow>
       ) : (
         <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.completed }]}>
           {recommendation.status === "accepted"

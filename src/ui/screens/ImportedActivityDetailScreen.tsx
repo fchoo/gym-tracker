@@ -24,6 +24,7 @@ import type {
   ImportedActivityRoutePoint,
 } from "../../domains/activities/activityDetails";
 import {
+  ActionRow,
   AppearanceSheet,
   EmptyState,
   IconAction,
@@ -469,6 +470,7 @@ function NonReadyDetail({
               tone="error"
             />
           )}
+          <ActionRow>
           {readOnly ? null : <PrimaryAction
             busy={busy === "accept"}
             disabled={busy !== null || onAcceptRevision === undefined}
@@ -494,6 +496,7 @@ function NonReadyDetail({
               }).finally(() => setBusy(null));
             }}
           />}
+          </ActionRow>
           <SecondaryAction disabled={busy !== null} label="Retry activity details" onPress={onRetry} />
         </View>
       );

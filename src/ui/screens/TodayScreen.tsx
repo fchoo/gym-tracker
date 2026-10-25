@@ -31,6 +31,7 @@ import type {
   LaunchFailure,
 } from "../../bootstrap/launchCoordinator";
 import {
+  ActionRow,
   ExerciseRow,
   ContentCard,
   IconAction,
@@ -277,14 +278,14 @@ function ScheduledContent({
         <Text style={[workoutTypeScale.body as TextStyle, { color: colors.textSecondary }]}>
           {selectedView.exercises.length} exercises · about {selectedView.estimateMinutes} min
         </Text>
-        <WorkoutPrimaryAction
+        <ActionRow><WorkoutPrimaryAction
           label={`Start ${selectedView.dayName}`}
           onPress={() => selectedPreview === undefined || onStartOccurrence === undefined
             ? onStart(selectedView.dayId, "scheduled")
             : onStartOccurrence(selectedPreview.occurrence)}
           testID="today-start-workout"
         />
-        <SecondaryAction label="Choose another day" onPress={() => setStartSheetVisible(true)} ref={startSheetActionRef} testID="today-choose-plan-day" />
+        <SecondaryAction label="Choose another day" onPress={() => setStartSheetVisible(true)} ref={startSheetActionRef} testID="today-choose-plan-day" /></ActionRow>
       </ContentCard>
       <View style={styles.section}>
         <Text
@@ -383,13 +384,13 @@ function RestDayContent({
           tone="card"
         />
         <Text>No workout planned</Text>
-        <PrimaryAction disabled label="Nothing scheduled" onPress={noOp} />
+        <ActionRow><PrimaryAction disabled label="Nothing scheduled" onPress={noOp} />
         <SecondaryAction
           label={hasNextPlanDay ? "Train anyway" : "Choose another day"}
           onPress={() => setStartSheetVisible(true)}
           ref={startSheetActionRef}
           testID="today-choose-plan-day"
-        />
+        /></ActionRow>
       </ContentCard>
       <WorkoutStartSheet
         onClose={() => setStartSheetVisible(false)}
@@ -602,7 +603,7 @@ export function TodayScreen({
               : (
                   <InlineNotice
                     action={
-                      <View style={styles.timeZoneActions}>
+                      <ActionRow>
                         <SecondaryAction
                           label="Follow device timezone from today"
                           onPress={() => {
@@ -619,7 +620,7 @@ export function TodayScreen({
                             );
                           }}
                         />
-                      </View>
+                      </ActionRow>
                     }
                     body={[
                       `Stored timezone: ${scheduleToday.timezonePrompt.storedTimeZone}.`,
@@ -635,8 +636,8 @@ export function TodayScreen({
               <View style={styles.runningContext}>
                 <Text style={[workoutTypeScale.label as TextStyle, { color: colors.textSecondary }]}>ALSO SCHEDULED</Text>
                 <Text style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.ink }]}>{runningContext.label}</Text>
-                <SecondaryAction label="View plan" onPress={() => onOpenRunningPlan(runningContext.planId)} />
-                <SecondaryAction label="Sync Garmin" onPress={onSyncGarmin} />
+                <ActionRow><SecondaryAction label="View plan" onPress={() => onOpenRunningPlan(runningContext.planId)} />
+                <SecondaryAction label="Sync Garmin" onPress={onSyncGarmin} /></ActionRow>
               </View>
             )}
           </>

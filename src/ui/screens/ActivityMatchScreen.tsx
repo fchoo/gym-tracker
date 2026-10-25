@@ -7,6 +7,7 @@ import type {
   RunningActivityMatchResult,
 } from "../../domains/running/activityMatchCommands";
 import {
+  ActionRow,
   AppearanceSheet,
   ContentCard,
   EmptyState,
@@ -325,7 +326,7 @@ export function ActivityMatchScreen(props: ActivityMatchScreenProps) {
           ))}
         </View>
       ) : null}
-      <View style={styles.actions}>
+      <ActionRow>
         {props.state.kind === "already_matched" ? (
           <>
             <PrimaryAction busy={busy === "reassign"} disabled={selected === undefined || props.onReassign === undefined || busy !== null || outcome === "stale" || outcome === "reload_failure"} label="Reassign match" onPress={() => { void reassign(); }} />
@@ -337,7 +338,7 @@ export function ActivityMatchScreen(props: ActivityMatchScreenProps) {
             <SecondaryAction disabled={busy !== null} label="Leave unmatched" onPress={props.onLeaveUnmatched} />
           </>
         )}
-      </View>
+      </ActionRow>
     </>
   );
 

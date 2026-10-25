@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View, type TextStyle } from "react-native";
 
 import { BottomSheet } from "./BottomSheet";
-import { PrimaryAction, SecondaryAction } from "./index";
+import { ActionRow, PrimaryAction, SecondaryAction } from "./index";
 import { radius, sizes, space, typeScale, useAppTheme } from "../theme";
 
 export type BodyweightEditorSave = Readonly<{
@@ -128,9 +128,9 @@ export function BodyweightEditorSheet(props: BodyweightEditorSheetProps) {
         />
       </View>
       {failure === null ? null : <Text accessibilityRole="alert" style={[typeScale.body as TextStyle, { color: colors.destructive }]}>{failure}</Text>}
-      <PrimaryAction busy={saving} disabled={saving} label="Save entry" onPress={() => { void submit(); }} />
+      <ActionRow><PrimaryAction busy={saving} disabled={saving} label="Save entry" onPress={() => { void submit(); }} />
       {failure === "Bodyweight entry was not saved." ? <SecondaryAction disabled={saving} label="Retry saving entry" onPress={() => { void submit(); }} /> : null}
-      <SecondaryAction disabled={saving} label="Discard bodyweight changes" onPress={props.onClose} />
+      <SecondaryAction disabled={saving} label="Discard bodyweight changes" onPress={props.onClose} /></ActionRow>
     </BottomSheet>
   );
 }

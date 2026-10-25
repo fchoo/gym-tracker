@@ -23,6 +23,7 @@ import {
   HistoryCorrectionConflictError,
 } from "../../domains/history";
 import {
+  ActionRow,
   CalendarField,
   ContentCard,
   EmptyState,
@@ -508,7 +509,7 @@ export function SessionCorrectionScreen({
       </View>}
       {exercise.sets.map((set) => {
         const label = (set.kind === "warmup" ? "Warm-up " : "Working set ") + (set.ordinal + 1);
-        return <View key={set.id} style={[styles.set, { borderColor: colors.divider }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{label}</Text>{fieldsForSet(set, label).map((field) => <SemanticNumberField key={field.field} kind={field.kind} label={field.label} minimum={field.minimum} onChangeText={(value) => setText((current) => ({ ...current, [setKey(set.id, field.field)]: value }))} value={text[setKey(set.id, field.field)] ?? fallbackValue(set, field.field)} />)}<SecondaryAction label={"Change set " + (set.ordinal + 1) + " to " + (set.kind === "working" ? "warm-up" : "working")} onPress={() => changeSet(exercise.id, set.id, (entry) => ({ ...entry, kind: entry.kind === "working" ? "warmup" : "working" }))} /><SecondaryAction destructive label={"Remove set " + (set.ordinal + 1)} onPress={() => setDraft((current) => current === null ? null : { ...current, exercises: current.exercises.map((item) => item.id === exercise.id ? { ...item, sets: item.sets.filter((entry) => entry.id !== set.id) } : item) })} /></View>;
+        return <View key={set.id} style={[styles.set, { borderColor: colors.divider }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{label}</Text>{fieldsForSet(set, label).map((field) => <SemanticNumberField key={field.field} kind={field.kind} label={field.label} minimum={field.minimum} onChangeText={(value) => setText((current) => ({ ...current, [setKey(set.id, field.field)]: value }))} value={text[setKey(set.id, field.field)] ?? fallbackValue(set, field.field)} />)}<ActionRow><SecondaryAction label={"Change set " + (set.ordinal + 1) + " to " + (set.kind === "working" ? "warm-up" : "working")} onPress={() => changeSet(exercise.id, set.id, (entry) => ({ ...entry, kind: entry.kind === "working" ? "warmup" : "working" }))} /><SecondaryAction destructive label={"Remove set " + (set.ordinal + 1)} onPress={() => setDraft((current) => current === null ? null : { ...current, exercises: current.exercises.map((item) => item.id === exercise.id ? { ...item, sets: item.sets.filter((entry) => entry.id !== set.id) } : item) })} /></ActionRow></View>;
       })}
       <SecondaryAction label={"Add set to " + exercise.name} onPress={() => addSet(exercise.id)} />
     </View></ContentCard>)}
@@ -517,7 +518,7 @@ export function SessionCorrectionScreen({
     <PlanEditorTextField label="Plan day ID" onChangeText={(planDayId) => setDraft((current) => current === null ? null : { ...current, session: { ...current.session, planDayId: planDayId === "" ? null : planDayId } })} value={draft.session.planDayId ?? ""} />
     <SecondaryAction label={(auditVisible ? "Hide" : "Show") + " correction history"} onPress={() => setAuditVisible((current) => !current)} />
     {auditVisible ? <View style={styles.audit}><SectionHeader title="Correction history" />{editor.auditEvents.length === 0 ? <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>No corrections have been saved for this workout.</Text> : editor.auditEvents.map((event) => <View key={event.id} style={[styles.auditEvent, { borderColor: colors.divider }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{auditLabel(event)}</Text><Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Saved correction</Text></View>)}</View> : null}
-    <View style={styles.actions}><SecondaryAction label="Cancel" onPress={onBack} /><PrimaryAction busy={saveState === "saving"} label="Save correction" onPress={() => void save()} /></View>
+    <ActionRow><SecondaryAction label="Cancel" onPress={onBack} /><PrimaryAction busy={saveState === "saving"} label="Save correction" onPress={() => void save()} /></ActionRow>
   </>);
 }
 

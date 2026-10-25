@@ -11,7 +11,7 @@ import {
 import { DEFAULT_TWO_POINT_FOUR_KM_TARGET_MS, runningTargetForDistance, type RunningPlanAggregate } from "../../domains/running/contracts";
 import type { RunningPlanRuntimePort, RunningTargetMutationInput } from "../../bootstrap/runningPlanRuntime";
 import { BottomSheet } from "./BottomSheet";
-import { FocusablePressable, InlineNotice, PrimaryAction, SecondaryAction } from "./index";
+import { ActionRow, FocusablePressable, InlineNotice, PrimaryAction, SecondaryAction } from "./index";
 import { radius, sizes, space, typeScale, useAppTheme } from "../theme";
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
@@ -364,10 +364,10 @@ export function RunningTargetSheet({
           {error === "save" ? <InlineNotice action={<SecondaryAction label="Retry saving target" onPress={() => { void save(); }} />} body="Your current target is unchanged. Review the draft and try again." heading="Target was not saved" tone="error" /> : null}
           {error === "stale" ? <InlineNotice action={<SecondaryAction label="Reload target" onPress={() => { void reload(); }} />} body="Review the latest target before saving again." heading="Target changed since this sheet opened" tone="error" /> : null}
           {error === "refresh" ? <InlineNotice action={<SecondaryAction label="Retry loading progress" onPress={() => { void retryCommittedRefresh(); }} />} body="The target was committed, but the root has not read the matching saved revision yet. Retrying will not submit the target again." heading="Target saved; Progress needs refreshing" tone="attention" /> : null}
-          <View style={styles.actions}>
+          <ActionRow>
             <SecondaryAction disabled={busy} label="Discard target changes" onPress={onClose} />
             <PrimaryAction busy={busy} label="Save target" onPress={() => { void save(); }} />
-          </View>
+          </ActionRow>
         </View>
       )}
     </BottomSheet>

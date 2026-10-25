@@ -1,7 +1,7 @@
 import {
   Archive, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, CalendarDays, Check, Copy,
   Dumbbell, Ellipsis, Eye, EyeOff, Filter, Link, Pencil, Plus, RotateCcw,
-  Save, Settings, Timer, Trash2, Unlink, Ruler, HeartPulse, Gauge, Repeat, Shuffle, List, Scale,
+  Save, Settings, Timer, Trash2, Unlink, FileInput, Ruler, HeartPulse, Gauge, Repeat, Shuffle, List, Scale,
 } from "lucide-react-native";
 import React, { useState } from "react";
 import { StyleSheet, Text, useWindowDimensions, View, type TextStyle } from "react-native";
@@ -10,6 +10,8 @@ import { sizes, typeScale } from "../theme";
 
 /** Compact captions retain the original action name on the owning pressable. */
 function compactAction(label: string) {
+  if (/^actions$/i.test(label)) return { label: "Actions", Icon: Ellipsis };
+  if (/^import/i.test(label)) return { label: "Import", Icon: FileInput };
   if (/^undo/i.test(label)) return { label: "Undo", Icon: RotateCcw };
   if (/^load$/i.test(label)) return { label: "Load", Icon: Dumbbell };
   if (/^relative$/i.test(label)) return { label: "Relative", Icon: Scale };

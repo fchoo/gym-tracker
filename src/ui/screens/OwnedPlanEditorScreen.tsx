@@ -29,6 +29,7 @@ import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
 import {
+  ActionRow,
   ConfirmationSheet,
   ContentCard,
   EmptyState,
@@ -1158,7 +1159,7 @@ export function OwnedPlanEditorScreen({
             testID="owned-plan-editor-name"
             value={draft.name}
           />
-          <View style={styles.scheduleActions}>
+          <ActionRow>
             <SecondaryAction
               disabled={invalidDraft}
               label="Schedule"
@@ -1177,7 +1178,7 @@ export function OwnedPlanEditorScreen({
                 }
               }}
             />
-          </View>
+          </ActionRow>
           {invalidDraft ? (
             <Text style={[
               typeScale.body as TextStyle,
@@ -1254,7 +1255,7 @@ export function OwnedPlanEditorScreen({
                   The latest plan could not be loaded. Try reviewing again.
                 </Text>
               ) : null}
-              <SecondaryAction
+              <ActionRow><SecondaryAction
                 label="Review latest"
                 onPress={() => {
                   void reviewLatest();
@@ -1263,7 +1264,7 @@ export function OwnedPlanEditorScreen({
               <SecondaryAction
                 label="Keep editing"
                 onPress={() => setRevisionConflict(false)}
-              />
+              /></ActionRow>
             </View>
           ) : null}
           {impactRequired ? (
@@ -1273,7 +1274,7 @@ export function OwnedPlanEditorScreen({
               tone="attention"
             />
           ) : null}
-          <View style={styles.lifecycleActions}>
+          <ActionRow>
             <SecondaryAction
               busy={lifecycleBusy}
               label="Duplicate plan"
@@ -1298,7 +1299,7 @@ export function OwnedPlanEditorScreen({
                 ref={archiveActionRef}
               />
             )}
-          </View>
+          </ActionRow>
           <ContentCard testID="owned-plan-days-card">
             <SectionHeader
               supportingText={`${draft.days.length} ${

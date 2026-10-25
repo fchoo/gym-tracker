@@ -20,6 +20,7 @@ import {
   type LocalDate,
 } from "../../domains/scheduling/localDate";
 import {
+  ActionRow,
   FocusablePressable,
   PrimaryAction,
   SecondaryAction,
@@ -569,14 +570,14 @@ export function CalendarField({
                     }}
                   />
                 )}
-                <View style={styles.confirmActions} testID="calendar-confirm-actions">
+                <ActionRow  testID="calendar-confirm-actions">
                   <CalendarCancelAction />
                   <PrimaryAction
                     disabled={draft === null || !withinBounds(draft, minimum, maximum)}
                     label="Apply Date"
                     onPress={confirm}
                   />
-                </View>
+                </ActionRow>
               </>
             )}
           </View>

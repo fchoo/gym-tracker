@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, TextInput, View, type TextStyle } from "react-native";
 
 import { BottomSheet } from "./BottomSheet";
-import { FocusablePressable, PrimaryAction, SecondaryAction } from "./index";
+import { ActionRow, FocusablePressable, PrimaryAction, SecondaryAction } from "./index";
 import { PLAN_WEIGHT_INCREMENT_GRAMS } from "../../domains/workout/workoutPreferences";
 import { radius, sizes, space, typeScale, useAppTheme } from "../theme";
 
@@ -84,8 +84,8 @@ export function WorkoutPlanSettingsSheet({
       <PrimaryAction busy={saving} disabled={saving} label="Save weight increment" onPress={() => { void save("weightIncrementGrams"); }} />
     </View>
     <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Sound and haptic cues remain controlled by device settings.</Text>
-    <SecondaryAction disabled={saving} label="Edit plan after workout · Schedule" onPress={onEditPlanAfterWorkout} />
-    <SecondaryAction disabled={saving} label="Workout actions" onPress={onOpenWorkoutActions} />
+    <ActionRow><SecondaryAction disabled={saving} label="Edit plan after workout · Schedule" visibleLabel="Schedule" onPress={onEditPlanAfterWorkout} />
+    <SecondaryAction disabled={saving} label="Workout actions" onPress={onOpenWorkoutActions} /></ActionRow>
   </BottomSheet>;
 }
 

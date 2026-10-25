@@ -360,7 +360,7 @@ describe("CalendarField", () => {
     expect(screen.getByTestId("calendar-grid"))
       .toHaveStyle({ flexWrap: "wrap" });
     expect(screen.getByTestId("calendar-confirm-actions"))
-      .toHaveStyle({ flexWrap: "wrap" });
+      .toHaveStyle({ flexDirection: "row", flexWrap: "nowrap" });
 
     await fireEvent(selectedDay, "keyDown", { nativeEvent: { key: "ArrowRight" } });
     expect(screen.getByLabelText("Calendar grid"))

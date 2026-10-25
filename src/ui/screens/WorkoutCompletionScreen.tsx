@@ -19,6 +19,7 @@ import type {
   SessionDetail,
 } from "../../domains/workout";
 import {
+  ActionRow,
   InlineNotice,
   ContentCard,
   MetricSummary,
@@ -345,7 +346,7 @@ export function WorkoutCompletionScreen({
               recommendation={recommendation}
             />
           ))}
-          <View style={styles.actions}>
+          <ActionRow>
             <SecondaryAction
               label="View workout details"
               onPress={onViewDetails}
@@ -354,7 +355,7 @@ export function WorkoutCompletionScreen({
               label="Return to Today"
               onPress={onReturnToday}
             />
-          </View>
+          </ActionRow>
         </>
       }
       />

@@ -5,6 +5,7 @@ import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
 import {
+  ActionRow,
   InlineNotice,
   PrimaryAction,
   ScreenHeader,
@@ -217,14 +218,14 @@ export function OwnedPlanDetailScreen(props: OwnedPlanDetailScreenProps) {
           heading="Lifecycle needs attention"
           tone="error"
         />}
-        <PrimaryAction label="Edit plan" onPress={props.onEdit} />
+        <ActionRow><PrimaryAction label="Edit plan" onPress={props.onEdit} />
         <SecondaryAction label="Edit schedule" onPress={props.onSchedule} />
         {!isArchived ? <SecondaryAction
           disabled={plan.hasInProgressWorkout}
           label="Preview activation"
           onPress={props.onSchedule}
-        /> : null}
-        <SecondaryAction
+        /> : null}</ActionRow>
+        <ActionRow><SecondaryAction
           disabled={plan.hasInProgressWorkout || busy}
           label="Duplicate plan"
           onPress={() => setReview("duplicate")}
@@ -241,7 +242,7 @@ export function OwnedPlanDetailScreen(props: OwnedPlanDetailScreenProps) {
           label="Archive plan"
           onPress={() => setReview("archive")}
           ref={archiveTriggerRef}
-        />}
+        />}</ActionRow>
       </>}
       testID="owned-plan-detail"
     />

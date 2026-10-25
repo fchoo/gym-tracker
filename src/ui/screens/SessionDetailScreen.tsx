@@ -24,6 +24,7 @@ import type {
   SessionProgress,
 } from "../../domains/workout";
 import {
+  ActionRow,
   ConfirmationSheet,
   InlineNotice,
   PrimaryAction,
@@ -376,7 +377,7 @@ export function SessionDetailScreen({
             heading="Recommendation"
             tone="neutral"
           />
-          {onCorrectWorkout !== undefined
+          <ActionRow>{onCorrectWorkout !== undefined
             && (detail.status === "completed" || detail.status === "partial") ? (
               <SecondaryAction
                 label="Correct workout"
@@ -393,7 +394,7 @@ export function SessionDetailScreen({
               }}
               ref={removeActionRef}
             />
-          ) : null}
+          ) : null}</ActionRow>
           {detail.resumable && onResume !== undefined ? (
             <PrimaryAction label="Resume workout" onPress={onResume} />
           ) : null}

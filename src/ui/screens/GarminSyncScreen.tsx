@@ -19,6 +19,7 @@ import {
 } from "react-native";
 
 import {
+  ActionRow,
   AppearanceSheet,
   ContentCard,
   FocusablePressable,
@@ -675,7 +676,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
               style={[styles.input, typeScale.body as TextStyle, { borderColor: colors.divider, color: colors.textPrimary }]}
             />
           </View>
-          <View style={styles.actions}>
+          <ActionRow>
             <PrimaryAction
               busy={state.operation === "connecting"}
               label="Continue"
@@ -686,7 +687,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
               label="Cancel"
               onPress={cancelConnection}
             />
-          </View>
+          </ActionRow>
         </View>
       ) : null}
       {state.connection === "connected" ? (
@@ -695,7 +696,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
             supportingText="Only committed activity results appear in your local history."
             title="Connected to Garmin"
           />
-          <View style={styles.actions}>
+          <ActionRow>
             <PrimaryAction
               busy={state.operation === "syncing"}
               label="Sync now"
@@ -707,7 +708,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
               onPress={() => setDisconnectOpen(true)}
               ref={disconnectRef}
             />
-          </View>
+          </ActionRow>
           <SyncResult
             hasPendingDateReview={state.pendingDateReview !== null}
             lastSuccessfulSync={state.lastSuccessfulSync}
@@ -781,7 +782,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
           style={[styles.input, typeScale.body as TextStyle, { borderColor: colors.divider, color: colors.textPrimary }]}
           testID="garmin-mfa-code-input"
         />
-        <PrimaryAction
+        <ActionRow><PrimaryAction
           busy={state.operation === "verifying_mfa"}
           label="Verify"
           onPress={() => { void controller.submitMfa(); }}
@@ -790,7 +791,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
           disabled={state.operation === "verifying_mfa"}
           label="Cancel"
           onPress={cancelConnection}
-        />
+        /></ActionRow>
       </BottomSheet>
       <BottomSheet
         cancelDisabled={dateReviewBusy}
@@ -865,7 +866,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
             tone="error"
           />
         )}
-        <PrimaryAction
+        <ActionRow><PrimaryAction
           busy={dateReviewBusy}
           label="Use activity date"
           onPress={() => {
@@ -876,7 +877,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
           disabled={dateReviewBusy}
           label="Keep for later"
           onPress={() => setDateReviewOpen(false)}
-        />
+        /></ActionRow>
       </BottomSheet>
       <ConfirmationDialog
         body="Your encrypted Garmin session will be cleared. Imported activity history remains on this device."

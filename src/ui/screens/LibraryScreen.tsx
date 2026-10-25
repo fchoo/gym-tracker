@@ -33,6 +33,7 @@ import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
 import {
+  ActionRow,
   ActionCluster,
   ContentCard,
   FocusablePressable,
@@ -1134,11 +1135,11 @@ function FilterSheet({
               />
             </React.Fragment>
           ))}
-          <PrimaryAction
+          <ActionRow><PrimaryAction
             label="Show results"
             onPress={() => onApply(draft)}
           />
-          <SecondaryAction label="Keep Current Filters" onPress={onClose} />
+          <SecondaryAction label="Keep Current Filters" onPress={onClose} /></ActionRow>
     </BottomSheet>
   );
 }
@@ -1244,11 +1245,11 @@ function StarterFilterSheet({
               />
             </React.Fragment>
           ))}
-          <PrimaryAction
+          <ActionRow><PrimaryAction
             label="Show results"
             onPress={() => onApply(draft)}
           />
-          <SecondaryAction label="Keep Current Filters" onPress={onClose} />
+          <SecondaryAction label="Keep Current Filters" onPress={onClose} /></ActionRow>
     </BottomSheet>
   );
 }
@@ -1787,7 +1788,7 @@ export function LibraryScreen({
             {showContentUpdate ? (
               <InlineNotice
                 action={
-                  <View style={styles.noticeActions}>
+                  <ActionRow>
                     <SecondaryAction
                       label="Review changes"
                       onPress={() => {
@@ -1804,7 +1805,7 @@ export function LibraryScreen({
                         );
                       }}
                     />
-                  </View>
+                  </ActionRow>
                 }
                 body={`${contentUpdateResult.added} added · ${contentUpdateResult.updated} updated · ${contentUpdateResult.newlyUnavailable} unavailable`}
                 heading="Exercise library updated"
@@ -2024,8 +2025,8 @@ export function LibraryScreen({
       >
         <Text>This unused plan will be removed from your Library.</Text>
         {deleteError === null ? null : <InlineNotice heading="Plan could not be deleted" body={deleteError} tone="error" />}
-        <PrimaryAction label="Delete plan" busy={deleteBusy} onPress={() => { void confirmDeletePlan(); }} />
-        <SecondaryAction label="Keep plan" disabled={deleteBusy} onPress={() => setDeleteSelection(null)} />
+        <ActionRow><PrimaryAction label="Delete plan" busy={deleteBusy} onPress={() => { void confirmDeletePlan(); }} />
+        <SecondaryAction label="Keep plan" disabled={deleteBusy} onPress={() => setDeleteSelection(null)} /></ActionRow>
       </BottomSheet>
       <BottomSheet
         heading={LIBRARY_ACTION_SHEET_CONFIGURATION.heading}
