@@ -1,7 +1,7 @@
 ---
 phase: 20
 slug: native-acceptance
-status: focused_native_pending
+status: personal_apk_verified_full_acceptance_deferred
 updated: 2026-10-25
 focused_verification_scope: owner_authorized_personal_apk
 full_acceptance_deferred: true
@@ -20,9 +20,9 @@ external_conditional: 0
 
 ## Current focused verification override — 2026-10-25
 
-The owner authorized source-affected checks, a fresh signed personal APK and data-preserving phone updates while deferring the exhaustive Phase 20 matrix and aggregate coverage closeout. [Current implementation and focused plan](20-PERSONAL-UX-UPDATE-20261025.md) records the exact completed source and pending receipt fields. This override is the active execution route; the original execution order, task map, numeric budgets and final sign-off below remain retained for later full acceptance.
+The owner authorized source-affected checks, a fresh signed personal APK and data-preserving phone updates while deferring the exhaustive Phase 20 matrix and aggregate coverage closeout. [Current implementation and focused plan](20-PERSONAL-UX-UPDATE-20261025.md) records the exact installed source and completed personal delivery receipts. This override is the active execution route; the original execution order, task map, numeric budgets and final sign-off below remain retained for later full acceptance.
 
-Current source `908098f388b14823ab262fbdfd77e0c13468d688` implements short Calendar months, phone-current timestamp display, compatible Garmin automatic dates, single-line actions, disclosure/reorder, rest audio/precise background alarms and scoped save/render guards. The intermediate `b73b36d2` native visual overlap failure is preserved. The final shared-value/render handoff repair passed a fresh signed build and focused emulator release/save/title checks. Source/APK equality is bound in the current receipt; phone installation awaits its USB connection. Remount workarounds were removed, preserving keyboard focus. Earlier source `37226a12` passed the owner's minimal physical check and was installed with phone data preserved; it does not prove the subsequent final source.
+Current source `908098f388b14823ab262fbdfd77e0c13468d688` implements short Calendar months, phone-current timestamp display, compatible Garmin automatic dates, single-line actions, disclosure/reorder, rest audio/precise background alarms and scoped save/render guards. The intermediate `b73b36d2` native visual overlap failure is preserved. The final shared-value/render handoff repair passed a fresh signed build and focused emulator release/save/title checks. Source/APK equality is bound in the current receipt; phone installation, byte matching, data preservation and launch passed; the owner manually verified on 2026-10-26 and closed further phone checks. Remount workarounds were removed, preserving keyboard focus. Earlier source `37226a12` passed the owner's minimal physical check and was installed with phone data preserved; it does not prove the subsequent final source.
 
 The focused path runs affected regressions and required compiler/boundary checks, builds the completed source, verifies its scoped native paths, then updates the actual phone with data preserved. Passing unrelated historical scopes are not automatically rerun or relabelled. Final source/APK/device receipts belong to the orchestrator. No credential or broad Garmin login work is required by this scope.
 
@@ -210,4 +210,4 @@ No source-audit item is missing.
 - [ ] DEV-01/DEV-02/TIM-01 and the self-contained Garmin route are measured as required baselines; missing evidence is NOT_RUN/REVIEW_REQUIRED, failures are FAIL, and successful implementations may PASS.
 - [ ] Samsung evidence is fresh observation-only and final handoff stops without release action or Terminal Seal.
 
-**Current authorization:** Focused personal APK corrections, affected checks, signed build and data-preserving phone update are authorized; final `8f77d0d5` source/APK/native receipts remain pending in the 2026-10-25 amendment. The 2026-10-22 source/host records above are retained with their historical hashes. Full Plans 20-08–20-12, exhaustive Samsung observations, sole final seal and independent goal/Nyquist verification remain deferred and incomplete. No full native acceptance, final readiness or milestone completion PASS is claimed.
+**Current authorization:** Focused personal APK corrections, affected checks, signed build and data-preserving phone update are authorized; final `908098f3` personal APK receipts confirm installation, byte matching, preserved data and launch, with owner manual verification closed on 2026-10-26. The 2026-10-22 source/host records above are retained with their historical hashes. Full Plans 20-08–20-12, exhaustive Samsung observations, sole final seal and independent goal/Nyquist verification remain deferred and incomplete. No full native acceptance, final readiness or milestone completion PASS is claimed.

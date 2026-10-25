@@ -333,13 +333,13 @@ Plans:
 - [x] 20-05-PLAN.md
 - [x] 20-06-PLAN.md
 - [x] 20-07-PLAN.md
-- [ ] 20-08-PLAN.md — reopened for the current source/build corrections; its historical summary and `335e0563` run remain retained. Current source `908098f3` passed its signed build and focused emulator checks; Samsung installation awaits USB; exhaustive Plan 20-08 closeout remains deferred.
+- [ ] 20-08-PLAN.md — reopened for the current source/build corrections; its historical summary and `335e0563` run remain retained. Current source `908098f3` passed its signed build and focused emulator checks; Samsung installation and owner manual verification passed; exhaustive Plan 20-08 closeout remains deferred.
 - [ ] 20-09-PLAN.md — deferred full SQLite/recovery observations; any later execution requires a fresh valid source-bound run, not the obsolete `335e0563` build.
 - [ ] 20-10-PLAN.md
 - [ ] 20-11-PLAN.md
 - [ ] 20-12-PLAN.md
 
-**Current implementation / focused delivery:** Calendar short month headings, phone-current display timezone, compatible Garmin auto dates, single-line actions, exercise disclosure/reorder, prepared rest cues/precise background alarms, scoped saves and stale-render guards are implemented. Earlier `37226a12` was checked and installed with phone data preserved. Intermediate `b73b36d2` failed native reorder overlap; source `908098f3` fixes shared-value/render cleanup timing and passes final-source emulator checks. The signed APK is prepared; phone installation awaits USB connection. [Current plan and pending receipt fields](phases/20-native-acceptance/20-PERSONAL-UX-UPDATE-20261025.md).
+**Current implementation / focused delivery:** Calendar short month headings, phone-current display timezone, compatible Garmin auto dates, single-line actions, exercise disclosure/reorder, prepared rest cues/precise background alarms, scoped saves and stale-render guards are implemented. Earlier `37226a12` was checked and installed with phone data preserved. Intermediate `b73b36d2` failed native reorder overlap; source `908098f3` fixes shared-value/render cleanup timing and passes final-source emulator checks. The signed APK is installed with data preserved; launch and owner manual verification passed. [Current plan and completed personal receipts](phases/20-native-acceptance/20-PERSONAL-UX-UPDATE-20261025.md).
 
 **UI hint**: yes
 **Plan flags**: focused verification research; parity ledger and UI review required; plan check required; fresh review convergence required; depends on all prior phases; DEV-01/02 are accepted and Garmin native proof remains pending implementation
@@ -359,7 +359,7 @@ Plans:
 | 17. Library & Running Plans | 17-library-running-plans | 14/14 | Host complete; verification gaps retained | 2026-10-12 |
 | 18. Garmin Account Sync | 18-garmin-import | 14/14 | Complete    | 2026-10-12 |
 | 19. Progress Parity | 19-progress-parity | 10/10 | Host complete; native deferred | 2026-10-14 |
-| 20. Native Acceptance | 20-native-acceptance | 8/12 (20-08 reopened) | Focused native pending; full acceptance deferred | — |
+| 20. Native Acceptance | 20-native-acceptance | 8/12 (20-08 reopened) | Personal APK verified; full acceptance deferred | — |
 
 ## Backlog
 

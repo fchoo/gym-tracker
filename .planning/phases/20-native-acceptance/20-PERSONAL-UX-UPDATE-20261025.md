@@ -2,7 +2,7 @@
 phase: 20
 slug: native-acceptance
 updated: 2026-10-25
-status: focused_emulator_pass_phone_install_pending
+status: personal_apk_verified_closed
 source_head: 908098f388b14823ab262fbdfd77e0c13468d688
 verification_scope: owner_authorized_personal_apk
 full_phase20_complete: false
@@ -16,10 +16,10 @@ The owner authorized focused fixes, checks affected by those fixes, a fresh sign
 ## Source and delivery position
 
 - Current completed source: `908098f388b14823ab262fbdfd77e0c13468d688` (`908098f3`), branch `fchoo/UX-revamp`.
-- Earlier source `37226a12` passed the owner's minimal physical check and was installed as a data-preserving update. It is the last confirmed installed source at this update; its result does not cover subsequent Calendar and save/reorder changes.
+- Earlier source `37226a12` passed the owner's minimal physical check and was installed as a data-preserving update. Its historical result does not cover subsequent Calendar/save/reorder changes. The final `908098f3` APK is now installed and verified separately.
 - Intermediate source `b73b36d2` failed the native reorder visual check because committed rows overlapped. Preserve that failure; it is not acceptance evidence for the final source.
 - Final source `908098f3` fixes the timing gap directly: shared translation remains at the drop until React clears the preview, and only the next drag resets it. Earlier host/list remount approaches were removed; focus and state owners remain stable. The fresh final-source native release check passed; intermediate `b73b36d2`, `8f77d0d5` and `ab12ac61` observations remain nonpassing history.
-- The signed build, retained/installed emulator digest and focused native checks are complete. Phone installation is pending the exact Samsung USB connection; no later phone PASS or installed-source claim is made.
+- The signed build, retained/installed emulator digest and focused native checks are complete. The exact Samsung installation completed with byte matching and app data identity preserved. The main screen launched; the owner manually verified the app and closed phone checks on 2026-10-26.
 
 ## Implemented behavior
 
@@ -45,8 +45,8 @@ These entries describe current implementation and its affected test scope. They 
 | Run checks affected by the final repair plus required compiler/boundary checks | Passed | 44 focused drag/workout tests; 14 scoped save/recovery tests; 16 unchanged rest regressions; 42 affected Calendar tests and 10 affected existing runtime cases. Typecheck, boundaries and source review passed. |
 | Build a fresh signed APK from final source | Passed | Exact source/APK binding below; signing, alignment and Android binary validation passed. |
 | Verify final reorder/collapse/save/Calendar behavior in the emulator | Passed for affected release/save/title paths | Final drop has no post-release snap-back/overlap; set-value save returns to workout; short month title/full accessible name verified. Previously passing collapse suites were not repeated. |
-| Update the actual phone with data preserved and perform the owner's focused check | Pending USB connection | ADB currently has no selected Samsung. Last confirmed phone update was `37226a12`; no new phone data mutation. |
-| Report final artifact and focused outcome | Local report complete; phone result pending | See [current report](../../../artifacts/native/interaction-responsiveness/REPORT.md), [STATE](../../STATE.md) and [ROADMAP](../../ROADMAP.md). |
+| Update the actual phone with data preserved and perform the owner's focused check | Passed; owner confirmed | Installed byte digest matches, app data identity preserved and launch passed. Owner manually verified on 2026-10-26 and closed phone checks. |
+| Report final artifact and focused outcome | Complete | See [current report](../../../artifacts/native/interaction-responsiveness/REPORT.md), [STATE](../../STATE.md) and [ROADMAP](../../ROADMAP.md). |
 | Exhaustive Phase 20 matrix, full coverage closeout, attended matrix, final seal and milestone completion | Deferred; incomplete | Original Plans 20-08–20-12, original validation flags and unchecked final sign-off remain retained. |
 
 Source changes during an immutable producer require preserving that run and creating a fresh source-bound result. Native work remains serialized under the orchestrator's exclusive device window. A failed check remains a failure until a fresh run verifies the completed source.
@@ -61,10 +61,10 @@ Source changes during an immutable producer require preserving that run and crea
 | Signed APK SHA-256 | `259a607db376b3bf9eff28b92694e60ea0c28eac8c02285b618e6444cf945669` |
 | Final-source build receipt | `artifacts/native/personal-release/20261025-230155-908098f388b1/build-result.json` |
 | Emulator scoped native receipt/result | Passed; [receipt](../../../artifacts/native/interaction-responsiveness/VERIFICATION.json) and [drop recording](../../../artifacts/native/interaction-responsiveness/final-drop.mp4) |
-| Phone installed source/APK equality receipt | Pending; previous confirmed source `37226a12` |
-| Phone data preservation receipt | Pending |
-| Owner's focused physical check | Pending |
-| Focused personal APK delivery outcome | Final signed APK prepared and emulator verified; phone installation pending USB connection |
+| Phone installed source/APK equality receipt | [phone-install-verification.json](../../../artifacts/native/interaction-responsiveness/phone-install-verification.json); installed source `908098f3` |
+| Phone data preservation receipt | Passed in the same receipt; no app reset or uninstall |
+| Owner's focused physical check | Owner manually verified and closed checks on 2026-10-26 |
+| Focused personal APK delivery outcome | Installed and verified; personal workflow closed |
 | Full Phase 20 acceptance / final seal | Deferred and incomplete |
 | Milestone v1.2 completion | Incomplete |
 
@@ -81,7 +81,7 @@ The on-disk active milestone has 98 plan files and 94 retained summary files. Ph
 | 17 | 14 | 14 | Host implementation recorded; retained verification gaps/native debt. |
 | 18 | 14 | 14 | GSD verification passed; full Phase 20 Garmin journey still incomplete. |
 | 19 | 10 | 10 | GSD verification passed; exhaustive native closeout remains in Phase 20. |
-| 20 | 12 | 8 | Plan 20-08 reopened; focused emulator result passed, phone installation pending; full acceptance deferred. |
+| 20 | 12 | 8 | Plan 20-08 reopened; focused emulator and personal phone verification passed; full acceptance deferred. |
 | Total | 98 | 94 | Four phases have passed GSD verification; seven upstream phases have implementation summaries. |
 
 The GSD progress query identifies Phase 14 as the earliest retained verification gap, while current owner-authorized work is the focused Phase 20 personal APK update. That discrepancy is recorded rather than resolved by changing historical verification verdicts. Requirement mapping remains 172/172 mapped; it is not 172 native PASS results. No completion percentage is used for acceptance.
