@@ -7,6 +7,7 @@ import {
 } from "react-native";
 import {
   useAudioPlayer,
+  setAudioModeAsync,
   type AudioPlayer,
 } from "expo-audio";
 
@@ -36,6 +37,8 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
     let soundOwnership: ReturnType<typeof claimForegroundRestSound> | undefined;
     const pendingLoads = new Set<() => void>();
     const rewinds = new Map<AudioPlayer, Promise<void>>();
+    let audioModeReady = false;
+    let audioModePreparation: Promise<void> | undefined;
     const trace = (event: string, player?: AudioPlayer, fields: Record<string, unknown> = {}) => {
       if (!__DEV__) return;
       let native: Record<string, unknown> = {};
@@ -46,6 +49,19 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
         };
       } catch { native = { snapshotUnavailable: true }; }
       console.trace("GT_REST_CUE", JSON.stringify({ event, generation, countdownGeneration, appState: AppState.currentState, ...native, ...fields }));
+    };
+    const prepareAudioMode = () => {
+      audioModePreparation ??= (async () => {
+        trace("audio-mode-prepare");
+        // Expo's native Android default requests transient focus per tone.
+        // Explicit mixing keeps short cues alongside music without repeated
+        // focus acquisition/abandonment. Background completion uses its alarm.
+        // https://docs.expo.dev/versions/latest/sdk/audio/#audiomode
+        await setAudioModeAsync({ interruptionMode: "mixWithOthers", playsInSilentMode: true });
+        audioModeReady = true;
+        trace("audio-mode-ready");
+      })();
+      return audioModePreparation;
     };
 
     const rewind = (player: AudioPlayer) => {
@@ -94,14 +110,14 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
         if (player.isLoaded) finish();
       });
 
-    const waitForRewind = async (pending: Promise<void>, maxWaitMs: number) => {
+    const waitForRewind = async (pending: Promise<void>, maxWaitMs: number, failure = "rest_countdown_audio_seek_timeout") => {
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
         await Promise.race([
           pending,
           new Promise<never>((_resolve, reject) => {
             timeout = setTimeout(
-              () => reject(new Error("rest_countdown_audio_seek_timeout")),
+              () => reject(new Error(failure)),
               Math.max(0, maxWaitMs),
             );
           }),
@@ -142,6 +158,10 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
       const requestedAtMs = Date.now();
       trace("request", player, { requestGeneration, maxWaitMs });
       try {
+        if (!audioModeReady) {
+          await waitForRewind(prepareAudioMode(), maxWaitMs, "rest_countdown_audio_mode_timeout");
+          if (requestGeneration !== generation) return;
+        }
         // Supersede audible playback as well as pending loads/seeks. Two native
         // players share the audio session and must never play over each other.
         shortPlayer.pause();
@@ -188,6 +208,7 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
     return {
       rewind,
       trace,
+      prepareAudioMode,
       cancelPendingCues,
       port: Object.freeze({
         playShortCue: () => replay(shortPlayer, 350),
@@ -255,6 +276,8 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
   }, [longPlayer, shortPlayer]);
 
   useEffect(() => {
+    // Prepare once when the workout route mounts, ahead of its first deadline.
+    void playback.prepareAudioMode().catch(() => { playback.trace("audio-mode-failed"); });
     const subscriptions = [shortPlayer, longPlayer].map((player) =>
       player.addListener(STATUS_EVENT, (status) => {
         if (__DEV__ && (status.didJustFinish || status.playing !== undefined)) playback.trace("native-status", player, {

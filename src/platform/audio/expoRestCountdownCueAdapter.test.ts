@@ -2,7 +2,7 @@ import { act, render, renderHook } from "@testing-library/react-native";
 import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { AppState, type AppStateStatus } from "react-native";
-import { useAudioPlayer, type AudioStatus } from "expo-audio";
+import { setAudioModeAsync, useAudioPlayer, type AudioStatus } from "expo-audio";
 import { useExpoRestCountdownCueAdapter } from "./expoRestCountdownCueAdapter";
 import { RestDock } from "../../ui/components/RestDock";
 import { AppearanceProvider } from "../../ui/theme";
@@ -10,8 +10,9 @@ import { AppearanceProvider } from "../../ui/theme";
 const SHORT_CUE_ASSET = require("../../../assets/audio/rest-cue-short.wav");
 const LONG_CUE_ASSET = require("../../../assets/audio/rest-cue-long.wav");
 
-jest.mock("expo-audio", () => ({ useAudioPlayer: jest.fn() }));
+jest.mock("expo-audio", () => ({ useAudioPlayer: jest.fn(), setAudioModeAsync: jest.fn(async () => undefined) }));
 const mockedUseAudioPlayer = jest.mocked(useAudioPlayer);
+const mockedSetAudioMode = jest.mocked(setAudioModeAsync);
 
 function cuePlayer() {
   const listeners = new Set<(status: Partial<AudioStatus>) => void>();
@@ -75,6 +76,7 @@ let restoreAppState: () => void;
 let appStateListener: jest.SpiedFunction<typeof AppState.addEventListener>;
 beforeEach(() => {
   mockedUseAudioPlayer.mockReset();
+  mockedSetAudioMode.mockReset().mockResolvedValue(undefined);
   appStateListener = jest.spyOn(AppState, "addEventListener").mockImplementation(() => ({ remove: jest.fn() }));
   const descriptor = Object.getOwnPropertyDescriptor(AppState, "currentState");
   Object.defineProperty(AppState, "currentState", { configurable: true, value: "active" });
@@ -95,6 +97,52 @@ async function renderAdapter(shortPlayer = cuePlayer(), longPlayer = cuePlayer()
 }
 
 describe("Expo rest countdown cue adapter", () => {
+  it("prepares mixing before any audible cue so short sounds never interrupt workout music", async () => {
+    let prepare!: () => void;
+    mockedSetAudioMode.mockImplementation(() => new Promise<void>((resolve) => { prepare = resolve; }));
+    const { rendered, shortPlayer, longPlayer } = await renderAdapter();
+    expect(mockedSetAudioMode).toHaveBeenCalledTimes(1);
+    expect(mockedSetAudioMode).toHaveBeenCalledWith({ interruptionMode: "mixWithOthers", playsInSilentMode: true });
+    const short = rendered.result.current.playShortCue();
+    expect(shortPlayer.play).not.toHaveBeenCalled();
+    prepare();
+    await short;
+    expect(shortPlayer.play).toHaveBeenCalledTimes(1);
+    await rendered.result.current.playLongCue();
+    expect(longPlayer.play).toHaveBeenCalledTimes(1);
+    await rendered.rerender(undefined);
+    expect(mockedSetAudioMode).toHaveBeenCalledTimes(1);
+    await rendered.unmount();
+  });
+
+  it("does not play a pending cue after cancellation while audio mode is being prepared", async () => {
+    let prepare!: () => void;
+    mockedSetAudioMode.mockImplementation(() => new Promise<void>((resolve) => { prepare = resolve; }));
+    const { rendered, shortPlayer } = await renderAdapter();
+    const short = rendered.result.current.playShortCue();
+    rendered.result.current.cancelPendingCues?.();
+    prepare();
+    await short;
+    expect(shortPlayer.play).not.toHaveBeenCalled();
+    await rendered.unmount();
+  });
+
+  it("contains failed or stalled audio mode preparation without playing a cue", async () => {
+    jest.useFakeTimers();
+    mockedSetAudioMode.mockRejectedValueOnce(new Error("mode_unavailable"));
+    const first = await renderAdapter();
+    await expect(first.rendered.result.current.playShortCue()).rejects.toThrow("mode_unavailable");
+    expect(first.shortPlayer.play).not.toHaveBeenCalled();
+    await first.rendered.unmount();
+    mockedSetAudioMode.mockImplementationOnce(() => new Promise(() => undefined));
+    const second = await renderAdapter();
+    const cue = second.rendered.result.current.playShortCue().then(() => undefined, (error: unknown) => error);
+    await act(async () => { await jest.advanceTimersByTimeAsync(350); });
+    expect(await cue).toEqual(new Error("rest_countdown_audio_mode_timeout"));
+    expect(second.shortPlayer.play).not.toHaveBeenCalled();
+    await second.rendered.unmount();
+  });
+
   it("plays deadline cues once on a nonaligned clock independently of display renders", async () => {
     jest.useFakeTimers();
     jest.setSystemTime(10_025);

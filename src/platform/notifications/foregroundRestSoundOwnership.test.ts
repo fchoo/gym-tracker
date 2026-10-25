@@ -14,6 +14,7 @@ jest.mock("expo-notifications", () => ({
 jest.mock("expo-haptics", () => ({ ImpactFeedbackStyle: { Light: "light" }, impactAsync: jest.fn() }));
 
 jest.mock("expo-audio", () => ({
+  setAudioModeAsync: jest.fn(async () => undefined),
   useAudioPlayer: jest.fn(() => ({
     pause: jest.fn(),
     addListener: jest.fn(() => ({ remove: jest.fn() })),
