@@ -4,6 +4,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useDeviceTimeZone } from "../time/useDeviceTimeZone";
 import {
   StyleSheet,
   Text,
@@ -70,12 +71,12 @@ function progressText(session: RemovedHistorySession): string {
   return `Working sets · ${progress.completed}/${progress.planned}${percent}`;
 }
 
-function removedText(session: RemovedHistorySession): string {
+function removedText(session: RemovedHistorySession, displayTimeZone: string): string {
   try {
     return `Removed · ${new Intl.DateTimeFormat(undefined, {
       dateStyle: "medium",
       timeStyle: "short",
-      timeZone: session.timezone,
+      timeZone: displayTimeZone,
     }).format(new Date(session.removedAtMs))}`;
   } catch {
     return "Removed · Time unavailable";
@@ -120,6 +121,7 @@ export function RemovedSessionsScreen({
   width,
 }: RemovedSessionsScreenProps) {
   const { colors } = useAppTheme();
+  const displayTimeZone = useDeviceTimeZone();
   const { enqueue } = useSemanticToast();
   const [state, setState] = useState<LoadState>("loading");
   const [sessions, setSessions] = useState<readonly RemovedHistorySession[]>([]);
@@ -296,7 +298,7 @@ export function RemovedSessionsScreen({
                 <Text
                   style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}
                 >
-                  {session.localDate}
+                  {session.displayLocalDate ?? session.localDate}
                 </Text>
                 <Text
                   style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}
@@ -306,7 +308,7 @@ export function RemovedSessionsScreen({
                 <Text
                   style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}
                 >
-                  {removedText(session)}
+                  {removedText(session, displayTimeZone)}
                 </Text>
                 {committedStage === null ? null : (
                   <Text

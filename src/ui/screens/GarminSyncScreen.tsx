@@ -1,3 +1,5 @@
+import { displayLocalDate, displayLocalDateTime } from "../../domains/shared/displayTimeZone";
+import { useDeviceTimeZone } from "../time/useDeviceTimeZone";
 import React, {
   useCallback,
   useEffect,
@@ -196,6 +198,9 @@ function ImportedActivities({
   returnFocusVersion?: number;
 }>) {
   const { colors } = useAppTheme();
+  const timeZone = useDeviceTimeZone();
+  const activityDate = (activity: GarminActivityListItem) => activity.startedAtMs === undefined
+    ? activity.displayLocalDate ?? activity.confirmedLocalDate : displayLocalDate(activity.startedAtMs, timeZone);
   const returnFocusRef = useRef<View>(null);
   useEffect(() => {
     if (returnFocusActivityId !== undefined
@@ -225,7 +230,7 @@ function ImportedActivities({
         <FocusablePressable
           accessibilityLabel={[
             `Open ${activity.title}.`,
-            `${activity.activityType}. ${activity.confirmedLocalDate}.`,
+            `${activity.activityType}. ${activityDate(activity)}.`,
             activity.identityCopy ?? null,
             activity.matchState === "matched" ? "Matched." : "Unmatched.",
             activity.revisionState === "needs_review" ? "Needs review." : "Accepted source facts.",
@@ -242,7 +247,7 @@ function ImportedActivities({
             <View style={styles.activityCopy}>
               <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>{activity.title}</Text>
               <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
-                {`${activity.activityType} · ${activity.confirmedLocalDate}`}
+                {`${activity.activityType} · ${activityDate(activity)}`}
               </Text>
               {activity.identityCopy === undefined ? null : (
                 <Text style={[typeScale.label as TextStyle, { color: colors.contentCardTextSecondary }]}>
@@ -355,13 +360,14 @@ function SyncResult({
   hasPendingDateReview: boolean;
 }>) {
   const { colors } = useAppTheme();
+  const timeZone = useDeviceTimeZone();
   const durableSummary = lastSuccessfulSync === null || sync.kind === "success" ? null : (
     <View style={styles.resultGroup}>
       <Text style={[styles.numericSecondary, { color: colors.textSecondary }]}>
         {`${lastSuccessfulSync.counts.newActivities} new · ${lastSuccessfulSync.counts.unchangedActivities} unchanged · ${lastSuccessfulSync.counts.reviewActivities} need review`}
       </Text>
       <Text style={[styles.numericSecondary, { color: colors.textSecondary }]}>
-        {`Last successful sync: ${new Date(lastSuccessfulSync.completedAtMs).toISOString()}`}
+        {`Last successful sync: ${displayLocalDateTime(lastSuccessfulSync.completedAtMs, timeZone)}`}
       </Text>
     </View>
   );
@@ -409,7 +415,7 @@ function SyncResult({
           {`${sync.counts.newActivities} new · ${sync.counts.unchangedActivities} unchanged · ${sync.counts.reviewActivities} need review`}
         </Text>
         <Text style={[styles.numericSecondary, { color: colors.textSecondary }]}>
-          {`Last successful sync: ${new Date(sync.completedAtMs).toISOString()}`}
+          {`Last successful sync: ${displayLocalDateTime(sync.completedAtMs, timeZone)}`}
         </Text>
       </View>
     );
@@ -453,6 +459,7 @@ function SyncResult({
 
 export function GarminSyncScreen(props: GarminSyncScreenProps) {
   const { colors } = useAppTheme();
+  const displayTimeZone = useDeviceTimeZone();
   const passwordInputRef = useRef<TextInput>(null);
   const mfaCodeInputRef = useRef<TextInput>(null);
   const connectRef = useRef<View>(null);
@@ -797,7 +804,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
           Use the accepted local date, time, time zone, and UTC offset for this Garmin activity before it can be saved.
         </Text>
         <Text style={[styles.numericSecondary, { color: colors.textSecondary }]}>
-          {`Source start: ${new Date(state.pendingDateReview?.absoluteStartedAtMs ?? 0).toISOString()}`}
+          {`Activity start: ${displayLocalDateTime(state.pendingDateReview?.absoluteStartedAtMs ?? 0, displayTimeZone)} · ${displayTimeZone}`}
         </Text>
         <View style={styles.fieldGroup}>
           <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Local date</Text>

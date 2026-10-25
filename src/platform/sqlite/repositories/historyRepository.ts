@@ -34,7 +34,7 @@ import type {
   SqliteKernel,
   SqliteTransactionExecutor,
 } from "../sqliteKernel";
-import { displayDateRange, displayLocalDate } from "../../time/deviceTimeZone";
+import { displayDateRange, displayLocalDate } from "../../../domains/shared/displayTimeZone";
 
 type SourceSessionRow = Readonly<{
   id: string;

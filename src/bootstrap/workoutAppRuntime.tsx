@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useDeviceTimeZone } from "../ui/time/useDeviceTimeZone";
 
 import exerciseCatalogAsset from "../../assets/content/exercise-library.v1.json";
 import exerciseCatalogManifestAsset from "../../assets/content/exercise-library.v1.manifest.json";
@@ -2077,6 +2078,9 @@ export function WorkoutAppRuntimeProvider({
   children: React.ReactNode;
   dependencies: WorkoutAppRuntimeDependencies;
 }>) {
+  const displayTimeZone = useDeviceTimeZone();
+  const displayTimeZoneRef = useRef(displayTimeZone);
+  displayTimeZoneRef.current = displayTimeZone;
   const servicesRef = useRef<RuntimeServices | null>(null);
   const pendingActivityMatchRef = useRef<Readonly<{
     candidateKey: string;
@@ -2334,10 +2338,10 @@ export function WorkoutAppRuntimeProvider({
         : { reconcileRestore: () => dependencies.reconcileRestore!(kernel) }),
       customExerciseRepository,
       historyCommandRepository: createHistoryCommandRepository(kernel),
-      historyRepository: createHistoryRepository(kernel),
+      historyRepository: createHistoryRepository(kernel, { displayTimeZone: () => displayTimeZoneRef.current }),
       importedActivities: createImportedActivityRepository(kernel),
       garminSyncSummaries: createGarminSyncSummaryRepository(kernel),
-      progressRepository: createProgressRepository(progressSnapshotKernel(kernel)),
+      progressRepository: createProgressRepository(progressSnapshotKernel(kernel), { displayTimeZone: () => displayTimeZoneRef.current }),
       runningPlans,
       kernel,
       librarySearchRepository,
@@ -2731,7 +2735,8 @@ export function WorkoutAppRuntimeProvider({
         title: projected.detail.activityType,
         activityType: "Running",
         confirmedLocalDate: projected.detail.confirmedLocalDate,
-        identityCopy: `Accepted source title unavailable. ${projected.detail.activityType} on ${projected.detail.confirmedLocalDate}.`,
+        ...(projected.detail.startedAtMs === undefined ? {} : { startedAtMs: projected.detail.startedAtMs }),
+        identityCopy: "Accepted source title unavailable.",
         summary,
         matchState: row.match_count === 1 ? "matched" as const : "unmatched" as const,
         revisionState: row.pending_revision_count > 0
@@ -3041,13 +3046,14 @@ export function WorkoutAppRuntimeProvider({
     today: string;
   }>) => {
     return requireServices().historyRepository.loadCalendarMonth(input);
-  }, [requireServices]);
+  }, [requireServices, displayTimeZone]);
 
   const loadCalendarRange = useCallback((input: Readonly<{
     startLocalDate: string;
     endLocalDateExclusive: string;
-  }>) => requireServices().trainingFoundation.loadCalendarRange(input), [
+  }>) => requireServices().trainingFoundation.loadCalendarRange({ ...input, displayTimeZone }), [
     requireServices,
+    displayTimeZone,
   ]);
 
   const loadPlannedStrengthOccurrence = useCallback((occurrenceId: string) =>
@@ -3059,7 +3065,7 @@ export function WorkoutAppRuntimeProvider({
     return requireServices().historyRepository.loadExerciseMetricHistory({
       exerciseId,
     });
-  }, [requireServices]);
+  }, [requireServices, displayTimeZone]);
 
   const loadProgress = useCallback(async (input: Readonly<{
     sport?: ProgressSport;
@@ -3067,7 +3073,7 @@ export function WorkoutAppRuntimeProvider({
     nowLocalDate: string;
   }>) => {
     return requireServices().progressRepository.load(input);
-  }, [requireServices]);
+  }, [requireServices, displayTimeZone]);
 
   const progressRunningTargetRuntime = useMemo(() => Object.freeze({
     createId: (kind: string) => requireServices().runningPlans.createId(kind),
@@ -3173,7 +3179,7 @@ export function WorkoutAppRuntimeProvider({
 
   const listRemovedHistorySessions = useCallback(() =>
     requireServices().historyRepository.listRemovedSessions(),
-  [requireServices]);
+  [requireServices, displayTimeZone]);
 
   const loadLibrary = useCallback(async (): Promise<LibraryRuntimeSnapshot> => {
     const services = requireServices();

@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useDeviceTimeZone } from "../time/useDeviceTimeZone";
 import {
   StyleSheet,
   Switch,
@@ -98,6 +99,7 @@ export function AppSettingsContent({
   dataAndRecoveryTriggerRef,
 }: AppSettingsContentProps) {
   const { appearance, colors, setAppearance } = useAppTheme();
+  const displayTimeZone = useDeviceTimeZone();
   const latestPreferencesRef = useRef(preferences);
   const latestExternalPreferencesRef = useRef(preferences);
   const pendingExternalPreferencesRef = useRef<RestAlertPreferences | null>(null);
@@ -233,6 +235,14 @@ export function AppSettingsContent({
                   );
                 })}
               </View>
+            </View>
+          </ContentCard>
+
+          <ContentCard>
+            <View style={styles.section}>
+              <SectionHeader title="Dates and times" tone="card" />
+              <Text style={[typeScale.body as TextStyle, { color: colors.contentCardText }]}>{displayTimeZone}</Text>
+              <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>Uses your phone's current timezone for activity and workout displays.</Text>
             </View>
           </ContentCard>
 

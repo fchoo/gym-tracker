@@ -2,6 +2,8 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { displayLocalDateTime } from "../../domains/shared/displayTimeZone";
+import { useDeviceTimeZone } from "../time/useDeviceTimeZone";
 import {
   Pencil,
 } from "lucide-react-native";
@@ -124,6 +126,7 @@ export function SessionDetailScreen({
   onResume?: () => void;
 }>) {
   const { colors } = useAppTheme();
+  const displayTimeZone = useDeviceTimeZone();
   const [removeConfirmationVisible, setRemoveConfirmationVisible] = useState(false);
   const [removeFailed, setRemoveFailed] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -159,7 +162,7 @@ export function SessionDetailScreen({
                 { color: colors.textSecondary },
               ]}
             >
-              {detail.localDate} · {durationText(detail.durationMs)}
+              {displayLocalDateTime(detail.startedAtMs, displayTimeZone)} · {durationText(detail.durationMs)}
             </Text>
             <Text
               style={[

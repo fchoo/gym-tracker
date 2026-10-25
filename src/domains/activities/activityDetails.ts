@@ -61,6 +61,7 @@ export type ImportedActivityFidelity = Readonly<{
 export type ImportedActivityDetail = Readonly<{
   activityType: string;
   confirmedLocalDate: string;
+  startedAtMs?: number;
   distance: string;
   elapsed?: string;
   secondaryDuration?: ImportedActivityDuration;
@@ -266,6 +267,7 @@ export function projectImportedActivityDetail(
   const detail: ImportedActivityDetail = Object.freeze({
     activityType: activityType(normalized.subtype),
     confirmedLocalDate: aggregate.confirmed_local_date,
+    startedAtMs: normalized.started_at_ms,
     distance: formatDistance(normalized.distance_meters),
     ...(normalized.elapsed_ms === undefined ? {} : { elapsed: formatDuration(normalized.elapsed_ms) }),
     ...(displaySecondaryDuration(normalized) === undefined

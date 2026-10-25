@@ -65,7 +65,7 @@ export function ExerciseTrendSheet({ exerciseName, history, onClose, visible }: 
         </Svg>
       </View>
       <View accessibilityLabel="Comparable history data" style={styles.rows}>
-        {trend.sessions.map((set) => <Text key={set.setId} style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`${longDate(set.localDate)} · ${formatObservation(set.observation!)}`}</Text>)}
+        {trend.sessions.map((set) => <Text key={set.setId} style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`${longDate(set.displayLocalDate ?? set.localDate)} · ${formatObservation(set.observation!)}`}</Text>)}
       </View>
     </View>}
   </BottomSheet>;

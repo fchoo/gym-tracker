@@ -67,6 +67,7 @@ describe("projectImportedActivityDetail accepted outdoor facts", () => {
       detail: {
         activityType: "Outdoor run",
         confirmedLocalDate: "2026-10-04",
+        startedAtMs: Date.UTC(2026, 9, 4, 7, 12),
         distance: "5.00 km",
         elapsed: "26:00",
         secondaryDuration: { label: "Moving", value: "24:35" },

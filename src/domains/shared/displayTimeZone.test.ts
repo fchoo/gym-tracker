@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
-import { displayDateRange, displayLocalDate, displayLocalDateTime } from "./deviceTimeZone";
+import { displayDateRange, displayLocalDate, displayLocalDateTime } from "./displayTimeZone";
 
 describe("phone timezone display", () => {
   it("places the same immutable instant on different local days across zones", () => {

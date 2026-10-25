@@ -146,7 +146,7 @@ it("Progress running filters timestamp windows and rereads the factory display t
   const second = await repo.load({ sport: "Running", period: "4_weeks", nowLocalDate: "2026-11-01" });
   if (second.dashboard?.sport !== "Running") throw new Error("running dashboard required");
   expect(second.dashboard.goals.flatMap(goal => goal.history.map(point => point.effort.activityId))).toEqual(["future-edge"]);
-  const raw = await repo.load({ period: "all", nowLocalDate: "2026-11-01", displayTimeZone: "Asia/Singapore" });
+  const raw = await repo.load({ period: "all_time", nowLocalDate: "2026-11-01", displayTimeZone: "Asia/Singapore" });
   expect(raw.sourceFacts?.running.activities.find(activity => activity.id === "window-edge")?.localDate).toBe("2026-10-04");
   expect(sourceSnapshot(db)).toBe(before);
 });
@@ -162,7 +162,7 @@ it("Progress strength display uses effective start bounds while cached projectio
   expect(display.projection).toEqual(base.projection);
   if (display.dashboard?.sport !== "Strength") throw new Error("strength dashboard required");
   expect(display.dashboard.facts.map(fact => [fact.sessionId, fact.localDate])).toEqual([["strength", "2026-10-05"]]);
-  const raw = await repo.load({ period: "all", nowLocalDate: "2026-11-01", displayTimeZone: "Asia/Singapore" });
+  const raw = await repo.load({ period: "all_time", nowLocalDate: "2026-11-01", displayTimeZone: "Asia/Singapore" });
   expect(raw.sourceFacts?.bodyweight.entries[0]?.localDate).toBe("2026-10-04");
   expect(sourceSnapshot(db)).toBe(before);
 });

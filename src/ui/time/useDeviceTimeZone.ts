@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AppState } from "react-native";
-import { currentDeviceTimeZone } from "../../platform/time/deviceTimeZone";
+import { currentDeviceTimeZone } from "../../domains/shared/displayTimeZone";
 
 export function useDeviceTimeZone(): string {
   const [timeZone, setTimeZone] = useState(currentDeviceTimeZone);

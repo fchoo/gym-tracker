@@ -48,7 +48,7 @@ import type {
   SqliteSnapshotKernel,
 } from "../sqliteKernel";
 import { addLocalDays, parseLocalDate } from "../../../domains/scheduling/localDate";
-import { displayDateRange, displayLocalDate } from "../../time/deviceTimeZone";
+import { displayDateRange, displayLocalDate } from "../../../domains/shared/displayTimeZone";
 
 type RevisionRow = Readonly<{
   subject_id: string;
@@ -1106,7 +1106,7 @@ export function createProgressRepository(
         ),
         loadEffectiveHistoryProjectionSessions(executor),
         loadSourceFacts(executor),
-        loadDashboardFacts(executor, { ...input, displayTimeZone }),
+        loadDashboardFacts(executor, { ...input, ...(displayTimeZone === undefined ? {} : { displayTimeZone }) }),
         sport === "Running" ? loadRunningTargetSources(executor) : Promise.resolve(Object.freeze([])),
         loadPlannedNext(executor, input.nowLocalDate),
         displayTimeZone === undefined || sport === undefined ? Promise.resolve(null)

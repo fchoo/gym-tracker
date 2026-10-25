@@ -14,7 +14,7 @@ import {
   runningSessionRevisionReadback,
 } from "../../../domains/running/contracts";
 import { parseStrengthOccurrenceSnapshot } from "./strengthOccurrenceSnapshot";
-import { displayDateRange, displayLocalDate } from "../../time/deviceTimeZone";
+import { displayDateRange, displayLocalDate } from "../../../domains/shared/displayTimeZone";
 
 export type TrainingCalendarRangeInput = Readonly<{
   startLocalDate: string;

@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react-native";
 import { AppState } from "react-native";
 import { describe, expect, it, jest } from "@jest/globals";
-import * as timeZone from "../../platform/time/deviceTimeZone";
+import * as timeZone from "../../domains/shared/displayTimeZone";
 import { useDeviceTimeZone } from "./useDeviceTimeZone";
 
 describe("phone timezone refresh", () => {

@@ -14,6 +14,8 @@ import {
   type TextStyle,
 } from "react-native";
 import Svg, { Polyline } from "react-native-svg";
+import { displayLocalDateTime } from "../../domains/shared/displayTimeZone";
+import { useDeviceTimeZone } from "../time/useDeviceTimeZone";
 
 import type {
   ImportedActivityDetail,
@@ -324,10 +326,13 @@ function ReadyDetail({ detail, matchActionRef, onMatch, stackedLaps }: Readonly<
   stackedLaps: boolean;
 }>) {
   const { colors } = useAppTheme();
+  const timeZone = useDeviceTimeZone();
+  const displayedDate = detail.startedAtMs === undefined ? detail.confirmedLocalDate
+    : `${displayLocalDateTime(detail.startedAtMs, timeZone)} · ${timeZone}`;
   return (
     <>
       <View style={styles.section}>
-        <ActivitySectionHeader supportingText={detail.confirmedLocalDate} title={detail.activityType} />
+        <ActivitySectionHeader supportingText={displayedDate} title={detail.activityType} />
         <View style={styles.factGrid}>
           <Fact label="Distance" value={detail.distance} />
           {detail.elapsed === undefined ? null : <Fact label="Elapsed" value={detail.elapsed} />}

@@ -68,6 +68,9 @@ export type GarminActivityListItem = Readonly<{
   title: string;
   activityType: string;
   confirmedLocalDate: string;
+  startedAtMs?: number;
+  displayLocalDate?: string;
+  displayTimeZone?: string;
   identityCopy?: string;
   summary?: string;
   matchState?: "matched" | "unmatched";

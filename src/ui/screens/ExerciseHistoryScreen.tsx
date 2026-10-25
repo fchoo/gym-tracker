@@ -120,7 +120,7 @@ function longDate(localDate: string): string {
 }
 
 function visitText(set: EffectiveMetricHistorySet, kind: "Warm-up" | "Working"): string {
-  return `${kind} visit · ${longDate(set.localDate)} · ${kind === "Warm-up" ? "W" : "Set "}${set.setOrdinal + 1}`;
+  return `${kind} visit · ${longDate(set.displayLocalDate ?? set.localDate)} · ${kind === "Warm-up" ? "W" : "Set "}${set.setOrdinal + 1}`;
 }
 
 function isValidSourceRevision(value: number | undefined): value is number {

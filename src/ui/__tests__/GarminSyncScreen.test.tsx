@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
+import { displayLocalDateTime } from "../../domains/shared/displayTimeZone";
 import {
   BackHandler,
   Dimensions,
@@ -264,7 +265,7 @@ describe("GarminSyncScreen committed sync presentation", () => {
     });
 
     expect(await screen.findByText("1 new · 2 unchanged · 1 need review")).toBeOnTheScreen();
-    expect(screen.getByText("Last successful sync: 1970-01-01T00:02:03.000Z")).toBeOnTheScreen();
+    expect(screen.getByText(`Last successful sync: ${displayLocalDateTime(123_000)}`)).toBeOnTheScreen();
     expect(screen.queryByText("New activities")).not.toBeOnTheScreen();
   });
 

@@ -4,6 +4,8 @@ import { StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import { presentSessionDetail } from "../../domains/workout/workoutPresentation";
 import type { SessionDetail } from "../../domains/workout";
+import { displayLocalDateTime } from "../../domains/shared/displayTimeZone";
+import { useDeviceTimeZone } from "../time/useDeviceTimeZone";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
 import { FocusablePressable } from "../components";
 import { WorkoutSessionPresentation } from "../components/WorkoutSessionPresentation";
@@ -26,6 +28,7 @@ export function CalendarReadOnlyWorkout({
   onGoBack(): void;
 }>) {
   const { colors } = useAppTheme();
+  const displayTimeZone = useDeviceTimeZone();
   const presentation = presentSessionDetail(detail);
   const backRef = useRef<View>(null);
   const completed = detail.workingSetProgress.completed;
@@ -61,7 +64,7 @@ export function CalendarReadOnlyWorkout({
               {statusLabel(detail)}
             </Text>
             <Text style={[calendarTypeScale.numeric as TextStyle, { color: colors.textSecondary }]}>
-              {detail.localDate}
+              {displayLocalDateTime(detail.startedAtMs, displayTimeZone)}
             </Text>
             <Text style={[calendarTypeScale.numeric as TextStyle, { color: colors.textPrimary }]}>
               {`${completed} of ${planned} sets`}
