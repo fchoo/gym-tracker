@@ -89,7 +89,7 @@ describe("Android lifecycle configuration", () => {
     expect(config.plugins).toEqual(expect.arrayContaining([
       [
         "expo-notifications",
-        { defaultChannel: "workout-rest-v2-sound-vibration", sounds: ["./assets/audio/rest_complete.wav"] },
+        { defaultChannel: "workout-rest-v3-sound-vibration", sounds: ["./assets/audio/rest_complete.wav"] },
       ],
     ]));
   });
