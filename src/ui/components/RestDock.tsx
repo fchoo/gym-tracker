@@ -51,6 +51,10 @@ function formatDuration(durationMs: number): string {
   }`;
 }
 
+function traceRestDock(event: string, fields: Record<string, unknown> = {}) {
+  if (__DEV__) console.trace("GT_REST_DOCK", JSON.stringify({ event, ...fields }));
+}
+
 function thresholdMessage(durationMs: number): string | null {
   const seconds = Math.ceil(durationMs / 1_000);
   if (seconds === 60) {
@@ -225,6 +229,7 @@ export function RestDock({
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
+      traceRestDock("app-state", { nextState });
       appStateRef.current = nextState;
       setForegroundActive(nextState === "active");
       previousRemainingSecondsRef.current = null;
@@ -237,6 +242,7 @@ export function RestDock({
 
   useEffect(() => {
     const previousRest = cueRestRef.current;
+    if (__DEV__) traceRestDock("rest-state-change", { state: state.state, remainingMs: remainingRestMs(state, nowMs()) });
     // A command changes the deadline or pause state; it is not a clock tick.
     previousRemainingSecondsRef.current = null;
     countdownCueRef.current?.cancelPendingCues?.();
@@ -276,11 +282,13 @@ export function RestDock({
 
   useEffect(() => {
     if (!restSoundEnabled) {
+      traceRestDock("sound-disabled");
       countdownCueRef.current?.cancelPendingCues?.();
     }
   }, [restSoundEnabled]);
 
   useEffect(() => {
+    if (__DEV__) traceRestDock("observe-countdown", { state: state.state, enabled: restSoundEnabled, foregroundActive, remainingMs: remainingRestMs(state, nowMs()), hasScheduler: countdownCue?.scheduleCountdown !== undefined });
     if (
       sessionId === undefined
       || state.state !== "running"
@@ -305,6 +313,7 @@ export function RestDock({
       nowMs,
       emitted: cueLedgerRef.current?.emitted ?? new Set(),
       onCue: (seconds) => {
+        traceRestDock("scheduled-cue-observed", { seconds });
         const ledger = cueLedgerRef.current;
         if (ledger !== null) {
           cueLedgerRef.current = { emitted: new Set([...ledger.emitted, seconds]) };
@@ -312,16 +321,19 @@ export function RestDock({
         if (seconds === 0) finalCueDispatchedRef.current = true;
       },
       onError: () => {
+        traceRestDock("scheduled-cue-failed", { mounted });
         if (mounted && cueRestGeneration === cueRestGenerationRef.current) setCueFailure(true);
       },
     });
     return () => {
+      if (__DEV__) traceRestDock("countdown-observer-cleanup", { remainingMs: remainingRestMs(state, nowMs()) });
       mounted = false;
       release();
     };
   }, [countdownCue, foregroundActive, nowMs, restSoundEnabled, state.revision, state.state]);
 
   const cancelPendingCues = () => {
+    traceRestDock("manual-control-cancel");
     previousRemainingSecondsRef.current = null;
     countdownCueRef.current?.cancelPendingCues?.();
   };
@@ -345,6 +357,7 @@ export function RestDock({
 
   const remainingMs = remainingRestMs(state, displayNowMs);
   const remainingSeconds = Math.ceil(remainingMs / 1_000);
+  if (__DEV__) traceRestDock("display-observed", { remainingSeconds, state: state.state, finalCueDispatched: finalCueDispatchedRef.current });
   const announcement = useMemo(
     () => thresholdMessage(remainingMs),
     [remainingMs],
@@ -400,6 +413,7 @@ export function RestDock({
       && !expiredRef.current
     ) {
       expiredRef.current = true;
+      traceRestDock("expiry-dispatched", { finalCueDispatched: finalCueDispatchedRef.current });
       if (finalCueDispatchedRef.current) {
         onExpired({ foregroundCountdownTone: true });
       } else {

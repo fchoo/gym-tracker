@@ -36,20 +36,34 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
     let soundOwnership: ReturnType<typeof claimForegroundRestSound> | undefined;
     const pendingLoads = new Set<() => void>();
     const rewinds = new Map<AudioPlayer, Promise<void>>();
+    const trace = (event: string, player?: AudioPlayer, fields: Record<string, unknown> = {}) => {
+      if (!__DEV__) return;
+      let native: Record<string, unknown> = {};
+      try {
+        if (player !== undefined) native = {
+          cue: player === shortPlayer ? "short" : "long",
+          isLoaded: player.isLoaded, currentTime: player.currentTime, playing: player.playing,
+        };
+      } catch { native = { snapshotUnavailable: true }; }
+      console.trace("GT_REST_CUE", JSON.stringify({ event, generation, countdownGeneration, appState: AppState.currentState, ...native, ...fields }));
+    };
 
     const rewind = (player: AudioPlayer) => {
       const preparing = rewinds.get(player);
+      trace("rewind-request", player, { alreadyPending: preparing !== undefined });
       if (preparing !== undefined) return preparing;
       const pending = (async () => {
         // Media3 retains playWhenReady at STATE_ENDED. Seeking while that intent
         // is set restarts the cue without another play() call, so pause first.
         player.pause();
+        trace("rewind-paused", player);
         await player.seekTo(0);
+        trace("rewind-done", player);
       })();
       rewinds.set(player, pending);
       // Rewind on finish, ahead of the next countdown. A failed preparation is
       // retried by the next request and reported through that request's promise.
-      void pending.catch(() => undefined).finally(() => {
+      void pending.catch(() => { trace("rewind-failed", player); }).finally(() => {
         if (rewinds.get(player) === pending) rewinds.delete(player);
       });
       return pending;
@@ -58,6 +72,7 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
     const waitUntilLoaded = (player: AudioPlayer, maxWaitMs: number) =>
       new Promise<void>((resolve, reject) => {
         const finish = (error?: Error) => {
+          trace("load-finished", player, { failed: error !== undefined });
           clearTimeout(timeout);
           subscription.remove();
           pendingLoads.delete(cancel);
@@ -74,6 +89,7 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
           maxWaitMs,
         );
         pendingLoads.add(cancel);
+        trace("load-wait", player, { maxWaitMs });
         // Loading may complete between the initial property read and listener.
         if (player.isLoaded) finish();
       });
@@ -95,14 +111,16 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
       }
     };
 
-    const cancelCountdown = () => {
+    const cancelCountdown = (reason: string) => {
+      trace("schedule-cancel", undefined, { reason, timerCount: countdownTimers.size });
       countdownGeneration += 1;
       for (const timer of countdownTimers) clearTimeout(timer);
       countdownTimers.clear();
     };
 
-    const cancelPendingCues = (clearOwnership = true) => {
-      cancelCountdown();
+    const cancelPendingCues = (clearOwnership = true, reason = "port-cancel") => {
+      trace("playback-cancel", undefined, { reason, pendingLoads: pendingLoads.size, clearOwnership });
+      cancelCountdown(reason);
       if (clearOwnership) soundOwnership?.clear();
       else soundOwnership?.release();
       soundOwnership = undefined;
@@ -122,11 +140,13 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
       const requestGeneration = ++generation;
       for (const cancel of [...pendingLoads]) cancel();
       const requestedAtMs = Date.now();
+      trace("request", player, { requestGeneration, maxWaitMs });
       try {
         // Supersede audible playback as well as pending loads/seeks. Two native
         // players share the audio session and must never play over each other.
         shortPlayer.pause();
         longPlayer.pause();
+        trace("exclusive-pause-done", player, { requestGeneration });
         // Android's isLoaded getter excludes STATE_ENDED. Prepare the position
         // first: waiting for readiness before this seek can never ready an
         // ended player when its finish event has not reached JS yet.
@@ -135,48 +155,72 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
         if (neededRewind !== undefined) {
           await waitForRewind(neededRewind, maxWaitMs - (Date.now() - requestedAtMs));
         }
-        if (requestGeneration !== generation) return;
+        if (requestGeneration !== generation) {
+          trace("request-superseded-after-seek", player, { requestGeneration });
+          return;
+        }
         if (!player.isLoaded) {
           await waitUntilLoaded(player, Math.max(0, maxWaitMs - (Date.now() - requestedAtMs)));
         }
         if (
           requestGeneration !== generation
           || AppState.currentState !== "active"
-        ) return;
+        ) {
+          trace("request-cancelled-before-play", player, { requestGeneration });
+          return;
+        }
         if (Date.now() - requestedAtMs > maxWaitMs) {
           throw new Error("rest_countdown_audio_not_ready");
         }
         // New and pre-rewound players start synchronously; there is no needless
         // async seek at the deadline for the pristine final-tone player.
         player.play();
+        trace("played", player, { requestGeneration, requestElapsedMs: Date.now() - requestedAtMs });
       } catch (error) {
+        trace("failed", player, {
+          requestGeneration, requestElapsedMs: Date.now() - requestedAtMs,
+          failure: error instanceof Error && error.message.startsWith("rest_countdown_audio_") ? error.message : "native_error",
+        });
         if (requestGeneration === generation) throw error;
       }
     };
 
     return {
       rewind,
+      trace,
       cancelPendingCues,
       port: Object.freeze({
         playShortCue: () => replay(shortPlayer, 350),
         playLongCue: () => replay(longPlayer, 1_000),
         cancelPendingCues: () => cancelPendingCues(),
         scheduleCountdown: (input: Parameters<NonNullable<RestCountdownCuePort["scheduleCountdown"]>>[0]) => {
-          cancelCountdown();
+          cancelCountdown("schedule-replaced");
           const scheduleGeneration = countdownGeneration;
           const scheduledAtMs = input.nowMs();
           const emitted = new Set(input.emitted);
+          if (__DEV__) trace("schedule", undefined, { remainingMs: input.endsAtMs - scheduledAtMs, emitted: [...emitted] });
           for (const seconds of [2, 1, 0] as const) {
             const dueAtMs = input.endsAtMs - seconds * 1_000;
             // Manual adjustments and foreground return never backfill tones.
-            if (dueAtMs <= scheduledAtMs || emitted.has(seconds)) continue;
+            if (dueAtMs <= scheduledAtMs || emitted.has(seconds)) {
+              if (__DEV__) trace("schedule-skip", undefined, { seconds, alreadyEmitted: emitted.has(seconds), dueInMs: dueAtMs - scheduledAtMs });
+              continue;
+            }
+            if (__DEV__) trace("schedule-arm", undefined, { seconds, dueInMs: dueAtMs - scheduledAtMs });
             const timer = setTimeout(() => {
               countdownTimers.delete(timer);
+              if (__DEV__) trace("schedule-fire", undefined, { seconds, scheduleGeneration, latenessMs: input.nowMs() - dueAtMs });
               if (scheduleGeneration !== countdownGeneration
-                || AppState.currentState !== "active") return;
+                || AppState.currentState !== "active") {
+                if (__DEV__) trace("schedule-superseded-or-inactive", undefined, { seconds, scheduleGeneration });
+                return;
+              }
               // A stalled JS turn skips a stale short instead of playing a
               // burst at expiry. The final cue still gets its bounded attempt.
-              if (seconds !== 0 && input.nowMs() - dueAtMs > 350) return;
+              if (seconds !== 0 && input.nowMs() - dueAtMs > 350) {
+                if (__DEV__) trace("schedule-late-short-skipped", undefined, { seconds });
+                return;
+              }
               emitted.add(seconds);
               input.onCue(seconds);
               void replay(seconds === 0 ? longPlayer : shortPlayer, seconds === 0 ? 1_000 : 350)
@@ -187,10 +231,11 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
             countdownTimers.add(timer);
           }
           return () => {
+            if (__DEV__) trace("schedule-lease-release", undefined, { scheduleGeneration, remainingMs: input.endsAtMs - input.nowMs() });
             // Parent expiry can remove the dock in the same turn as the final
             // deadline. Retain that route-owned callback and any loading wait.
             if (scheduleGeneration === countdownGeneration && input.nowMs() < input.endsAtMs) {
-              cancelPendingCues();
+              cancelPendingCues(true, "lease-before-deadline");
             }
           };
         },
@@ -212,6 +257,10 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
   useEffect(() => {
     const subscriptions = [shortPlayer, longPlayer].map((player) =>
       player.addListener(STATUS_EVENT, (status) => {
+        if (__DEV__ && (status.didJustFinish || status.playing !== undefined)) playback.trace("native-status", player, {
+          didJustFinish: status.didJustFinish, reportedPlaying: status.playing,
+          reportedIsLoaded: status.isLoaded, reportedCurrentTime: status.currentTime, reportedError: Boolean(status.error),
+        });
         // A finish event can reach JS after a cancelled cue has been replayed.
         // Read native truth before rewinding so that event cannot seek the new
         // playback back to zero or cut it off.
@@ -222,11 +271,11 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
     );
     const appStateSubscription = AppState.addEventListener("change", (state) => {
       if (state !== "active") {
-        playback.cancelPendingCues();
+        playback.cancelPendingCues(true, `app-state-${state}`);
       }
     });
     return () => {
-      playback.cancelPendingCues(false);
+      playback.cancelPendingCues(false, "adapter-unmount");
       appStateSubscription.remove();
       subscriptions.forEach((subscription) => subscription.remove());
     };
