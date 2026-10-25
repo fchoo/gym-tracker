@@ -2250,13 +2250,32 @@ export function WorkoutAppRuntimeProvider({
     });
   }, [dependencies]);
 
+  const clearCommittedActionFailure = useCallback((services: RuntimeServices) => {
+    if (servicesRef.current !== services) return;
+    setState((current) => {
+      if (current.actionFailure === undefined && current.mutationFailure === undefined) return current;
+      const { actionFailure: _actionFailure, mutationFailure: _mutationFailure, ...preserved } = current;
+      return preserved;
+    });
+  }, []);
+
   const queueTodaySelectionRefresh = useCallback((services: RuntimeServices, plansChanged = false) => {
+    clearCommittedActionFailure(services);
     const generation = ++selectionRefreshGenerationRef.current;
     selectionRefreshQueueRef.current = selectionRefreshQueueRef.current.then(async () => {
       if (servicesRef.current !== services || generation !== selectionRefreshGenerationRef.current) return;
       await refreshTodaySelection(services, plansChanged);
     }).catch(() => undefined);
-  }, [refreshTodaySelection]);
+  }, [clearCommittedActionFailure, refreshTodaySelection]);
+
+  const publishStartedWorkout = useCallback((services: RuntimeServices, view: TodayView) => {
+    if (servicesRef.current !== services) return;
+    workoutSummaryGenerationRef.current += 1;
+    setState((current) => {
+      const { actionFailure: _actionFailure, mutationFailure: _mutationFailure, ...preserved } = current;
+      return { ...preserved, view, workoutRefreshGeneration: workoutRefreshGenerationRef.current };
+    });
+  }, []);
 
   const publishCommittedWorkout = useCallback((services: RuntimeServices, view: ActiveWorkoutView) => {
     if (servicesRef.current !== services) return;
@@ -2685,7 +2704,7 @@ export function WorkoutAppRuntimeProvider({
       });
       const readContext = localContext(dependencies.now());
       const view = await services.repository.getTodayView({ localDate: readContext.localDate, weekday: readContext.weekday });
-      if (servicesRef.current === services) setState((current) => ({ ...current, view }));
+      publishStartedWorkout(services, view);
       return session.id;
     } catch {
       setState((current) => ({
@@ -2697,7 +2716,7 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw new Error("workout_action_failed");
     }
-  }, [dependencies, requireServices]);
+  }, [dependencies, publishStartedWorkout, requireServices]);
 
   const startSelectedStrengthOccurrence = useCallback(async (
     occurrence: SelectedStrengthOccurrence,
@@ -2719,7 +2738,7 @@ export function WorkoutAppRuntimeProvider({
       });
       const readContext = localContext(dependencies.now());
       const view = await services.repository.getTodayView({ localDate: readContext.localDate, weekday: readContext.weekday });
-      if (servicesRef.current === services) setState((current) => ({ ...current, view }));
+      publishStartedWorkout(services, view);
       return session.id;
     } catch {
       setState((current) => ({
@@ -2731,7 +2750,7 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw new Error("workout_action_failed");
     }
-  }, [dependencies, requireServices]);
+  }, [dependencies, publishStartedWorkout, requireServices]);
 
   const startEmptyWorkout = useCallback(async (): Promise<string> => {
     const services = requireServices();
@@ -2748,7 +2767,7 @@ export function WorkoutAppRuntimeProvider({
       });
       const readContext = localContext(dependencies.now());
       const view = await services.repository.getTodayView({ localDate: readContext.localDate, weekday: readContext.weekday });
-      if (servicesRef.current === services) setState((current) => ({ ...current, view }));
+      publishStartedWorkout(services, view);
       return session.id;
     } catch {
       setState((current) => ({
@@ -2760,7 +2779,7 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw new Error("workout_action_failed");
     }
-  }, [dependencies, requireServices]);
+  }, [dependencies, publishStartedWorkout, requireServices]);
 
   const getActiveWorkout = useCallback((sessionId: string) => {
     return requireServices().workoutRepository.getWorkoutSession(sessionId);
@@ -3087,6 +3106,7 @@ export function WorkoutAppRuntimeProvider({
       repository: services.historyCommandRepository,
       command: { ...input, nowMs: dependencies.nowMs() },
     });
+    clearCommittedActionFailure(services);
     await services.lifecycle.trigger("post_commit").catch(() => undefined);
     workoutRefreshGenerationRef.current += 1;
     try {
@@ -3098,10 +3118,11 @@ export function WorkoutAppRuntimeProvider({
       }));
     }
     return result;
-  }, [dependencies, requireServices, refreshTodaySelection]);
+  }, [dependencies, requireServices, refreshTodaySelection, clearCommittedActionFailure]);
 
   const refreshAfterHistoryLifecycleCommit = useCallback(async () => {
     const services = requireServices();
+    clearCommittedActionFailure(services);
     await services.lifecycle.trigger("post_commit").catch(() => undefined);
     workoutRefreshGenerationRef.current += 1;
     try {
@@ -3112,7 +3133,7 @@ export function WorkoutAppRuntimeProvider({
         workoutRefreshGeneration: workoutRefreshGenerationRef.current,
       }));
     }
-  }, [requireServices, refreshTodaySelection]);
+  }, [requireServices, refreshTodaySelection, clearCommittedActionFailure]);
 
   const removeRuntimeHistorySession = useCallback(async (
     input: Omit<VoidHistorySessionInput, "nowMs">,
@@ -4298,7 +4319,7 @@ export function WorkoutAppRuntimeProvider({
     try {
       const context = localContext(dependencies.now());
       const view = await services.repository.getTodayView({ localDate: context.localDate, weekday: context.weekday });
-      if (servicesRef.current === services) setState((current) => ({ ...current, view, workoutRefreshGeneration: workoutRefreshGenerationRef.current }));
+      publishStartedWorkout(services, view);
     } catch {
       setState((current) => ({
         ...current,
@@ -4310,7 +4331,7 @@ export function WorkoutAppRuntimeProvider({
       }));
     }
     return result;
-  }, [dependencies, requireServices]);
+  }, [dependencies, publishStartedWorkout, requireServices]);
 
   const replaceWorkoutExercise = useCallback((input: ReplaceExerciseInput) =>
     runExerciseEdit(input, (repository) => replaceExercise({
@@ -4462,6 +4483,7 @@ export function WorkoutAppRuntimeProvider({
   ): Promise<Result> => {
     const services = requireServices();
     const result = await mutation(services.outcomeRepository);
+    clearCommittedActionFailure(services);
     await services.lifecycle.trigger("post_commit").catch(() => undefined);
     workoutRefreshGenerationRef.current += 1;
     try {
@@ -4477,7 +4499,7 @@ export function WorkoutAppRuntimeProvider({
       }));
     }
     return result;
-  }, [requireServices, refreshTodaySelection]);
+  }, [requireServices, refreshTodaySelection, clearCommittedActionFailure]);
 
   const finishWorkoutCompleted = useCallback(async (
     input: FinishCompletedInput,

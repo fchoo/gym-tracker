@@ -58,6 +58,7 @@ function fixture(view: TodayView = {
   const repository = {
     getTodayView: jest.fn(async () => view),
     getActivation: jest.fn(async () => null),
+    startWorkout: jest.fn(async()=> ({id:'session-1',status:'in_progress',revision:1,source:'empty',planId:null,planDayId:null})),
   };
   const rest: RestRepository = {
     getRestState: jest.fn(async () => running),
@@ -227,6 +228,38 @@ describe('scoped workout acknowledgement', () => {
    await act(async()=>{await runtime.current().updateActiveSetDraft(draftInput);});
    expect(runtime.renderCount()).toBe(renders);expect(runtime.current().workoutRefreshGeneration).toBe(0);
   }finally{await runtime.rendered.unmount();}
+ });
+
+ it('clears a previous start error after the empty-workout retry commits',async()=>{
+  const input=fixture();const runtime=await mount(input);input.repository.startWorkout.mockRejectedValueOnce(new Error('failed start'));
+  try{
+   await act(async()=>{await expect(runtime.current().startEmptyWorkout()).rejects.toThrow('workout_action_failed');});
+   expect(runtime.current().actionFailure).toBeDefined();
+   await act(async()=>{await expect(runtime.current().startEmptyWorkout()).resolves.toBe('session-1');});
+   expect(runtime.current().actionFailure).toBeUndefined();expect(input.schedules.loadToday).toHaveBeenCalledTimes(1);
+  }finally{await runtime.rendered.unmount();}
+ });
+ it('preserves the newly started workout when an older plan refresh finishes',async()=>{
+  const input=fixture({state:'no_active_plan'});const runtime=await mount(input);const selection=deferred<null>();input.schedules.loadToday.mockReturnValue(selection.promise);
+  try{
+   await act(async()=>{await runtime.current().createOwnedPlanDraft({name:'New plan',dayName:'Day 1'});});
+   input.repository.getTodayView.mockResolvedValue({state:'active_workout',sessionId:'session-1',exerciseName:null,setLabel:null,restStatus:'idle'});
+   await act(async()=>{await runtime.current().startEmptyWorkout();selection.resolve(null);});
+   expect(runtime.current().view).toMatchObject({state:'active_workout',sessionId:'session-1'});
+  }finally{selection.resolve(null);await runtime.rendered.unmount();}
+ });
+
+ it('clears the prior failure on plan-save success without clearing failures raised during refresh',async()=>{
+  const input=fixture();const runtime=await mount(input);const selection=deferred<null>();input.repository.startWorkout.mockRejectedValueOnce(new Error('first failed'));
+  try{
+   await act(async()=>{await expect(runtime.current().startEmptyWorkout()).rejects.toThrow('workout_action_failed');});
+   input.schedules.loadToday.mockReturnValue(selection.promise);
+   await act(async()=>{await runtime.current().createOwnedPlanDraft({name:'New plan',dayName:'Day 1'});});
+   expect(runtime.current().actionFailure).toBeUndefined();
+   input.repository.startWorkout.mockRejectedValueOnce(new Error('new failed'));
+   await act(async()=>{await expect(runtime.current().startEmptyWorkout()).rejects.toThrow('workout_action_failed');selection.resolve(null);});
+   expect(runtime.current().actionFailure).toBeDefined();
+  }finally{selection.resolve(null);await runtime.rendered.unmount();}
  });
 
 });
