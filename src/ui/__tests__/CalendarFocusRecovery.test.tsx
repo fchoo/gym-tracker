@@ -7,6 +7,7 @@ import { CalendarMonthViewport } from "../calendar/CalendarMonthViewport";
 import { createCalendarTransitionState } from "../calendar/calendarTransitionController";
 import { CalendarScreen } from "../screens/CalendarScreen";
 import { AppearanceProvider } from "../theme";
+import { parseLocalDate } from "../../domains/scheduling/localDate";
 
 describe("Calendar focused day completion", () => {
   it("collapses a last-week detail and keeps another date selectable", async () => {
@@ -36,8 +37,8 @@ describe("Calendar focused day completion", () => {
     try {
       const command = { kind: "settle-week", phase: "collapse", epoch: 5, durationMs: 240, easing: [0.4, 0, 0.78, 0.2], agendaDelayMs: 0, agendaDurationMs: 140 } as const;
       const props = {
-        command, focusedWeek: { selectedDates: ["2026-10-26"], followingDates: ["2026-11-02"], selectedGeometry: { y: 280, height: 70, generation: 0 }, followingGeometry: null },
-        month: "2026-10-01", onCancel: jest.fn(), onPreview: jest.fn(), onRelease: jest.fn(),
+        command, focusedWeek: { selectedDates: [parseLocalDate("2026-10-26")], followingDates: [parseLocalDate("2026-11-02")], selectedGeometry: { y: 280, height: 70, generation: 0 }, followingGeometry: null },
+        month: parseLocalDate("2026-10-01"), onCancel: jest.fn(), onPreview: jest.fn(), onRelease: jest.fn(),
         renderMonth: () => <View />, renderWeek: () => <View />,
         transition: { ...createCalendarTransitionState({ currentMonthId: "2026-10", selectedLocalDate: "2026-10-31", reducedMotion: false }), mode: "month", phase: "settling", epoch: 5 },
       } as const;
@@ -52,8 +53,8 @@ describe("Calendar focused day completion", () => {
     const command = { kind: "settle-week", phase: "expand", epoch: 4, durationMs: 260, easing: [0.22, 0.8, 0.3, 1], agendaDelayMs: 70, agendaDurationMs: 170 } as const;
     await render(<CalendarMonthViewport
       command={command}
-      focusedWeek={{ selectedDates: ["2026-10-26"], followingDates: ["2026-11-02"], selectedGeometry: { y: 280, height: 70, generation: 0 }, followingGeometry: null }}
-      month="2026-10-01"
+      focusedWeek={{ selectedDates: [parseLocalDate("2026-10-26")], followingDates: [parseLocalDate("2026-11-02")], selectedGeometry: { y: 280, height: 70, generation: 0 }, followingGeometry: null }}
+      month={parseLocalDate("2026-10-01")}
       onCancel={jest.fn()} onComplete={completed} onPreview={jest.fn()} onRelease={jest.fn()}
       renderMonth={() => <View />} renderWeek={() => <View />}
       transition={{ ...createCalendarTransitionState({ currentMonthId: "2026-10", selectedLocalDate: "2026-10-31", reducedMotion: false }), mode: "focused", phase: "settling", epoch: 4 }}

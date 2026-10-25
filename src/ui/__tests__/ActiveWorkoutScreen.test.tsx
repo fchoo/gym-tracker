@@ -97,7 +97,7 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     let resolveFirst!: (result: import("../../domains/rest").RestCommandResult) => void;
     const first = new Promise<import("../../domains/rest").RestCommandResult>((resolve) => { resolveFirst = resolve; });
     const adjusted = { state: { ...initial.rest, state: "running" as const, startedAtMs: 3_000, endsAtMs: 48_000, revision: 2 }, sessionRevision: 2, invalidationScopes: [["active-workout", "session-1"], ["today"]] as const };
-    const adjustRest = jest.fn().mockImplementationOnce(() => first).mockImplementationOnce(async () => ({ ...adjusted, state: { ...adjusted.state, endsAtMs: 33_000, revision: 3 }, sessionRevision: 3 }));
+    const adjustRest = jest.fn<ActiveWorkoutCommands["adjustRest"]>().mockImplementationOnce(() => first).mockImplementationOnce(async () => ({ ...adjusted, state: { ...adjusted.state, endsAtMs: 33_000, revision: 3 }, sessionRevision: 3 }));
     await renderScreen(initial, { adjustRest });
     const control = screen.getByRole("button", { name: "Subtract 15 seconds from rest" });
     await act(async () => { await Promise.all([fireEvent.press(control), fireEvent.press(control)]); });
