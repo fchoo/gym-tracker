@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 import { View } from "react-native";
@@ -10,6 +10,28 @@ import { AppearanceProvider } from "../theme";
 import { parseLocalDate } from "../../domains/scheduling/localDate";
 
 describe("Calendar focused day completion", () => {
+  it("keeps the active expansion when a collapse tap arrives before settling finishes", async () => {
+    const completions: Array<(finished: boolean) => void> = [];
+    const timing = jest.spyOn(Reanimated, "withTiming").mockImplementation(((value: unknown, _options: unknown, completion?: (finished: boolean) => void) => {
+      if (completion !== undefined) completions.push(completion);
+      return value;
+    }) as typeof Reanimated.withTiming);
+    try {
+      await render(<AppearanceProvider reduceMotion={false}><CalendarScreen
+        initialDate="2026-10-31" today="2026-10-25"
+        loadCalendarRange={jest.fn(async () => ({ days: [], events: [] }))} onOpenEvent={jest.fn()}
+      /></AppearanceProvider>);
+      await screen.findByTestId("calendar-month-viewport");
+      const row = screen.getAllByTestId("calendar-week-row-2026-10-26").find((candidate) => typeof candidate.props.onLayout === "function")!;
+      await fireEvent(row, "layout", { nativeEvent: { layout: { x: 0, y: 280, width: 360, height: 70 } } });
+      await fireEvent.press(screen.getByTestId("calendar-day-2026-10-31"));
+      await fireEvent.press(screen.getByRole("button", { name: "Collapse day and return to month" }));
+      await act(() => completions.at(-1)!(true));
+      await fireEvent.press(screen.getByRole("button", { name: "Collapse day and return to month" }));
+      await act(() => completions.at(-1)!(true));
+      expect(screen.queryByRole("button", { name: "Collapse day and return to month" })).toBeNull();
+    } finally { timing.mockRestore(); }
+  });
   it("collapses a last-week detail and keeps another date selectable", async () => {
     await render(<AppearanceProvider reduceMotion={false}><CalendarScreen
       initialDate="2026-10-31" today="2026-10-25"

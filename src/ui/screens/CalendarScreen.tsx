@@ -420,6 +420,8 @@ export function CalendarScreen({
   const dispatchCalendarTransition = useCallback((event: CalendarTransitionEvent) => {
     const previousState = calendarTransitionRef.current;
     const result = transitionCalendar(previousState, event);
+    // An input ignored during settling must not discard its active animation.
+    if (result.state === previousState && result.commands.length === 0) return;
     recordPhase20CalendarTransition({
       trigger: event.type,
       before: observationTransitionState(previousState),
@@ -687,15 +689,15 @@ export function CalendarScreen({
     ? weekRows
     : calendarGridForMonth(visibleMonth);
   const selectedWeek = visibleWeekRows.find((dates) => dates.includes(visibleSelectedDate));
-  const followingWeek = selectedWeek?.map((date) => addLocalDays(date, 7));
-  const focusedWeek = selectedWeek === undefined || followingWeek === undefined
+  const followingWeek = useMemo(() => selectedWeek?.map((date) => addLocalDays(date, 7)), [selectedWeek]);
+  const focusedWeek = useMemo(() => selectedWeek === undefined || followingWeek === undefined
     ? null
     : Object.freeze({
       selectedDates: selectedWeek,
       followingDates: followingWeek,
       selectedGeometry: calendarWeekGeometryForGeneration(weekMeasurements.get(selectedWeek[0]!), layoutGeneration),
       followingGeometry: calendarFollowingWeekGeometry(weekMeasurements.get(selectedWeek[0]!), weekMeasurements.get(followingWeek[0]!), layoutGeneration),
-    });
+    }), [selectedWeek, followingWeek, weekMeasurements, layoutGeneration]);
 
   useEffect(() => {
     if (calendarTransition.phase !== "adjacent-measuring"
