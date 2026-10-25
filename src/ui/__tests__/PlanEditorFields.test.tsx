@@ -24,6 +24,7 @@ import {
 } from "../components/PlanEditorFields";
 import {
   AppearanceProvider,
+  sizes,
 } from "../theme";
 
 describe("PlanEditorReorderableRow", () => {
@@ -134,7 +135,94 @@ describe("PlanEditorReorderableRow", () => {
     await act(() => { resolveMove(); });
   });
 
-  it("clears offsets immediately on committed order changes instead of timing old offsets into the new layout", async () => {
+  it.each(["success", "failure"] as const)("keeps the shared drop offset while the old controlled preview remains rendered after %s", async (outcome) => {
+    const sharedValues: Array<{ value: unknown; writes: unknown[] }> = [];
+    const originalUseSharedValue = Reanimated.useSharedValue;
+    jest.spyOn(Reanimated, "useSharedValue").mockImplementation((initial) => {
+      const shared = originalUseSharedValue(initial);
+      React.useMemo(() => {
+        let value = shared.value;
+        const writes: unknown[] = [];
+        Object.defineProperty(shared, "value", {
+          get: () => value,
+          set: (next) => { writes.push(next); value = next; },
+          configurable: true,
+        });
+        sharedValues.push({ get value() { return shared.value; }, writes });
+      }, [shared]);
+      return shared;
+    });
+    let commitPreview!: () => void;
+    let resolveMove!: () => void;
+    let rejectMove!: (error: Error) => void;
+    const pendingMove = new Promise<void>((resolve, reject) => { resolveMove = resolve; rejectMove = reject; });
+    const onMoveTo = jest.fn(() => pendingMove);
+    const onClearPreview = jest.fn();
+    function Row() {
+      const [preview, setPreview] = React.useState<import("../components/PlanEditorFields").PlanEditorReorderPreview | null>(null);
+      commitPreview = () => { setPreview(null); };
+      return <AppearanceProvider><PlanEditorReorderableRow count={2} label="Source" position={0}
+        onDragPreview={(next) => { if (next !== null) setPreview(next); else onClearPreview(); }}
+        onMoveUp={jest.fn()} onMoveDown={jest.fn()} onMoveTo={onMoveTo}
+        preview={preview} reorderId="handoff"><Text>Source</Text></PlanEditorReorderableRow></AppearanceProvider>;
+    }
+    await render(<Row />);
+    await fireEvent(screen.getByTestId("reorder-row-handoff"), "layout", {
+      nativeEvent: { layout: { height: 100, width: 320, x: 0, y: 0 } },
+    });
+    const gesture = getByGestureTestId("reorder-gesture-handoff") as unknown as { handlers: {
+      onStart(event: { translationY: number }): void; onUpdate(event: { translationY: number }): void;
+      onEnd(event: { translationY: number }, success: boolean): void; onFinalize(event: { translationY: number }, success: boolean): void;
+    } };
+    await act(() => {
+      gesture.handlers.onStart({ translationY: 0 }); gesture.handlers.onUpdate({ translationY: 80 });
+      gesture.handlers.onEnd({ translationY: 80 }, true); gesture.handlers.onFinalize({ translationY: 80 }, true);
+    });
+    const translation = sharedValues[0]!;
+    expect(translation.value).toBe(100);
+    translation.writes.length = 0;
+    await act(() => { if (outcome === "success") resolveMove(); else rejectMove(new Error("storage_failed")); });
+    expect(onClearPreview).toHaveBeenCalledTimes(1);
+    expect(translation.writes).toEqual([]);
+    expect(translation.value).toBe(100);
+    expect(screen.getByTestId("drag-handoff")).toHaveProp("accessibilityState", { busy: true, disabled: false });
+    expect(screen.getByTestId("reorder-row-handoff")).toHaveStyle({ transform: [{ translateY: 100 }] });
+    await act(() => { gesture.handlers.onFinalize({ translationY: 80 }, false); });
+    expect(translation.writes).toEqual([]);
+    expect(translation.value).toBe(100);
+    await act(() => { commitPreview(); });
+    expect(translation.writes).toEqual([]);
+    expect(translation.value).toBe(100);
+    expect(screen.getByTestId("reorder-row-handoff")).toHaveStyle({ transform: [{ translateY: 0 }] });
+    await act(() => { gesture.handlers.onStart({ translationY: 0 }); });
+    expect(translation.writes).toEqual([0]);
+    expect(translation.value).toBe(0);
+  });
+
+  it("preserves the focused accessibility handle when a void move callback changes its position", async () => {
+    function Rows() {
+      const [order, setOrder] = React.useState(["source", "neighbor"]);
+      return <AppearanceProvider>{order.map((id, position) => <PlanEditorReorderableRow
+        key={id} count={2} label={id} onMoveUp={jest.fn()} onMoveDown={jest.fn()}
+        onMoveTo={(target) => {
+          const next = [...order];
+          next.splice(position, 1); next.splice(target, 0, id);
+          setOrder(next);
+        }} position={position} reorderId={`focus-${id}`}><Text>{id}</Text>
+      </PlanEditorReorderableRow>)}</AppearanceProvider>;
+    }
+    await render(<Rows />);
+    const handle = screen.getByTestId("drag-focus-source");
+    await fireEvent(handle, "focus");
+    expect(handle).toHaveStyle({ outlineWidth: sizes.focusRing });
+    await fireEvent(handle, "accessibilityAction", { nativeEvent: { actionName: "decrement" } });
+    expect(screen.getAllByTestId(/^reorder-row-focus-/u).map(({ props }) => props.testID))
+      .toEqual(["reorder-row-focus-neighbor", "reorder-row-focus-source"]);
+    expect(screen.getByTestId("drag-focus-source")).toBe(handle);
+    expect(screen.getByTestId("drag-focus-source")).toHaveStyle({ outlineWidth: sizes.focusRing });
+  });
+
+  it("clears committed offsets while preserving the row, handle and animated owner", async () => {
     const styleMounts: Array<Readonly<{ owner: symbol; initial: unknown }>> = [];
     const detachedStyleOwners: symbol[] = [];
     const mockedUseAnimatedStyle = Reanimated.useAnimatedStyle;
@@ -162,6 +250,7 @@ describe("PlanEditorReorderableRow", () => {
     await render(<Rows />);
     const originalSourceRow = screen.getByTestId("reorder-row-commit-source");
     const originalNeighborRow = screen.getByTestId("reorder-row-commit-neighbor");
+    const originalHandle = screen.getByTestId("drag-commit-source");
     const originalStyleOwners = styleMounts.map(({ owner }) => owner);
     await fireEvent(screen.getByTestId("reorder-row-commit-source"), "layout", {
       nativeEvent: { layout: { height: 100, width: 320, x: 0, y: 0 } },
@@ -185,13 +274,11 @@ describe("PlanEditorReorderableRow", () => {
       .toEqual(["reorder-row-commit-neighbor", "reorder-row-commit-source"]);
     expect(screen.getByTestId("reorder-row-commit-source")).toHaveStyle({ transform: [{ translateY: 0 }] });
     expect(screen.getByTestId("reorder-row-commit-neighbor")).toHaveStyle({ transform: [{ translateY: 0 }] });
-    expect(screen.getByTestId("reorder-row-commit-source")).not.toBe(originalSourceRow);
-    expect(screen.getByTestId("reorder-row-commit-neighbor")).not.toBe(originalNeighborRow);
-    expect(detachedStyleOwners).toEqual(expect.arrayContaining(originalStyleOwners));
-    expect(styleMounts).toHaveLength(4);
-    for (const { initial } of styleMounts.slice(2)) {
-      expect(initial).toEqual(expect.objectContaining({ transform: [{ translateY: 0 }] }));
-    }
+    expect(screen.getByTestId("reorder-row-commit-source")).toBe(originalSourceRow);
+    expect(screen.getByTestId("reorder-row-commit-neighbor")).toBe(originalNeighborRow);
+    expect(screen.getByTestId("drag-commit-source")).toBe(originalHandle);
+    expect(detachedStyleOwners).toEqual([]);
+    expect(styleMounts.map(({ owner }) => owner)).toEqual(originalStyleOwners);
     expect(withTiming).not.toHaveBeenCalled();
     await act(() => { resolveMove(); });
     expect(withTiming).not.toHaveBeenCalled();

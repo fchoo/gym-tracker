@@ -222,9 +222,9 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     await act(() => { resolveWrite(persisted); });
     await waitFor(() => expect(screen.getAllByTestId(/^workout-presentation-exercise-/u).map(({ props }) => props.testID))
       .toEqual(["workout-presentation-exercise-exercise-2", "workout-presentation-exercise-exercise-1"]));
-    expect(screen.getByTestId("workout-session-presentation")).not.toBe(originalListRoot);
-    expect(screen.getByTestId("workout-presentation-exercise-exercise-1")).not.toBe(originalSourceContainer);
-    expect(screen.getByTestId("workout-presentation-exercise-exercise-2")).not.toBe(originalNeighborContainer);
+    expect(screen.getByTestId("workout-session-presentation")).toBe(originalListRoot);
+    expect(screen.getByTestId("workout-presentation-exercise-exercise-1")).toBe(originalSourceContainer);
+    expect(screen.getByTestId("workout-presentation-exercise-exercise-2")).toBe(originalNeighborContainer);
     expect(screen.getByTestId("active-workout")).toBe(originalWorkoutRoot);
     expect(screen.getByTestId("rest-controls")).toBe(originalRestControls);
     expect(screen.getByTestId("reorder-row-exercise-exercise-1")).toHaveStyle({ transform: [{ translateY: 0 }] });
@@ -284,7 +284,7 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     await fireEvent.press(retry);
     await waitFor(() => expect(reorderExercises).toHaveBeenCalledTimes(2));
     expect(reorderExercises.mock.calls[1]).toEqual(reorderExercises.mock.calls[0]);
-    expect(screen.getByTestId("workout-session-presentation")).not.toBe(originalListRoot);
+    expect(screen.getByTestId("workout-session-presentation")).toBe(originalListRoot);
     expect(screen.getByText("Back Squat moved to 2 of 2")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Done reordering" }));
     expect(screen.getByTestId("active-workout-exercise-1-working-sets-card")).toBeOnTheScreen();

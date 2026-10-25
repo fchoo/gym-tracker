@@ -2223,9 +2223,6 @@ function PopulatedWorkoutOverview({
             {activeSet === undefined ? null : <TargetContext set={activeSet} />}
             {reorderMode ? <SecondaryAction label="Done reordering" onPress={() => setReorderMode(false)} /> : null}
             <WorkoutSessionPresentation
-              // Hand committed order changes to a fresh native list, including
-              // its layout parents. Drag previews never change this identity.
-              key={JSON.stringify(presentationModel.exercises.map(({ id }) => id))}
               showGrip={false}
               renderExerciseGrip={(presentationExercise) => reorderMode ? null : (
                 <FocusablePressable

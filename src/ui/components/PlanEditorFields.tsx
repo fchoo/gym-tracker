@@ -8,7 +8,6 @@ import {
   type LayoutChangeEvent,
   type TextInputProps,
   type TextStyle,
-  type ViewProps,
 } from "react-native";
 import {
   Gesture,
@@ -19,7 +18,6 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
-  type SharedValue,
 } from "react-native-reanimated";
 import {
   scheduleOnRN,
@@ -177,43 +175,6 @@ export function PlanEditorTextField({
   );
 }
 
-function PlanEditorAnimatedRow({
-  hasPreview,
-  isHeld,
-  translationY,
-  neighborDisplacement,
-  animatePosition,
-  duration,
-  children,
-  style,
-  ...viewProps
-}: Readonly<{
-  hasPreview: boolean;
-  isHeld: boolean;
-  translationY: SharedValue<number>;
-  neighborDisplacement: number;
-  animatePosition: boolean;
-  duration: number;
-}> & Pick<ViewProps, "children" | "onLayout" | "style" | "testID">) {
-  const rowStyle = useAnimatedStyle(() => ({
-    opacity: isHeld ? 0.92 : 1,
-    transform: [{
-      translateY: !hasPreview
-        ? 0
-        : isHeld
-          ? translationY.value
-          : animatePosition
-            ? withTiming(neighborDisplacement, { duration })
-            : neighborDisplacement,
-    }],
-    zIndex: isHeld ? 1 : 0,
-  }), [hasPreview, isHeld, animatePosition, duration, neighborDisplacement]);
-
-  return <Animated.View {...viewProps} collapsable={false} style={[style, rowStyle]}>
-    {children}
-  </Animated.View>;
-}
-
 export function PlanEditorReorderableRow({
   label,
   position,
@@ -328,9 +289,11 @@ export function PlanEditorReorderableRow({
   const clearDrag = React.useCallback(() => {
     dragActive.value = false;
     dropPending.value = false;
-    translationY.value = 0;
+    // Keep the UI-thread offset until React commits the cleared preview.
+    // The old held worklet can still render before that commit; the next drag
+    // resets translation in onStart once the row is available again.
     publishPreview(null);
-  }, [dragActive, dropPending, publishPreview, translationY]);
+  }, [dragActive, dropPending, publishPreview]);
   const finishDrag = React.useCallback(async (nextPosition: number) => {
     if (pendingMoveRef.current) return;
     pendingMoveRef.current = true;
@@ -395,7 +358,6 @@ export function PlanEditorReorderableRow({
       // A successful drop keeps both source and neighbor offsets until commit.
       if (dropPending.value) return;
       dragActive.value = false;
-      translationY.value = withTiming(0, { duration: motion.setCommitMs });
       scheduleOnRN(publishPreview, null);
     });
     if (dragActivationDistance !== undefined) {
@@ -418,6 +380,19 @@ export function PlanEditorReorderableRow({
     translationY,
     updatePreview,
   ]);
+  const rowStyle = useAnimatedStyle(() => ({
+    opacity: isHeld ? 0.92 : 1,
+    transform: [{
+      translateY: !hasPreview
+        ? 0
+        : isHeld
+          ? translationY.value
+          : motion.positionTransitions
+            ? withTiming(neighborDisplacement, { duration: motion.setCommitMs })
+            : neighborDisplacement,
+    }],
+    zIndex: isHeld ? 1 : 0,
+  }), [hasPreview, isHeld, motion.positionTransitions, motion.setCommitMs, neighborDisplacement]);
   const recordRowHeight = React.useCallback((event: LayoutChangeEvent) => {
     const measuredHeight = Math.max(
       sizes.minimumTarget,
@@ -429,18 +404,11 @@ export function PlanEditorReorderableRow({
 
   return (
     <GestureHandlerRootView style={styles.dragGestureRoot}>
-      <PlanEditorAnimatedRow
-        // A committed position creates a fresh native node and animated style
-        // owner; displaced native props cannot follow it into the new layout.
-        key={position}
-        animatePosition={motion.positionTransitions}
-        duration={motion.setCommitMs}
-        hasPreview={hasPreview}
-        isHeld={isHeld}
-        neighborDisplacement={neighborDisplacement}
+      <Animated.View
         onLayout={recordRowHeight}
         style={[
           styles.reorderRow,
+          rowStyle,
           {
             backgroundColor: isHeld
               ? colors.contentCardSelected
@@ -449,7 +417,6 @@ export function PlanEditorReorderableRow({
           },
         ]}
         testID={`reorder-row-${reorderId}`}
-        translationY={translationY}
       >
         <GestureDetector gesture={dragGesture}>
           <FocusablePressable
@@ -525,7 +492,7 @@ export function PlanEditorReorderableRow({
             </View>
           )}
         </View>
-      </PlanEditorAnimatedRow>
+      </Animated.View>
     </GestureHandlerRootView>
   );
 }
