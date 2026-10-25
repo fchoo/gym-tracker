@@ -183,9 +183,6 @@ export function BottomSheet({
   const compactLandscapeHeight = compactLandscape
     ? Math.floor(windowHeight * 0.72)
     : undefined;
-  const compactScrollMaxHeight = compactLandscapeHeight === undefined
-    ? undefined
-    : Math.max(sizes.minimumTarget, compactLandscapeHeight - BOTTOM_SHEET_HEADER_MIN_HEIGHT);
   const insets = React.useContext(SafeAreaInsetsContext) ?? {
     bottom: 0,
     left: 0,
@@ -211,6 +208,17 @@ export function BottomSheet({
   const horizontalInsetStyle = horizontalInset === undefined
     ? undefined
     : { paddingHorizontal: horizontalInset };
+  // Only the viewport owns a height cap. A cap on the content container makes
+  // controls beyond that height invisible to the native scroll range.
+  const { maxHeight: _contentMaxHeight, ...scrollContentStyle } = contentStyle ?? {};
+  const contentPadding = StyleSheet.flatten<ViewStyle>([styles.content, scrollContentStyle]);
+  const bottomPadding = contentPadding.paddingBottom
+    ?? contentPadding.paddingVertical
+    ?? contentPadding.padding
+    ?? space[4];
+  const scrollBottomInsetStyle = typeof bottomPadding === "number"
+    ? { paddingBottom: bottomPadding + insets.bottom }
+    : undefined;
   const initializeEvidenceScroll = React.useCallback(() => {
     if (reportVisualScroll === null || forcedEvidenceScrollRef.current) return;
     forcedEvidenceScrollRef.current = true;
@@ -407,7 +415,9 @@ export function BottomSheet({
               />
               <KeyboardAvoidingView
                 behavior={Platform.select({ android: "height", default: "padding" })}
+                pointerEvents="box-none"
                 style={styles.keyboardAvoider}
+                testID="bottom-sheet-keyboard-avoider"
               >
                 <Animated.View
                   style={[
@@ -416,7 +426,9 @@ export function BottomSheet({
                       backgroundColor: colors.raised,
                       borderColor: colors.line,
                       height: compactLandscapeHeight,
-                      paddingBottom: insets.bottom,
+                      // Percentage padding stays caller-owned; Yoga reserves
+                      // this fallback inset through the same shrink chain.
+                      paddingBottom: scrollBottomInsetStyle === undefined ? insets.bottom : undefined,
                       transform: [{ translateY: translation }],
                     },
                   ]}
@@ -427,11 +439,11 @@ export function BottomSheet({
                     importantForAccessibility="yes"
                     onEscape={cancel}
                     onKeyDown={containTraversal as never}
-                    style={compactLandscape ? styles.compactBoundary : undefined}
+                    style={[styles.shrinkBoundary, compactLandscape ? styles.compactBoundary : undefined]}
                     testID="bottom-sheet-frame"
                   >
                     <View
-                      style={compactLandscape ? styles.compactLayout : undefined}
+                      style={[styles.shrinkBoundary, compactLandscape ? styles.compactLayout : undefined]}
                       testID="bottom-sheet-layout"
                     >
                       <View style={[styles.header, horizontalInsetStyle]} testID="bottom-sheet-header">
@@ -441,6 +453,7 @@ export function BottomSheet({
                           accessibilityRole="header"
                           focusable
                           ref={headingRef}
+                          style={styles.heading}
                         >
                           <Text style={[typeScale.screenTitle as TextStyle, headingStyle, { color: colors.textPrimary }]}>
                             {heading}
@@ -453,7 +466,7 @@ export function BottomSheet({
                         />
                       </View>
                       <ScrollView
-                        contentContainerStyle={[styles.content, horizontalInsetStyle, contentStyle]}
+                        contentContainerStyle={[styles.content, horizontalInsetStyle, scrollContentStyle, scrollBottomInsetStyle]}
                         horizontal={false}
                         keyboardShouldPersistTaps="handled"
                         nativeID={scrollNativeID}
@@ -467,10 +480,7 @@ export function BottomSheet({
                         showsVerticalScrollIndicator
                         style={[
                           styles.scroll,
-                          compactLandscape ? [
-                            styles.compactScroll,
-                            { maxHeight: compactScrollMaxHeight },
-                          ] : null,
+                          compactLandscape ? styles.compactScroll : null,
                         ]}
                         testID={scrollNativeID}
                       >
@@ -497,22 +507,27 @@ const styles = StyleSheet.create({
   compactBoundary: { flexBasis: 0, flexGrow: 1, flexShrink: 1, minHeight: 0 },
   compactLayout: { flexBasis: 0, flexGrow: 1, flexShrink: 1, minHeight: 0 },
   compactScroll: { flexBasis: 0, flexGrow: 1, minHeight: 0 },
-  keyboardAvoider: { justifyContent: "flex-end" },
+  shrinkBoundary: { flexShrink: 1, minHeight: 0 },
+  keyboardAvoider: { flex: 1, justifyContent: "flex-end" },
   frame: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderTopWidth: 1,
+    flexShrink: 1,
     maxHeight: "82%",
+    minHeight: 0,
     overflow: "hidden",
   },
   header: {
     alignItems: "center",
     flexDirection: "row",
+    flexShrink: 0,
     justifyContent: "space-between",
     minHeight: BOTTOM_SHEET_HEADER_MIN_HEIGHT,
     paddingHorizontal: space[4],
     paddingTop: space[2],
   },
+  heading: { flexShrink: 1 },
   closeAction: {
     alignItems: "center",
     borderRadius: radius.full,
@@ -523,6 +538,6 @@ const styles = StyleSheet.create({
     minWidth: sizes.minimumTarget,
     width: sizes.minimumTarget,
   },
-  scroll: { flexShrink: 1, maxHeight: "82%" },
+  scroll: { flexShrink: 1, minHeight: 0 },
   content: { gap: space[4], padding: space[4], paddingTop: space[2] },
 });

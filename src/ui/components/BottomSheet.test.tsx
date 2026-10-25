@@ -456,6 +456,43 @@ describe("BottomSheet", () => {
     expect(focusedRef).toBe(registeredRef);
   });
 
+  it("keeps long sheet content unbounded and reserves the actual bottom inset inside its scroll owner", async () => {
+    await render(
+      <SheetTestProviders>
+        <BottomSheet
+          contentStyle={{ maxHeight: "82%", padding: 24, paddingBottom: 28 }}
+          heading="Plan settings"
+          onCancel={jest.fn()}
+          visible
+        >
+          <Text>First settings group</Text>
+          <Text>Last action with a complete wrapping label</Text>
+        </BottomSheet>
+      </SheetTestProviders>,
+    );
+
+    const scroll = screen.getByTestId("bottom-sheet-scroll");
+    expect(StyleSheet.flatten(scroll.props.contentContainerStyle)).toMatchObject({
+      padding: 24,
+      paddingBottom: 44,
+    });
+    expect(StyleSheet.flatten(scroll.props.contentContainerStyle).maxHeight).toBeUndefined();
+    expect(StyleSheet.flatten(scroll.props.style).maxHeight).toBeUndefined();
+    expect(screen.getByTestId("bottom-sheet-surface")).toHaveStyle({
+      flexShrink: 1,
+      minHeight: 0,
+    });
+    expect(StyleSheet.flatten(screen.getByTestId("bottom-sheet-surface").props.style).paddingBottom)
+      .toBeUndefined();
+    expect(screen.getByTestId("bottom-sheet-keyboard-avoider")).toHaveStyle({ flex: 1 });
+    expect(screen.getByTestId("bottom-sheet-keyboard-avoider")).toHaveProp("pointerEvents", "box-none");
+    for (const id of ["bottom-sheet-frame", "bottom-sheet-layout", "bottom-sheet-scroll"]) {
+      expect(screen.getByTestId(id)).toHaveStyle({ flexShrink: 1, minHeight: 0 });
+    }
+    expect(scroll.queryAll((node) => node.props.children
+      === "Last action with a complete wrapping label").length).toBeGreaterThan(0);
+  });
+
   it("keeps traversal inside the modal frame and preserves reachable keyboard-safe geometry", async () => {
     Dimensions.set({
       screen: { fontScale: 2, height: 480, scale: 1, width: 900 },
@@ -495,9 +532,10 @@ describe("BottomSheet", () => {
       flexBasis: 0,
       flexGrow: 1,
       flexShrink: 1,
-      maxHeight: 289,
       minHeight: 0,
     });
+    expect(StyleSheet.flatten(screen.getByTestId("bottom-sheet-scroll").props.style).maxHeight)
+      .toBeUndefined();
     expect(screen.getByTestId("bottom-sheet-surface")).toHaveStyle({
       height: 345,
     });

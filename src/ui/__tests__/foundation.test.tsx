@@ -1881,8 +1881,11 @@ describe("Plan 01-02 shared component vocabulary", () => {
     );
 
     expect(screen.getByTestId("confirmation-sheet-content")).toHaveStyle({
-      maxHeight: "82%",
+      flexShrink: 1,
+      minHeight: 0,
     });
+    expect(StyleSheet.flatten(screen.getByTestId("confirmation-sheet-content").props.style).maxHeight)
+      .toBeUndefined();
     await fireEvent.press(
       screen.getByRole("button", { name: "Keep training" }),
     );
