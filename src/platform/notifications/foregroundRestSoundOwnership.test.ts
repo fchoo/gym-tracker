@@ -24,7 +24,10 @@ const input = { sessionId: "session-countdown", restRevision: 3, endsAtMs: 100_0
 let handler: NonNullable<Parameters<typeof Notifications.setNotificationHandler>[0]>["handleNotification"];
 let descriptor: PropertyDescriptor | undefined;
 let state: AppStateStatus;
-let appStateChanged: ((next: AppStateStatus) => void) | undefined;
+const appStateListeners = new Set<(next: AppStateStatus) => void>();
+const appStateChanged = (next: AppStateStatus) => {
+  for (const listener of [...appStateListeners]) listener(next);
+};
 let appStateListener: jest.SpiedFunction<typeof AppState.addEventListener>;
 
 function notification(data: unknown = { version: 1, ...input }, identifier = `rest:${input.sessionId}`) {
@@ -40,8 +43,8 @@ beforeAll(() => {
   descriptor = Object.getOwnPropertyDescriptor(AppState, "currentState");
   Object.defineProperty(AppState, "currentState", { configurable: true, get: () => state });
   appStateListener = jest.spyOn(AppState, "addEventListener").mockImplementation((_event, listener) => {
-    appStateChanged = listener;
-    return { remove: jest.fn() };
+    appStateListeners.add(listener);
+    return { remove: jest.fn(() => appStateListeners.delete(listener)) };
   });
 });
 beforeEach(() => {

@@ -30,6 +30,44 @@ function cuePlayer() {
   return player;
 }
 
+// Media3 keeps playWhenReady after STATE_ENDED. A seek then starts playback
+// again unless pause() first clears that intent. Plain play() call counts miss
+// this native replay because no second JS play() call is needed.
+function androidCuePlayer(durationMs: number) {
+  const player = cuePlayer();
+  let playWhenReady = false;
+  let end: ReturnType<typeof setTimeout> | undefined;
+  let playing = false;
+  const audibleStarts: number[] = [];
+  const start = () => {
+    playing = true;
+    audibleStarts.push(Date.now());
+    end = setTimeout(() => {
+      playing = false;
+      player.currentTime = durationMs / 1_000;
+      player.emit({ didJustFinish: true, playing: false });
+    }, durationMs);
+  };
+  player.play.mockImplementation(() => {
+    playWhenReady = true;
+    start();
+  });
+  player.pause.mockImplementation(() => {
+    playWhenReady = false;
+    playing = false;
+    clearTimeout(end);
+  });
+  player.seekTo.mockImplementation(async () => {
+    clearTimeout(end);
+    player.currentTime = 0;
+    if (playWhenReady) start();
+  });
+  return Object.defineProperties(player, {
+    playing: { get: () => playing },
+    audibleStarts: { value: audibleStarts },
+  }) as typeof player & { readonly playing: boolean; readonly audibleStarts: number[] };
+}
+
 let restoreAppState: () => void;
 let appStateListener: jest.SpiedFunction<typeof AppState.addEventListener>;
 beforeEach(() => {
@@ -54,6 +92,59 @@ async function renderAdapter(shortPlayer = cuePlayer(), longPlayer = cuePlayer()
 }
 
 describe("Expo rest countdown cue adapter", () => {
+  it("produces exactly two 120ms shorts and one 360ms long, then silence on Android", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(10_000);
+    const shortPlayer = androidCuePlayer(120);
+    const longPlayer = androidCuePlayer(360);
+    const { rendered } = await renderAdapter(shortPlayer, longPlayer);
+    const port = rendered.result.current;
+    await port.playShortCue();
+    await act(async () => { jest.advanceTimersByTime(1_000); });
+    await port.playShortCue();
+    await act(async () => { jest.advanceTimersByTime(1_000); });
+    await port.playLongCue();
+    await act(async () => { jest.advanceTimersByTime(3_500); });
+    expect(shortPlayer.audibleStarts).toEqual([10_000, 11_000]);
+    expect(longPlayer.audibleStarts).toEqual([12_000]);
+    expect(shortPlayer.playing).toBe(false);
+    expect(longPlayer.playing).toBe(false);
+    await rendered.unmount();
+  });
+
+  it("stops an audible short before starting a final cue during a compressed deadline", async () => {
+    jest.useFakeTimers();
+    const shortPlayer = androidCuePlayer(120);
+    const longPlayer = androidCuePlayer(360);
+    const { rendered } = await renderAdapter(shortPlayer, longPlayer);
+    await rendered.result.current.playShortCue();
+    jest.advanceTimersByTime(60);
+    await rendered.result.current.playLongCue();
+    expect(shortPlayer.playing).toBe(false);
+    expect(longPlayer.playing).toBe(true);
+    await rendered.unmount();
+  });
+
+  it("ignores a delayed finish from a cancelled countdown while its next short is playing", async () => {
+    jest.useFakeTimers();
+    const shortPlayer = androidCuePlayer(120);
+    const { rendered } = await renderAdapter(shortPlayer);
+    await rendered.result.current.playShortCue();
+    jest.advanceTimersByTime(40);
+    rendered.result.current.cancelPendingCues?.();
+    rendered.result.current.cancelPendingCues?.();
+    shortPlayer.currentTime = 0.04;
+    await rendered.result.current.playShortCue();
+    const seeks = shortPlayer.seekTo.mock.calls.length;
+    shortPlayer.emit({ didJustFinish: true, playing: false });
+    expect(shortPlayer.seekTo).toHaveBeenCalledTimes(seeks);
+    expect(shortPlayer.playing).toBe(true);
+    await act(async () => { jest.advanceTimersByTime(1_000); });
+    expect(shortPlayer.audibleStarts).toHaveLength(2);
+    expect(shortPlayer.playing).toBe(false);
+    await rendered.unmount();
+  });
+
   it("starts a loaded final player synchronously without waiting for an unnecessary seek", async () => {
     const { rendered, shortPlayer, longPlayer } = await renderAdapter();
     longPlayer.seekTo.mockImplementation(() => new Promise(() => undefined));

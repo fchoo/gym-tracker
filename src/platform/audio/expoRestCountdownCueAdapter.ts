@@ -36,7 +36,14 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
     const rewinds = new Map<AudioPlayer, Promise<void>>();
 
     const rewind = (player: AudioPlayer) => {
-      const pending = (async () => player.seekTo(0))();
+      const preparing = rewinds.get(player);
+      if (preparing !== undefined) return preparing;
+      const pending = (async () => {
+        // Media3 retains playWhenReady at STATE_ENDED. Seeking while that intent
+        // is set restarts the cue without another play() call, so pause first.
+        player.pause();
+        await player.seekTo(0);
+      })();
       rewinds.set(player, pending);
       // Rewind on finish, ahead of the next countdown. A failed preparation is
       // retried by the next request and reported through that request's promise.
@@ -107,6 +114,10 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
       for (const cancel of [...pendingLoads]) cancel();
       const requestedAtMs = Date.now();
       try {
+        // Supersede audible playback as well as pending loads/seeks. Two native
+        // players share the audio session and must never play over each other.
+        shortPlayer.pause();
+        longPlayer.pause();
         if (!player.isLoaded) await waitUntilLoaded(player, maxWaitMs);
         if (requestGeneration !== generation) return;
         const pendingRewind = rewinds.get(player);
@@ -154,7 +165,10 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
   useEffect(() => {
     const subscriptions = [shortPlayer, longPlayer].map((player) =>
       player.addListener(STATUS_EVENT, (status) => {
-        if (status.didJustFinish) {
+        // A finish event can reach JS after a cancelled cue has been replayed.
+        // Read native truth before rewinding so that event cannot seek the new
+        // playback back to zero or cut it off.
+        if (status.didJustFinish && !player.playing && player.currentTime > 0) {
           void playback.rewind(player).catch(() => undefined);
         }
       })
