@@ -518,6 +518,8 @@ import {
   type LibraryRuntimeSnapshot,
   type LibraryRuntimeStarterPlanSummary,
 } from "./libraryRuntimeReadPort";
+import { createLibraryPlanDeletionPort } from "../platform/sqlite/repositories/libraryPlanDeletionRepository";
+import type { LibraryPlanDeletionPort } from "../domains/library/planDeletion";
 export {
   createLibrarySectionPreferencePort,
   type LibraryRuntimeSection,
@@ -941,6 +943,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   >;
   loadLibrary(): Promise<LibraryRuntimeSnapshot>;
   retryLibraryLoad(): Promise<LibraryRuntimeSnapshot>;
+  deleteLibraryPlan: LibraryPlanDeletionPort["deletePlan"];
   loadStarterPlan(templateId: string): Promise<AcceptedStarterTemplate | null>;
   loadStarterActivationPreview(
     templateId: string,
@@ -3197,6 +3200,18 @@ export function WorkoutAppRuntimeProvider({
     return loadLibrary();
   }, [loadLibrary]);
 
+  const deleteLibraryPlan = useCallback<LibraryPlanDeletionPort["deletePlan"]>(async (input) => {
+    const services = requireServices();
+    const result = await createLibraryPlanDeletionPort(services.kernel, {
+      nowMs: dependencies.nowMs,
+    }).deletePlan(input);
+    if (result.outcome === "deleted") {
+      workoutRefreshGenerationRef.current += 1;
+      setState(await trustedRead(services));
+    }
+    return result;
+  }, [dependencies, requireServices, trustedRead]);
+
   const loadStarterPlan = useCallback(async (
     templateId: string,
   ): Promise<AcceptedStarterTemplate | null> => {
@@ -5250,6 +5265,7 @@ export function WorkoutAppRuntimeProvider({
     listOwnedPlanExercises: () =>
       requireServices().ownedPlans.listExercises(),
     loadLibrary,
+    deleteLibraryPlan,
     retryLibraryLoad,
     loadOwnedPlan: (planId) => requireServices().ownedPlans.loadPlan(planId),
     loadSchedule: (planId) => requireServices().schedules.loadSchedule(planId),
@@ -5400,6 +5416,7 @@ export function WorkoutAppRuntimeProvider({
     keepWorkoutTarget,
     listLibraryRecentExercises,
     loadLibrary,
+    deleteLibraryPlan,
     loadRuntimeCustomExercise,
     loadRuntimeCustomExerciseMigration,
     loadStarterActivationPreview,

@@ -449,6 +449,10 @@ describe("Plan 01-07 TodayScreen", () => {
       "handled",
     );
     expect(screen.getByTestId("workout-start-sheet-content")).toHaveStyle({
+      flexShrink: 1,
+      minHeight: 0,
+    });
+    expect(screen.getByTestId("workout-start-sheet-content")).not.toHaveStyle({
       maxHeight: "82%",
     });
     expect(screen.queryByRole("checkbox", {

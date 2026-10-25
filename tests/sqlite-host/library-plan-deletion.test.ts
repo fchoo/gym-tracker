@@ -267,4 +267,3 @@ describe("Library plan deletion with authoritative SQLite facts", () => {
     expect(await kernel.queryAll("SELECT is_active FROM plans WHERE id = 'plan'")).toEqual([{ is_active: 0 }]);
   });
 });
-

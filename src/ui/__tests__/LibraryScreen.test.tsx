@@ -1237,7 +1237,8 @@ describe("LibraryScreen exercise browse", () => {
       nativeEvent: { key: " " },
     });
     expect(screen.getByTestId("library-filter-sheet")).toHaveStyle({
-      maxHeight: "82%",
+      flexShrink: 1,
+      minHeight: 0,
     });
     expect(screen.getByTestId("library-filter-sheet")).toHaveProp(
       "keyboardShouldPersistTaps",
