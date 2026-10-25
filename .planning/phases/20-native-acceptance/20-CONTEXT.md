@@ -1,7 +1,8 @@
 # Phase 20: Native Acceptance - Context
 
 **Gathered:** 2026-10-06
-**Status:** Ready for UI specification and planning
+**Status:** Executing focused personal APK corrections; exhaustive native acceptance deferred and incomplete
+**Current amendment:** 2026-10-25 — [current implementation and focused verification](20-PERSONAL-UX-UPDATE-20261025.md)
 
 <domain>
 ## Phase Boundary
@@ -16,7 +17,13 @@ still own component/domain tests; this phase closes cross-phase evidence only.
 <decisions>
 ## Implementation Decisions
 
-### Evidence contract
+### Current owner-authorized execution scope — 2026-10-25
+
+- **D20-09:** The owner authorized focused fixes and source-affected verification, a fresh signed personal APK and data-preserving phone updates. The full 172-row native matrix, aggregate coverage closeout, exhaustive attended review and sole final seal remain deferred/incomplete. This changes the immediate execution route without converting unexecuted original tasks into PASS results.
+- **D20-10:** Current behavior includes Calendar short months with full accessible names, phone-current timestamp displays, compatible Garmin date acceptance, single-line actions, exercise disclosure/reorder, prepared rest audio and precise background alerts, scoped save reads and stale-response guards. Source `8f77d0d5` completes the native reorder presentation-host repair after `b73b36d2` visual overlap failed; final source/APK/emulator/phone proof remains pending.
+- **D20-11:** Preserve the earlier `37226a12` minimal physical/data-preserving update and every failed source-bound run separately. Only the orchestrator may fill the final receipt fields after exact source, APK digest and device binding checks. Full Phase 20 and v1.2 remain incomplete.
+
+### Original evidence contract — retained for full acceptance
 - **D20-01:** Every one of the 172 parity-matrix rows receives source-bound automated/native evidence, plus attended evidence only where the requirement explicitly calls for it; no inherited v1.1 evidence, unexecuted technical path, or fixture-only result impersonates v1.2 proof.
 - **D20-02:** Screenshot matrix covers Light/Dark/System; 360×800, 390×844, 600×960, 840×1080-equivalent; portrait/landscape; default/200% text; all material states.
 - **D20-03:** Verify >=48dp, non-color state, labels, keyboard/D-pad, visible focus, Back/Escape, focus restoration, reduced motion, and adaptive reading order.
@@ -43,6 +50,7 @@ still own component/domain tests; this phase closes cross-phase evidence only.
 - `.planning/v1.2-OWNER-DECISIONS.md` — final MAP/TIM/DEV and self-contained Garmin transport selections.
 - `.planning/research/v1.2/PITFALLS.md` — evidence failure modes.
 - Existing Phase 8-12 native evidence runners/manifests — patterns only; new evidence identity required.
+- `20-PERSONAL-UX-UPDATE-20261025.md` — current implemented behavior, focused execution route, reconciled inventory and pending final-source receipts.
 
 </canonical_refs>
 

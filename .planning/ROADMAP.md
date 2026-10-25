@@ -10,7 +10,7 @@
 
 Reproduce the owner-approved Revision 18 prototype in the Android application while preserving SQLite authority, commit-gated workout behavior, immutable history, offline operation, recovery, backup/merge, accessibility, and performance. Strength and Running plans coexist through real domain contracts; Garmin supplies imported Running facts rather than an in-app recorder.
 
-**Execution authority:** The owner authorized direct execution of the converged plans. Phase 20 remains the single comprehensive native/device/release checkpoint; no production artifact is final before it passes.
+**Execution authority:** The owner authorized direct execution of the converged plans and subsequently authorized focused personal APK fixes, affected checks, signed builds and data-preserving phone updates. The current scope is recorded in [the 2026-10-25 implementation amendment](phases/20-native-acceptance/20-PERSONAL-UX-UPDATE-20261025.md). The exhaustive Phase 20 matrix/coverage/final seal remains deferred and incomplete; a focused personal APK result does not complete v1.2.
 
 ## Phases
 
@@ -53,7 +53,7 @@ Archived detail: .planning/milestones/v1.1-ROADMAP.md
 - [x] **Phase 19: Progress Parity** - Deliver factual Strength and Running progress, goals, recommendations, and optional bodyweight views from durable evidence. (host-complete 2026-10-14; native acceptance deferred to Phase 20)
 - [ ] **Phase 20: Native Acceptance** - Demonstrate cross-phase native fidelity, accessibility, recovery, integrity, and performance before later release authorization.
 
-**Coverage:** 172/172 v1.2 requirements mapped exactly once: DOM 17; SHL 13; WRK 36; CAL 23; LIB 36; GAR 16; PRO 18; VER 13.
+**Requirement mapping, not native PASS coverage:** 172/172 v1.2 requirements mapped exactly once: DOM 17; SHL 13; WRK 36; CAL 23; LIB 36; GAR 16; PRO 18; VER 13.
 
 ## Dependency Rationale
 
@@ -95,7 +95,7 @@ silently select a different transport.
   4. Overlapping occurrences remain separately identifiable; Move run, Move strength, Keep both, workout selection, and activity matching affect only the explicitly selected occurrence and never rewrite history.
   5. Imported activities, matches, goals, and optional bodyweight survive idempotent replay and portability, while workout edits/completion remain offline and are acknowledged only after the exclusive transaction commits.
 
-**Plans**: 15/16 plans executed
+**Plans**: 16/16 plans have retained execution summaries
 
 - [x] 13-01-PLAN.md
 - [x] 13-02-PLAN.md
@@ -324,7 +324,7 @@ Plans:
   4. Native Calendar drag/threshold/morph behavior and representative launch, root switch, set commit, editor, search, Calendar, Progress, import, backup, and merge workloads meet their reviewed numeric budgets with raw evidence retained.
   5. An attended Samsung review records visual, usability, accessibility, and interaction observations separately from automated proof, and signed personal-use release verification is prepared without treating either as release authorization.
 
-**Plans**: 8/12 plans executed
+**Plans**: 12 plan files / 8 retained summaries; Plan 20-08 reopened, so 7 plans are currently complete. Plans 20-09–20-12 remain deferred without summaries.
 
 - [x] 20-01-PLAN.md
 - [x] 20-02-PLAN.md
@@ -333,29 +333,33 @@ Plans:
 - [x] 20-05-PLAN.md
 - [x] 20-06-PLAN.md
 - [x] 20-07-PLAN.md
-- [x] 20-08-PLAN.md — corrective immutable build-only run `phase20-20261014T065837Z-335e0563d57f` verified from gated source `335e0563`; prior runs are archived invalidated.
-- [ ] 20-09-PLAN.md — next; consume only `phase20-20261014T065837Z-335e0563d57f` and its immutable build.json.
+- [ ] 20-08-PLAN.md — reopened for the current source/build corrections; its historical summary and `335e0563` run remain retained. Current source `908098f3` passed its signed build and focused emulator checks; Samsung installation awaits USB; exhaustive Plan 20-08 closeout remains deferred.
+- [ ] 20-09-PLAN.md — deferred full SQLite/recovery observations; any later execution requires a fresh valid source-bound run, not the obsolete `335e0563` build.
 - [ ] 20-10-PLAN.md
 - [ ] 20-11-PLAN.md
 - [ ] 20-12-PLAN.md
+
+**Current implementation / focused delivery:** Calendar short month headings, phone-current display timezone, compatible Garmin auto dates, single-line actions, exercise disclosure/reorder, prepared rest cues/precise background alarms, scoped saves and stale-render guards are implemented. Earlier `37226a12` was checked and installed with phone data preserved. Intermediate `b73b36d2` failed native reorder overlap; source `908098f3` fixes shared-value/render cleanup timing and passes final-source emulator checks. The signed APK is prepared; phone installation awaits USB connection. [Current plan and pending receipt fields](phases/20-native-acceptance/20-PERSONAL-UX-UPDATE-20261025.md).
 
 **UI hint**: yes
 **Plan flags**: focused verification research; parity ledger and UI review required; plan check required; fresh review convergence required; depends on all prior phases; DEV-01/02 are accepted and Garmin native proof remains pending implementation
 
 ## Progress
 
-**Execution DAG:** 13 → 14 → 15 → 17 → 18 → {16,19} → 20. The owner authorized execution of the converged plans; Phases 16 and 19 are the current parallel dependency frontier.
+**Execution DAG:** 13 → 14 → 15 → 17 → 18 → {16,19} → 20. Upstream implementation summaries are present. Current work is the owner-authorized focused Phase 20 personal APK update; full acceptance remains deferred. GSD identifies Phase 14 as the earliest retained verification gap, and Phases 14/15/17 keep that debt visible. Their historical verdicts are not changed by this update.
 
-| Phase | Directory | Plans Complete | Status | Completed |
+**Actual inventory:** 98 plan files / 94 retained summaries; Plan 20-08 reopened, so 93 plans are currently complete. Four phases pass the GSD verification projection; seven upstream phases have implementation summaries. No percentage represents native acceptance.
+
+| Phase | Directory | Retained Summaries | Status | Implementation recorded |
 |---|---|---:|---|---|
 | 13. One-per-Sport Plan & Running Foundation | 13-multi-plan-running-foundation | 16/16 | Complete    | 2026-10-08 |
-| 14. Prototype Visual Shell | 14-prototype-visual-shell | 12/12 | Host complete; native deferred | 2026-10-12 |
-| 15. Workout Parity | 15-workout-parity | 13/13 | Host complete; native deferred | 2026-10-12 |
+| 14. Prototype Visual Shell | 14-prototype-visual-shell | 12/12 | Host complete; verification gaps retained | 2026-10-12 |
+| 15. Workout Parity | 15-workout-parity | 13/13 | Host complete; verification gaps retained | 2026-10-12 |
 | 16. Calendar Parity | 16-calendar-parity | 7/7 | Host complete; native deferred | 2026-10-14 |
-| 17. Library & Running Plans | 17-library-running-plans | 14/14 | Host complete; native deferred | 2026-10-12 |
+| 17. Library & Running Plans | 17-library-running-plans | 14/14 | Host complete; verification gaps retained | 2026-10-12 |
 | 18. Garmin Account Sync | 18-garmin-import | 14/14 | Complete    | 2026-10-12 |
 | 19. Progress Parity | 19-progress-parity | 10/10 | Host complete; native deferred | 2026-10-14 |
-| 20. Native Acceptance | 20-native-acceptance | 8/12 | In Progress|  |
+| 20. Native Acceptance | 20-native-acceptance | 8/12 (20-08 reopened) | Focused native pending; full acceptance deferred | — |
 
 ## Backlog
 

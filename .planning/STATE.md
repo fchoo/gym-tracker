@@ -5,17 +5,19 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — IMPLEMENT
 current_phase: 20
 current_phase_name: Native Acceptance
 status: executing
-stopped_at: Plan 20-09 production native producer remediation resumed; prior build-only run invalidated by source fixes
-last_updated: "2026-10-15T22:53:11+08:00"
-last_activity: 2026-10-15
-last_activity_desc: Resumed Plan 20-09 at the production launcher blocker and dispatched Calendar, Recovery, quality, and all-state visual producer remediation
-state_head: 36ddd9433f844300360f5cb971f2e8202be5a29f
+stopped_at: Signed source 908098f3 passes focused emulator checks; Samsung install pending USB connection; full Phase 20 deferred
+last_updated: "2026-10-25T15:12:21.025392+00:00"
+last_activity: 2026-10-25
+last_activity_desc: Calendar short months and scoped save/render guards delivered in signed source 908098f3. Focused emulator drag release, set save and month title pass; physical update awaits USB. Archived29 auxiliary worktrees/211 branches, stopped emulator and old coverage VM; full Phase20 deferred.
+state_head: 908098f388b14823ab262fbdfd77e0c13468d688
 progress:
   total_phases: 8
   completed_phases: 4
+  implementation_summary_phases: 7
   total_plans: 98
-  completed_plans: 94
-  percent: 50
+  retained_summaries: 94
+  completed_plans: 93
+  reopened_plans: 1
 ---
 
 # Project State
@@ -29,16 +31,25 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 
 ## Current Position
 
-Phase: 20 (Native Acceptance) — EXECUTING
-Plan: 9 of 12
-Status: Ready to execute
-Last activity: 2026-10-14 — Corrective Plan 20-08 rebuild verified; immutable build-only run phase20-20261014T065837Z-335e0563d57f is ready for Plan 20-09
+Phase: 20 (Native Acceptance) — EXECUTING FOCUSED PERSONAL APK UPDATE
+Plan: 20-08 reopened for current corrective source/build checks; original Plans 20-09–20-12 remain deferred and incomplete.
+Status: Signed application source is `908098f388b14823ab262fbdfd77e0c13468d688` (`908098f3`). Calendar short headings, scoped committed save updates and the drag shared-value/render handoff are complete. Focused emulator release, set-value save and month-title checks passed against APK `259a607db376b3bf9eff28b92694e60ea0c28eac8c02285b618e6444cf945669`; failed intermediate attempts remain preserved. The finalized APK is available in Downloads and `artifacts/native/personal-release/20261025-230155-908098f388b1/gym-tracker-final.apk`. The Samsung is currently absent from ADB, so installation is pending; its last confirmed installed source remains `37226a12`, with data preserved. No new phone data reset or set completion was performed. Cleanup retired 29 auxiliary worktrees and 211 branches after verified preservation; only main and UX-revamp remain. The Gym Tracker emulator, Lima VM and stale coverage harness are stopped. Full Phase 20 acceptance, final seal, Nyquist verification and milestone v1.2 completion remain incomplete.
 
-Progress: [█████░░░░░] 50%
+Current implemented behavior and the orchestrator's pending receipt fields: [.planning/phases/20-native-acceptance/20-PERSONAL-UX-UPDATE-20261025.md](phases/20-native-acceptance/20-PERSONAL-UX-UPDATE-20261025.md).
+
+Inventory: 98 plan files / 94 retained summaries. Plan 20-08 is reopened, so 93 plans are currently complete; no acceptance percentage is inferred. Four phases pass the GSD verification projection; Phases 14, 15 and 17 retain native verification debt despite completed implementation summaries. The current owner-authorized route is focused Phase 20 delivery, not an automatic rerun of those prior phases.
+
+### Historical delivery snapshot — superseded as current status
+
+Status: The owner replaced exhaustive acceptance with a minimal personal APK check. Signed production APK from b374eb5f9475039a1ffacd1a9aa29b6adc792be9 passed clean launch, Calendar/Library/Progress navigation, workout start, one set completion, and cold restart/resume on Samsung. The same APK was reinstalled and cache/app data cleared; the temporary review app was removed. Final page: Choose your starting plan. Downloads artifact: `../../../../../Downloads/Gym-Tracker-final.apk` (relative to this file). SHA256: ddff0981e3970e22fe5bacf8f156d794a2fa34fba0f80f60e7402a1bb79b01db. Test hooks are disabled. Full Phase20 acceptance is deferred and incomplete; no repeated passing suites or full matrix claim. Earlier evidence and isolated worker checkouts remain preserved.
+
+### Preserved aggregate — historical source/host evidence
+
+Preserved aggregate: 2026-10-22 — Unchanged-source Linux task 68798 passed at `898ae5f2`: 649 Phase 20 tests, 172 Phase 18 evidence tests and 10 pidfd tests, zero skips; all 17 Node integrity modules and pidfd exact 100% statements/branches/functions/lines. Current predecessor, typecheck, boundary and pinned-toolchain checks pass. Independent source review is 100/100, zero findings; source security is 49/49 closed, score 100. Final host receipt is `artifacts/native/host/phase20-final-898ae5f2cacc/host-receipt.json`, SHA-256 `cecf2e5caa3153b6352987014eb4847c3fc655824603190a141626a477757181`; it explicitly inherits the prior 347-suite / 5,010-test / 166-module application gate through unchanged production inputs rather than relabelling an old run. Root `.coverage` and invalidated 3550 APK/failure receipt remain intact. Linux evidence is preserved and its VM stopped. ADB has only the emulator and no wireless candidates. Those were the pre-Samsung prerequisites at that historical snapshot; they are not current device-state claims.
 
 ## Delivery Model and Planning Gate
 
-Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritative offline workouts. The owner authorized direct execution of the existing converged plans. Phase checkpoints remain targeted; exact-device, cross-phase, and production artifact acceptance stays deferred to Phase 20.
+Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritative offline workouts. The owner authorized direct execution of the existing converged plans. Phase checkpoints remain targeted. The owner subsequently authorized the focused personal APK path, affected checks and data-preserving phone updates recorded in the 2026-10-25 amendment. The exhaustive Phase 20 matrix/coverage/final seal stays deferred and incomplete.
 
 ## Performance Metrics
 
@@ -47,7 +58,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - Milestones shipped: 2 (v1.0 and v1.1)
 - Phases completed: 12
 - Plans completed: 119 (83 in v1.0; 36 in v1.1)
-- v1.2 phases: 8 planned; 98 baseline plans retained; 69 plans executed through the Phase 18 dependency frontier
+- v1.2 phases: 7 upstream phases have implementation summaries; 4 pass the current GSD verification projection. Phase 20 remains executing with focused emulator verification passed; phone update pending. Actual inventory: 98 plans and 94 retained summaries, with Plan 20-08 reopened (93 currently complete). Native debt in Phases 14/15/17 is retained; summary counts do not prove acceptance.
 
 **Recent trend:** v1.1 closed with 5/5 phases and 36/36 plans complete, all integrity-critical files at 100% coverage, cross-phase integration passing, and the signed APK installed unchanged on the Samsung SM-S916B.
 **Per-Plan Metrics:**
@@ -263,20 +274,23 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 20]: Phase 20: Samsung attended observations are identity-bound and observation-only; N4/release-authority inheritance is rejected.
 - [Phase 20]: Phase 20: Readiness preserves non-PASS evidence and can be conditional only under reviewed accepted-exception policy with safe rollback boundaries.
 - [Phase 20]: The original 5917481c build/run was archived as invalidated pre-shard evidence after immutable producer repairs and was never used for shard execution.
-- [Phase 20]: Corrective Plan 20-08 freezes acceptance source at 335e0563 and binds the sole authoritative development-test build to phase20-20261014T065837Z-335e0563d57f; prior build-only runs, including the pre-SQLite-producer-hardening predecessor, are archived invalidated and Plan 20-09 must consume only this immutable run.
+- [Phase 20]: Historical Plan 20-08 freezes at 335e0563 and 3550e7f3 are invalidated and preserved. Current source/host closure is 3720c7b3. Emulator diagnostics and owner-confirmed import/cold-persistence proof are retained separately; an authoritative final acceptance run requires a fresh build on the physical SM-S916B. Plan 20-09 must consume only that future immutable run.
 
 ### Pending Owner Review
 
 - Product decisions pending: **0**. MAP-01, TIM-01, DEV-01, DEV-02 and the Garmin transport selection are closed.
 - Review the complete reconciled planning set after the final fresh convergence run; technical proof gaps remain implementation evidence, not new product questions.
-- Owner review is complete; execute the existing Phase 16 and Phase 19 plans directly without replanning.
+- Upstream source plans are implemented. Continue the owner-authorized focused Phase 20 personal APK update; keep the full acceptance contract deferred without replanning or re-executing unrelated passing work.
+- The earlier owner-confirmed activity date/time and Asia/Singapore provenance remain preserved. Current Garmin imports automatically accept compatible provider evidence or the owner-registered Asia/Singapore default; incompatible source evidence still requires review. Timestamp displays separately follow the phone current timezone without rewriting source facts.
+- Finish the fresh final-source emulator check and data-preserving phone update under the orchestrator exclusive device window. The exhaustive seven-row attended record remains deferred with the full Phase 20 contract.
 
 ### Blockers/Concerns
 
-- **Garmin native proof:** The selected embedded client is source-supported but has not yet been built or tested with the owner's account. A proof failure records a concrete blocker; it does not silently switch transport.
-- **Garmin data fidelity:** JSON detail samples have chart/polyline limits; verify field presence and sampling before using them for exact best-effort claims. FIT is deferred until this is settled.
+- **Garmin native proof:** The selected embedded client and Android dependency closure passed emulator diagnostics. Exactly one owner credential submission completed authentication, encrypted session persistence and restoration. Real retrieval and normalization passed. Fresh same-Samsung Garmin acceptance and owner-attended phone authentication/MFA remain pending.
+- **Garmin date policy:** The earlier owner-supplied Asia/Singapore confirmation is historical accepted evidence. Current source preserves provider evidence, uses the registered fallback for compatible missing-zone dates, and retains review for incompatible historical/travel evidence. Phone-current display grouping is independent of that import policy.
+- **Garmin data fidelity:** Reviewed detail columns and timed route tuples retain original values, indexes and provenance within the existing limits. Complete capacity/corruption regression scopes and real normalization passed; final physical-device acceptance is still required. FIT remains deferred.
 - **Plan freshness:** The transport-focused current-file review converged with 0 HIGH and 0 actionable non-HIGH findings. The older FIT/official-provider result remains historical only.
-- **Release boundary:** Phase execution is authorized; production build, install, and release presentation remain blocked until Phase 20 passes.
+- **Delivery boundary:** The owner authorized the focused signed personal APK build, data-preserving install and affected checks. Final focused receipt is pending. Exhaustive native readiness, final seal, milestone completion and public release remain incomplete/deferred.
 
 ## Deferred Items
 
@@ -288,7 +302,13 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-15T22:53:11+08:00
-Stopped at: Session resumed; proceeding with Plan 20-09 production native producer remediation before a fresh source freeze and rebuild
-Resume file: None
-Next action: Complete and review the real production native producers, then create a fresh source freeze/build/run before any Plan 20-09 evidence execution.
+Current session: 2026-10-25
+Current source: `8f77d0d5d23dcce8828327847184371947e4cb9d`.
+Current next action: Complete the fresh signed build and focused emulator/phone checks, preserve the `b73b36d2` failed visual run, and fill the exact receipt fields in `phases/20-native-acceptance/20-PERSONAL-UX-UPDATE-20261025.md`. The phone previously received `37226a12` with data preserved; final update is pending. No credential access or broader native/coverage closeout is part of the documentation assignment. Full Phase 20 remains deferred and incomplete.
+
+### Historical continuation instructions — retained; do not execute as the current route
+
+Last session: 2026-10-24T09:57:00Z
+Stopped at: Samsung owner login and import verified; registered Asia/Singapore default delivered at106d, with imported facts unchanged after install-r/cold restart.106dSQLitepassed; recoveryfailedbeforefirstcaseonMaestroYAMLsyntax and restored settings/released lease. Failedimmutable runpreserved. Parserrepair2d522d4a passes75focusedtests/all11actualMaestrosyntaxchecks; final securityaudit finishing before freshbuild/run. No native process active.
+Resume file: .planning/phases/20-native-acceptance/20-RESUMED-NATIVE-SYNC.md
+Next action: After exact2dsourceaudits close, run /tmp/gym-tracker-prepare-flow-final-source.py and /tmp/gym-tracker-build-final-samsung-2d522d.py, then /tmp/gym-tracker-final-2d522d-stage.py for serializedSQLite/recovery/rollback/Garmin/Calendar. Do not retry or seal failed106drun. Preserve ownerimport/login using install-r and counts/digests; no credentialretrieval or resubmission. Continue functional/visual/accessibility/performance and7attendedrows beforeseal. Keep204critical modulecoverage100through current affectedproof and exactinheritance. Read20-RESUMED-NATIVE-SYNC.md currentfinalsection and exactserialbindings; preserveallfailedruns/drafts/.coverage/worktrees. No productionartifacts beforePhase20green;push/PR/publish/deploy remains unauthorized.
