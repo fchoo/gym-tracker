@@ -219,7 +219,9 @@ export const workoutTypeScale = {
   editorialWorkoutTitle: {
     fontFamily: fontFamilies.interfaceEmphasis,
     fontSize: 57,
-    lineHeight: 49,
+    // Archivo's 878-unit ascent and 210-unit descent need 62.016px at 57px.
+    // Round up so native line boxes keep descenders at every font scale.
+    lineHeight: 63,
     fontWeight: "700",
     fontStretch: "condensed",
     letterSpacing: revision18EditorialWorkoutTitleLetterSpacing,
