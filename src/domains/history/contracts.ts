@@ -50,6 +50,9 @@ export type HistorySessionSummary = Readonly<{
   dayName: string | null;
   original: OriginalHistoryFacts;
   effective: EffectiveHistoryFacts;
+  /** View-only phone-zone date; original/effective source facts stay authoritative. */
+  displayLocalDate?: LocalDate;
+  displayTimeZone?: string;
   exerciseProgress: HistoryProgress;
   workingSetProgress: HistoryProgress;
 }>;
@@ -61,6 +64,9 @@ export type RemovedHistorySession = Readonly<{
   dayName: string | null;
   localDate: LocalDate;
   timezone: string;
+  startedAtMs?: number;
+  displayLocalDate?: LocalDate;
+  displayTimeZone?: string;
   effectiveRevision: number;
   removedAtMs: number;
   workingSetProgress: HistoryProgress;

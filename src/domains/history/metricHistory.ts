@@ -28,6 +28,9 @@ type RelativeStrengthProjection = Readonly<{
 export type EffectiveMetricHistorySet = Readonly<{
   sessionId: string;
   localDate: string;
+  /** Presentation only; localDate still selects dated targets and bodyweight facts. */
+  displayLocalDate?: string;
+  displayTimeZone?: string;
   exerciseId: string;
   exerciseName: string;
   identity: MetricIdentity;
@@ -310,7 +313,7 @@ export function projectLoadMetricHistorySeries(
       sourceRevision: Number.isSafeInteger(set.sourceRevision) && set.sourceRevision! > 0
         ? set.sourceRevision!
         : null,
-      localDate: set.localDate,
+      localDate: set.displayLocalDate ?? set.localDate,
       value: view === "load"
         ? set.observation.loadGrams / 1_000
         : relative!.relativeLoad,

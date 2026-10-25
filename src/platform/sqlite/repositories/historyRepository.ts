@@ -34,6 +34,7 @@ import type {
   SqliteKernel,
   SqliteTransactionExecutor,
 } from "../sqliteKernel";
+import { displayDateRange, displayLocalDate } from "../../time/deviceTimeZone";
 
 type SourceSessionRow = Readonly<{
   id: string;
@@ -74,6 +75,7 @@ type PlannedOpportunityRow = Readonly<{
 type SourceMetricSetRow = Readonly<{
   session_id: string;
   local_date: string;
+  started_at_ms: number;
   session_status: "completed" | "partial";
   exercise_id: string;
   exercise_name: string;
@@ -544,7 +546,7 @@ export async function loadEffectiveHistoryProjectionSessions(
        ORDER BY se.session_id`,
     ),
     executor.queryAll<SourceMetricSetRow>(
-      `SELECT session.id AS session_id, session.local_date,
+      `SELECT session.id AS session_id, session.local_date, session.started_at_ms,
               session.revision AS source_revision,
               session.status AS session_status, exercise.exercise_id,
               exercise.exercise_name,
@@ -752,7 +754,7 @@ function monthBounds(month: LocalDate): readonly [string, string] {
   return [month, next];
 }
 
-function summary(session: EffectiveSession): HistorySessionSummary {
+function summary(session: EffectiveSession, displayTimeZone?: string): HistorySessionSummary {
   return Object.freeze({
     id: session.id,
     status: session.status,
@@ -768,6 +770,10 @@ function summary(session: EffectiveSession): HistorySessionSummary {
       startedAtMs: session.startedAtMs,
       completedAtMs: session.completedAtMs,
       revision: session.revision,
+    }),
+    ...(displayTimeZone === undefined ? {} : {
+      displayLocalDate: parseHistoryLocalDate(displayLocalDate(session.startedAtMs, displayTimeZone)),
+      displayTimeZone,
     }),
     exerciseProgress: session.exerciseProgress,
     workingSetProgress: session.workingSetProgress,
@@ -786,9 +792,13 @@ export type HistoryRepository = Readonly<{
   listRemovedSessions(): Promise<readonly RemovedHistorySession[]>;
 }>;
 
-export function createHistoryRepository(kernel: SqliteKernel): HistoryRepository {
+export function createHistoryRepository(kernel: SqliteKernel, options: Readonly<{
+  /** Resolve the phone's current timezone once per read, never mutate source dates. */
+  displayTimeZone?: () => string;
+}> = {}): HistoryRepository {
   return Object.freeze({
     async listRemovedSessions() {
+      const displayTimeZone = options.displayTimeZone?.();
       const rows = await kernel.queryAll<RemovedSessionRow>(
         `SELECT ws.id, ws.source, ws.status, ws.local_date, ws.timezone,
                 ws.started_at_ms, ws.completed_at_ms,
@@ -844,6 +854,11 @@ export function createHistoryRepository(kernel: SqliteKernel): HistoryRepository
           dayName: session.dayName,
           localDate: session.localDate,
           timezone: session.timezone,
+          ...(displayTimeZone === undefined ? {} : {
+            startedAtMs: session.startedAtMs,
+            displayLocalDate: parseHistoryLocalDate(displayLocalDate(session.startedAtMs, displayTimeZone)),
+            displayTimeZone,
+          }),
           effectiveRevision: session.revision,
           removedAtMs: row.removed_at_ms,
           workingSetProgress: session.workingSetProgress,
@@ -856,6 +871,8 @@ export function createHistoryRepository(kernel: SqliteKernel): HistoryRepository
       const selectedDate = parseHistoryLocalDate(input.selectedDate);
       const today = parseHistoryLocalDate(input.today);
       const [startDate, endDate] = monthBounds(month);
+      const displayTimeZone = options.displayTimeZone?.();
+      const displayBounds = displayTimeZone === undefined ? undefined : displayDateRange(startDate, endDate, displayTimeZone);
       const [rows, opportunities] = await Promise.all([
         kernel.queryAll<SourceSessionRow>(
           `SELECT ws.id, ws.source, ws.status, ws.local_date, ws.timezone,
@@ -870,9 +887,14 @@ export function createHistoryRepository(kernel: SqliteKernel): HistoryRepository
            LEFT JOIN plans plan ON plan.id = ws.plan_id
            LEFT JOIN plan_days day ON day.id = ws.plan_day_id
            LEFT JOIN history_session_overlays overlay ON overlay.session_id = ws.id
-           WHERE ws.status IN ('completed', 'partial', 'manual_visit', 'zero_sets')
-              OR overlay.session_id IS NOT NULL
+           WHERE (ws.status IN ('completed', 'partial', 'manual_visit', 'zero_sets')
+              OR overlay.session_id IS NOT NULL)
+             ${displayBounds === undefined ? "" : `AND (CASE WHEN overlay.snapshot_json IS NOT NULL
+                       THEN overlay.effective_started_at_ms ELSE ws.started_at_ms END) >= ?
+                 AND (CASE WHEN overlay.snapshot_json IS NOT NULL
+                       THEN overlay.effective_started_at_ms ELSE ws.started_at_ms END) < ?`}
            ORDER BY ws.id`,
+          displayBounds === undefined ? [] : [displayBounds.startMs, displayBounds.endMs],
         ),
         kernel.queryAll<PlannedOpportunityRow>(
           `SELECT opportunity.local_date
@@ -911,17 +933,21 @@ export function createHistoryRepository(kernel: SqliteKernel): HistoryRepository
           planned_working_sets: Number(counts?.planned_working_sets ?? 0),
         });
       }));
+      const presentationDate = (session: EffectiveSession) => displayTimeZone === undefined
+        ? session.localDate
+        : parseHistoryLocalDate(displayLocalDate(session.startedAtMs, displayTimeZone));
       const activeSessions = sessions.filter((session): session is EffectiveSession =>
         session !== null
         && session.lifecycle === "active"
-        && session.localDate >= startDate
-        && session.localDate < endDate
+        && presentationDate(session) >= startDate
+        && presentationDate(session) < endDate
       );
       const statesByDate = new Map<string, CalendarDayState[]>();
       for (const session of activeSessions) {
-        const states = statesByDate.get(session.localDate) ?? [];
+        const date = presentationDate(session);
+        const states = statesByDate.get(date) ?? [];
         states.push(calendarStateForSession(session.status, session.source));
-        statesByDate.set(session.localDate, states);
+        statesByDate.set(date, states);
       }
       for (const opportunity of opportunities) {
         const states = statesByDate.get(opportunity.local_date) ?? [];
@@ -943,11 +969,11 @@ export function createHistoryRepository(kernel: SqliteKernel): HistoryRepository
       );
       const selectedSessions = Object.freeze(
         activeSessions
-          .filter((session) => session.localDate === selectedDate)
+          .filter((session) => presentationDate(session) === selectedDate)
           .sort((left, right) =>
             right.startedAtMs - left.startedAtMs || left.id.localeCompare(right.id)
           )
-          .map(summary),
+          .map((session) => summary(session, displayTimeZone)),
       );
       return Object.freeze({
         month,
@@ -957,6 +983,7 @@ export function createHistoryRepository(kernel: SqliteKernel): HistoryRepository
       });
     },
     async loadExerciseMetricHistory(input) {
+      const displayTimeZone = options.displayTimeZone?.();
       if (kernel.readSnapshot === undefined) {
         throw new Error("history_snapshot_kernel_required");
       }
@@ -983,6 +1010,7 @@ export function createHistoryRepository(kernel: SqliteKernel): HistoryRepository
             `SELECT session.id AS session_id,
                     session.revision AS source_revision,
                     session.local_date,
+                    session.started_at_ms,
                     session.status AS session_status,
                     exercise.exercise_id,
                     exercise.exercise_name,
@@ -1080,11 +1108,14 @@ export function createHistoryRepository(kernel: SqliteKernel): HistoryRepository
           const snapshot = parseEffectiveSnapshot(row.snapshot_json, row);
           for (const set of metricSetsFromEffectiveSnapshot(snapshot)) {
             if (set.exerciseId === input.exerciseId) {
-              effectiveSets.push(enrichExerciseMetricSet(set, {
+              const enriched = enrichExerciseMetricSet(set, {
                 sourceRevision: row.effective_revision!,
                 status: "corrected_effective",
                 bodyweight,
-              }));
+              });
+              effectiveSets.push(Object.freeze({ ...enriched, ...(displayTimeZone === undefined ? {} : {
+                displayLocalDate: displayLocalDate(snapshot.session.startedAtMs, displayTimeZone), displayTimeZone,
+              }) }));
             }
           }
         }
@@ -1093,11 +1124,14 @@ export function createHistoryRepository(kernel: SqliteKernel): HistoryRepository
           if (!Number.isSafeInteger(row.source_revision) || row.source_revision <= 0) {
             throw new Error("history_source_revision_invalid");
           }
-          effectiveSets.push(enrichExerciseMetricSet(metricSetFromSourceRow(row), {
+          const enriched = enrichExerciseMetricSet(metricSetFromSourceRow(row), {
             sourceRevision: row.source_revision,
             status: "accepted_current",
             bodyweight,
-          }));
+          });
+          effectiveSets.push(Object.freeze({ ...enriched, ...(displayTimeZone === undefined ? {} : {
+            displayLocalDate: displayLocalDate(row.started_at_ms, displayTimeZone), displayTimeZone,
+          }) }));
         }
         return buildExerciseMetricHistory({
           exerciseId: input.exerciseId,
