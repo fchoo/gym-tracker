@@ -14,6 +14,7 @@ import {
 import React from "react";
 import { getByGestureTestId } from "react-native-gesture-handler/jest-utils";
 import * as Worklets from "react-native-worklets";
+import * as Reanimated from "react-native-reanimated";
 import {
   Text,
 } from "react-native";
@@ -98,6 +99,78 @@ describe("PlanEditorReorderableRow", () => {
     await act(() => { resolveMove(); });
     expect(screen.getByTestId("reorder-row-pending-0")).toHaveStyle({ transform: [{ translateY: 0 }] });
     expect(screen.getByTestId("reorder-row-pending-1")).toHaveStyle({ transform: [{ translateY: 0 }] });
+  });
+
+  it("treats controlled null as cleared even before the move promise settles", async () => {
+    let clearPreview!: () => void;
+    let resolveMove!: () => void;
+    const pendingMove = new Promise<void>((resolve) => { resolveMove = resolve; });
+    function Rows() {
+      const [preview, setPreview] = React.useState<import("../components/PlanEditorFields").PlanEditorReorderPreview | null>(null);
+      clearPreview = () => { setPreview(null); };
+      return <AppearanceProvider>{[0, 1].map((position) => <PlanEditorReorderableRow
+        key={position} count={2} label={`Row ${position}`} onDragPreview={setPreview}
+        onMoveUp={jest.fn()} onMoveDown={jest.fn()} onMoveTo={() => pendingMove} position={position}
+        preview={preview} reorderId={`controlled-${position}`}><Text>{`Row ${position}`}</Text>
+      </PlanEditorReorderableRow>)}</AppearanceProvider>;
+    }
+    await render(<Rows />);
+    await fireEvent(screen.getByTestId("reorder-row-controlled-0"), "layout", {
+      nativeEvent: { layout: { height: 100, width: 320, x: 0, y: 0 } },
+    });
+    const gesture = getByGestureTestId("reorder-gesture-controlled-0") as unknown as { handlers: {
+      onStart(event: { translationY: number }): void; onUpdate(event: { translationY: number }): void;
+      onEnd(event: { translationY: number }, success: boolean): void; onFinalize(event: { translationY: number }, success: boolean): void;
+    } };
+    await act(() => {
+      gesture.handlers.onStart({ translationY: 0 }); gesture.handlers.onUpdate({ translationY: 80 });
+      gesture.handlers.onEnd({ translationY: 80 }, true); gesture.handlers.onFinalize({ translationY: 80 }, true);
+    });
+    expect(screen.getByTestId("reorder-row-controlled-0")).toHaveStyle({ transform: [{ translateY: 100 }] });
+    await act(() => { clearPreview(); });
+    expect(screen.getByTestId("reorder-row-controlled-0")).toHaveStyle({ transform: [{ translateY: 0 }] });
+    expect(screen.getByTestId("reorder-row-controlled-1")).toHaveStyle({ transform: [{ translateY: 0 }] });
+    expect(screen.getByTestId("drag-controlled-0")).toHaveProp("accessibilityState", { busy: false, disabled: false });
+    await act(() => { resolveMove(); });
+  });
+
+  it("clears offsets immediately on committed order changes instead of timing old offsets into the new layout", async () => {
+    let commitOrder!: () => void;
+    let resolveMove!: () => void;
+    const pendingMove = new Promise<void>((resolve) => { resolveMove = resolve; });
+    function Rows() {
+      const [order, setOrder] = React.useState(["source", "neighbor"]);
+      const [preview, setPreview] = React.useState<import("../components/PlanEditorFields").PlanEditorReorderPreview | null>(null);
+      commitOrder = () => { setOrder(["neighbor", "source"]); setPreview(null); };
+      return <AppearanceProvider>{order.map((id, position) => <PlanEditorReorderableRow
+        key={id} count={2} label={id} onDragPreview={setPreview}
+        onMoveUp={jest.fn()} onMoveDown={jest.fn()} onMoveTo={() => pendingMove} position={position}
+        preview={preview} reorderId={`commit-${id}`}><Text>{id}</Text>
+      </PlanEditorReorderableRow>)}</AppearanceProvider>;
+    }
+    await render(<Rows />);
+    await fireEvent(screen.getByTestId("reorder-row-commit-source"), "layout", {
+      nativeEvent: { layout: { height: 100, width: 320, x: 0, y: 0 } },
+    });
+    const gesture = getByGestureTestId("reorder-gesture-commit-source") as unknown as { handlers: {
+      onStart(event: { translationY: number }): void; onUpdate(event: { translationY: number }): void;
+      onEnd(event: { translationY: number }, success: boolean): void; onFinalize(event: { translationY: number }, success: boolean): void;
+    } };
+    await act(() => {
+      gesture.handlers.onStart({ translationY: 0 }); gesture.handlers.onUpdate({ translationY: 80 });
+      gesture.handlers.onEnd({ translationY: 80 }, true); gesture.handlers.onFinalize({ translationY: 80 }, true);
+    });
+    expect(screen.getByTestId("reorder-row-commit-source")).toHaveStyle({ transform: [{ translateY: 100 }] });
+    expect(screen.getByTestId("reorder-row-commit-neighbor")).toHaveStyle({ transform: [{ translateY: -100 }] });
+    const withTiming = jest.spyOn(Reanimated, "withTiming");
+    await act(() => { commitOrder(); });
+    expect(screen.getAllByTestId(/^reorder-row-commit-/u).map(({ props }) => props.testID))
+      .toEqual(["reorder-row-commit-neighbor", "reorder-row-commit-source"]);
+    expect(screen.getByTestId("reorder-row-commit-source")).toHaveStyle({ transform: [{ translateY: 0 }] });
+    expect(screen.getByTestId("reorder-row-commit-neighbor")).toHaveStyle({ transform: [{ translateY: 0 }] });
+    expect(withTiming).not.toHaveBeenCalled();
+    await act(() => { resolveMove(); });
+    expect(withTiming).not.toHaveBeenCalled();
   });
 
   it("restores a failed async drop and lets the row be dragged again", async () => {

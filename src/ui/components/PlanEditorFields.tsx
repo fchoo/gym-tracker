@@ -183,7 +183,7 @@ export function PlanEditorReorderableRow({
   onMoveDown,
   onMoveTo,
   onDragPreview,
-  preview = null,
+  preview,
   dragActivationDistance,
   disabled = false,
   reorderId = label,
@@ -230,8 +230,10 @@ export function PlanEditorReorderableRow({
   const text = tone === "card" ? colors.contentCardText : colors.textPrimary;
   const canMoveUp = !disabled && position > 0;
   const canMoveDown = !disabled && position < count - 1;
-  const activePreview = preview
-    ?? (localPreview?.sourcePosition === position ? localPreview : null);
+  const activePreview = preview === undefined
+    ? (localPreview?.sourcePosition === position ? localPreview : null)
+    : preview;
+  const hasPreview = activePreview !== null;
   const isHeld = activePreview?.sourcePosition === position;
   const targetPosition = isHeld
     ? activePreview.targetPosition
@@ -380,14 +382,19 @@ export function PlanEditorReorderableRow({
   const rowStyle = useAnimatedStyle(() => ({
     opacity: isHeld ? 0.92 : 1,
     transform: [{
-      translateY: isHeld
-        ? translationY.value
-        : motion.positionTransitions
-          ? withTiming(neighborDisplacement, { duration: motion.setCommitMs })
-          : neighborDisplacement,
+      // Committed order changes establish new layout positions. Cancel any
+      // old displacement immediately rather than tweening it on that layout.
+      translateY: !hasPreview
+        ? 0
+        : isHeld
+          ? translationY.value
+          : motion.positionTransitions
+            ? withTiming(neighborDisplacement, { duration: motion.setCommitMs })
+            : neighborDisplacement,
     }],
     zIndex: isHeld ? 1 : 0,
   }), [
+    hasPreview,
     isHeld,
     motion.positionTransitions,
     motion.setCommitMs,
