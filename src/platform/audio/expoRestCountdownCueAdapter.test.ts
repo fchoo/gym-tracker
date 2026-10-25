@@ -1,55 +1,189 @@
-import {
-  renderHook,
-} from "@testing-library/react-native";
-import {
-  describe,
-  expect,
-  it,
-  jest,
-} from "@jest/globals";
-import {
-  useAudioPlayer,
-} from "expo-audio";
-
-import {
-  useExpoRestCountdownCueAdapter,
-} from "./expoRestCountdownCueAdapter";
+import { act, renderHook } from "@testing-library/react-native";
+import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { AppState, type AppStateStatus } from "react-native";
+import { useAudioPlayer, type AudioStatus } from "expo-audio";
+import { useExpoRestCountdownCueAdapter } from "./expoRestCountdownCueAdapter";
 
 const SHORT_CUE_ASSET = require("../../../assets/audio/rest-cue-short.wav");
 const LONG_CUE_ASSET = require("../../../assets/audio/rest-cue-long.wav");
 
-jest.mock("expo-audio", () => ({
-  useAudioPlayer: jest.fn(),
-}));
-
+jest.mock("expo-audio", () => ({ useAudioPlayer: jest.fn() }));
 const mockedUseAudioPlayer = jest.mocked(useAudioPlayer);
 
+function cuePlayer() {
+  const listeners = new Set<(status: Partial<AudioStatus>) => void>();
+  const player = {
+    isLoaded: true,
+    currentTime: 0,
+    play: jest.fn(),
+    pause: jest.fn(),
+    seekTo: jest.fn<() => Promise<void>>(async () => { player.currentTime = 0; }),
+    addListener: jest.fn((_event: string, listener: (status: Partial<AudioStatus>) => void) => {
+      listeners.add(listener);
+      return { remove: () => listeners.delete(listener) };
+    }),
+    emit: (status: Partial<AudioStatus>) => {
+      if (status.isLoaded !== undefined) player.isLoaded = status.isLoaded;
+      for (const listener of [...listeners]) listener(status);
+    },
+  };
+  return player;
+}
+
+let restoreAppState: () => void;
+let appStateListener: jest.SpiedFunction<typeof AppState.addEventListener>;
+beforeEach(() => {
+  mockedUseAudioPlayer.mockReset();
+  appStateListener = jest.spyOn(AppState, "addEventListener").mockImplementation(() => ({ remove: jest.fn() }));
+  const descriptor = Object.getOwnPropertyDescriptor(AppState, "currentState");
+  Object.defineProperty(AppState, "currentState", { configurable: true, value: "active" });
+  restoreAppState = () => {
+    if (descriptor) Object.defineProperty(AppState, "currentState", descriptor);
+    else Reflect.deleteProperty(AppState, "currentState");
+  };
+});
+afterEach(() => { appStateListener.mockRestore(); restoreAppState(); jest.useRealTimers(); });
+
+async function renderAdapter(shortPlayer = cuePlayer(), longPlayer = cuePlayer()) {
+  let playerIndex = 0;
+  mockedUseAudioPlayer.mockImplementation(() =>
+    ([shortPlayer, longPlayer][playerIndex++ % 2]) as never
+  );
+  const rendered = await renderHook(() => useExpoRestCountdownCueAdapter());
+  return { rendered, shortPlayer, longPlayer };
+}
+
 describe("Expo rest countdown cue adapter", () => {
-  it("creates hook-owned players and replays the short and long cues without throwing", async () => {
-    const shortPlayer = {
-      seekTo: jest.fn(),
-      play: jest.fn(),
-    };
-    const longPlayer = {
-      seekTo: jest.fn(),
-      play: jest.fn(),
-    };
-    mockedUseAudioPlayer
-      .mockReturnValueOnce(shortPlayer as never)
-      .mockReturnValueOnce(longPlayer as never);
-
-    const rendered = await renderHook(() => useExpoRestCountdownCueAdapter());
-
-    await expect(rendered.result.current.playShortCue()).resolves.toBeUndefined();
-    await expect(rendered.result.current.playLongCue()).resolves.toBeUndefined();
-
-    expect(mockedUseAudioPlayer).toHaveBeenCalledTimes(2);
+  it("starts a loaded final player synchronously without waiting for an unnecessary seek", async () => {
+    const { rendered, shortPlayer, longPlayer } = await renderAdapter();
+    longPlayer.seekTo.mockImplementation(() => new Promise(() => undefined));
+    const final = rendered.result.current.playLongCue();
+    expect(longPlayer.play).toHaveBeenCalledTimes(1);
+    expect(longPlayer.seekTo).not.toHaveBeenCalled();
+    await final;
+    await rendered.result.current.playShortCue();
+    expect(shortPlayer.play).toHaveBeenCalledTimes(1);
     expect(mockedUseAudioPlayer).toHaveBeenNthCalledWith(1, SHORT_CUE_ASSET);
     expect(mockedUseAudioPlayer).toHaveBeenNthCalledWith(2, LONG_CUE_ASSET);
-    expect(shortPlayer.seekTo).toHaveBeenCalledWith(0);
-    expect(shortPlayer.play).toHaveBeenCalledTimes(1);
-    expect(longPlayer.seekTo).toHaveBeenCalledWith(0);
+    await rendered.unmount();
+  });
+
+  it("rewinds completed cues ahead of the next rest and keeps its route-owned port stable", async () => {
+    const { rendered, longPlayer } = await renderAdapter();
+    const port = rendered.result.current;
+    await port.playLongCue();
+    longPlayer.currentTime = 0.36;
+    await act(async () => { longPlayer.emit({ didJustFinish: true }); });
+    expect(longPlayer.seekTo).toHaveBeenCalledTimes(1);
+    await rendered.rerender(undefined);
+    expect(rendered.result.current).toBe(port);
+    await port.playLongCue();
+    expect(longPlayer.play).toHaveBeenCalledTimes(2);
+    expect(longPlayer.seekTo).toHaveBeenCalledTimes(1);
+    await rendered.unmount();
+  });
+
+  it("waits for readiness and cancels stale shorts when the final cue arrives", async () => {
+    const shortPlayer = cuePlayer();
+    shortPlayer.isLoaded = false;
+    const { rendered, longPlayer } = await renderAdapter(shortPlayer);
+    const short = rendered.result.current.playShortCue();
+    await rendered.result.current.playLongCue();
+    await short;
+    shortPlayer.emit({ isLoaded: true });
+    expect(shortPlayer.play).not.toHaveBeenCalled();
     expect(longPlayer.play).toHaveBeenCalledTimes(1);
+    await rendered.unmount();
+  });
+
+  it("plays a final cue once when its player finishes loading within the bounded window", async () => {
+    const longPlayer = cuePlayer();
+    longPlayer.isLoaded = false;
+    const { rendered } = await renderAdapter(cuePlayer(), longPlayer);
+    const final = rendered.result.current.playLongCue();
+    expect(longPlayer.play).not.toHaveBeenCalled();
+    longPlayer.emit({ isLoaded: true });
+    await final;
+    expect(longPlayer.play).toHaveBeenCalledTimes(1);
+    await rendered.unmount();
+  });
+
+  it("cancels a pending seek after a manual or preference change", async () => {
+    const { rendered, shortPlayer } = await renderAdapter();
+    shortPlayer.currentTime = 0.12;
+    let finishSeek!: () => void;
+    shortPlayer.seekTo.mockImplementation(() => new Promise<void>((resolve) => { finishSeek = resolve; }));
+    const short = rendered.result.current.playShortCue();
+    rendered.result.current.cancelPendingCues?.();
+    finishSeek();
+    await short;
+    expect(shortPlayer.play).not.toHaveBeenCalled();
+    await rendered.unmount();
+  });
+
+  it("does not replay a short whose seek outlasts its cue window", async () => {
+    jest.useFakeTimers();
+    const { rendered, shortPlayer } = await renderAdapter();
+    shortPlayer.currentTime = 0.12;
+    let finishSeek!: () => void;
+    shortPlayer.seekTo.mockImplementation(() => new Promise<void>((resolve) => { finishSeek = resolve; }));
+    const short = rendered.result.current.playShortCue();
+    jest.advanceTimersByTime(500);
+    finishSeek();
+    await short;
+    expect(shortPlayer.play).not.toHaveBeenCalled();
+    await rendered.unmount();
+  });
+
+  it("contains bounded readiness failures and native playback failures", async () => {
+    jest.useFakeTimers();
+    const longPlayer = cuePlayer();
+    longPlayer.isLoaded = false;
+    const { rendered, shortPlayer } = await renderAdapter(cuePlayer(), longPlayer);
+    const final = expect(rendered.result.current.playLongCue()).rejects.toThrow("rest_countdown_audio_not_ready");
+    jest.advanceTimersByTime(1_000);
+    await final;
+    shortPlayer.play.mockImplementation(() => { throw new Error("audio_unavailable"); });
+    await expect(rendered.result.current.playShortCue()).rejects.toThrow("audio_unavailable");
+    expect(longPlayer.play).not.toHaveBeenCalled();
+    await rendered.unmount();
+  });
+
+  it("cancels readiness and pauses active cues when the app backgrounds or the route unmounts", async () => {
+    let onAppStateChange: ((state: AppStateStatus) => void) | undefined;
+    appStateListener.mockImplementation((_event, listener) => {
+      onAppStateChange = listener;
+      return { remove: jest.fn() };
+    });
+    {
+      const longPlayer = cuePlayer();
+      longPlayer.isLoaded = false;
+      const { rendered, shortPlayer } = await renderAdapter(cuePlayer(), longPlayer);
+      const final = rendered.result.current.playLongCue();
+      onAppStateChange?.("background");
+      longPlayer.emit({ isLoaded: true });
+      await final;
+      expect(longPlayer.play).not.toHaveBeenCalled();
+      expect(shortPlayer.pause).toHaveBeenCalled();
+      longPlayer.isLoaded = false;
+      const next = rendered.result.current.playLongCue();
+      await rendered.unmount();
+      longPlayer.emit({ isLoaded: true });
+      await next;
+      expect(longPlayer.play).not.toHaveBeenCalled();
+    }
+  });
+
+  it("contains native loading errors and pause failures without leaving a playable request", async () => {
+    const longPlayer = cuePlayer();
+    longPlayer.isLoaded = false;
+    const { rendered } = await renderAdapter(cuePlayer(), longPlayer);
+    const final = expect(rendered.result.current.playLongCue()).rejects.toThrow("decoder_failure");
+    longPlayer.emit({ error: "decoder_failure" });
+    await final;
+    longPlayer.pause.mockImplementation(() => { throw new Error("released_player"); });
+    expect(() => rendered.result.current.cancelPendingCues?.()).not.toThrow();
+    await rendered.unmount();
   });
 
   it("keeps the deterministic PCM assets distinct and source-controlled", () => {
@@ -84,22 +218,4 @@ describe("Expo rest countdown cue adapter", () => {
       .toBe("d9d9b12ca269b3d3dd269a8d6079c839266500a7b76cfcfeeee95b4a0d8938a8");
   });
 
-  it("surfaces a player failure to the observing UI without changing rest authority", async () => {
-    const failedPlayer = {
-      seekTo: jest.fn(() => {
-        throw new Error("audio_unavailable");
-      }),
-      play: jest.fn(),
-    };
-    mockedUseAudioPlayer
-      .mockReturnValueOnce(failedPlayer as never)
-      .mockReturnValueOnce({ seekTo: jest.fn(), play: jest.fn() } as never);
-
-    const rendered = await renderHook(() => useExpoRestCountdownCueAdapter());
-
-    await expect(rendered.result.current.playShortCue()).rejects.toThrow(
-      "audio_unavailable",
-    );
-    expect(failedPlayer.play).not.toHaveBeenCalled();
-  });
 });
