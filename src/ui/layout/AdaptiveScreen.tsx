@@ -56,6 +56,7 @@ type AdaptiveScreenProps = Readonly<{
   width?: number;
   constrainActiveWork?: boolean;
   scrollable?: boolean;
+  contentPaddingTop?: number;
   testID?: string;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   scrollOffset?: number;
@@ -74,6 +75,7 @@ export function AdaptiveScreen({
   width: widthOverride,
   constrainActiveWork = false,
   scrollable = true,
+  contentPaddingTop = space[4],
   testID = "adaptive-screen",
   onScroll,
   scrollOffset = 0,
@@ -164,7 +166,8 @@ export function AdaptiveScreen({
         scrollable ? styles.scrollableContent : styles.fillContent,
         {
           paddingHorizontal: horizontalInset,
-          paddingVertical: space[4],
+          paddingTop: contentPaddingTop,
+          paddingBottom: space[4],
         },
         hasTwoPanes && styles.contentTwoPane,
         constrainActiveWork && styles.centeredContent,
@@ -174,6 +177,7 @@ export function AdaptiveScreen({
       <View
         style={[
           styles.primaryRegion,
+          !scrollable && styles.fillContent,
           hasTwoPanes && styles.pane,
           constrainActiveWork && styles.activeWork,
         ]}
