@@ -248,7 +248,14 @@ export function ActionRow({ children, style, testID }: Readonly<{
   );
 }
 
-export const ActionCluster = ActionRow;
+/** Intrinsic sidebar actions must leave the sibling title its available width. */
+export function ActionCluster({ children, style, testID }: Readonly<{
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+  testID?: string | undefined;
+}>) {
+  return h(View, { style: [styles.actionCluster, style], testID }, children);
+}
 
 export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
   function FocusablePressableElement(
@@ -1733,6 +1740,13 @@ const styles = StyleSheet.create({
     gap: space[4],
     minHeight: sizes.minimumTarget,
     padding: space[4],
+  },
+  actionCluster: {
+    alignItems: "stretch",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: space[2],
+    justifyContent: "flex-end",
   },
   actionRow: {
     alignItems: "stretch",

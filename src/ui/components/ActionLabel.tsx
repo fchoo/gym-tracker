@@ -1,7 +1,7 @@
 import {
   Archive, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, CalendarDays, Check, Copy,
   Dumbbell, Ellipsis, Eye, EyeOff, Filter, Link, Pencil, Plus, RotateCcw,
-  Save, Settings, Timer, Trash2, Unlink, FileInput, Ruler, HeartPulse, Gauge, Repeat, Shuffle, List, Scale,
+  Save, Settings, Timer, Trash2, Unlink, FileInput, Ruler, HeartPulse, Gauge, Repeat, Shuffle, List, Scale, Route, Mountain,
 } from "lucide-react-native";
 import React, { useState } from "react";
 import { StyleSheet, Text, useWindowDimensions, View, type TextStyle } from "react-native";
@@ -10,6 +10,15 @@ import { sizes, typeScale } from "../theme";
 
 /** Compact captions retain the original action name on the owning pressable. */
 function compactAction(label: string) {
+  if (/^Set not saved · Retry$/i.test(label)) return { label: "Retry", Icon: RotateCcw };
+  const runningKind = /^Add (Recovery|Long run|Progression|Tempo|Intervals|Hills|Fartlek) session$/i.exec(label)?.[1];
+  if (runningKind !== undefined) {
+    const kindIcons: Readonly<Record<string, typeof Plus>> = {
+      recovery: HeartPulse, "long run": Route, progression: ArrowUp,
+      tempo: Gauge, intervals: Repeat, hills: Mountain, fartlek: Shuffle,
+    };
+    return { label: runningKind, Icon: kindIcons[runningKind.toLowerCase()]! };
+  }
   if (/^actions$/i.test(label)) return { label: "Actions", Icon: Ellipsis };
   if (/^import/i.test(label)) return { label: "Import", Icon: FileInput };
   if (/^undo/i.test(label)) return { label: "Undo", Icon: RotateCcw };
