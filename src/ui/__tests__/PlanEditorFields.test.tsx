@@ -1,5 +1,6 @@
 import {
   fireEvent,
+  act,
   render,
   screen,
 } from "@testing-library/react-native";
@@ -10,6 +11,7 @@ import {
   jest,
 } from "@jest/globals";
 import React from "react";
+import { getByGestureTestId } from "react-native-gesture-handler/jest-utils";
 import {
   Text,
 } from "react-native";
@@ -22,6 +24,23 @@ import {
 } from "../theme";
 
 describe("PlanEditorReorderableRow", () => {
+  it("keeps a held grip enabled and cancels the drag without moving the item", async () => {
+    const onMoveTo = jest.fn();
+    await render(<AppearanceProvider><PlanEditorReorderableRow count={3} label="Recovery"
+      onMoveUp={jest.fn()} onMoveDown={jest.fn()} onMoveTo={onMoveTo} position={1} reorderId="cancelled">
+      <Text>Recovery</Text>
+    </PlanEditorReorderableRow></AppearanceProvider>);
+    const gesture = getByGestureTestId("reorder-gesture-cancelled") as unknown as { handlers: {
+      onStart(event: { translationY: number }): void; onUpdate(event: { translationY: number }): void;
+      onEnd(event: { translationY: number }, success: boolean): void; onFinalize(event: { translationY: number }, success: boolean): void;
+    } };
+    await act(() => { gesture.handlers.onStart({ translationY: 0 }); gesture.handlers.onUpdate({ translationY: 100 }); });
+    expect(screen.getByTestId("drag-cancelled")).toHaveProp("accessibilityState", { busy: true, disabled: false });
+    await act(() => { gesture.handlers.onEnd({ translationY: 100 }, false); gesture.handlers.onFinalize({ translationY: 100 }, false); });
+    expect(onMoveTo).not.toHaveBeenCalled();
+    expect(screen.getByTestId("reorder-row-cancelled")).toHaveStyle({ transform: [{ translateY: 0 }] });
+  });
+
   it("keeps a labelled drag handle and bounded non-visual movement without visual position controls", async () => {
     const onMoveDown = jest.fn();
     const onMoveTo = jest.fn();

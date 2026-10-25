@@ -257,6 +257,7 @@ export function PlanEditorReorderableRow({
   }, [
     canMoveDown,
     canMoveUp,
+    disabled,
     onMoveDown,
     onMoveTo,
     onMoveUp,
@@ -382,8 +383,8 @@ export function PlanEditorReorderableRow({
             accessibilityHint="Touch and hold to drag. Use accessibility actions to move this item."
             accessibilityLabel={`Reorder ${label}`}
             accessibilityRole="adjustable"
-            accessibilityState={{ busy: isHeld, disabled: disabled || isHeld }}
-            disabled={disabled || isHeld}
+            accessibilityState={{ busy: isHeld, disabled }}
+            disabled={disabled}
             focusable={!disabled && !isHeld}
             onAccessibilityAction={(event) => {
               if (event.nativeEvent.actionName === "increment" && canMoveUp) {

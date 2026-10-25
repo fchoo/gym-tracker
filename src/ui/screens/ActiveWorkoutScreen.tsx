@@ -8,12 +8,14 @@ import {
   ChevronDown,
   ChevronRight,
   CircleCheck,
+  GripVertical,
   Plus,
   type LucideIcon,
 } from "lucide-react-native";
 import {
   PlanEditorReorderableRow,
   type PlanEditorReorderMethod,
+  type PlanEditorReorderPreview,
 } from "../components/PlanEditorFields";
 
 import {
@@ -966,9 +968,10 @@ function PopulatedWorkoutOverview({
   const [editingCompletedSetId, setEditingCompletedSetId] =
     useState<string | null>(null);
   const [editingSetId, setEditingSetId] = useState<string | null>(null);
-  const [expandedExerciseIds, setExpandedExerciseIds] = useState<ReadonlySet<string>>(
-    () => new Set(),
+  const [exerciseExpansionOverrides, setExerciseExpansionOverrides] = useState<ReadonlyMap<string, boolean>>(
+    () => new Map(),
   );
+  const disclosureActiveRef = useRef({ exerciseId: initialView.activeExerciseId, setId: initialView.activeSetId });
   const [expandedCompactSetId, setExpandedCompactSetId] = useState<string | null>(
     null,
   );
@@ -1004,6 +1007,7 @@ function PopulatedWorkoutOverview({
   const [exerciseEditRecovery, setExerciseEditRecovery] =
     useState<ExerciseEditCandidate | null>(null);
   const [exerciseReorderBusy, setExerciseReorderBusy] = useState(false);
+  const exerciseReorderInFlightRef = useRef(false);
   const [exerciseReorderFailure, setExerciseReorderFailure] =
     useState<ExerciseReorderFailure | null>(null);
   const [exerciseReorderRecovery, setExerciseReorderRecovery] = useState(false);
@@ -1016,6 +1020,7 @@ function PopulatedWorkoutOverview({
   const [exerciseAddFailed, setExerciseAddFailed] = useState(false);
   const [addSetMenuExerciseId, setAddSetMenuExerciseId] = useState<string | null>(null);
   const [reorderMode, setReorderMode] = useState(false);
+  const [exerciseReorderPreview, setExerciseReorderPreview] = useState<PlanEditorReorderPreview | null>(null);
   const [replacementPickerForId, setReplacementPickerForId] =
     useState<string | null>(null);
   const [replacementQuery, setReplacementQuery] = useState("");
@@ -1090,14 +1095,29 @@ function PopulatedWorkoutOverview({
     return () => { active = false; };
   }, [loadExerciseHistory, overviewExercises, trendExerciseId]);
 
-  const isExerciseCollapsed = (exercise: ActiveWorkoutExercise, index: number) =>
-    !expandedExerciseIds.has(exercise.id)
-    && (
+  const isExerciseCollapsed = (exercise: ActiveWorkoutExercise, index: number) => {
+    const expandedOverride = exerciseExpansionOverrides.get(exercise.id);
+    if (expandedOverride !== undefined) return !expandedOverride;
+    return (
       (exercise.status === "completed" && (
         exercise.id !== view.activeExerciseId || view.activeSetId === null
       ))
       || (activeExerciseIndex >= 0 && index < activeExerciseIndex)
     );
+  };
+
+  useEffect(() => {
+    const previous = disclosureActiveRef.current;
+    disclosureActiveRef.current = { exerciseId: view.activeExerciseId, setId: view.activeSetId };
+    if (previous.exerciseId === view.activeExerciseId
+      && !(previous.setId !== null && view.activeSetId === null)) return;
+    setExerciseExpansionOverrides((current) => {
+      const next = new Map(current);
+      if (previous.exerciseId !== null) next.delete(previous.exerciseId);
+      if (view.activeExerciseId !== null) next.delete(view.activeExerciseId);
+      return next;
+    });
+  }, [view.activeExerciseId, view.activeSetId]);
 
   const applyView = (nextView: ActiveWorkoutView) => {
     viewRef.current = nextView;
@@ -1720,7 +1740,7 @@ function PopulatedWorkoutOverview({
     _method: PlanEditorReorderMethod = "fallback",
     retryRequest?: ReorderExercisesInput,
   ) => {
-    if (exerciseReorderBusy || sourcePosition === targetPosition) {
+    if (exerciseReorderInFlightRef.current || sourcePosition === targetPosition) {
       return;
     }
     const currentView = viewRef.current;
@@ -1733,6 +1753,7 @@ function PopulatedWorkoutOverview({
     const orderedExercises = [...currentExercises];
     orderedExercises.splice(sourcePosition, 1);
     orderedExercises.splice(targetPosition, 0, source);
+    exerciseReorderInFlightRef.current = true;
     setExerciseReorderBusy(true);
     setExerciseReorderFailure(null);
     setExerciseReorderRecovery(false);
@@ -1784,6 +1805,7 @@ function PopulatedWorkoutOverview({
         },
       });
     } finally {
+      exerciseReorderInFlightRef.current = false;
       setExerciseReorderBusy(false);
     }
   };
@@ -2191,7 +2213,84 @@ function PopulatedWorkoutOverview({
           <>
             {restFailure ? <InlineNotice heading="Rest timer was not changed" body="Try the rest control again." tone="error" /> : null}
             {activeSet === undefined ? null : <TargetContext set={activeSet} />}
+            {reorderMode ? <SecondaryAction label="Done reordering" onPress={() => setReorderMode(false)} /> : null}
             <WorkoutSessionPresentation
+              showGrip={false}
+              renderExerciseGrip={(presentationExercise) => reorderMode ? null : (
+                <FocusablePressable
+                  accessibilityLabel={`Reorder ${presentationExercise.name}`}
+                  accessibilityHint="Open exercise order. Then touch and hold a grip to drag, or use the move buttons."
+                  accessibilityRole="button"
+                  disabled={exerciseReorderBusy || commands.reorderExercises === undefined || overviewExercises.length < 2}
+                  onPress={() => setReorderMode(true)}
+                  onLongPress={() => setReorderMode(true)}
+                  style={styles.exerciseReorderGrip}
+                  testID={`workout-reorder-grip-${presentationExercise.id}`}
+                >
+                  <GripVertical color={colors.textSecondary} size={24} />
+                </FocusablePressable>
+              )}
+              renderExerciseHeader={(presentationExercise, index, header) => {
+                if (!reorderMode) return header;
+                const exercise = overviewExercises.find(({ id }) => id === presentationExercise.id);
+                if (exercise === undefined) return header;
+                return <>
+                  <PlanEditorReorderableRow
+                    count={overviewExercises.length}
+                    dragActivationDistance={8}
+                    disabled={exerciseReorderBusy}
+                    label={exercise.name}
+                    onMoveDown={() => {
+                      void submitExerciseReorder(index, index + 1);
+                    }}
+                    onMoveTo={(targetPosition, method) => {
+                      void submitExerciseReorder(index, targetPosition, method);
+                    }}
+                    onMoveUp={() => {
+                      void submitExerciseReorder(index, index - 1);
+                    }}
+                    onDragPreview={setExerciseReorderPreview}
+                    preview={exerciseReorderPreview}
+                    position={index}
+                    reorderId={`exercise-${exercise.id}`}
+                    tone="card"
+                  >
+                    {header}
+                  <View style={styles.reorderFallbackActions}>
+                    <ActionRow><SecondaryAction
+                      disabled={exerciseReorderBusy || index === 0}
+                      label={`Move ${exercise.name} up`}
+                      onPress={() => {
+                        void submitExerciseReorder(index, index - 1);
+                      }}
+                    />
+                    <SecondaryAction
+                      disabled={exerciseReorderBusy || index === overviewExercises.length - 1}
+                      label={`Move ${exercise.name} down`}
+                      onPress={() => {
+                        void submitExerciseReorder(index, index + 1);
+                      }}
+                      testID="workout-reorder-exercise-down"
+                    /></ActionRow>
+                  </View>
+                  </PlanEditorReorderableRow>
+                  {exerciseReorderAnnouncement?.sessionExerciseId === exercise.id
+                    ? (
+                      <Text
+                        accessibilityLiveRegion="polite"
+                        style={[
+                          workoutTypeScale.secondary as TextStyle,
+                          styles.reorderAnnouncement,
+                          { color: colors.contentCardTextSecondary },
+                        ]}
+                        testID={`exercise-reorder-announcement-${exercise.id}`}
+                      >
+                        {exerciseReorderAnnouncement.text}
+                      </Text>
+                    )
+                    : null}
+                </>;
+              }}
               exerciseAccessibilityLabel={(presentationExercise, expanded, index) => {
                 const exercise = overviewExercises.find(({ id }) => id === presentationExercise.id);
                 if (exercise === undefined) return presentationExercise.name;
@@ -2268,13 +2367,14 @@ function PopulatedWorkoutOverview({
               }}
               isExerciseExpanded={(presentationExercise, index) => {
                 const exercise = overviewExercises.find(({ id }) => id === presentationExercise.id);
-                return exercise === undefined ? false : !isExerciseCollapsed(exercise, index);
+                return !reorderMode && exercise !== undefined && !isExerciseCollapsed(exercise, index);
               }}
               model={presentationModel}
               onExerciseToggle={(presentationExercise, expanded) => {
-                setExpandedExerciseIds((current) => {
-                  const next = new Set(current);
-                  if (expanded) next.delete(presentationExercise.id); else next.add(presentationExercise.id);
+                if (reorderMode) setReorderMode(false);
+                setExerciseExpansionOverrides((current) => {
+                  const next = new Map(current);
+                  next.set(presentationExercise.id, !expanded);
                   return next;
                 });
               }}
@@ -2299,68 +2399,6 @@ function PopulatedWorkoutOverview({
                 }}
                 style={styles.exerciseSection}
               >
-                {reorderMode ? <>
-                  <PlanEditorReorderableRow
-                    count={overviewExercises.length}
-                    dragActivationDistance={8}
-                    disabled={exerciseReorderBusy}
-                    label={exercise.name}
-                    onMoveDown={() => {
-                      void submitExerciseReorder(index, index + 1);
-                    }}
-                    onMoveTo={(targetPosition, method) => {
-                      void submitExerciseReorder(index, targetPosition, method);
-                    }}
-                    onMoveUp={() => {
-                      void submitExerciseReorder(index, index - 1);
-                    }}
-                    position={index}
-                    reorderId={`exercise-${exercise.id}`}
-                    tone="card"
-                  >
-                    <Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
-                      Reorder exercise
-                    </Text>
-                    <Text
-                      style={[workoutTypeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}
-                      testID={`exercise-reorder-position-${exercise.id}`}
-                    >
-                      {`${exercise.name} · Position ${index + 1} of ${overviewExercises.length}`}
-                    </Text>
-                  </PlanEditorReorderableRow>
-                  <View style={styles.reorderFallbackActions}>
-                    <ActionRow><SecondaryAction
-                      disabled={exerciseReorderBusy || index === 0}
-                      label={`Move ${exercise.name} up`}
-                      onPress={() => {
-                        void submitExerciseReorder(index, index - 1);
-                      }}
-                    />
-                    <SecondaryAction
-                      disabled={exerciseReorderBusy || index === overviewExercises.length - 1}
-                      label={`Move ${exercise.name} down`}
-                      onPress={() => {
-                        void submitExerciseReorder(index, index + 1);
-                      }}
-                      testID="workout-reorder-exercise-down"
-                    /></ActionRow>
-                  </View>
-                  {exerciseReorderAnnouncement?.sessionExerciseId === exercise.id
-                    ? (
-                      <Text
-                        accessibilityLiveRegion="polite"
-                        style={[
-                          workoutTypeScale.secondary as TextStyle,
-                          styles.reorderAnnouncement,
-                          { color: colors.contentCardTextSecondary },
-                        ]}
-                        testID={`exercise-reorder-announcement-${exercise.id}`}
-                      >
-                        {exerciseReorderAnnouncement.text}
-                      </Text>
-                    )
-                    : null}
-                </> : null}
                 {exerciseEditFailure?.exerciseId !== exercise.id ? null : (
                   <InlineNotice
                     action={
@@ -3115,6 +3153,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: space[2],
     justifyContent: "flex-end",
+  },
+  exerciseReorderGrip: {
+    alignItems: "center", justifyContent: "center", minHeight: 80, minWidth: 48,
   },
   reorderFallbackActions: {
     flexDirection: "row",

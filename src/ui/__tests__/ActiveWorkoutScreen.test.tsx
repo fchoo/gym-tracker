@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { describe, expect, it, jest } from "@jest/globals";
 import { readFileSync } from "node:fs";
 import React from "react";
+import { getByGestureTestId } from "react-native-gesture-handler/jest-utils";
 
 import type { ActiveWorkoutView, CompleteSetResult } from "../../domains/workout";
 import { ActiveWorkoutScreen, type ActiveWorkoutCommands } from "../screens/ActiveWorkoutScreen";
@@ -92,6 +93,126 @@ async function renderScreen(view = workoutView(), commandOverrides: Partial<Acti
 }
 
 describe("ActiveWorkoutScreen explicit-save editor", () => {
+  it("honors current and future exercise disclosure without changing the active set", async () => {
+    const initial = workoutView();
+    const future = {
+      ...initial.currentExercise, id: "exercise-2", exerciseId: "cable-row", name: "Cable Row",
+      status: "planned" as const, ordinal: 1,
+      workingSets: [{ ...initial.currentExercise.workingSets[0]!, id: "working-2" }],
+    };
+    const renderedCommands = await renderScreen({ ...initial, exercises: [initial.currentExercise, future] });
+    for (const exercise of [initial.currentExercise, future]) {
+      const cardId = `active-workout-${exercise.id}-working-sets-card`;
+      expect(screen.getByTestId(cardId)).toBeOnTheScreen();
+      await fireEvent.press(screen.getByRole("button", { name: new RegExp(`${exercise.name}\\..*Collapse exercise`, "u") }));
+      expect(screen.queryByTestId(cardId)).not.toBeOnTheScreen();
+      await fireEvent.press(screen.getByRole("button", { name: new RegExp(`${exercise.name}\\..*Expand exercise`, "u") }));
+      expect(screen.getByTestId(cardId)).toBeOnTheScreen();
+    }
+    expect(screen.getByRole("button", { name: "Complete Set 1" })).toBeOnTheScreen();
+    expect(renderedCommands.completeSet).not.toHaveBeenCalled();
+    expect(renderedCommands.updateActiveSetDraft).not.toHaveBeenCalled();
+  });
+
+  it("opens the newly active exercise after completion and keeps the completed exercise manually expandable", async () => {
+    const initial = workoutView();
+    const future = {
+      ...initial.currentExercise, id: "exercise-2", exerciseId: "cable-row", name: "Cable Row",
+      status: "planned" as const, ordinal: 1,
+      workingSets: [{ ...initial.currentExercise.workingSets[0]!, id: "working-2" }],
+    };
+    const completed = { ...initial.currentExercise, status: "completed" as const,
+      workingSets: initial.currentExercise.workingSets.map((set) => ({ ...set, status: "completed" as const, completedAtMs: 3_000 })) };
+    const next = { ...initial, revision: 2, activeExerciseId: future.id, activeSetId: "working-2",
+      currentExercise: { ...future, status: "active" as const }, exercises: [completed, { ...future, status: "active" as const }] };
+    await renderScreen({ ...initial, exercises: [initial.currentExercise, future] }, {
+      completeSet: jest.fn(async () => ({ outcome: "committed" as const, view: next })),
+    });
+    await fireEvent.press(screen.getByRole("button", { name: /Cable Row\..*Collapse exercise/u }));
+    await fireEvent.press(screen.getByRole("button", { name: "Complete Set 1" }));
+    await waitFor(() => expect(screen.getByTestId("active-workout-exercise-2-working-sets-card")).toBeOnTheScreen());
+    expect(screen.queryByTestId("active-workout-exercise-1-working-sets-card")).not.toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: /Back Squat\..*Expand exercise/u }));
+    expect(screen.getByTestId("active-workout-exercise-1-working-sets-card")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: /Back Squat\..*Collapse exercise/u }));
+    expect(screen.queryByTestId("active-workout-exercise-1-working-sets-card")).not.toBeOnTheScreen();
+  });
+
+  it("submits one reorder for rapid taps and retries a failed write with the exact envelope", async () => {
+    const initial = workoutView();
+    const future = { ...initial.currentExercise, id: "exercise-2", exerciseId: "cable-row", name: "Cable Row",
+      status: "planned" as const, ordinal: 1, workingSets: [{ ...initial.currentExercise.workingSets[0]!, id: "working-2" }] };
+    let rejectWrite!: (error: Error) => void;
+    const pendingWrite = new Promise<ActiveWorkoutView>((_resolve, reject) => { rejectWrite = reject; });
+    const reordered = { ...initial, revision: 2, exercises: [future, initial.currentExercise] };
+    const reorderExercises = jest.fn<NonNullable<ActiveWorkoutCommands["reorderExercises"]>>()
+      .mockImplementationOnce(() => pendingWrite).mockResolvedValue(reordered);
+    await renderScreen({ ...initial, exercises: [initial.currentExercise, future] }, { reorderExercises });
+    await fireEvent.press(screen.getByRole("button", { name: "Reorder Back Squat" }));
+    const move = screen.getByRole("button", { name: "Move Back Squat down" });
+    await act(async () => { await Promise.all([fireEvent.press(move), fireEvent.press(move)]); });
+    await waitFor(() => expect(reorderExercises).toHaveBeenCalledTimes(1));
+    await act(() => { rejectWrite(new Error("storage_failed")); });
+    await fireEvent.press(await screen.findByRole("button", { name: "Retry reordering exercise" }));
+    await waitFor(() => expect(reorderExercises).toHaveBeenCalledTimes(2));
+    expect(reorderExercises.mock.calls[1]).toEqual(reorderExercises.mock.calls[0]);
+    expect(screen.getByText("Back Squat moved to 2 of 2")).toBeOnTheScreen();
+  });
+
+  it("uses the visible grip to reorder compact headers and keeps committed set identity and collapse choices", async () => {
+    const initial = workoutView();
+    const future = {
+      ...initial.currentExercise, id: "exercise-2", exerciseId: "cable-row", name: "Cable Row",
+      status: "planned" as const, ordinal: 1,
+      workingSets: [{ ...initial.currentExercise.workingSets[0]!, id: "working-2" }],
+    };
+    const start = { ...initial, exercises: [initial.currentExercise, future] };
+    let persisted = start;
+    let resolveWrite!: (view: ActiveWorkoutView) => void;
+    const pendingWrite = new Promise<ActiveWorkoutView>((resolve) => { resolveWrite = resolve; });
+    const reorderExercises = jest.fn<NonNullable<ActiveWorkoutCommands["reorderExercises"]>>()
+      .mockImplementationOnce(() => pendingWrite)
+      .mockImplementationOnce(async (input) => {
+        persisted = { ...persisted, revision: persisted.revision + 1,
+          exercises: input.orderedSessionExerciseIds.map((id) => persisted.exercises.find((exercise) => exercise.id === id)!) };
+        return persisted;
+      });
+    await renderScreen(start, { reorderExercises });
+    await fireEvent.press(screen.getByRole("button", { name: /Cable Row\..*Collapse exercise/u }));
+    await fireEvent.press(screen.getByRole("button", { name: "Reorder Back Squat" }));
+    expect(screen.queryByTestId("active-workout-exercise-1-working-sets-card")).not.toBeOnTheScreen();
+    const row = screen.getByTestId("reorder-row-exercise-exercise-1");
+    expect(within(row).getByTestId("exercise-header-exercise-1")).toBeOnTheScreen();
+    await fireEvent(row, "layout", { nativeEvent: { layout: { height: 160, width: 320, x: 0, y: 0 } } });
+    const gesture = getByGestureTestId("reorder-gesture-exercise-exercise-1") as unknown as {
+      handlers: { onStart(event: { translationY: number }): void; onUpdate(event: { translationY: number }): void;
+        onEnd(event: { translationY: number }, success: boolean): void; onFinalize(event: { translationY: number }, success: boolean): void };
+    };
+    await act(() => { gesture.handlers.onStart({ translationY: 0 }); gesture.handlers.onUpdate({ translationY: 160 }); });
+    expect(screen.getByTestId("drag-exercise-exercise-1")).toHaveProp("accessibilityState", { busy: true, disabled: false });
+    expect(reorderExercises).not.toHaveBeenCalled();
+    await act(() => { gesture.handlers.onEnd({ translationY: 160 }, true); gesture.handlers.onFinalize({ translationY: 160 }, true); });
+    await waitFor(() => expect(reorderExercises).toHaveBeenCalledTimes(1));
+    const request = reorderExercises.mock.calls[0]![0];
+    expect(request).toMatchObject({ expectedSessionRevision: 1, orderedSessionExerciseIds: ["exercise-2", "exercise-1"],
+      expectedSessionExerciseRevisions: [{ sessionExerciseId: "exercise-2", revision: 1 }, { sessionExerciseId: "exercise-1", revision: 1 }] });
+    expect(screen.getAllByTestId(/^workout-presentation-exercise-/u).map(({ props }) => props.testID))
+      .toEqual(["workout-presentation-exercise-exercise-1", "workout-presentation-exercise-exercise-2"]);
+    persisted = { ...start, revision: 2, exercises: [future, initial.currentExercise] };
+    await act(() => { resolveWrite(persisted); });
+    await waitFor(() => expect(screen.getAllByTestId(/^workout-presentation-exercise-/u).map(({ props }) => props.testID))
+      .toEqual(["workout-presentation-exercise-exercise-2", "workout-presentation-exercise-exercise-1"]));
+    await fireEvent.press(screen.getByRole("button", { name: "Move Back Squat up" }));
+    await waitFor(() => expect(reorderExercises).toHaveBeenCalledTimes(2));
+    expect(reorderExercises.mock.calls[1]![0]).toMatchObject({ expectedSessionRevision: 2,
+      orderedSessionExerciseIds: ["exercise-1", "exercise-2"] });
+    await fireEvent.press(screen.getByRole("button", { name: "Done reordering" }));
+    expect(screen.getByTestId("active-workout-exercise-1-working-sets-card")).toBeOnTheScreen();
+    expect(screen.queryByTestId("active-workout-exercise-2-working-sets-card")).not.toBeOnTheScreen();
+    expect(persisted.activeSetId).toBe("working-1");
+    expect(persisted.currentExercise).toBe(initial.currentExercise);
+  });
+
   it("queues rapid rest adjustments with the latest committed revisions", async () => {
     const initial = workoutView({ rest: { version: 1, state: "running", revision: 1, startedAtMs: 3_000, endsAtMs: 63_000, nextSetId: "working-1" } });
     let resolveFirst!: (result: import("../../domains/rest").RestCommandResult) => void;

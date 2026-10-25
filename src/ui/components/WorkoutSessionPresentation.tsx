@@ -19,6 +19,8 @@ export type WorkoutSessionPresentationProps = Readonly<{
   isExerciseExpanded?: (exercise: WorkoutPresentationExercise, index: number) => boolean;
   onExerciseToggle?: (exercise: WorkoutPresentationExercise, expanded: boolean, index: number) => void;
   renderExerciseAccessory?: (exercise: WorkoutPresentationExercise, index: number) => React.ReactNode;
+  renderExerciseGrip?: (exercise: WorkoutPresentationExercise, index: number) => React.ReactNode;
+  renderExerciseHeader?: (exercise: WorkoutPresentationExercise, index: number, header: React.ReactNode) => React.ReactNode;
   showGrip?: boolean;
   typography?: "default" | "calendar";
 }>;
@@ -32,6 +34,8 @@ export function WorkoutSessionPresentation({
   isExerciseExpanded,
   onExerciseToggle,
   renderExerciseAccessory,
+  renderExerciseGrip,
+  renderExerciseHeader,
   showGrip = true,
   typography = "default",
 }: WorkoutSessionPresentationProps) {
@@ -54,6 +58,45 @@ export function WorkoutSessionPresentation({
         const completed = exercise.workingSets.filter(({ status }) => status === "completed").length;
         const total = exercise.workingSets.length;
         const status = active ? "Current" : exercise.status.charAt(0).toUpperCase() + exercise.status.slice(1);
+        const header = (
+          <View style={styles.header} testID={`exercise-header-${exercise.id}`}>
+            {renderExerciseGrip !== undefined ? renderExerciseGrip(exercise, index) : showGrip ? <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.grip}>
+              <GripVertical color={colors.textSecondary} size={24} />
+            </View> : null}
+            <FocusablePressable
+              accessibilityLabel={exerciseAccessibilityLabel?.(exercise, expanded, index)
+                ?? `${exercise.name}. ${status}. ${completed} of ${total} working sets. ${expanded ? "Collapse" : "Expand"} exercise`}
+              accessibilityRole="button"
+              accessibilityState={{ expanded }}
+              onPress={() => {
+                if (onExerciseToggle !== undefined) {
+                  onExerciseToggle(exercise, expanded, index);
+                  return;
+                }
+                setExpandedIds((current) => {
+                  const next = new Set(current);
+                  if (expanded) next.delete(exercise.id); else next.add(exercise.id);
+                  return next;
+                });
+              }}
+              style={styles.disclosure}
+              testID="workout-exercise-disclosure"
+            >
+              <View style={styles.copy}>
+                <Text accessibilityRole="header" style={[(typography === "calendar" ? calendarTypeScale.heading : workoutTypeScale.bodyStrong) as TextStyle, { color: colors.textPrimary }]}>{exercise.name}</Text>
+                <Text style={[(typography === "calendar" ? calendarTypeScale.metadata : workoutTypeScale.secondary) as TextStyle, { color: colors.textSecondary }]}>{exerciseSupportingText?.(exercise, expanded, index) ?? `${exercise.status} · ${completed} of ${total} working sets`}</Text>
+              </View>
+              {typography === "calendar" ? (
+                <CalendarDisclosureChevron
+                  color={colors.textSecondary}
+                  expanded={expanded}
+                  testID={`calendar-exercise-disclosure-${exercise.id}`}
+                />
+              ) : expanded ? <ChevronDown color={colors.textSecondary} size={24} /> : <ChevronRight color={colors.textSecondary} size={24} />}
+            </FocusablePressable>
+            <View style={styles.actions}>{renderExerciseAccessory?.(exercise, index)}</View>
+          </View>
+        );
         return (
           <View
             key={exercise.id}
@@ -64,43 +107,7 @@ export function WorkoutSessionPresentation({
               style={[styles.divider, { backgroundColor: colors.divider }]}
               testID={`exercise-divider-${exercise.id}`}
             />}
-            <View style={styles.header} testID={`exercise-header-${exercise.id}`}>
-              {showGrip ? <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.grip}>
-                <GripVertical color={colors.textSecondary} size={24} />
-              </View> : null}
-              <FocusablePressable
-                accessibilityLabel={exerciseAccessibilityLabel?.(exercise, expanded, index)
-                  ?? `${exercise.name}. ${status}. ${completed} of ${total} working sets. ${expanded ? "Collapse" : "Expand"} exercise`}
-                accessibilityRole="button"
-                accessibilityState={{ expanded }}
-                onPress={() => {
-                  if (onExerciseToggle !== undefined) {
-                    onExerciseToggle(exercise, expanded, index);
-                    return;
-                  }
-                  setExpandedIds((current) => {
-                    const next = new Set(current);
-                    if (expanded) next.delete(exercise.id); else next.add(exercise.id);
-                    return next;
-                  });
-                }}
-                style={styles.disclosure}
-                testID="workout-exercise-disclosure"
-              >
-                <View style={styles.copy}>
-                  <Text accessibilityRole="header" style={[(typography === "calendar" ? calendarTypeScale.heading : workoutTypeScale.bodyStrong) as TextStyle, { color: colors.textPrimary }]}>{exercise.name}</Text>
-                  <Text style={[(typography === "calendar" ? calendarTypeScale.metadata : workoutTypeScale.secondary) as TextStyle, { color: colors.textSecondary }]}>{exerciseSupportingText?.(exercise, expanded, index) ?? `${exercise.status} · ${completed} of ${total} working sets`}</Text>
-                </View>
-                {typography === "calendar" ? (
-                  <CalendarDisclosureChevron
-                    color={colors.textSecondary}
-                    expanded={expanded}
-                    testID={`calendar-exercise-disclosure-${exercise.id}`}
-                  />
-                ) : expanded ? <ChevronDown color={colors.textSecondary} size={24} /> : <ChevronRight color={colors.textSecondary} size={24} />}
-              </FocusablePressable>
-              <View style={styles.actions}>{renderExerciseAccessory?.(exercise, index)}</View>
-            </View>
+            {renderExerciseHeader?.(exercise, index, header) ?? header}
             {children !== undefined
               ? children(exercise, expanded, index)
               : expanded ? (
