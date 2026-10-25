@@ -3813,7 +3813,10 @@ export function WorkoutAppRuntimeProvider({
       // Reconciliation reads the latest SQLite rest, rather than replaying a
       // previously captured native notification. Later mutations queue after
       // this pass and replace its derivative with their newer saved deadline.
-      await services.lifecycle.trigger("post_commit");
+      const result = await services.lifecycle.trigger("post_commit");
+      if (result.outcomes?.some(({ outcome }) => outcome === "platform_failure")) {
+        throw new Error("precise_rest_alarm_refresh_failed");
+      }
     });
     postCommitReconciliationQueueRef.current = refresh.catch(() => undefined);
     return refresh;

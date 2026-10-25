@@ -112,6 +112,17 @@ const revisionInput = {
 };
 
 describe("rest command acknowledgement latency", () => {
+  it("reports a failed native alarm replacement so precise-alert refresh can be retried", async () => {
+    const input = fixture();
+    const runtime = await mount(input);
+    input.lifecycle.trigger.mockResolvedValueOnce({ ...input.lifecycleResult, outcomes: [{ outcome: "platform_failure", permission: "granted" }] });
+    try {
+      await act(async () => {
+        await expect(runtime.current().refreshPreciseRestAlarms()).rejects.toThrow("precise_rest_alarm_refresh_failed");
+      });
+      expect(input.notifications.cancel).toHaveBeenCalledWith("rest:session-1");
+    } finally { await runtime.rendered.unmount(); }
+  });
   it("upgrades precise alarms from current saved rest after earlier reconciliation settles", async () => {
     const input = fixture();
     const runtime = await mount(input);
