@@ -690,7 +690,7 @@ export function createPlansWorkoutRepository(
             `INSERT OR IGNORE INTO owned_plan_schedule_opportunities
               (id, schedule_id, schedule_version_id, local_date, source,
                plan_day_id, state, outcome, session_id, revision, consumed_at_ms)
-             SELECT ?, schedule.id, version.id, ?, 'weekday', binding.plan_day_id,
+             SELECT ?, schedule.id, version.id, ?, version.mode, binding.plan_day_id,
                     'pending', NULL, NULL, 1, NULL
              FROM owned_plan_schedules schedule
              JOIN owned_plan_schedule_versions version
@@ -700,7 +700,7 @@ export function createPlansWorkoutRepository(
              WHERE schedule.id = ?
                AND schedule.plan_id = ?
                AND binding.plan_day_id = ?
-               AND version.mode = 'weekday'
+               AND version.mode IN ('weekday', 'rotation')
              LIMIT 1`,
             [
               selected.opportunityId, selected.localDate,

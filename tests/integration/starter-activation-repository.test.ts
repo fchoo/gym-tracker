@@ -252,7 +252,7 @@ async function assertPhase17FixtureReady(kernel: SqliteKernel): Promise<void> {
   }
 }
 
-async function createRuntime(): Promise<SqliteKernel> {
+async function createRuntime(includeCurrentMigrations = false): Promise<SqliteKernel> {
   const directory = mkdtempSync(join(tmpdir(), "gym-starter-activation-"));
   temporaryDirectories.add(directory);
   const databasePath = join(directory, "gym-tracker.db");
@@ -275,10 +275,10 @@ async function createRuntime(): Promise<SqliteKernel> {
   await createMigrationRunner({
     databaseName: "gym-tracker.db",
     kernel,
-    migrations: migrations.filter(({ version }) => version <= 40),
+    migrations: includeCurrentMigrations ? migrations : migrations.filter(({ version }) => version <= 40),
     recoveryBackup: validatedRecoveryBackup(),
   }).run();
-  await assertPhase17FixtureReady(kernel);
+  if (!includeCurrentMigrations) await assertPhase17FixtureReady(kernel);
   const catalog = await parseExerciseCatalog({
     catalogBytes,
     manifestBytes: catalogManifestBytes,
@@ -1449,6 +1449,47 @@ describe("accepted starter activation repository", () => {
       ...Array.from({ length: 4 }, () => "Legs"),
       ...Array.from({ length: 4 }, () => "Arms"),
     ]);
+  });
+
+  it.each(["weekday", "rotation"] as const)("starts the accepted Strength A day through current migrated %s schedule attribution", async (mode) => {
+    const kernel = await createRuntime(true);
+    const template = (await acceptedPack()).templates.find(({ id }) => id === "strength-conditioning")!;
+    const activation = await activate(kernel, {
+      templateId: "strength-conditioning",
+      requestId: "current-strength-start",
+      activatedAtMs: Date.parse("2026-08-24T04:00:00Z"),
+      expectedActiveScheduleRevision: null,
+      ...(mode === "rotation" ? { schedule: {
+        startLocalDate: "2026-08-24", timeZone: "Asia/Singapore", mode: "rotation" as const,
+        bindings: template.days.map((day, ordinal) => ({ planDaySourceId: day.id, ordinal })),
+      } } : {}),
+    });
+    const instantMs = Date.parse("2026-08-24T04:01:00Z");
+    const ownedPlans = createOwnedPlanRuntimePort(kernel, {
+      nowMs: () => instantMs,
+      randomUUID: () => "current-schedule",
+      sha256,
+    });
+    const schedule = createScheduleRuntimePort(kernel, ownedPlans, {
+      now: () => new Date(instantMs),
+      nowMs: () => instantMs,
+      randomUUID: () => "current-schedule",
+      sha256,
+    });
+    const today = await schedule.loadToday(instantMs);
+    const selected = today?.selectedStrengthOccurrence;
+    if (selected === null || selected === undefined) throw new Error("current_strength_selection_missing");
+    expect(selected.planId).toBe(activation.plan.id);
+    const session = await startWorkout({
+      repository: createPlansWorkoutRepository(kernel),
+      request: {
+        mode: "scheduled", planId: selected.planId, planDayId: selected.planDayId,
+        localDate: selected.localDate, timezone: selected.timeZone,
+        startedAtMs: instantMs, selectedOccurrence: selected, commandIdentity: "d".repeat(64),
+      },
+    });
+    expect((await createWorkoutRepository(kernel).getActiveWorkout(session.id)).currentExercise.name)
+      .toBe("Back Squat");
   });
 
   it("keeps copied non-load policies factual and never creates pending target writes", async () => {
