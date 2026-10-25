@@ -14,6 +14,13 @@ import {
   runningSessionRevisionReadback,
 } from "../../../domains/running/contracts";
 import { parseStrengthOccurrenceSnapshot } from "./strengthOccurrenceSnapshot";
+import { displayDateRange, displayLocalDate } from "../../time/deviceTimeZone";
+
+export type TrainingCalendarRangeInput = Readonly<{
+  startLocalDate: string;
+  endLocalDateExclusive: string;
+  displayTimeZone?: string;
+}>;
 
 type CalendarDestination =
   | Readonly<{ kind: "session"; sessionId: string }>
@@ -74,6 +81,7 @@ type StrengthRow = Readonly<{
   schedule_lifecycle: "active" | "inactive"; schedule_revision: number;
   local_date: string; timezone: string; revision: number; state: string; outcome: string | null;
   session_id: string | null; session_status: string | null; snapshot_json: string | null;
+  started_at_ms: number | null;
   planned_snapshot_json: string | null;
   completed_working_sets: number; planned_working_sets: number; planned_target_sets: number;
 }>;
@@ -89,11 +97,12 @@ type ImportedRow = Readonly<{
   matched_plan_id: string | null; matched_slot_id: string | null;
 }>;
 
-function range(input: Readonly<{ startLocalDate: string; endLocalDateExclusive: string }>): Readonly<{ start: LocalDate; end: LocalDate }> {
+function range(input: TrainingCalendarRangeInput) {
   const start = parseLocalDate(input.startLocalDate);
   const end = parseLocalDate(input.endLocalDateExclusive);
   if (start >= end) throw new Error("training_calendar_range_invalid");
-  return Object.freeze({ start, end });
+  return Object.freeze({ start, end, displayTimeZone: input.displayTimeZone,
+    epochs: input.displayTimeZone === undefined ? undefined : displayDateRange(start, end, input.displayTimeZone) });
 }
 
 type ImportedFacts = Readonly<{
@@ -119,7 +128,7 @@ function distanceLabel(meters: number): string {
   return meters >= 1_000 ? `${(meters / 1_000).toFixed(2)} km` : `${meters} m`;
 }
 
-function importedFacts(row: ImportedRow): ImportedFacts | null {
+function importedFacts(row: ImportedRow, displayTimeZone?: string): ImportedFacts | null {
   try {
     const aggregate = JSON.parse(row.aggregate_json) as {
       confirmed_local_date?: unknown;
@@ -147,9 +156,11 @@ function importedFacts(row: ImportedRow): ImportedFacts | null {
       || row.account_namespace.trim().length === 0
       || row.external_activity_id.trim().length === 0) return null;
     const distance = distanceLabel(aggregate.normalized.distance_meters);
+    const confirmedDate = parseLocalDate(aggregate.confirmed_local_date);
+    if (displayTimeZone !== undefined && (!Number.isSafeInteger(row.started_at_ms) || row.started_at_ms < 0)) return null;
     return Object.freeze({
-      localDate: parseLocalDate(aggregate.confirmed_local_date),
-      timeZone: typeof aggregate.normalized.source_time_zone === "string" ? aggregate.normalized.source_time_zone : null,
+      localDate: displayTimeZone === undefined ? confirmedDate : parseLocalDate(displayLocalDate(row.started_at_ms, displayTimeZone)),
+      timeZone: displayTimeZone ?? (typeof aggregate.normalized.source_time_zone === "string" ? aggregate.normalized.source_time_zone : null),
       title: `${subtype} run`,
       displaySummary: aggregate.normalized.elapsed_ms === undefined
         ? distance
@@ -160,11 +171,20 @@ function importedFacts(row: ImportedRow): ImportedFacts | null {
   }
 }
 
+function matchedImportedOpportunity(row: ImportedRow): string | null {
+  return row.opportunity_id !== null
+    && row.matched_schedule_id !== null && row.matched_schedule_id.trim().length > 0
+    && row.matched_schedule_version_id !== null && row.matched_schedule_version_id.trim().length > 0
+    && row.matched_plan_id !== null && row.matched_plan_id.trim().length > 0
+    && row.matched_slot_id !== null && row.matched_slot_id.trim().length > 0
+    ? row.opportunity_id : null;
+}
+
 function workingSetSummary(completed: number, planned: number): string {
   return `${completed} of ${planned} ${planned === 1 ? "working set" : "working sets"} completed`;
 }
 
-function effectiveStrengthSnapshot(row: StrengthRow): Readonly<{
+function effectiveStrengthSnapshot(row: StrengthRow, displayTimeZone?: string): Readonly<{
   localDate: LocalDate;
   status: "completed" | "partial";
   title: string;
@@ -172,8 +192,9 @@ function effectiveStrengthSnapshot(row: StrengthRow): Readonly<{
 }> | null {
   if (row.snapshot_json === null) {
     if ((row.session_status !== "completed" && row.session_status !== "partial") || row.session_id === null) return null;
+    if (displayTimeZone !== undefined && (!Number.isSafeInteger(row.started_at_ms) || row.started_at_ms! < 0)) return null;
     return Object.freeze({
-      localDate: parseLocalDate(row.local_date),
+      localDate: displayTimeZone === undefined ? parseLocalDate(row.local_date) : parseLocalDate(displayLocalDate(row.started_at_ms!, displayTimeZone)),
       status: row.session_status,
       title: row.plan_day_name?.trim() || row.plan_name,
       displaySummary: workingSetSummary(row.completed_working_sets, row.planned_working_sets),
@@ -191,7 +212,7 @@ function effectiveStrengthSnapshot(row: StrengthRow): Readonly<{
     || (snapshot.session.status !== "completed" && snapshot.session.status !== "partial")) return null;
   const workingSets = snapshot.exercises.flatMap(({ sets }) => sets).filter(({ kind }) => kind === "working");
   return Object.freeze({
-    localDate: parseLocalDate(snapshot.session.localDate),
+    localDate: displayTimeZone === undefined ? parseLocalDate(snapshot.session.localDate) : parseLocalDate(displayLocalDate(snapshot.session.startedAtMs, displayTimeZone)),
     status: snapshot.session.status,
     title: snapshot.session.dayName?.trim() || snapshot.session.planName?.trim() || row.plan_name,
     displaySummary: workingSetSummary(
@@ -206,15 +227,15 @@ type StrengthProjection = Readonly<{
   rest: Readonly<{ localDate: LocalDate; summary: string }> | null;
 }>;
 
-function strengthProjection(row: StrengthRow): StrengthProjection {
+function strengthProjection(row: StrengthRow, displayTimeZone?: string): StrengthProjection {
   if (row.plan_name.trim().length === 0) return Object.freeze({ event: null, rest: null });
-  const history = effectiveStrengthSnapshot(row);
+  const history = effectiveStrengthSnapshot(row, displayTimeZone);
   if (history !== null) {
     return Object.freeze({
       event: Object.freeze({
         id: row.id, source: "strength", sport: "strength", status: history.status,
         title: history.title, displaySummary: history.displaySummary, sourceLabel: "Strength",
-        localDate: history.localDate, timeZone: row.timezone,
+        localDate: history.localDate, timeZone: displayTimeZone ?? row.timezone,
         scheduleId: row.schedule_id, scheduleVersionId: row.schedule_version_id, planId: row.plan_id,
         slotId: null, revision: row.revision, state: history.status,
         destination: Object.freeze({ kind: "session", sessionId: row.session_id! }),
@@ -294,7 +315,7 @@ function runningEvent(row: RunningRow): TrainingCalendarEvent | null {
 
 async function queryRange(
   reader: SqliteReadTransactionExecutor,
-  input: Readonly<{ start: LocalDate; end: LocalDate }>,
+  input: ReturnType<typeof range>,
 ): Promise<TrainingCalendarRange> {
   const [strengthRows, runningRows, importedRows] = await Promise.all([
     reader.queryAll<StrengthRow>(
@@ -307,6 +328,7 @@ async function queryRange(
               COALESCE(overlay.effective_timezone, session.timezone, version.timezone) AS timezone,
               opportunity.revision, opportunity.state, opportunity.outcome,
               session.id AS session_id, session.status AS session_status,
+              COALESCE(overlay.effective_started_at_ms, session.started_at_ms) AS started_at_ms,
               overlay.snapshot_json,
               (SELECT event.payload_json
                  FROM owned_plan_schedule_events event
@@ -353,11 +375,18 @@ async function queryRange(
               AND (later.committed_at_ms > current.committed_at_ms
                 OR (later.committed_at_ms = current.committed_at_ms AND later.id > current.id))
           )
-        WHERE COALESCE(overlay.effective_local_date, session.local_date, projection.moved_local_date, opportunity.local_date) >= ?
-          AND COALESCE(overlay.effective_local_date, session.local_date, projection.moved_local_date, opportunity.local_date) < ?
+        WHERE ${input.epochs === undefined
+          ? `COALESCE(overlay.effective_local_date, session.local_date, projection.moved_local_date, opportunity.local_date) >= ?
+          AND COALESCE(overlay.effective_local_date, session.local_date, projection.moved_local_date, opportunity.local_date) < ?`
+          : `((session.id IS NULL
+            AND COALESCE(projection.moved_local_date, opportunity.local_date) >= ?
+            AND COALESCE(projection.moved_local_date, opportunity.local_date) < ?)
+          OR (session.id IS NOT NULL
+            AND COALESCE(overlay.effective_started_at_ms, session.started_at_ms) >= ?
+            AND COALESCE(overlay.effective_started_at_ms, session.started_at_ms) < ?))`}
           AND (session.id IS NOT NULL OR schedule.lifecycle = 'active')
           AND (overlay.lifecycle IS NULL OR overlay.lifecycle = 'active')
-        ORDER BY local_date, opportunity.id`, [input.start, input.end],
+        ORDER BY local_date, opportunity.id`, input.epochs === undefined ? [input.start, input.end] : [input.start, input.end, input.epochs.startMs, input.epochs.endMs],
     ),
     reader.queryAll<RunningRow>(
       `SELECT opportunity.id, opportunity.schedule_id, opportunity.schedule_version_id,
@@ -408,25 +437,22 @@ async function queryRange(
          LEFT JOIN running_opportunities matched_opportunity
            ON matched_opportunity.id = match.opportunity_id
         WHERE lifecycle.removal_state = 'active'
-          AND json_extract(activity.aggregate_json, '$.confirmed_local_date') >= ?
-          AND json_extract(activity.aggregate_json, '$.confirmed_local_date') < ?
-        ORDER BY json_extract(activity.aggregate_json, '$.confirmed_local_date'), activity.started_at_ms, activity.id`, [input.start, input.end],
+          AND ${input.epochs === undefined ? "json_extract(activity.aggregate_json, '$.confirmed_local_date')" : "activity.started_at_ms"} >= ?
+          AND ${input.epochs === undefined ? "json_extract(activity.aggregate_json, '$.confirmed_local_date')" : "activity.started_at_ms"} < ?
+        ORDER BY activity.started_at_ms, activity.id`, input.epochs === undefined ? [input.start, input.end] : [input.epochs.startMs, input.epochs.endMs],
     ),
   ]);
-  const strength = strengthRows.map(strengthProjection);
+  const strength = strengthRows.map(row => strengthProjection(row, input.displayTimeZone));
   const restByDate = new Map(
     strength.flatMap(({ rest }) => rest === null ? [] : [[rest.localDate, rest.summary] as const]),
   );
   const imported = importedRows.flatMap((row) => {
-    const facts = importedFacts(row);
+    const facts = importedFacts(row, input.displayTimeZone);
     if (facts === null) return [];
-    const matched = row.opportunity_id !== null
-      && row.matched_schedule_id !== null && row.matched_schedule_id.trim().length > 0
-      && row.matched_schedule_version_id !== null && row.matched_schedule_version_id.trim().length > 0
-      && row.matched_plan_id !== null && row.matched_plan_id.trim().length > 0
-      && row.matched_slot_id !== null && row.matched_slot_id.trim().length > 0;
+    const matchedOpportunityId = matchedImportedOpportunity(row);
+    const matched = matchedOpportunityId !== null;
     return [{
-      matchedOpportunityId: matched ? row.opportunity_id : null,
+      matchedOpportunityId,
       event: Object.freeze({
         id: row.id, source: "imported_activity" as const, sport: "running" as const,
         status: matched ? "matched" as const : "imported" as const, title: facts.title,
@@ -452,6 +478,31 @@ async function queryRange(
       matchedOpportunityId === null ? [] : [matchedOpportunityId]
     ),
   );
+  if (input.displayTimeZone !== undefined) {
+    // Matching follows the source opportunity even when the imported instant
+    // displays in a different civil day or month. Bound each lookup to loaded IDs.
+    for (let offset = 0; offset < runningRows.length; offset += 500) {
+      const ids = runningRows.slice(offset, offset + 500).map(row => row.id);
+      const matches = await reader.queryAll<ImportedRow>(
+        `SELECT activity.id, activity.source, identity.source_kind, identity.account_namespace,
+                identity.external_activity_id, activity.started_at_ms, activity.aggregate_json,
+                match.opportunity_id, opportunity.schedule_id AS matched_schedule_id,
+                opportunity.schedule_version_id AS matched_schedule_version_id,
+                opportunity.plan_id AS matched_plan_id, opportunity.slot_id AS matched_slot_id
+           FROM running_activity_current_matches match
+           JOIN imported_activities activity ON activity.id = match.activity_id
+           JOIN imported_activity_identities identity ON identity.activity_id = activity.id
+           JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = activity.id
+           JOIN running_opportunities opportunity ON opportunity.id = match.opportunity_id
+          WHERE lifecycle.removal_state = 'active'
+            AND match.opportunity_id IN (${ids.map(() => "?").join(", ")})`, ids,
+      );
+      for (const row of matches) {
+        const id = matchedImportedOpportunity(row);
+        if (id !== null && importedFacts(row, input.displayTimeZone) !== null) matchedOpportunityIds.add(id);
+      }
+    }
+  }
   const events: TrainingCalendarEvent[] = [
     ...strength.flatMap(({ event }) => {
       return event === null ? [] : [event];
@@ -490,7 +541,7 @@ async function queryRange(
  * neither materializes an opportunity nor consults current activation state. */
 export function createTrainingCalendarRepository(kernel: SqliteKernel) {
   return Object.freeze({
-    async loadRange(input: Readonly<{ startLocalDate: string; endLocalDateExclusive: string }>): Promise<TrainingCalendarRange> {
+    async loadRange(input: TrainingCalendarRangeInput): Promise<TrainingCalendarRange> {
       const bounded = range(input);
       if (kernel.readSnapshot !== undefined) return kernel.readSnapshot((reader) => queryRange(reader, bounded));
       return queryRange(kernel, bounded);

@@ -47,6 +47,8 @@ import type {
   SqliteReadTransactionExecutor,
   SqliteSnapshotKernel,
 } from "../sqliteKernel";
+import { addLocalDays, parseLocalDate } from "../../../domains/scheduling/localDate";
+import { displayDateRange, displayLocalDate } from "../../time/deviceTimeZone";
 
 type RevisionRow = Readonly<{
   subject_id: string;
@@ -206,7 +208,12 @@ export type ProgressRepository = Readonly<{
     sport?: ProgressSport;
     period: ProgressPeriod;
     nowLocalDate: string;
+    displayTimeZone?: string;
   }>): Promise<ProgressRepositoryRead>;
+}>;
+
+export type ProgressRepositoryOptions = Readonly<{
+  displayTimeZone?: () => string;
 }>;
 
 const ALL_PERIOD_SUBJECT_ID = 'history-subject/v1:["period","all"]';
@@ -247,6 +254,13 @@ function rangeStart(period: ProgressPeriod, nowLocalDate: string): string | null
   if (days === null) return null;
   date.setUTCDate(date.getUTCDate() - days);
   return date.toISOString().slice(0, 10);
+}
+
+function displayWindow(input: Readonly<{ period: ProgressPeriod; nowLocalDate: string; displayTimeZone: string }>) {
+  const start = rangeStart(input.period, input.nowLocalDate);
+  const bounds = displayDateRange(start ?? input.nowLocalDate,
+    addLocalDays(parseLocalDate(input.nowLocalDate), 1), input.displayTimeZone);
+  return { startMs: start === null ? null : bounds.startMs, endMs: bounds.endMs };
 }
 
 function withToSortedCompatibility<Result>(operation: () => Result): Result {
@@ -516,11 +530,12 @@ function evidenceFromAggregate(
 
 async function loadDashboardFacts(
   executor: SqliteReadTransactionExecutor,
-  input: Readonly<{ period: ProgressPeriod; nowLocalDate: string }>,
+  input: Readonly<{ period: ProgressPeriod; nowLocalDate: string; displayTimeZone?: string }>,
 ): Promise<Readonly<{
   activities: readonly ProgressRunningActivityFact[];
   goals: readonly ProgressGoalRevision[];
 }>> {
+  const window = input.displayTimeZone === undefined ? null : displayWindow({ ...input, displayTimeZone: input.displayTimeZone });
   const [activityRows, goalRows] = await Promise.all([
     readAllPages<DashboardRunningActivityRow>(executor,
       `SELECT activity.id, activity.started_at_ms, activity.aggregate_json,
@@ -531,10 +546,14 @@ async function loadDashboardFacts(
         WHERE identity.removal_state = 'active'
           AND lifecycle.removal_state = 'active'
           AND identity.aggregate_revision = lifecycle.aggregate_revision
-          AND (? IS NULL OR json_extract(activity.aggregate_json, '$.confirmed_local_date') >= ?)
-          AND json_extract(activity.aggregate_json, '$.confirmed_local_date') <= ?
+          AND ${window === null
+            ? `(? IS NULL OR json_extract(activity.aggregate_json, '$.confirmed_local_date') >= ?)
+          AND json_extract(activity.aggregate_json, '$.confirmed_local_date') <= ?`
+            : `(? IS NULL OR activity.started_at_ms >= ?)
+          AND activity.started_at_ms < ?`}
         ORDER BY activity.started_at_ms, activity.id`,
-      [rangeStart(input.period, input.nowLocalDate), rangeStart(input.period, input.nowLocalDate), input.nowLocalDate],
+      window === null ? [rangeStart(input.period, input.nowLocalDate), rangeStart(input.period, input.nowLocalDate), input.nowLocalDate]
+        : [window.startMs, window.startMs, window.endMs],
     ),
     readAllPages<DashboardRunningGoalRow>(executor,
       `SELECT goal.id, goal.plan_id, goal.revision, goal.goal_json,
@@ -565,7 +584,7 @@ async function loadDashboardFacts(
       && !Array.isArray(aggregate.normalized)
       ? aggregate.normalized as Record<string, unknown>
       : null;
-    const localDate = aggregate === null ? null : stringValue(aggregate, "confirmed_local_date");
+    let localDate = aggregate === null ? null : stringValue(aggregate, "confirmed_local_date");
     const distanceMeters = normalized?.distance_meters;
     const duration = normalized === null ? null : durationFromNormalized(normalized);
     if (
@@ -576,6 +595,11 @@ async function loadDashboardFacts(
       || duration === null
       || !positiveSafeInteger(row.aggregate_revision)
     ) return [];
+    if (input.displayTimeZone !== undefined) {
+      if (!Number.isSafeInteger(row.started_at_ms) || row.started_at_ms < 0) return [];
+      try { localDate = displayLocalDate(row.started_at_ms, input.displayTimeZone); }
+      catch { return []; }
+    }
     const evidence = evidenceFromAggregate(aggregate);
     return [Object.freeze({
       activityId: row.id,
@@ -598,6 +622,29 @@ async function loadDashboardFacts(
     return goal === null ? [] : [goal];
   });
   return Object.freeze({ activities: Object.freeze(activities), goals: Object.freeze(goals) });
+}
+
+type DisplayStrengthExposureRow = ComparableExposureRow & Readonly<{ display_started_at_ms: number }>;
+
+async function loadDisplayStrengthExposures(
+  executor: SqliteReadTransactionExecutor,
+  input: Readonly<{ period: ProgressPeriod; nowLocalDate: string; displayTimeZone: string }>,
+): Promise<readonly DisplayStrengthExposureRow[]> {
+  const window = displayWindow(input);
+  return readAllPages<DisplayStrengthExposureRow>(executor,
+    `SELECT exposure.exercise_id, exposure.identity_key, exposure.comparator_key,
+            exposure.session_id, exposure.local_date, exposure.set_id, exposure.set_ordinal,
+            exposure.completed_at_ms, exposure.target_json, exposure.observation_json,
+            COALESCE(overlay.effective_started_at_ms, session.started_at_ms) AS display_started_at_ms
+       FROM history_projection_comparable_exposures exposure
+       JOIN workout_sessions session ON session.id = exposure.session_id
+       LEFT JOIN history_session_overlays overlay ON overlay.session_id = session.id
+      WHERE (overlay.lifecycle IS NULL OR overlay.lifecycle = 'active')
+        AND (? IS NULL OR COALESCE(overlay.effective_started_at_ms, session.started_at_ms) >= ?)
+        AND COALESCE(overlay.effective_started_at_ms, session.started_at_ms) < ?
+      ORDER BY exposure.exercise_id, exposure.identity_key, exposure.comparator_key,
+               exposure.completed_at_ms, exposure.session_id, exposure.set_ordinal, exposure.set_id`,
+    [window.startMs, window.startMs, window.endMs]);
 }
 
 function dashboardGoalFromRow(
@@ -894,6 +941,7 @@ function recommendationFromRow(
  */
 export function createProgressRepository(
   kernel: SqliteKernel,
+  options: ProgressRepositoryOptions = {},
 ): ProgressRepository {
   if (kernel.readSnapshot === undefined) {
     throw new Error("progress_snapshot_kernel_required");
@@ -902,6 +950,7 @@ export function createProgressRepository(
   return Object.freeze({
     async load(input) {
       const sport = input.sport;
+      const displayTimeZone = input.displayTimeZone ?? options.displayTimeZone?.();
       return snapshotKernel.readSnapshot(async (executor) => {
       const metricSubjects = await executor.queryAll<MetricSubjectRow>(
         `SELECT subject_id
@@ -994,6 +1043,7 @@ export function createProgressRepository(
         dashboardFacts,
         runningTargetSources,
         plannedNext,
+        displayStrengthRows,
       ] = await Promise.all([
         executor.queryAll<PeriodInputRow>(
           `SELECT local_date, completed_exercises, planned_exercises,
@@ -1056,9 +1106,11 @@ export function createProgressRepository(
         ),
         loadEffectiveHistoryProjectionSessions(executor),
         loadSourceFacts(executor),
-        loadDashboardFacts(executor, input),
+        loadDashboardFacts(executor, { ...input, displayTimeZone }),
         sport === "Running" ? loadRunningTargetSources(executor) : Promise.resolve(Object.freeze([])),
         loadPlannedNext(executor, input.nowLocalDate),
+        displayTimeZone === undefined || sport === undefined ? Promise.resolve(null)
+          : loadDisplayStrengthExposures(executor, { ...input, displayTimeZone }),
       ]);
       const recommendations = [
         ...legacyRecommendationRows,
@@ -1099,14 +1151,22 @@ export function createProgressRepository(
         })),
         recommendations,
       }));
-      const dashboardStrengthFacts = exposureRows.map((row) =>
-        progressRecordFromExposure(exposureFromRow(row, effectiveSetsById))
-      );
+      const dashboardStrengthOrder = displayStrengthRows === null
+        ? exposureRows.map(row => Object.freeze({
+          fact: progressRecordFromExposure(exposureFromRow(row, effectiveSetsById)), effectiveAtMs: row.completed_at_ms,
+        }))
+        : displayStrengthRows.flatMap(row => {
+          if (!Number.isSafeInteger(row.display_started_at_ms) || row.display_started_at_ms < 0) return [];
+          let localDate: string;
+          try { localDate = displayLocalDate(row.display_started_at_ms, displayTimeZone!); }
+          catch { return []; }
+          return [Object.freeze({ fact: Object.freeze({
+            ...progressRecordFromExposure(exposureFromRow(row, effectiveSetsById)), localDate,
+          }), effectiveAtMs: row.completed_at_ms })];
+        });
+      const dashboardStrengthFacts = dashboardStrengthOrder.map(({ fact }) => fact);
       const dashboardGoalOrder = completeDashboardGoalOrder(
-        dashboardStrengthFacts.map((fact, index) => Object.freeze({
-          fact,
-          effectiveAtMs: exposureRows[index]!.completed_at_ms,
-        })),
+        dashboardStrengthOrder,
         dashboardFacts.goals,
       );
       const dashboard = sport === undefined ? undefined : withToSortedCompatibility(() =>

@@ -21,6 +21,7 @@ export type TrainingFoundationRuntimePort = Readonly<{
   loadCalendarRange(input: Readonly<{
     startLocalDate: string;
     endLocalDateExclusive: string;
+    displayTimeZone?: string;
   }>): Promise<TrainingCalendarRange>;
   loadBodyweightHistory(ownerId: string): Promise<readonly BodyweightEntryState[]>;
   commitBodyweight(input: BodyweightCommand): Promise<BodyweightTransition>;
