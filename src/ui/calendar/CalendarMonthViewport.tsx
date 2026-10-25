@@ -98,6 +98,7 @@ export function calendarDragDiagnosticMonths(
   nextMonth: LocalDate,
   titlePanel: PanelOffset,
 ): Readonly<{ semanticMonth: string; titleMonth: string }> {
+  "worklet";
   return Object.freeze({
     semanticMonth: currentMonth.slice(0, 7),
     titleMonth: (titlePanel === 1 ? nextMonth : titlePanel === -1 ? previousMonth : currentMonth).slice(0, 7),
@@ -266,6 +267,12 @@ export function CalendarMonthViewport({
     diagnosticSequenceExpanded.current = false;
     onInteractionDiagnosticStart?.();
   };
+  const finishDiagnosticSequence = useCallback(() => {
+    if (!diagnosticSequenceExpanded.current) return;
+    diagnosticSequenceStarted.current = false;
+    diagnosticSequenceExpanded.current = false;
+    onInteractionDiagnosticComplete?.();
+  }, [onInteractionDiagnosticComplete]);
   const measureRenderedPanels = useCallback((callbackGeneration: number) => {
     viewportRef.current?.measureInWindow((viewportX) => {
       previousPanelRef.current?.measureInWindow((previousX, _previousY, previousWidth) => {
@@ -435,15 +442,11 @@ export function CalendarMonthViewport({
           });
         }
         scheduleOnRN(publishWeekCompletion, command.epoch);
-        if (command.phase === "collapse" && diagnosticSequenceExpanded.current) {
-          diagnosticSequenceStarted.current = false;
-          diagnosticSequenceExpanded.current = false;
-          if (onInteractionDiagnosticComplete !== undefined) scheduleOnRN(onInteractionDiagnosticComplete);
-        }
+        if (command.phase === "collapse") scheduleOnRN(finishDiagnosticSequence);
       }
     });
     return cancelWeekCompletion;
-  }, [agendaOpacity, cancelWeekCompletion, command, focusProgress, focusedWeek?.followingGeometry, focusedWeek?.selectedGeometry, layoutGeneration, measureRenderedOverlays, onCancel, onInteractionDiagnosticComplete, publishWeekCompletion, transition.reducedMotion, viewportHeight, viewportRef, selectedOverlayRef, followingOverlayRef, weekCompletionEpoch]);
+  }, [agendaOpacity, cancelWeekCompletion, command, finishDiagnosticSequence, focusProgress, focusedWeek?.followingGeometry, focusedWeek?.selectedGeometry, layoutGeneration, measureRenderedOverlays, onCancel, publishWeekCompletion, transition.reducedMotion, viewportHeight, viewportRef, selectedOverlayRef, followingOverlayRef, weekCompletionEpoch]);
 
   useEffect(() => {
     if (!transition.reducedMotion) return;
