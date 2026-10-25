@@ -96,8 +96,13 @@ const agendaRange = Object.freeze({
 
 async function measureFocusedRows(selectedStart: string, followingStart: string): Promise<void> {
   const measure = async (testID: string, y: number) => {
-    const row = screen.getAllByTestId(testID).find((candidate) => typeof candidate.props.onLayout === "function");
-    if (row === undefined) throw new Error(`missing interactive row ${testID}`);
+    const row = await waitFor(() => {
+      // Expansion hides the measured month rows behind visible week overlays.
+      const interactiveRow = screen.getAllByTestId(testID, { includeHiddenElements: true })
+        .find((candidate) => typeof candidate.props.onLayout === "function");
+      if (interactiveRow === undefined) throw new Error(`missing interactive row ${testID}`);
+      return interactiveRow;
+    });
     await fireEvent(row, "layout", { nativeEvent: { layout: { height: 70, width: 360, x: 0, y } } });
   };
   await measure(`calendar-week-row-${selectedStart}`, 280);
@@ -160,7 +165,7 @@ describe("CalendarScreen", () => {
         frameCallback?.(16);
         frameCallback?.(33);
       });
-      expect(await screen.findByText("September 2026")).toBeOnTheScreen();
+      expect(await screen.findByText("Sep 2026")).toBeOnTheScreen();
       await measureFocusedRows("2026-08-31", "2026-09-07");
       await fireEvent.press(screen.getByTestId("calendar-day-2026-09-01"));
       const collapse = await screen.findByRole("button", { name: "Collapse day and return to month" });
@@ -249,7 +254,7 @@ describe("CalendarScreen", () => {
     );
     await screen.findByText("Full body progression, week 12");
     await fireEvent.press(screen.getByRole("button", { name: "Return to today, 13 October 2026" }));
-    expect(await screen.findByText("October 2026")).toBeOnTheScreen();
+    expect(await screen.findByText("Oct 2026")).toBeOnTheScreen();
     await waitFor(() => expect(loadCalendarRange).toHaveBeenLastCalledWith({
       startLocalDate: "2026-08-31",
       endLocalDateExclusive: "2026-12-14",
@@ -272,7 +277,7 @@ describe("CalendarScreen", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Return to today, 31 August 2026" }));
     await fireEvent.press(screen.getByRole("button", { name: "Show September 2026" }));
 
-    await screen.findByText("September 2026");
+    await screen.findByText("Sep 2026");
     await waitFor(() => expect(screen.getAllByTestId("calendar-day-2026-09-30").some((node) => node.props.accessibilityState?.selected === true)).toBe(true));
   });
 
@@ -616,18 +621,18 @@ describe("CalendarScreen", () => {
     await fireEvent.press(screen.getByTestId("calendar-day-2026-08-24"));
 
     await fireEvent.press(screen.getByRole("button", { name: "Show September 2026" }));
-    await screen.findByText("September 2026");
+    await screen.findByText("Sep 2026");
     await measureFocusedRows("2026-09-21", "2026-09-28");
     await waitFor(() => expect(screen.getAllByTestId("calendar-day-2026-09-24").some((node) => node.props.hasTVPreferredFocus === true)).toBe(true));
     expect(screen.getByTestId("calendar-focused-agenda")).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByRole("button", { name: "Return to today, 24 August 2026" }));
-    await screen.findByText("August 2026");
+    await screen.findByText("Aug 2026");
     await measureAugustFocusedRows();
     await waitFor(() => expect(screen.getAllByTestId("calendar-day-2026-08-24").some((node) => node.props.hasTVPreferredFocus === true)).toBe(true));
 
     await fireEvent.press(screen.getByRole("button", { name: "Show July 2026" }));
-    await screen.findByText("July 2026");
+    await screen.findByText("Jul 2026");
     await measureFocusedRows("2026-07-20", "2026-07-27");
     await waitFor(() => expect(screen.getAllByTestId("calendar-day-2026-07-24").some((node) => node.props.hasTVPreferredFocus === true)).toBe(true));
   });
@@ -676,7 +681,7 @@ describe("CalendarScreen", () => {
     await fireEvent.press(await screen.findByRole("button", { name: /24 August 2026.*Complete/u }));
     await fireEvent.press(await screen.findByRole("button", { name: /Full body progression.*Open details/u }));
     await fireEvent.press(screen.getByRole("button", { name: "Show September 2026" }));
-    expect(await screen.findByText("September 2026")).toBeOnTheScreen();
+    expect(await screen.findByText("Sep 2026")).toBeOnTheScreen();
 
     await rendered.rerender(
       <AppearanceProvider>
@@ -690,7 +695,7 @@ describe("CalendarScreen", () => {
       </AppearanceProvider>,
     );
 
-    expect(await screen.findByText("August 2026")).toBeOnTheScreen();
+    expect(await screen.findByText("Aug 2026")).toBeOnTheScreen();
     await waitFor(() => {
       expect(loadCalendarRange).toHaveBeenLastCalledWith({
         startLocalDate: "2026-06-29",
@@ -764,7 +769,7 @@ describe("CalendarScreen", () => {
     );
 
     await waitFor(() => expect(loadCalendarRange.mock.calls.length).toBeGreaterThan(callsBeforeRefocus));
-    expect(screen.getByText("August 2026")).toBeOnTheScreen();
+    expect(screen.getByText("Aug 2026")).toBeOnTheScreen();
   });
 
   it("consumes detail return state once and keeps the owner's later month on root refocus", async () => {
@@ -794,9 +799,9 @@ describe("CalendarScreen", () => {
         />
       </AppearanceProvider>,
     );
-    expect(await screen.findByText("August 2026")).toBeOnTheScreen();
+    expect(await screen.findByText("Aug 2026")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Show September 2026" }));
-    expect(await screen.findByText("September 2026")).toBeOnTheScreen();
+    expect(await screen.findByText("Sep 2026")).toBeOnTheScreen();
     const callsBeforeRootReturn = loadCalendarRange.mock.calls.length;
 
     await rendered.rerender(
@@ -812,8 +817,8 @@ describe("CalendarScreen", () => {
     );
 
     await waitFor(() => expect(loadCalendarRange.mock.calls.length).toBeGreaterThan(callsBeforeRootReturn));
-    expect(screen.getByText("September 2026")).toBeOnTheScreen();
-    expect(screen.queryByText("August 2026")).toBeNull();
+    expect(screen.getByText("Sep 2026")).toBeOnTheScreen();
+    expect(screen.queryByText("Aug 2026")).toBeNull();
   });
 
   it("retains the last good month during refresh and retries the exact failed range", async () => {
@@ -842,8 +847,8 @@ describe("CalendarScreen", () => {
 
     expect(screen.getByText("Updating Calendar")).toBeOnTheScreen();
     expect(screen.getByText("Full body progression, week 12")).toBeOnTheScreen();
-    expect(screen.getByText("August 2026")).toBeOnTheScreen();
-    expect(screen.queryByText("September 2026")).toBeNull();
+    expect(screen.getByText("Aug 2026")).toBeOnTheScreen();
+    expect(screen.queryByText("Sep 2026")).toBeNull();
     expect(screen.getByRole("button", { name: "Show July 2026" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Show September 2026" })).toBeDisabled();
 
@@ -948,6 +953,8 @@ describe("CalendarScreen", () => {
       expect(screen.getByTestId("calendar-month-title")).toHaveProp("numberOfLines", 1);
       expect(screen.getByTestId("calendar-month-title")).toHaveProp("ellipsizeMode", "tail");
       expect(screen.getByTestId("calendar-month-title")).toHaveProp("accessibilityLabel", "August 2026");
+      expect(screen.getByTestId("calendar-month-title")).toHaveTextContent("Aug 2026");
+      expect(screen.getByRole("button", { name: "Choose month and year, August 2026" })).toBeOnTheScreen();
 
       const previous = screen.getByRole("button", { name: "Show July 2026" });
       const today = screen.getByRole("button", { name: "Return to today, 24 August 2026" });
@@ -959,7 +966,7 @@ describe("CalendarScreen", () => {
       expect(today).toBeEnabled();
       expect(next).toBeEnabled();
       await fireEvent.press(today);
-      expect(screen.getByTestId("calendar-month-title")).toHaveTextContent("August 2026");
+      expect(screen.getByTestId("calendar-month-title")).toHaveTextContent("Aug 2026");
     } finally {
       dimensions.mockRestore();
     }

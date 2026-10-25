@@ -100,8 +100,9 @@ export type Phase16CalendarDiagnosticsRuntime = Readonly<{
   }>) => void;
 }>;
 
-function monthLabel(value: LocalDate): string {
-  return `${MONTH_NAMES[Number(value.slice(5, 7)) - 1] ?? ""} ${value.slice(0, 4)}`;
+function monthLabel(value: LocalDate, style: "long" | "short" = "long"): string {
+  const monthName = MONTH_NAMES[Number(value.slice(5, 7)) - 1] ?? "";
+  return `${style === "short" ? monthName.slice(0, 3) : monthName} ${value.slice(0, 4)}`;
 }
 
 function fullDate(value: LocalDate): string {
@@ -748,7 +749,8 @@ export function CalendarScreen({
   const titleMonth = calendarTransition.titlePanel === "previous" ? nextMonth(titleBaseMonth, -1)
     : calendarTransition.titlePanel === "next" ? nextMonth(titleBaseMonth, 1)
       : titleBaseMonth;
-  const visibleMonthLabel = monthLabel(titleMonth ?? month);
+  const visibleMonthLabel = monthLabel(titleMonth ?? month, "short");
+  const accessibleMonthLabel = monthLabel(titleMonth ?? month);
   useEffect(() => {
     recordPhase20CalendarSemantic({
       title: visibleMonthLabel,
@@ -834,7 +836,7 @@ export function CalendarScreen({
             <View style={styles.monthTitleSlot} testID="calendar-month-title-slot">
               <FocusablePressable
                 accessibilityHint="Opens a month and year picker"
-                accessibilityLabel={`Choose month and year, ${visibleMonthLabel}`}
+                accessibilityLabel={`Choose month and year, ${accessibleMonthLabel}`}
                 accessibilityRole="button"
                 disabled={interactionDisabled || calendarTransition.phase !== "idle"}
                 onPress={() => setMonthPickerOpen(true)}
@@ -842,7 +844,7 @@ export function CalendarScreen({
                 style={styles.monthPickerAction}
               >
                 <Text
-                  accessibilityLabel={visibleMonthLabel}
+                  accessibilityLabel={accessibleMonthLabel}
                   accessibilityRole="header"
                   ellipsizeMode="tail"
                   numberOfLines={1}

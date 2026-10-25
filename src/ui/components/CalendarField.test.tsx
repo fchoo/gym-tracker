@@ -88,7 +88,7 @@ describe("CalendarField", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Keep Original Date" }));
 
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.queryByText("February 2028")).not.toBeOnTheScreen();
+    expect(screen.queryByText("Feb 2028")).not.toBeOnTheScreen();
     expect(screen.getByText("2028-02-28")).toBeOnTheScreen();
   });
 
@@ -102,6 +102,8 @@ describe("CalendarField", () => {
 
     expect(screen.getByRole("header", { name: "Select date" }))
       .toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "February 2028" }))
+      .toHaveTextContent("Feb 2028");
     expect(screen.getByText("Monday, 28 February 2028")).toBeOnTheScreen();
     expect(screen.getAllByTestId(/^calendar-day-/u)).toHaveLength(42);
     expect(screen.getByRole("button", {
@@ -120,7 +122,9 @@ describe("CalendarField", () => {
       name: "Select 2028-03-01",
     }));
 
-    expect(screen.getByText("March 2028")).toBeOnTheScreen();
+    expect(screen.getByText("Mar 2028")).toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "March 2028" }))
+      .toHaveTextContent("Mar 2028");
     expect(screen.getByText("Wednesday, 1 March 2028")).toBeOnTheScreen();
     expect(onChange).not.toHaveBeenCalled();
     await fireEvent.press(screen.getByRole("button", { name: "Apply Date" }));
@@ -145,7 +149,7 @@ describe("CalendarField", () => {
 
     await fireEvent.press(trigger);
 
-    expect(screen.getByText("February 2028")).toBeOnTheScreen();
+    expect(screen.getByText("Feb 2028")).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Select 2028-02-28" }))
       .toHaveProp("accessibilityState", expect.objectContaining({
         disabled: false,

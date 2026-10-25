@@ -176,8 +176,9 @@ function monthHasSelectableDate(
     && (maximumDate === null || compareLocalDates(first, maximumDate) !== 1);
 }
 
-function labelForMonth(month: Month): string {
-  return `${MONTH_NAMES[month.month - 1]} ${month.year}`;
+function labelForMonth(month: Month, style: "long" | "short" = "long"): string {
+  const monthName = MONTH_NAMES[month.month - 1]!;
+  return `${style === "short" ? monthName.slice(0, 3) : monthName} ${month.year}`;
 }
 
 function longDateLabel(value: LocalDate): string {
@@ -453,6 +454,7 @@ export function CalendarField({
                     onPress={() => moveMonth(-1)}
                   />
                   <Text
+                    accessibilityLabel={labelForMonth(calendarMonth)}
                     accessibilityRole="header"
                     style={[
                       typeScale.sectionTitle as TextStyle,
@@ -460,7 +462,7 @@ export function CalendarField({
                       { color: colors.textPrimary },
                     ]}
                   >
-                    {labelForMonth(calendarMonth)}
+                    {labelForMonth(calendarMonth, "short")}
                   </Text>
                   <SecondaryAction
                     disabled={!monthHasSelectableDate(
