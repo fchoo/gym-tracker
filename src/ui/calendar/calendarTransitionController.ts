@@ -53,6 +53,7 @@ export type CalendarTransitionEvent =
   | Readonly<{ type: "invalidate" }>
   | Readonly<{ type: "set-reduced-motion"; reducedMotion: boolean }>
   | Readonly<{ type: "move"; direction: "previous" | "next"; targetMonthId: string; targetSelectedLocalDate?: string }>
+  | Readonly<{ type: "jump"; localDate: string }>
   | Readonly<{ type: "settle-complete"; epoch: number }>
   | Readonly<{ type: "expand" }>
   | Readonly<{ type: "collapse" }>
@@ -247,6 +248,18 @@ export function transitionCalendar(
         fromOffset: 0,
         toOffset: event.direction === "next" ? -1 : 1,
       });
+    case "jump": {
+      if (state.phase !== "idle") return result(state);
+      const localDate = parseLocalDate(event.localDate);
+      // Direct selection replaces all three panels without showing an unrelated
+      // adjacent month on the way to a distant year. Invalidate older callbacks.
+      return result(freezeState({
+        ...reset(state, true),
+        currentMonthId: localDate.slice(0, 7),
+        selectedLocalDate: localDate,
+        mode: "month",
+      }));
+    }
     case "settle-complete":
       if (event.epoch !== state.epoch) return result(state);
       if (state.phase === "adjacent-collapsing") {

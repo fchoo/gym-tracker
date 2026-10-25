@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronUp } from "lucide-react-native";
+import { ChevronDown, ChevronUp } from "lucide-react-native";
 import {
   AccessibilityInfo,
   AppState,
@@ -35,6 +35,7 @@ import {
 } from "../../domains/scheduling/localDate";
 import type { CalendarEventDestination, CalendarRange, CalendarReadPort } from "../calendar/calendarPorts";
 import { CalendarAgenda, type CalendarAgendaHandle, type CalendarAgendaRowHandle } from "../calendar/CalendarAgenda";
+import { CalendarMonthPicker } from "../calendar/CalendarMonthPicker";
 import {
   CalendarMonthViewport,
   calendarHorizontalInsetForSafeWidth,
@@ -164,6 +165,7 @@ export function CalendarScreen({
   }> | null>(null);
   const [retryGeneration, setRetryGeneration] = useState(0);
   const [isCalendarKeyOpen, setCalendarKeyOpen] = useState(false);
+  const [isMonthPickerOpen, setMonthPickerOpen] = useState(false);
   const [calendarTransition, setCalendarTransition] = useState<CalendarTransitionState>(() => createCalendarTransitionState({
     currentMonthId: initialDate.slice(0, 7),
     selectedLocalDate: initialDate,
@@ -192,6 +194,7 @@ export function CalendarScreen({
   monthRef.current = month;
   const pendingMonthRef = useRef<Readonly<{ month: LocalDate; selectedDate: LocalDate }> | null>(null);
   const infoActionRef = useRef<View>(null);
+  const monthPickerActionRef = useRef<View>(null);
   const collapseActionRef = useRef<View>(null);
   const dateCellRefs = useRef(new Map<LocalDate, CalendarDateCellHandle>());
   const pendingDateFocusRef = useRef<LocalDate | null>(null);
@@ -452,7 +455,7 @@ export function CalendarScreen({
     if (previousState.currentMonthId !== result.state.currentMonthId) {
       const nextDate = parseLocalDate(result.state.selectedLocalDate);
       const pending = Object.freeze({ month: startOfLocalMonth(nextDate), selectedDate: nextDate });
-      if (result.state.phase === "adjacent-measuring" || result.state.reducedMotion) {
+      if (result.state.phase === "adjacent-measuring" || result.state.phase === "idle") {
         pendingMonthRef.current = null;
         setWeekMeasurements(new Map());
         setLayoutGeneration((generation) => generation + 1);
@@ -571,13 +574,18 @@ export function CalendarScreen({
   };
 
   const requestCalendarBack = useCallback(() => {
+    if (isMonthPickerOpen) {
+      setMonthPickerOpen(false);
+      monthPickerActionRef.current?.focus?.();
+      return;
+    }
     if (isCalendarKeyOpen) {
       setCalendarKeyOpen(false);
       infoActionRef.current?.focus?.();
       return;
     }
     dispatchCalendarTransition({ type: "back" });
-  }, [dispatchCalendarTransition, isCalendarKeyOpen]);
+  }, [dispatchCalendarTransition, isCalendarKeyOpen, isMonthPickerOpen]);
 
   useEffect(() => {
     if (returnFocusGeneration === 0) return;
@@ -821,16 +829,27 @@ export function CalendarScreen({
               <IconAction accessibilityLabel={previous === null ? "Previous month unavailable" : `Show ${monthLabel(previous)}`} disabled={interactionDisabled || previous === null} icon="back" onPress={() => navigateMonth(-1)} />
             </View>
             <View style={styles.monthTitleSlot} testID="calendar-month-title-slot">
-              <Text
-                accessibilityLabel={visibleMonthLabel}
-                accessibilityRole="header"
-                ellipsizeMode="tail"
-                numberOfLines={1}
-                style={[calendarTypeScale.heading as TextStyle, styles.monthTitle, { color: colors.textPrimary }]}
-                testID="calendar-month-title"
+              <FocusablePressable
+                accessibilityHint="Opens a month and year picker"
+                accessibilityLabel={`Choose month and year, ${visibleMonthLabel}`}
+                accessibilityRole="button"
+                disabled={interactionDisabled || calendarTransition.phase !== "idle"}
+                onPress={() => setMonthPickerOpen(true)}
+                ref={monthPickerActionRef}
+                style={styles.monthPickerAction}
               >
-                {visibleMonthLabel}
-              </Text>
+                <Text
+                  accessibilityLabel={visibleMonthLabel}
+                  accessibilityRole="header"
+                  ellipsizeMode="tail"
+                  numberOfLines={1}
+                  style={[calendarTypeScale.heading as TextStyle, styles.monthTitle, { color: colors.textPrimary }]}
+                  testID="calendar-month-title"
+                >
+                  {visibleMonthLabel}
+                </Text>
+                <ChevronDown accessible={false} color={colors.textSecondary} size={16} />
+              </FocusablePressable>
             </View>
             <View style={styles.monthTodaySlot} testID="calendar-month-today-slot">
               <FocusablePressable
@@ -861,10 +880,10 @@ export function CalendarScreen({
             />
           )}
           <View
-            accessibilityElementsHidden={isCalendarKeyOpen}
+            accessibilityElementsHidden={isCalendarKeyOpen || isMonthPickerOpen}
             accessibilityLabel="Calendar month grid"
-            importantForAccessibility={isCalendarKeyOpen ? "no-hide-descendants" : "yes"}
-            pointerEvents={isCalendarKeyOpen ? "none" : "auto"}
+            importantForAccessibility={isCalendarKeyOpen || isMonthPickerOpen ? "no-hide-descendants" : "yes"}
+            pointerEvents={isCalendarKeyOpen || isMonthPickerOpen ? "none" : "auto"}
             style={[
               styles.gridRegion,
               {
@@ -986,6 +1005,19 @@ export function CalendarScreen({
               />
             )}
           </View>
+          <CalendarMonthPicker
+            month={visibleMonth}
+            onCancel={() => setMonthPickerOpen(false)}
+            onSelectMonth={(monthId) => {
+              const selected = selectedDateRef.current;
+              const offset = (Number(monthId.slice(0, 4)) - Number(selected.slice(0, 4))) * 12
+                + Number(monthId.slice(5, 7)) - Number(selected.slice(5, 7));
+              dispatchCalendarTransition({ type: "jump", localDate: addLocalMonthsClamped(selected, offset) });
+              setMonthPickerOpen(false);
+            }}
+            restoreFocusRef={monthPickerActionRef}
+            visible={isMonthPickerOpen}
+          />
           <BottomSheet
             cancelLabel="Close Calendar key"
             heading="Calendar key"
@@ -1050,6 +1082,7 @@ const styles = StyleSheet.create({
   keyGroupTitle: { fontWeight: "800", letterSpacing: 0.6 },
   keyItems: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   monthNavigationAction: { width: 48 },
+  monthPickerAction: { alignItems: "center", flexDirection: "row", gap: 4, justifyContent: "center", minHeight: 48, minWidth: 0, width: "100%" },
   monthTitle: { flexShrink: 1, textAlign: "center" },
   monthTitleSlot: { alignItems: "center", flex: 1, minWidth: 0 },
   monthTodaySlot: { width: 76 },
