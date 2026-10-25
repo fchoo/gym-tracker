@@ -135,6 +135,17 @@ describe("PlanEditorReorderableRow", () => {
   });
 
   it("clears offsets immediately on committed order changes instead of timing old offsets into the new layout", async () => {
+    const styleMounts: Array<Readonly<{ owner: symbol; initial: unknown }>> = [];
+    const detachedStyleOwners: symbol[] = [];
+    const mockedUseAnimatedStyle = Reanimated.useAnimatedStyle;
+    jest.spyOn(Reanimated, "useAnimatedStyle").mockImplementation((updater, dependencies) => {
+      const owner = React.useRef(Symbol("animated-row")).current;
+      React.useEffect(() => {
+        styleMounts.push({ owner, initial: updater() });
+        return () => { detachedStyleOwners.push(owner); };
+      }, []);
+      return mockedUseAnimatedStyle(updater, dependencies);
+    });
     let commitOrder!: () => void;
     let resolveMove!: () => void;
     const pendingMove = new Promise<void>((resolve) => { resolveMove = resolve; });
@@ -149,6 +160,9 @@ describe("PlanEditorReorderableRow", () => {
       </PlanEditorReorderableRow>)}</AppearanceProvider>;
     }
     await render(<Rows />);
+    const originalSourceRow = screen.getByTestId("reorder-row-commit-source");
+    const originalNeighborRow = screen.getByTestId("reorder-row-commit-neighbor");
+    const originalStyleOwners = styleMounts.map(({ owner }) => owner);
     await fireEvent(screen.getByTestId("reorder-row-commit-source"), "layout", {
       nativeEvent: { layout: { height: 100, width: 320, x: 0, y: 0 } },
     });
@@ -162,12 +176,22 @@ describe("PlanEditorReorderableRow", () => {
     });
     expect(screen.getByTestId("reorder-row-commit-source")).toHaveStyle({ transform: [{ translateY: 100 }] });
     expect(screen.getByTestId("reorder-row-commit-neighbor")).toHaveStyle({ transform: [{ translateY: -100 }] });
+    expect(screen.getByTestId("reorder-row-commit-source")).toBe(originalSourceRow);
+    expect(screen.getByTestId("reorder-row-commit-neighbor")).toBe(originalNeighborRow);
+    expect(detachedStyleOwners).toEqual([]);
     const withTiming = jest.spyOn(Reanimated, "withTiming");
     await act(() => { commitOrder(); });
     expect(screen.getAllByTestId(/^reorder-row-commit-/u).map(({ props }) => props.testID))
       .toEqual(["reorder-row-commit-neighbor", "reorder-row-commit-source"]);
     expect(screen.getByTestId("reorder-row-commit-source")).toHaveStyle({ transform: [{ translateY: 0 }] });
     expect(screen.getByTestId("reorder-row-commit-neighbor")).toHaveStyle({ transform: [{ translateY: 0 }] });
+    expect(screen.getByTestId("reorder-row-commit-source")).not.toBe(originalSourceRow);
+    expect(screen.getByTestId("reorder-row-commit-neighbor")).not.toBe(originalNeighborRow);
+    expect(detachedStyleOwners).toEqual(expect.arrayContaining(originalStyleOwners));
+    expect(styleMounts).toHaveLength(4);
+    for (const { initial } of styleMounts.slice(2)) {
+      expect(initial).toEqual(expect.objectContaining({ transform: [{ translateY: 0 }] }));
+    }
     expect(withTiming).not.toHaveBeenCalled();
     await act(() => { resolveMove(); });
     expect(withTiming).not.toHaveBeenCalled();

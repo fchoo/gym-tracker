@@ -8,6 +8,7 @@ import {
   type LayoutChangeEvent,
   type TextInputProps,
   type TextStyle,
+  type ViewProps,
 } from "react-native";
 import {
   Gesture,
@@ -18,6 +19,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  type SharedValue,
 } from "react-native-reanimated";
 import {
   scheduleOnRN,
@@ -173,6 +175,43 @@ export function PlanEditorTextField({
       )}
     </View>
   );
+}
+
+function PlanEditorAnimatedRow({
+  hasPreview,
+  isHeld,
+  translationY,
+  neighborDisplacement,
+  animatePosition,
+  duration,
+  children,
+  style,
+  ...viewProps
+}: Readonly<{
+  hasPreview: boolean;
+  isHeld: boolean;
+  translationY: SharedValue<number>;
+  neighborDisplacement: number;
+  animatePosition: boolean;
+  duration: number;
+}> & Pick<ViewProps, "children" | "onLayout" | "style" | "testID">) {
+  const rowStyle = useAnimatedStyle(() => ({
+    opacity: isHeld ? 0.92 : 1,
+    transform: [{
+      translateY: !hasPreview
+        ? 0
+        : isHeld
+          ? translationY.value
+          : animatePosition
+            ? withTiming(neighborDisplacement, { duration })
+            : neighborDisplacement,
+    }],
+    zIndex: isHeld ? 1 : 0,
+  }), [hasPreview, isHeld, animatePosition, duration, neighborDisplacement]);
+
+  return <Animated.View {...viewProps} collapsable={false} style={[style, rowStyle]}>
+    {children}
+  </Animated.View>;
 }
 
 export function PlanEditorReorderableRow({
@@ -379,27 +418,6 @@ export function PlanEditorReorderableRow({
     translationY,
     updatePreview,
   ]);
-  const rowStyle = useAnimatedStyle(() => ({
-    opacity: isHeld ? 0.92 : 1,
-    transform: [{
-      // Committed order changes establish new layout positions. Cancel any
-      // old displacement immediately rather than tweening it on that layout.
-      translateY: !hasPreview
-        ? 0
-        : isHeld
-          ? translationY.value
-          : motion.positionTransitions
-            ? withTiming(neighborDisplacement, { duration: motion.setCommitMs })
-            : neighborDisplacement,
-    }],
-    zIndex: isHeld ? 1 : 0,
-  }), [
-    hasPreview,
-    isHeld,
-    motion.positionTransitions,
-    motion.setCommitMs,
-    neighborDisplacement,
-  ]);
   const recordRowHeight = React.useCallback((event: LayoutChangeEvent) => {
     const measuredHeight = Math.max(
       sizes.minimumTarget,
@@ -411,11 +429,18 @@ export function PlanEditorReorderableRow({
 
   return (
     <GestureHandlerRootView style={styles.dragGestureRoot}>
-      <Animated.View
+      <PlanEditorAnimatedRow
+        // A committed position creates a fresh native node and animated style
+        // owner; displaced native props cannot follow it into the new layout.
+        key={position}
+        animatePosition={motion.positionTransitions}
+        duration={motion.setCommitMs}
+        hasPreview={hasPreview}
+        isHeld={isHeld}
+        neighborDisplacement={neighborDisplacement}
         onLayout={recordRowHeight}
         style={[
           styles.reorderRow,
-          rowStyle,
           {
             backgroundColor: isHeld
               ? colors.contentCardSelected
@@ -424,6 +449,7 @@ export function PlanEditorReorderableRow({
           },
         ]}
         testID={`reorder-row-${reorderId}`}
+        translationY={translationY}
       >
         <GestureDetector gesture={dragGesture}>
           <FocusablePressable
@@ -499,7 +525,7 @@ export function PlanEditorReorderableRow({
             </View>
           )}
         </View>
-      </Animated.View>
+      </PlanEditorAnimatedRow>
     </GestureHandlerRootView>
   );
 }
