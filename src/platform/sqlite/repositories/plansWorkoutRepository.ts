@@ -39,6 +39,7 @@ import {
   captureStrengthOccurrenceSnapshot,
   loadStrengthOccurrenceSnapshot,
 } from "./strengthOccurrenceSnapshot";
+import { readPendingScheduleOpportunityForStart } from "./scheduleRepository";
 const CONTENT_PACK_ID = "content_pack_full_body_foundation_v1";
 const BUNDLED_PLAN_ID = "plan_bundled_full_body_foundation_v1";
 const WEEKDAY_NUMBER = {
@@ -686,6 +687,17 @@ export function createPlansWorkoutRepository(
           ? request.selectedOccurrence
           : undefined;
         if (request.mode === "scheduled" && selected !== undefined) {
+          const [persisted] = await transaction.queryAll<{ id: string }>(
+            "SELECT id FROM owned_plan_schedule_opportunities WHERE id = ?",
+            [selected.opportunityId],
+          );
+          if (persisted === undefined) {
+            const pending = await readPendingScheduleOpportunityForStart(transaction, selected);
+            if (pending === null || pending.id !== selected.opportunityId
+              || pending.planDayId !== selected.planDayId) {
+              throw new Error("workout_selected_occurrence_stale");
+            }
+          }
           await transaction.execute(
             `INSERT OR IGNORE INTO owned_plan_schedule_opportunities
               (id, schedule_id, schedule_version_id, local_date, source,

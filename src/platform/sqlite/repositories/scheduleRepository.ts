@@ -1773,7 +1773,7 @@ function resultVersionId(payloadJson: string): string | null {
 }
 
 async function effectiveRotationPointer(
-  kernel: SqliteKernel,
+  kernel: QueryExecutor | SqliteTransactionExecutor,
   scheduleId: string,
   version: ScheduleVersionSnapshot,
 ): Promise<number> {
@@ -1811,6 +1811,31 @@ async function effectiveRotationPointer(
     }
   }
   return pointer;
+}
+
+/** Resolve the ordinary pending slot inside the writer before materialization. */
+export async function readPendingScheduleOpportunityForStart(
+  executor: QueryExecutor | SqliteTransactionExecutor,
+  input: Readonly<{ scheduleId: string; scheduleVersionId: string; localDate: string }>,
+): Promise<PendingScheduleOpportunityV1 | null> {
+  const localDate = parseLocalDate(input.localDate);
+  const [row] = await executor.queryAll<VersionRow>(
+    `SELECT id, version_number, effective_local_date, mode, timezone, rotation_pointer
+     FROM owned_plan_schedule_versions
+     WHERE schedule_id = ? AND effective_local_date <= ?
+     ORDER BY effective_local_date DESC, version_number DESC LIMIT 1`,
+    [input.scheduleId, localDate],
+  );
+  if (row === undefined || row.id !== input.scheduleVersionId) return null;
+  const version = await snapshotVersion(executor, row);
+  const resolved = version.mode === "rotation" ? {
+    ...version,
+    rotationPointer: await effectiveRotationPointer(executor, input.scheduleId, version),
+  } : version;
+  const dayId = resolved.mode === "weekday"
+    ? weekdayPlanDay(resolved, localDate)
+    : rotationPlanDay(resolved);
+  return dayId === null ? null : pendingOpportunity(input.scheduleId, localDate, resolved.mode, dayId);
 }
 
 async function readPersistedOpportunity(

@@ -1480,6 +1480,20 @@ describe("accepted starter activation repository", () => {
     const selected = today?.selectedStrengthOccurrence;
     if (selected === null || selected === undefined) throw new Error("current_strength_selection_missing");
     expect(selected.planId).toBe(activation.plan.id);
+    if (mode === "rotation") {
+      const otherDay = activation.days.find(({ id }) => id !== selected.planDayId)!;
+      await expect(startWorkout({
+        repository: createPlansWorkoutRepository(kernel),
+        request: {
+          mode: "scheduled", planId: selected.planId, planDayId: otherDay.id,
+          localDate: selected.localDate, timezone: selected.timeZone, startedAtMs: instantMs,
+          selectedOccurrence: { ...selected, planDayId: otherDay.id }, commandIdentity: "e".repeat(64),
+        },
+      })).rejects.toMatchObject({ cause: { message: "workout_selected_occurrence_stale" } });
+      expect(await kernel.queryAll(
+        "SELECT id FROM owned_plan_schedule_opportunities WHERE id = ?", [selected.opportunityId],
+      )).toEqual([]);
+    }
     const session = await startWorkout({
       repository: createPlansWorkoutRepository(kernel),
       request: {
