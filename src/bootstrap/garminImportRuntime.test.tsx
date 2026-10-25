@@ -145,7 +145,10 @@ describe("Garmin import runtime", () => {
     [{}, "2026-06-20", "00:30:00.120", "Asia/Singapore", 480],
     [{ sourceTimeZone: "America/New_York" }, "2026-06-19", "12:30:00.120", "America/New_York", -240],
     [{ sourceLocalDateTime: "2026-06-19T12:30:00.120", sourceUtcOffsetMinutes: -240 }, "2026-06-19", "12:30:00.120", "UTC-04:00", -240],
-  ])("defaults to the registered zone only when consistent with historical source evidence %j", async (sourceDate, date, time, zone, offset) => {
+    [{ sourceUtcOffsetMinutes: 480 }, "2026-06-20", "00:30:00.120", "Asia/Singapore", 480],
+    [{ sourceLocalDateTime: "2026-06-20T00:30:00.120" }, "2026-06-20", "00:30:00.120", "Asia/Singapore", 480],
+    [{ sourceTimeZone: "Asia/NotAZone" }, "2026-06-19", "16:30:00.120", "Asia/NotAZone", 0],
+  ])("automatically imports compatible activity dates and reviews conflicts %j", async (sourceDate, date, time, zone, offset) => {
     const sourceEnvelope = envelopeWithSourceDate({
       absoluteStartedAtMs: Date.parse("2026-06-19T16:30:00.120Z"),
       ...sourceDate,
@@ -168,9 +171,20 @@ describe("Garmin import runtime", () => {
         readActivity: async () => sourceEnvelope,
       },
     });
-    await expect(runtime.coordinator.syncNow()).resolves.toMatchObject({ failure: { code: "date_confirmation_required" } });
-    expect(runtime.getPendingDateReview()).toMatchObject({ suggestedLocalDate: date, suggestedLocalTime: time, suggestedTimeZone: zone, suggestedUtcOffsetMinutes: offset });
-    expect(imported).not.toHaveBeenCalled();
+    if (zone.startsWith("UTC") || zone === "Asia/NotAZone") {
+      await expect(runtime.coordinator.syncNow()).resolves.toMatchObject({ failure: { code: "date_confirmation_required" } });
+      expect(runtime.getPendingDateReview()).toMatchObject({ suggestedLocalDate: date, suggestedLocalTime: time, suggestedTimeZone: zone, suggestedUtcOffsetMinutes: offset });
+      expect(imported).not.toHaveBeenCalled();
+    } else {
+      await expect(runtime.coordinator.syncNow()).resolves.toMatchObject({ kind: "success", counts: { newActivities: 1 } });
+      expect(runtime.getPendingDateReview()).toBeNull();
+      expect(imported).toHaveBeenCalledTimes(1);
+      expect(imported).toHaveBeenCalledWith(expect.objectContaining({
+        confirmedLocalDate: date,
+        dateProvenance: expect.objectContaining({ absoluteStartedAtMs: sourceEnvelope.normalized.started_at_ms,
+          confirmedLocalDate: date, confirmedLocalTime: time, confirmedTimeZone: zone, confirmedUtcOffsetMinutes: offset }),
+      }));
+    }
   });
 
   it("uses the configured Singapore registration through the production hook without changing imported history", async () => {
@@ -189,11 +203,12 @@ describe("Garmin import runtime", () => {
       },
     }));
     await act(async () => {
-      await expect(rendered.result.current.coordinator.syncNow()).resolves.toMatchObject({ failure: { code: "date_confirmation_required" } });
+      await expect(rendered.result.current.coordinator.syncNow()).resolves.toMatchObject({ kind: "success", counts: { newActivities: 1 } });
     });
-    expect(rendered.result.current.getPendingDateReview()).toMatchObject({ suggestedTimeZone: "Asia/Singapore", suggestedUtcOffsetMinutes: 480 });
+    expect(rendered.result.current.getPendingDateReview()).toBeNull();
     await expect(rendered.result.current.loadActivities()).resolves.toEqual(history);
-    expect(imported).not.toHaveBeenCalled();
+    expect(imported).toHaveBeenCalledTimes(1);
+    expect(imported).toHaveBeenCalledWith(expect.objectContaining({ dateProvenance: expect.objectContaining({ confirmedTimeZone: "Asia/Singapore", confirmedUtcOffsetMinutes: 480 }) }));
   });
 
   it("composes one source, coordinator, shared commit, and durable history reader", async () => {
@@ -530,8 +545,8 @@ describe("Garmin import runtime", () => {
 
   const pendingDateReviewCases: Array<
     | [
-      "named source zone",
-      { sourceTimeZone: "Asia/Singapore"; sourceUtcOffsetMinutes: 480 },
+      "conflicting named source zone",
+      { sourceTimeZone: "Asia/Singapore"; sourceUtcOffsetMinutes: -240 },
       "Asia/Singapore",
     ]
     | [
@@ -541,8 +556,8 @@ describe("Garmin import runtime", () => {
     ]
   > = [
     [
-      "named source zone",
-      { sourceTimeZone: "Asia/Singapore", sourceUtcOffsetMinutes: 480 },
+      "conflicting named source zone",
+      { sourceTimeZone: "Asia/Singapore", sourceUtcOffsetMinutes: -240 },
       "Asia/Singapore",
     ],
     [

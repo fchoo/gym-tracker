@@ -37,7 +37,7 @@ import {
 } from "../platform/garmin/normalizeGarminActivity";
 
 // Owner-registered default for this personal app. Provider timezone evidence
-// still takes precedence, and a suggestion never commits an activity date.
+// still takes precedence. Compatible dates import without an extra review.
 const REGISTERED_GARMIN_TIME_ZONE = "Asia/Singapore";
 
 export type GarminImportedActivityListItem = Readonly<{
@@ -264,6 +264,20 @@ function timeZoneDateSuggestion(absoluteStartedAtMs: number, timeZone: string | 
   }
 }
 
+function compatibleDateSuggestion(
+  proposal: GarminImportPreparedDateProposal,
+  registeredTimeZone?: string,
+): ReturnType<typeof timeZoneDateSuggestion> {
+  const sourceLocalDateTime = proposal.date.sourceLocalDateTime;
+  const sourceUtcOffsetMinutes = proposal.date.sourceUtcOffsetMinutes;
+  const zoneSuggestion = timeZoneDateSuggestion(proposal.date.absoluteStartedAtMs, proposal.date.sourceTimeZone ?? registeredTimeZone);
+  return zoneSuggestion !== null
+    && (sourceUtcOffsetMinutes === undefined || sourceUtcOffsetMinutes === zoneSuggestion.utcOffsetMinutes)
+    && (sourceLocalDateTime === undefined || sourceLocalDateTime === `${zoneSuggestion.localDate}T${zoneSuggestion.localTime}`)
+    ? zoneSuggestion
+    : null;
+}
+
 function pendingDateReviewFromProposal(
   proposal: GarminImportPreparedDateProposal,
   activityId: string,
@@ -271,12 +285,7 @@ function pendingDateReviewFromProposal(
 ): GarminPendingDateReview {
   const sourceLocalDateTime = proposal.date.sourceLocalDateTime;
   const sourceUtcOffsetMinutes = proposal.date.sourceUtcOffsetMinutes;
-  const zoneSuggestion = timeZoneDateSuggestion(proposal.date.absoluteStartedAtMs, proposal.date.sourceTimeZone ?? registeredTimeZone);
-  const compatibleSuggestion = zoneSuggestion !== null
-    && (sourceUtcOffsetMinutes === undefined || sourceUtcOffsetMinutes === zoneSuggestion.utcOffsetMinutes)
-    && (sourceLocalDateTime === undefined || sourceLocalDateTime === `${zoneSuggestion.localDate}T${zoneSuggestion.localTime}`)
-    ? zoneSuggestion
-    : null;
+  const compatibleSuggestion = compatibleDateSuggestion(proposal, registeredTimeZone);
   const fallback = compatibleSuggestion ?? isoLocalParts(proposal.date.absoluteStartedAtMs);
   return Object.freeze({
     activityId,
@@ -327,19 +336,17 @@ export function createGarminRootRuntime(input: Readonly<{
         const sourceLocalDateTime = envelope.normalized.source_local_date_time;
         const sourceUtcOffsetMinutes = envelope.normalized.source_utc_offset_minutes;
         const { confirmedLocalDate: _ignoredDate, ...request } = confirmation;
-        if (sourceLocalDateTime === undefined
-          || sourceUtcOffsetMinutes === undefined
-          || envelope.normalized.source_time_zone === undefined) {
-          const proposal = await importer.prepareEnvelope({
-            envelope,
-            sourceDate: {
-              ...(sourceLocalDateTime === undefined ? {} : { sourceLocalDateTime }),
-              ...(envelope.normalized.source_time_zone === undefined
-                ? {}
-                : { sourceTimeZone: envelope.normalized.source_time_zone }),
-              ...(sourceUtcOffsetMinutes === undefined ? {} : { sourceUtcOffsetMinutes }),
-            },
-          });
+        const proposal = await importer.prepareEnvelope({
+          envelope,
+          sourceDate: {
+            ...(sourceLocalDateTime === undefined ? {} : { sourceLocalDateTime }),
+            ...(envelope.normalized.source_time_zone === undefined
+              ? {} : { sourceTimeZone: envelope.normalized.source_time_zone }),
+            ...(sourceUtcOffsetMinutes === undefined ? {} : { sourceUtcOffsetMinutes }),
+          },
+        });
+        const resolvedDate = compatibleDateSuggestion(proposal, input.registeredTimeZone);
+        if (resolvedDate === null) {
           pendingDateReview = Object.freeze({
             proposal,
             request,
@@ -348,25 +355,15 @@ export function createGarminRootRuntime(input: Readonly<{
           });
           return Object.freeze({ kind: "date_confirmation_required" as const });
         }
-        const proposal = await importer.prepareEnvelope({
-          envelope,
-          sourceDate: {
-            sourceLocalDateTime,
-            sourceTimeZone: envelope.normalized.source_time_zone,
-            sourceUtcOffsetMinutes,
-          },
-        });
         const confirmed = await importer.confirmPreparedDate({
           proposal,
           request,
           decision: {
             kind: "confirmed",
-            localDate: sourceLocalDateTime.slice(0, 10),
-            localTime: sourceLocalDateTime.slice(11),
-            timeZone: envelope.normalized.source_time_zone,
-            utcOffsetMinutes: sourceUtcOffsetMinutes,
+            ...resolvedDate,
           },
         });
+        pendingDateReview = null;
         result = confirmed as GarminImportResult;
       } else {
         result = await importer.commitEnvelope({
