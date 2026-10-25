@@ -161,7 +161,8 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
   });
 
   it("uses the visible grip to reorder compact headers and keeps committed set identity and collapse choices", async () => {
-    const initial = workoutView();
+    const initial = workoutView({ rest: { version: 1, state: "running", revision: 1,
+      startedAtMs: 3_000, endsAtMs: 63_000, nextSetId: "working-1" } });
     const future = {
       ...initial.currentExercise, id: "exercise-2", exerciseId: "cable-row", name: "Cable Row",
       status: "planned" as const, ordinal: 1,
@@ -179,6 +180,11 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
         return persisted;
       });
     await renderScreen(start, { reorderExercises });
+    const originalWorkoutRoot = screen.getByTestId("active-workout");
+    const originalRestControls = screen.getByTestId("rest-controls");
+    const originalListRoot = screen.getByTestId("workout-session-presentation");
+    const originalSourceContainer = screen.getByTestId("workout-presentation-exercise-exercise-1");
+    const originalNeighborContainer = screen.getByTestId("workout-presentation-exercise-exercise-2");
     await fireEvent.press(screen.getByRole("button", { name: /Cable Row\..*Collapse exercise/u }));
     await fireEvent.press(screen.getByRole("button", { name: "Reorder Back Squat" }));
     expect(screen.queryByTestId("active-workout-exercise-1-working-sets-card")).not.toBeOnTheScreen();
@@ -192,8 +198,12 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     await act(() => { gesture.handlers.onStart({ translationY: 0 }); gesture.handlers.onUpdate({ translationY: 160 }); });
     expect(screen.getByTestId("drag-exercise-exercise-1")).toHaveProp("accessibilityState", { busy: true, disabled: false });
     expect(reorderExercises).not.toHaveBeenCalled();
+    expect(screen.getByTestId("workout-session-presentation")).toBe(originalListRoot);
     await act(() => { gesture.handlers.onEnd({ translationY: 160 }, true); gesture.handlers.onFinalize({ translationY: 160 }, true); });
     await waitFor(() => expect(reorderExercises).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("workout-session-presentation")).toBe(originalListRoot);
+    expect(screen.getByTestId("workout-presentation-exercise-exercise-1")).toBe(originalSourceContainer);
+    expect(screen.getByTestId("workout-presentation-exercise-exercise-2")).toBe(originalNeighborContainer);
     expect(screen.getByTestId("reorder-row-exercise-exercise-1")).toHaveStyle({ transform: [{ translateY: 160 }] });
     expect(screen.getByTestId("reorder-row-exercise-exercise-2")).toHaveStyle({ transform: [{ translateY: -160 }] });
     expect(screen.queryByText("Back Squat moved to 2 of 2")).not.toBeOnTheScreen();
@@ -212,6 +222,11 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     await act(() => { resolveWrite(persisted); });
     await waitFor(() => expect(screen.getAllByTestId(/^workout-presentation-exercise-/u).map(({ props }) => props.testID))
       .toEqual(["workout-presentation-exercise-exercise-2", "workout-presentation-exercise-exercise-1"]));
+    expect(screen.getByTestId("workout-session-presentation")).not.toBe(originalListRoot);
+    expect(screen.getByTestId("workout-presentation-exercise-exercise-1")).not.toBe(originalSourceContainer);
+    expect(screen.getByTestId("workout-presentation-exercise-exercise-2")).not.toBe(originalNeighborContainer);
+    expect(screen.getByTestId("active-workout")).toBe(originalWorkoutRoot);
+    expect(screen.getByTestId("rest-controls")).toBe(originalRestControls);
     expect(screen.getByTestId("reorder-row-exercise-exercise-1")).toHaveStyle({ transform: [{ translateY: 0 }] });
     expect(screen.getByTestId("reorder-row-exercise-exercise-2")).toHaveStyle({ transform: [{ translateY: 0 }] });
     await fireEvent.press(screen.getByRole("button", { name: "Move Back Squat up" }));
@@ -236,6 +251,9 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     const reorderExercises = jest.fn<NonNullable<ActiveWorkoutCommands["reorderExercises"]>>()
       .mockImplementationOnce(() => pendingWrite).mockResolvedValue(reordered);
     await renderScreen(start, { reorderExercises });
+    const originalListRoot = screen.getByTestId("workout-session-presentation");
+    const originalSourceContainer = screen.getByTestId("workout-presentation-exercise-exercise-1");
+    const originalNeighborContainer = screen.getByTestId("workout-presentation-exercise-exercise-2");
     await fireEvent.press(screen.getByRole("button", { name: "Reorder Back Squat" }));
     await fireEvent(screen.getByTestId("reorder-row-exercise-exercise-1"), "layout", {
       nativeEvent: { layout: { height: 100, width: 320, x: 0, y: 0 } },
@@ -253,6 +271,9 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     expect(screen.getByTestId("reorder-row-exercise-exercise-2")).toHaveStyle({ transform: [{ translateY: -100 }] });
     await act(() => { rejectWrite(new Error("storage_failed")); });
     const retry = await screen.findByRole("button", { name: "Retry reordering exercise" });
+    expect(screen.getByTestId("workout-session-presentation")).toBe(originalListRoot);
+    expect(screen.getByTestId("workout-presentation-exercise-exercise-1")).toBe(originalSourceContainer);
+    expect(screen.getByTestId("workout-presentation-exercise-exercise-2")).toBe(originalNeighborContainer);
     expect(screen.getByTestId("reorder-row-exercise-exercise-1")).toHaveStyle({ transform: [{ translateY: 0 }] });
     expect(screen.getByTestId("reorder-row-exercise-exercise-2")).toHaveStyle({ transform: [{ translateY: 0 }] });
     expect(screen.getAllByTestId(/^workout-presentation-exercise-/u).map(({ props }) => props.testID))
@@ -263,11 +284,31 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     await fireEvent.press(retry);
     await waitFor(() => expect(reorderExercises).toHaveBeenCalledTimes(2));
     expect(reorderExercises.mock.calls[1]).toEqual(reorderExercises.mock.calls[0]);
+    expect(screen.getByTestId("workout-session-presentation")).not.toBe(originalListRoot);
     expect(screen.getByText("Back Squat moved to 2 of 2")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Done reordering" }));
     expect(screen.getByTestId("active-workout-exercise-1-working-sets-card")).toBeOnTheScreen();
     expect(reordered.activeSetId).toBe("working-1");
     expect(reordered.currentExercise).toBe(initial.currentExercise);
+  });
+
+  it("keeps the exercise presentation mounted when a committed draft changes revisions without changing order", async () => {
+    const initial = workoutView();
+    const savedExercise = { ...initial.currentExercise, revision: 2,
+      workingSets: [{ ...initial.currentExercise.workingSets[0]!, revision: 2,
+        observation: { ...observation, loadGrams: 65_000 }, status: "draft" as const }] };
+    const saved = { ...initial, revision: 2, currentExercise: savedExercise, exercises: [savedExercise] };
+    const updateActiveSetDraft = jest.fn(async () => saved);
+    await renderScreen(initial, { updateActiveSetDraft });
+    const originalListRoot = screen.getByTestId("workout-session-presentation");
+    const originalExerciseContainer = screen.getByTestId("workout-presentation-exercise-exercise-1");
+    await fireEvent.press(screen.getByRole("button", { name: /Set 1\. 60 kg × 8/u }));
+    await fireEvent.changeText(screen.getByLabelText("Load (kg)"), "65");
+    await fireEvent.press(screen.getByRole("button", { name: "Save set values" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Set 1\. 65 kg × 8/u })).toBeOnTheScreen());
+    expect(updateActiveSetDraft).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("workout-session-presentation")).toBe(originalListRoot);
+    expect(screen.getByTestId("workout-presentation-exercise-exercise-1")).toBe(originalExerciseContainer);
   });
 
   it("queues rapid rest adjustments with the latest committed revisions", async () => {
