@@ -2,6 +2,11 @@ package expo.modules.androidviewfocus
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
+import android.app.AlarmManager
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
@@ -81,6 +86,36 @@ class AndroidViewFocusModule : Module() {
     }
 
     Function("getNavigationKeyEpoch") { NavigationKeyEpoch.current() }
+
+    Function("canScheduleExactRestAlarm") {
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) true
+      else (appContext.reactContext?.getSystemService(Context.ALARM_SERVICE) as? AlarmManager)
+        ?.canScheduleExactAlarms() == true
+    }
+
+    AsyncFunction("openExactRestAlarmSettings") { promise: Promise ->
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+        promise.resolve(false)
+        return@AsyncFunction
+      }
+      onMainThread {
+        val activity = appContext.currentActivity
+        if (destroyed || activity == null || activity.isDestroyed || activity.isFinishing) {
+          promise.resolve(false)
+        } else {
+          try {
+            // Explicit user action only; Android owns granting this special access.
+            // https://developer.android.com/develop/background-work/services/alarms#exact-permission
+            activity.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+              data = Uri.parse("package:${activity.packageName}")
+            })
+            promise.resolve(true)
+          } catch (_: RuntimeException) {
+            promise.resolve(false)
+          }
+        }
+      }
+    }
 
     View(AndroidEscapeBoundaryView::class) {
       Events("onEscape")

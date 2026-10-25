@@ -5,3 +5,8 @@ export type AndroidViewFocusNativeModule = Readonly<{
 export type AndroidNavigationKeyNativeModule = Readonly<{
   getNavigationKeyEpoch(): number;
 }>;
+
+export type AndroidExactRestAlarmNativeModule = Readonly<{
+  canScheduleExactRestAlarm(): boolean;
+  openExactRestAlarmSettings(): Promise<boolean>;
+}>;

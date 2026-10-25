@@ -12,6 +12,10 @@ import {
   jest,
 } from "@jest/globals";
 import React from "react";
+import { useExactRestAlarmAccess } from "../../bootstrap/useExactRestAlarmAccess";
+
+jest.mock("../../bootstrap/useExactRestAlarmAccess", () => ({ useExactRestAlarmAccess: jest.fn() }));
+const preciseAlerts = jest.mocked(useExactRestAlarmAccess);
 
 import {
   AppSettingsContent,
@@ -64,6 +68,37 @@ function renderScreen(
 describe("SettingsScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    preciseAlerts.mockReturnValue({ access: "not_required", opening: false, openFailed: false, refreshFailed: false, retryRefresh: jest.fn(async () => undefined), openSettings: jest.fn(async () => undefined) });
+  });
+
+  it("offers precise alarm access explicitly without changing sound or vibration preferences", async () => {
+    const openSettings = jest.fn(async () => undefined);
+    preciseAlerts.mockReturnValue({ access: "denied", opening: false, openFailed: false, refreshFailed: false, retryRefresh: jest.fn(async () => undefined), openSettings });
+    const props = createProps();
+    await renderScreen(props);
+    expect(screen.getByText("Precise background alerts")).toBeOnTheScreen();
+    expect(openSettings).not.toHaveBeenCalled();
+    const action = screen.getByRole("button", { name: "Allow precise rest alerts" });
+    expect(action).toHaveStyle({ minHeight: 48 });
+    await fireEvent.press(action);
+    expect(openSettings).toHaveBeenCalledTimes(1);
+    expect(props.onChangeRestAlertPreferences).not.toHaveBeenCalled();
+  });
+
+  it("shows granted precise access without another permission action", async () => {
+    preciseAlerts.mockReturnValue({ access: "allowed", opening: false, openFailed: false, refreshFailed: false, retryRefresh: jest.fn(async () => undefined), openSettings: jest.fn(async () => undefined) });
+    await renderScreen(createProps());
+    expect(screen.getByText("Allowed. Rest completion alerts can use Android's precise alarms.")).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Allow precise rest alerts" })).not.toBeOnTheScreen();
+  });
+
+  it("offers retry when pending precise alarms could not be refreshed", async () => {
+    const retryRefresh = jest.fn(async () => undefined);
+    preciseAlerts.mockReturnValue({ access: "allowed", opening: false, openFailed: false, refreshFailed: true, retryRefresh, openSettings: jest.fn(async () => undefined) });
+    await renderScreen(createProps());
+    expect(screen.getByText("Pending rest alerts could not be updated. Your timer stays accurate.")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Retry precise rest alerts" }));
+    expect(retryRefresh).toHaveBeenCalledTimes(1);
   });
 
   it("shares the App Settings content tree between its route wrapper and sheet host", async () => {
@@ -82,6 +117,7 @@ describe("SettingsScreen", () => {
     ));
     expect(headings).toEqual([
       "Appearance",
+      "Dates and times",
       "Rest alerts",
       "History and data",
       "Data and recovery",
@@ -99,6 +135,7 @@ describe("SettingsScreen", () => {
     const expectedHeadings = [
       "App Settings",
       "Appearance",
+      "Dates and times",
       "Rest alerts",
       "History and data",
       "Data and recovery",

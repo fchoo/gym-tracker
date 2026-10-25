@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import { useDeviceTimeZone } from "../time/useDeviceTimeZone";
+import { useExactRestAlarmAccess } from "../../bootstrap/useExactRestAlarmAccess";
 import {
   StyleSheet,
   Switch,
@@ -100,6 +101,7 @@ export function AppSettingsContent({
 }: AppSettingsContentProps) {
   const { appearance, colors, setAppearance } = useAppTheme();
   const displayTimeZone = useDeviceTimeZone();
+  const preciseAlerts = useExactRestAlarmAccess();
   const latestPreferencesRef = useRef(preferences);
   const latestExternalPreferencesRef = useRef(preferences);
   const pendingExternalPreferencesRef = useRef<RestAlertPreferences | null>(null);
@@ -328,6 +330,38 @@ export function AppSettingsContent({
                   />
                 </View>
               ) : null}
+              {preciseAlerts.access === "not_required" ? null : (
+                <View style={styles.section}>
+                  <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>
+                    Precise background alerts
+                  </Text>
+                  <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
+                    {preciseAlerts.access === "allowed"
+                      ? "Allowed. Rest completion alerts can use Android's precise alarms."
+                      : "Allow alarm access so Android can deliver rest completion alerts promptly while the app is in the background."}
+                  </Text>
+                  {preciseAlerts.access === "denied" ? (
+                    <SecondaryAction
+                      disabled={preciseAlerts.opening}
+                      label="Allow precise rest alerts"
+                      onPress={() => { void preciseAlerts.openSettings(); }}
+                    />
+                  ) : null}
+                  {preciseAlerts.openFailed || preciseAlerts.access === "unavailable" ? (
+                    <Text accessibilityRole="alert" style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
+                      Precise alert settings are unavailable. Your timer stays accurate; background alerts may arrive later.
+                    </Text>
+                  ) : null}
+                  {preciseAlerts.refreshFailed ? (
+                    <>
+                      <Text accessibilityRole="alert" style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
+                        Pending rest alerts could not be updated. Your timer stays accurate.
+                      </Text>
+                      <SecondaryAction label="Retry precise rest alerts" onPress={() => { void preciseAlerts.retryRefresh(); }} />
+                    </>
+                  ) : null}
+                </View>
+              )}
             </View>
           </ContentCard>
 

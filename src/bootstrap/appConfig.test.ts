@@ -76,13 +76,14 @@ describe("Android lifecycle configuration", () => {
     }
   });
 
-  it("allows rotation and blocks exact-alarm permissions", () => {
+  it("allows explicit exact-alarm access while blocking automatic exact-alarm permission", () => {
     const config = configForProfile(undefined);
 
     expect(config.orientation).toBe("default");
+    expect(config.android?.permissions).toContain("android.permission.SCHEDULE_EXACT_ALARM");
+    expect(config.android?.blockedPermissions).not.toContain("android.permission.SCHEDULE_EXACT_ALARM");
     expect(config.android?.blockedPermissions).toEqual(
       expect.arrayContaining([
-        "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.USE_EXACT_ALARM",
       ]),
     );
