@@ -1,7 +1,9 @@
+import { renderHook } from "@testing-library/react-native";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { AppState, type AppStateStatus } from "react-native";
 import * as Notifications from "expo-notifications";
 
+import { useExpoRestCountdownCueAdapter } from "../audio/expoRestCountdownCueAdapter";
 import { claimForegroundRestSound } from "../audio/foregroundRestSoundOwnership";
 import { createExpoForegroundRestFeedbackAdapter, installForegroundRestNotificationHandler } from "./expoForegroundRestFeedbackAdapter";
 
@@ -10,6 +12,13 @@ jest.mock("expo-notifications", () => ({
   scheduleNotificationAsync: jest.fn(),
 }));
 jest.mock("expo-haptics", () => ({ ImpactFeedbackStyle: { Light: "light" }, impactAsync: jest.fn() }));
+
+jest.mock("expo-audio", () => ({
+  useAudioPlayer: jest.fn(() => ({
+    pause: jest.fn(),
+    addListener: jest.fn(() => ({ remove: jest.fn() })),
+  })),
+}));
 
 const input = { sessionId: "session-countdown", restRevision: 3, endsAtMs: 100_000 };
 let handler: NonNullable<Parameters<typeof Notifications.setNotificationHandler>[0]>["handleNotification"];
@@ -105,6 +114,26 @@ describe("scheduled foreground rest sound ownership", () => {
     old.clear();
     expect(await sound()).toBe(true);
     expect(await sound({ version: 1, ...next })).toBe(false);
+  });
+
+  it("retains expired rest A grace while rest B in the same session owns its next deadline", async () => {
+    const rendered = await renderHook(() => useExpoRestCountdownCueAdapter());
+    const port = rendered.result.current;
+    const releaseA = port.claimForegroundRestSound!(input);
+    jest.setSystemTime(input.endsAtMs);
+    releaseA();
+    const next = { ...input, restRevision: 4, endsAtMs: 115_000 };
+    port.claimForegroundRestSound!(next);
+    expect(await sound()).toBe(false);
+    expect(await sound({ version: 1, ...next })).toBe(false);
+    jest.setSystemTime(input.endsAtMs + 2_999);
+    expect(await sound()).toBe(false);
+    jest.setSystemTime(input.endsAtMs + 3_000);
+    expect(await sound()).toBe(true);
+    expect(await sound({ version: 1, ...next })).toBe(false);
+    port.cancelPendingCues?.();
+    expect(await sound({ version: 1, ...next })).toBe(true);
+    await rendered.unmount();
   });
 
   it("leaves direct tone fallback and an active route without a dock claim audible", async () => {

@@ -7,12 +7,17 @@ type OwnershipEntry = RestCountdownSoundOwnership & Readonly<{ token: symbol }>;
 const owners = new Map<string, OwnershipEntry>();
 let appStateListenerInstalled = false;
 
+function ownershipKey(input: RestCountdownSoundOwnership): string {
+  return JSON.stringify([input.sessionId, input.restRevision, input.endsAtMs]);
+}
+
 export function claimForegroundRestSound(
   input: RestCountdownSoundOwnership,
 ): Readonly<{ clear(): void; release(): void }> {
   const token = Symbol("foreground-rest-sound");
+  const key = ownershipKey(input);
   const clear = () => {
-    if (owners.get(input.sessionId)?.token === token) owners.delete(input.sessionId);
+    if (owners.get(key)?.token === token) owners.delete(key);
   };
   if (
     AppState.currentState !== "active"
@@ -29,10 +34,10 @@ export function claimForegroundRestSound(
     });
     appStateListenerInstalled = true;
   }
-  for (const [sessionId, owner] of owners) {
-    if (Date.now() >= owner.endsAtMs + NATURAL_EXPIRY_GRACE_MS) owners.delete(sessionId);
+  for (const [ownerKey, owner] of owners) {
+    if (Date.now() >= owner.endsAtMs + NATURAL_EXPIRY_GRACE_MS) owners.delete(ownerKey);
   }
-  owners.set(input.sessionId, { ...input, token });
+  owners.set(key, { ...input, token });
   return {
     clear,
     release: () => {
@@ -48,10 +53,11 @@ export function ownsForegroundRestSound(input: RestCountdownSoundOwnership): boo
     owners.clear();
     return false;
   }
-  const owner = owners.get(input.sessionId);
+  const key = ownershipKey(input);
+  const owner = owners.get(key);
   if (owner === undefined) return false;
   if (Date.now() >= owner.endsAtMs + NATURAL_EXPIRY_GRACE_MS) {
-    owners.delete(input.sessionId);
+    owners.delete(key);
     return false;
   }
   return owner.restRevision === input.restRevision && owner.endsAtMs === input.endsAtMs;

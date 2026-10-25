@@ -137,7 +137,9 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
         playLongCue: () => replay(longPlayer, 1_000),
         cancelPendingCues: () => cancelPendingCues(),
         claimForegroundRestSound: (input: RestCountdownSoundOwnership) => {
-          soundOwnership?.clear();
+          // A consecutive rest may begin before the previous deadline's queued
+          // notification arrives. Retain only its bounded natural-expiry grace.
+          soundOwnership?.release();
           const claim = claimForegroundRestSound(input);
           soundOwnership = claim;
           return () => claim.release();
