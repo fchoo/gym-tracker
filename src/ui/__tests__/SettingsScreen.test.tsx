@@ -132,7 +132,7 @@ describe("SettingsScreen", () => {
       );
 
     expect(screen.getByText(
-      "Plays short beeps at 3, 2, and 1 seconds and a longer beep when rest ends.",
+      "Plays two short beeps at 2 and 1 seconds, then a longer beep when rest ends.",
     )).toBeOnTheScreen();
     expect(screen.getByText(
       "Restore a completed workout that was removed from ordinary history.",
@@ -156,6 +156,13 @@ describe("SettingsScreen", () => {
       .not.toBeOnTheScreen();
     expect(screen.queryByRole("button", { name: "Close rest alerts" }))
       .not.toBeOnTheScreen();
+  });
+
+  it("explains the two-short-then-long rest sound sequence", async () => {
+    await renderScreen(createProps());
+    expect(screen.getByText(
+      "Plays two short beeps at 2 and 1 seconds, then a longer beep when rest ends.",
+    )).toBeOnTheScreen();
   });
 
   it("keeps the saved row shape and values while rest settings load", async () => {

@@ -254,7 +254,7 @@ export function AppSettingsContent({
               ) : (
                 <>
                   <RestAlertSwitch
-                    hint="Plays short beeps at 3, 2, and 1 seconds and a longer beep when rest ends."
+                    hint="Plays two short beeps at 2 and 1 seconds, then a longer beep when rest ends."
                     label="Rest sound"
                     onValueChange={(soundEnabled) => {
                       changeRestAlertPreferences({
