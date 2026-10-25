@@ -266,4 +266,63 @@ describe("Library plan deletion with authoritative SQLite facts", () => {
     } as never)).rejects.toMatchObject({ cause: expect.objectContaining({ message: "library_plan_deleted" }) });
     expect(await kernel.queryAll("SELECT is_active FROM plans WHERE id = 'plan'")).toEqual([{ is_active: 0 }]);
   });
+
+  it.each(["skipped", "advanced", "planned_not_completed"])(
+    "allows deletion after scheduling-only Strength %s outcomes and retains the slot facts",
+    async (outcome) => {
+      const kernel = await open();
+      await kernel.write(async (transaction) => {
+        await transaction.execute("UPDATE plans SET is_active = 1 WHERE id = 'plan'");
+        await transaction.execute(`INSERT INTO owned_plan_schedules
+          (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms)
+          VALUES ('schedule', 'plan', 'active', 1, 1, NULL)`);
+        await transaction.execute(`INSERT INTO owned_plan_schedule_versions
+          (id, schedule_id, version_number, mode, timezone, effective_local_date, rotation_pointer, created_at_ms)
+          VALUES ('version', 'schedule', 1, 'weekday', 'Asia/Singapore', '2026-10-25', NULL, 1)`);
+        await transaction.execute(`INSERT INTO owned_plan_schedule_opportunities
+          (id, schedule_id, schedule_version_id, local_date, source, plan_day_id, state,
+           outcome, session_id, revision, consumed_at_ms)
+          VALUES ('opportunity', 'schedule', 'version', '2026-10-25', 'weekday', 'day', 'consumed', ?, NULL, 1, 2)`,
+          [outcome]);
+      });
+      const before = await kernel.queryAll("SELECT * FROM owned_plan_schedule_opportunities");
+      const deletion = createLibraryPlanDeletionPort(kernel, { nowMs: () => 10 });
+      expect(await deletion.readEligibility("plan")).toMatchObject({ eligible: true, reason: null });
+      expect(await deletion.deletePlan({ planId: "plan" })).toEqual({ outcome: "deleted", planId: "plan" });
+      expect(await kernel.queryAll("SELECT * FROM owned_plan_schedule_opportunities")).toEqual(before);
+      expect(await kernel.queryAll("SELECT lifecycle FROM owned_plan_schedules WHERE id = 'schedule'"))
+        .toEqual([{ lifecycle: "inactive" }]);
+    },
+  );
+
+  // Running source rows only allow planned/fulfilled/skipped. A missed date is
+  // a scheduling event. These states alone do not establish a workout link.
+  it.each([
+    { outcome: "missed", state: "planned", eventType: "running_missed" },
+    { outcome: "skipped", state: "skipped", eventType: "running_skipped" },
+    { outcome: "fulfilled_without_links", state: "fulfilled", eventType: "running_overridden" },
+  ])("allows deletion after scheduling-only Running $outcome outcomes and retains the opportunity facts", async ({ state, eventType }) => {
+    const kernel = await open();
+    await running(kernel);
+    await kernel.write(async (transaction) => {
+      // Persist the source opportunity with the requested valid persisted
+      // state; immutable Running source rows cannot be updated after insertion.
+      await transaction.execute(`INSERT INTO running_opportunities
+        (id, plan_id, schedule_id, schedule_version_id, slot_id, local_date, timezone,
+         session_revision_id, state, created_at_ms)
+        VALUES ('outcome-opportunity', 'run', 'schedule', 'version', 'slot', '2026-10-26',
+          'Asia/Singapore', 'revision', ?, 1)`, [state]);
+      await transaction.execute(`INSERT INTO owned_plan_schedule_events
+        (id, schedule_id, event_type, local_date, payload_json, schedule_revision, created_at_ms)
+        VALUES ('outcome-event', 'schedule', ?, '2026-10-26', '{"opportunityId":"outcome-opportunity"}', 1, 2)`,
+        [eventType]);
+    });
+    const before = await kernel.queryAll("SELECT * FROM running_opportunities ORDER BY id");
+    const eventsBefore = await kernel.queryAll("SELECT * FROM owned_plan_schedule_events");
+    const deletion = createLibraryPlanDeletionPort(kernel, { nowMs: () => 10 });
+    expect(await deletion.readEligibility("run")).toMatchObject({ eligible: true, reason: null });
+    expect(await deletion.deletePlan({ planId: "run" })).toEqual({ outcome: "deleted", planId: "run" });
+    expect(await kernel.queryAll("SELECT * FROM running_opportunities ORDER BY id")).toEqual(before);
+    expect(await kernel.queryAll("SELECT * FROM owned_plan_schedule_events")).toEqual(eventsBefore);
+  });
 });

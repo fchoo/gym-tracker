@@ -7,7 +7,8 @@ import type { SqliteKernel, SqliteReadTransactionExecutor } from "../sqliteKerne
 
 /** Every status counts, including sessions hidden by history removal overlays.
  * Definition rows belong to the plan; workout/source links refer to those rows.
- * Keep both legacy and owned occurrence/target identities in the guard. */
+ * Keep both legacy and owned occurrence/target identities in the guard.
+ * Scheduling outcomes without a session/activity link are not workout use. */
 const WORKOUT_LINKS_SQL = `WITH
   days AS (SELECT id FROM plan_days WHERE plan_id = ?1),
   occurrences AS (
@@ -44,8 +45,7 @@ SELECT (
     OR schedule_version_id IN (SELECT id FROM versions))
   OR EXISTS (SELECT 1 FROM owned_plan_schedule_opportunities
     WHERE (schedule_id IN (SELECT id FROM schedules) OR plan_day_id IN (SELECT id FROM days))
-      AND (session_id IS NOT NULL OR state = 'consumed'))
-  OR EXISTS (SELECT 1 FROM running_opportunities WHERE id IN (SELECT id FROM running) AND state != 'planned')
+      AND session_id IS NOT NULL)
   OR EXISTS (SELECT 1 FROM running_match_events WHERE opportunity_id IN (SELECT id FROM running))
   OR EXISTS (SELECT 1 FROM running_current_matches WHERE opportunity_id IN (SELECT id FROM running))
   OR EXISTS (SELECT 1 FROM running_activity_match_events WHERE opportunity_id IN (SELECT id FROM running)
