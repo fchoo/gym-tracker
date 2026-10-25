@@ -514,6 +514,15 @@ export function createScheduleRuntimePort(
     ));
   }
 
+  async function planDayRevision(planId: string, dayId: string): Promise<number> {
+    const [day] = await kernel.queryAll<{ revision: number }>(
+      `SELECT revision FROM plan_days WHERE id = ? AND plan_id = ?`,
+      [dayId, planId],
+    );
+    if (day === undefined) throw new Error("schedule_plan_day_revision_unavailable");
+    return day.revision;
+  }
+
   async function missedLabel(scheduleId: string) {
     const [row] = await kernel.queryAll<{ count: number }>(
       `SELECT COUNT(*) AS count
@@ -693,7 +702,7 @@ export function createScheduleRuntimePort(
               timeZone: effective.timeZone,
               sourceRevisions: Object.freeze({
                 plan: active.plan_revision,
-                day: 1,
+                day: await planDayRevision(active.plan_id, currentOpportunity.planDayId),
                 schedule: effective.scheduleRevision,
                 opportunity: currentOpportunity.revision,
               }),

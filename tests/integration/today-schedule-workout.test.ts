@@ -370,6 +370,53 @@ async function insertValidCustomOwnedPlan(
 }
 
 describe("Today schedule workout integration", () => {
+  it("starts an edited planned day using its current revision and rejects an old selection", async () => {
+    const runtime = await setupRuntime();
+    const instantMs = Date.UTC(2026, 7, 17, 4);
+    runtime.setNow(instantMs);
+    await runtime.kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE plan_days SET revision = revision + 1 WHERE id = 'plan-day-copy'`,
+      );
+    });
+    const today = await runtime.schedule.loadToday(instantMs);
+    const selected = today?.selectedStrengthOccurrence;
+    if (selected === null || selected === undefined) {
+      throw new Error("selected_strength_opportunity_missing");
+    }
+    const [day] = await runtime.kernel.queryAll<{ revision: number }>(
+      `SELECT revision FROM plan_days WHERE id = ?`,
+      [selected.planDayId],
+    );
+    expect(selected.sourceRevisions.day).toBe(day!.revision);
+    const repository = createPlansWorkoutRepository(runtime.kernel);
+    const request = {
+      mode: "scheduled" as const,
+      planId: selected.planId,
+      planDayId: selected.planDayId,
+      localDate: selected.localDate,
+      timezone: selected.timeZone,
+      startedAtMs: instantMs,
+      commandIdentity: "c".repeat(64),
+      selectedOccurrence: selected,
+    };
+    await expect(startWorkout({ repository, request: {
+      ...request,
+      selectedOccurrence: {
+        ...selected,
+        sourceRevisions: { ...selected.sourceRevisions, day: day!.revision - 1 },
+      },
+    } })).rejects.toMatchObject({
+      code: "sqlite_transaction_failed",
+      cause: { message: "workout_selected_occurrence_stale" },
+    });
+    const session = await startWorkout({ repository, request });
+    await expect(runtime.kernel.queryAll(
+      `SELECT day_revision FROM workout_session_schedule_links WHERE workout_session_id = ?`,
+      [session.id],
+    )).resolves.toEqual([{ day_revision: day!.revision }]);
+  });
+
   it("starts only from the captured Strength opportunity and stores immutable provenance", async () => {
     const runtime = await setupRuntime();
     const instantMs = Date.UTC(2026, 7, 17, 4);
