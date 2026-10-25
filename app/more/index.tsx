@@ -72,6 +72,7 @@ export default function MoreRoute() {
       onOpenDataAndRecovery={() =>
         router.push("/more/data-and-recovery" as Href)}
       onOpenNotificationSettings={runtime.openRestNotificationSettings}
+      onRefreshPreciseRestAlarms={runtime.refreshPreciseRestAlarms}
       onOpenRemovedSessions={() =>
         router.push("/more/removed-sessions" as Href)}
       preferences={preferences}

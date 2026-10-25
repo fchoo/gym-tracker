@@ -90,6 +90,7 @@ export function RootSettingsContent({
       }}
       onNavigate={onNavigate}
       onOpenNotificationSettings={runtime.openRestNotificationSettings}
+      onRefreshPreciseRestAlarms={runtime.refreshPreciseRestAlarms}
       onOpenRemovedSessions={() => {
         onRegisterOrigin(removedSessionsTriggerRef);
         router.push("/more/removed-sessions" as Href);

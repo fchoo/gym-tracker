@@ -60,6 +60,7 @@ function fixture(view: TodayView = {
     expireRestWithForegroundFeedback: jest.fn(async () => committed()),
   };
   const notifications = {
+    cancel: jest.fn(async () => undefined),
     permission: jest.fn(async () => "granted" as const),
     requestPermission: jest.fn(async () => "granted" as const),
   };
@@ -111,6 +112,22 @@ const revisionInput = {
 };
 
 describe("rest command acknowledgement latency", () => {
+  it("upgrades precise alarms from current saved rest after earlier reconciliation settles", async () => {
+    const input = fixture();
+    const runtime = await mount(input);
+    const effects = deferred<WorkoutLifecycleResult>();
+    input.lifecycle.trigger.mockReturnValueOnce(effects.promise);
+    try {
+      await act(async () => { await runtime.current().adjustRest({ ...revisionInput, deltaMs: -15_000 }); });
+      await waitFor(() => expect(input.lifecycle.trigger).toHaveBeenCalledTimes(2));
+      let upgrade!: Promise<void>;
+      await act(async () => { upgrade = runtime.current().refreshPreciseRestAlarms(); });
+      jest.mocked(input.rest.getRestContext).mockResolvedValue({ state: { version: 1, state: "paused", revision: 9, remainingMs: 25_000, nextSetId: "set-2" }, sessionRevision: 13 });
+      await act(async () => { effects.resolve(input.lifecycleResult); await upgrade; });
+      expect(input.notifications.cancel).not.toHaveBeenCalled();
+      expect(input.lifecycle.trigger).toHaveBeenCalledTimes(3);
+    } finally { effects.resolve(input.lifecycleResult); await runtime.rendered.unmount(); }
+  });
   it("coalesces obsolete notification reconciliation after a burst of committed adjustments", async () => {
     const input = fixture();
     const runtime = await mount(input);

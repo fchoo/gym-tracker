@@ -897,6 +897,7 @@ type RuntimeValue = RuntimeState & Readonly<{
     delete(entry: ProgressBodyweightEntry, requestId: string): Promise<readonly ProgressBodyweightEntry[]>;
   }>;
   openRestNotificationSettings(): Promise<void>;
+  refreshPreciseRestAlarms(): Promise<void>;
   readRestAlertPreferences(): RestAlertPreferences;
   setRestAlertPreferences(
     preferences: RestAlertPreferences,
@@ -3797,6 +3798,27 @@ export function WorkoutAppRuntimeProvider({
     return requireServices().notifications.openSettings();
   }, [requireServices]);
 
+  const refreshPreciseRestAlarms = useCallback((): Promise<void> => {
+    const services = requireServices();
+    const refresh = postCommitReconciliationQueueRef.current.then(async () => {
+      if (servicesRef.current !== services) return;
+      const sessionIds = await services.restRepository.listActiveSessionIds();
+      for (const sessionId of sessionIds) {
+        const context = await services.restRepository.getRestContext(sessionId);
+        if (context?.state.state !== "running"
+          || context.state.endsAtMs <= dependencies.nowMs()) continue;
+        await services.notifications.cancel(`rest:${sessionId}`);
+      }
+      if (servicesRef.current !== services) return;
+      // Reconciliation reads the latest SQLite rest, rather than replaying a
+      // previously captured native notification. Later mutations queue after
+      // this pass and replace its derivative with their newer saved deadline.
+      await services.lifecycle.trigger("post_commit");
+    });
+    postCommitReconciliationQueueRef.current = refresh.catch(() => undefined);
+    return refresh;
+  }, [dependencies, requireServices]);
+
   const readRestAlertPreferences = useCallback(() =>
     requireServices().restAlertPreferenceStore.read(), [requireServices]);
 
@@ -5310,6 +5332,7 @@ export function WorkoutAppRuntimeProvider({
     loadStarterPlan,
     loadStarterTemplateUpdate,
     openRestNotificationSettings,
+    refreshPreciseRestAlarms,
     readRestAlertPreferences,
     pauseRest: pauseWorkoutRest,
     requestRestNotificationPermission,
@@ -5454,6 +5477,7 @@ export function WorkoutAppRuntimeProvider({
     loadStarterPlan,
     loadStarterTemplateUpdate,
     openRestNotificationSettings,
+    refreshPreciseRestAlarms,
     readRestAlertPreferences,
     pauseWorkoutRest,
     requestRestNotificationPermission,
