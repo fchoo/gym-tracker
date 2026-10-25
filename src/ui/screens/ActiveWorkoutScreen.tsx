@@ -2132,6 +2132,7 @@ function PopulatedWorkoutOverview({
             }}
           >
             <RestDock
+              sessionId={sessionId}
               busy={restBusy}
               exerciseName={activeExercise.name}
               nextSetIndex={activeIndex + 1}
