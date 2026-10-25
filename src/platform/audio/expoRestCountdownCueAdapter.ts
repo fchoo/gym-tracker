@@ -65,6 +65,23 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
         if (player.isLoaded) finish();
       });
 
+    const waitForRewind = async (pending: Promise<void>, maxWaitMs: number) => {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          pending,
+          new Promise<never>((_resolve, reject) => {
+            timeout = setTimeout(
+              () => reject(new Error("rest_countdown_audio_seek_timeout")),
+              Math.max(0, maxWaitMs),
+            );
+          }),
+        ]);
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
+
     const cancelPendingCues = () => {
       generation += 1;
       for (const cancel of [...pendingLoads]) cancel();
@@ -86,13 +103,17 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
         if (!player.isLoaded) await waitUntilLoaded(player, maxWaitMs);
         if (requestGeneration !== generation) return;
         const pendingRewind = rewinds.get(player);
-        if (pendingRewind !== undefined) await pendingRewind;
-        else if (player.currentTime > 0) await rewind(player);
+        const neededRewind = pendingRewind ?? (player.currentTime > 0 ? rewind(player) : undefined);
+        if (neededRewind !== undefined) {
+          await waitForRewind(neededRewind, maxWaitMs - (Date.now() - requestedAtMs));
+        }
         if (
           requestGeneration !== generation
           || AppState.currentState !== "active"
-          || Date.now() - requestedAtMs > maxWaitMs
         ) return;
+        if (Date.now() - requestedAtMs > maxWaitMs) {
+          throw new Error("rest_countdown_audio_not_ready");
+        }
         // New and pre-rewound players start synchronously; there is no needless
         // async seek at the deadline for the pristine final-tone player.
         player.play();

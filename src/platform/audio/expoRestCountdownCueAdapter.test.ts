@@ -121,17 +121,29 @@ describe("Expo rest countdown cue adapter", () => {
     await rendered.unmount();
   });
 
-  it("does not replay a short whose seek outlasts its cue window", async () => {
+  it("reports a seek timeout without replaying a short outside its cue window", async () => {
     jest.useFakeTimers();
     const { rendered, shortPlayer } = await renderAdapter();
     shortPlayer.currentTime = 0.12;
     let finishSeek!: () => void;
     shortPlayer.seekTo.mockImplementation(() => new Promise<void>((resolve) => { finishSeek = resolve; }));
-    const short = rendered.result.current.playShortCue();
+    const short = expect(rendered.result.current.playShortCue()).rejects.toThrow("rest_countdown_audio_seek_timeout");
     jest.advanceTimersByTime(500);
     finishSeek();
     await short;
     expect(shortPlayer.play).not.toHaveBeenCalled();
+    await rendered.unmount();
+  });
+
+  it("reports a stalled final replay as an audio failure rather than silently dropping it", async () => {
+    jest.useFakeTimers();
+    const { rendered, longPlayer } = await renderAdapter();
+    longPlayer.currentTime = 0.36;
+    longPlayer.seekTo.mockImplementation(() => new Promise(() => undefined));
+    const final = expect(rendered.result.current.playLongCue()).rejects.toThrow("rest_countdown_audio_seek_timeout");
+    jest.advanceTimersByTime(1_000);
+    await final;
+    expect(longPlayer.play).not.toHaveBeenCalled();
     await rendered.unmount();
   });
 
