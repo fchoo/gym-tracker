@@ -12,7 +12,10 @@ import {
 
 import type {
   RestCountdownCuePort,
+  RestCountdownSoundOwnership,
 } from "../../domains/rest/restCountdownCuePort";
+
+import { claimForegroundRestSound } from "./foregroundRestSoundOwnership";
 
 const STATUS_EVENT = "playbackStatusUpdate";
 
@@ -28,6 +31,7 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
 
   const playback = useMemo(() => {
     let generation = 0;
+    let soundOwnership: ReturnType<typeof claimForegroundRestSound> | undefined;
     const pendingLoads = new Set<() => void>();
     const rewinds = new Map<AudioPlayer, Promise<void>>();
 
@@ -82,7 +86,10 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
       }
     };
 
-    const cancelPendingCues = () => {
+    const cancelPendingCues = (clearOwnership = true) => {
+      if (clearOwnership) soundOwnership?.clear();
+      else soundOwnership?.release();
+      soundOwnership = undefined;
       generation += 1;
       for (const cancel of [...pendingLoads]) cancel();
       for (const player of [shortPlayer, longPlayer]) {
@@ -128,7 +135,13 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
       port: Object.freeze({
         playShortCue: () => replay(shortPlayer, 350),
         playLongCue: () => replay(longPlayer, 1_000),
-        cancelPendingCues,
+        cancelPendingCues: () => cancelPendingCues(),
+        claimForegroundRestSound: (input: RestCountdownSoundOwnership) => {
+          soundOwnership?.clear();
+          const claim = claimForegroundRestSound(input);
+          soundOwnership = claim;
+          return () => claim.release();
+        },
       }),
     };
   }, [longPlayer, shortPlayer]);
@@ -147,7 +160,7 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
       }
     });
     return () => {
-      playback.cancelPendingCues();
+      playback.cancelPendingCues(false);
       appStateSubscription.remove();
       subscriptions.forEach((subscription) => subscription.remove());
     };

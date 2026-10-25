@@ -163,6 +163,7 @@ function RestTextControl({
 
 export function RestDock({
   state,
+  sessionId,
   nowMs,
   exerciseName,
   nextSetIndex,
@@ -180,6 +181,7 @@ export function RestDock({
   countdownCue,
 }: Readonly<{
   state: Extract<RestStateV1, { state: "running" | "paused" }>;
+  sessionId?: string;
   nowMs: () => number;
   exerciseName?: string;
   nextSetIndex: number;
@@ -208,6 +210,7 @@ export function RestDock({
   countdownCueRef.current = countdownCue;
   const announcedRef = useRef<string | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const [foregroundActive, setForegroundActive] = useState(AppState.currentState === "active");
   const cueLedgerRef = useRef<Readonly<{
     emitted: ReadonlySet<number>;
   }> | null>(null);
@@ -223,6 +226,7 @@ export function RestDock({
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
       appStateRef.current = nextState;
+      setForegroundActive(nextState === "active");
       previousRemainingSecondsRef.current = null;
       if (nextState !== "active") {
         countdownCueRef.current?.cancelPendingCues?.();
@@ -275,6 +279,21 @@ export function RestDock({
       countdownCueRef.current?.cancelPendingCues?.();
     }
   }, [restSoundEnabled]);
+
+  useEffect(() => {
+    if (
+      sessionId === undefined
+      || state.state !== "running"
+      || state.endsAtMs <= nowMs()
+      || !foregroundActive
+      || !restSoundEnabled
+    ) return;
+    return countdownCue?.claimForegroundRestSound?.({
+      sessionId,
+      restRevision: state.revision,
+      endsAtMs: state.endsAtMs,
+    });
+  }, [countdownCue, foregroundActive, restSoundEnabled, sessionId, state.revision, state.state]);
 
   const cancelPendingCues = () => {
     previousRemainingSecondsRef.current = null;
