@@ -22,7 +22,10 @@ const NativeAndroidEscapeBoundary = requireNativeViewManager<NativeBoundaryProps
   "AndroidViewFocus",
 );
 
-/** Consumes Android Escape inside the Modal window before Dialog dismisses itself. */
+/**
+ * Native dispatch consumes Escape and records navigation keys synchronously.
+ * React's cast onKeyDown is unavailable here; focusVisibility.android reads the epoch.
+ */
 export function AndroidEscapeBoundary({
   onKeyDown: _onKeyDown,
   ...props

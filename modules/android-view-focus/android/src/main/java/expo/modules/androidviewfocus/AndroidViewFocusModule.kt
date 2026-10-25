@@ -2,6 +2,8 @@ package expo.modules.androidviewfocus
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
@@ -19,13 +21,9 @@ class AndroidEscapeBoundaryView(context: Context, appContext: AppContext) :
   private val onEscape by EventDispatcher<Unit>()
 
   override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-    if (event.keyCode == KeyEvent.KEYCODE_ESCAPE) {
-      if (event.action == KeyEvent.ACTION_UP) {
-        onEscape(Unit)
-      }
-      return true
+    return dispatchEscapeBoundaryKeyEvent(event, { onEscape(Unit) }) {
+      super.dispatchKeyEvent(it)
     }
-    return super.dispatchKeyEvent(event)
   }
 }
 
@@ -52,8 +50,37 @@ private fun findVisibleContentDescription(root: View, label: String): View? {
 }
 
 class AndroidViewFocusModule : Module() {
+  private val mainHandler = Handler(Looper.getMainLooper())
+  private val navigationKeyObserver = NavigationKeyObserver()
+  @Volatile private var destroyed = false
+
+  private fun onMainThread(action: () -> Unit) {
+    if (Looper.myLooper() == Looper.getMainLooper()) action()
+    else mainHandler.post { action() }
+  }
+
+  private fun observeActivityNavigation() {
+    onMainThread {
+      if (destroyed) return@onMainThread
+      val activity = appContext.currentActivity ?: return@onMainThread
+      if (!activity.isDestroyed && !activity.isFinishing) {
+        navigationKeyObserver.attach(activity.window)
+      }
+    }
+  }
+
   override fun definition() = ModuleDefinition {
     Name("AndroidViewFocus")
+
+    OnCreate { observeActivityNavigation() }
+    OnActivityEntersForeground { observeActivityNavigation() }
+    OnActivityDestroys { onMainThread { navigationKeyObserver.detach() } }
+    OnDestroy {
+      destroyed = true
+      onMainThread { navigationKeyObserver.detach() }
+    }
+
+    Function("getNavigationKeyEpoch") { NavigationKeyEpoch.current() }
 
     View(AndroidEscapeBoundaryView::class) {
       Events("onEscape")
