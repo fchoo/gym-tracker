@@ -142,7 +142,10 @@ export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
           soundOwnership?.release();
           const claim = claimForegroundRestSound(input);
           soundOwnership = claim;
-          return () => claim.release();
+          return () => {
+            claim.release();
+            if (soundOwnership === claim) soundOwnership = undefined;
+          };
         },
       }),
     };

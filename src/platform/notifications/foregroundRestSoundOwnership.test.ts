@@ -122,6 +122,8 @@ describe("scheduled foreground rest sound ownership", () => {
     const releaseA = port.claimForegroundRestSound!(input);
     jest.setSystemTime(input.endsAtMs);
     releaseA();
+    // The next dock clears pending playback during its initial state effect.
+    port.cancelPendingCues?.();
     const next = { ...input, restRevision: 4, endsAtMs: 115_000 };
     port.claimForegroundRestSound!(next);
     expect(await sound()).toBe(false);
