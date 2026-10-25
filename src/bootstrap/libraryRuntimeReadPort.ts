@@ -5,6 +5,8 @@ import {
   type LibraryRuntimeSectionPreference,
 } from "./librarySectionPreferencePort";
 import type { StarterPlanRuntimeSummary } from "./starterPlanRuntime";
+import { LIBRARY_PLAN_DELETION_KEY_PREFIX } from "../domains/library/planDeletion";
+import { readLibraryPlanDeletionEligibility } from "../platform/sqlite/repositories/libraryPlanDeletionRepository";
 
 export type LibraryRuntimePlanSummary = Readonly<{
   id: string;
@@ -15,6 +17,7 @@ export type LibraryRuntimePlanSummary = Readonly<{
   scheduleSummary?: string;
   missingRequirement?: string | null;
   templateUpdateTemplateId?: string;
+  deletionEligible?: boolean;
 }>;
 
 export type LibraryRuntimeStarterPlanSummary = StarterPlanRuntimeSummary;
@@ -110,9 +113,11 @@ async function readLibraryPlans(
      LEFT JOIN plan_schedules legacy_schedule ON legacy_schedule.plan_id = plan.id
      LEFT JOIN owned_plan_starter_sources source ON source.plan_id = plan.id
      WHERE plan.origin IN ('custom', 'copied')
+       AND NOT EXISTS (SELECT 1 FROM app_settings deleted WHERE deleted.key = '${LIBRARY_PLAN_DELETION_KEY_PREFIX}' || plan.id)
      ORDER BY plan.name COLLATE NOCASE, plan.id`,
   );
-  const summaries = rows.map((row) => {
+  const summaries = await Promise.all(rows.map(async (row) => {
+    const deletion = await readLibraryPlanDeletionEligibility(kernel, row.id);
     const template = templates.find(({ id }) => id === row.upstream_id);
     const sourceRevision = row.source_revision
       ?? (row.source_namespace === "gym-tracker.original" ? 1 : null);
@@ -130,11 +135,12 @@ async function readLibraryPlans(
             ? row.is_active === 1 ? "Active Weekday schedule" : "Inactive Weekday schedule"
             : "Not scheduled",
       missingRequirement: row.missing_requirement,
+      deletionEligible: deletion.eligible,
       ...(template !== undefined && sourceRevision !== null && sourceRevision < template.revision
         ? { templateUpdateTemplateId: template.id }
         : {}),
     });
-  });
+  }));
   const activePlans = summaries.filter(({ status }) => status === "Active");
   const activeSports = new Set<string>();
   for (const activePlan of activePlans) {

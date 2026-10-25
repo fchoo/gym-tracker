@@ -452,25 +452,6 @@ function CompletePreview({
           ))}
         </View>
       ))}
-      <SectionHeader title="Progression summary" />
-      <Text style={[
-        typeScale.body as TextStyle,
-        { color: colors.textSecondary },
-      ]}>
-        {template.progressionSummary}
-      </Text>
-      <SectionHeader title="Source notes" />
-      {template.sourceNotes.map((note) => (
-        <Text
-          key={note.id}
-          style={[
-            typeScale.body as TextStyle,
-            { color: colors.textSecondary },
-          ]}
-        >
-          {note.text}
-        </Text>
-      ))}
     </>
   );
 }

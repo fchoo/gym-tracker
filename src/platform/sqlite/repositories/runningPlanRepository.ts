@@ -1,3 +1,5 @@
+import { LIBRARY_PLAN_DELETION_KEY_PREFIX } from "../../../domains/library/planDeletion";
+import { assertLibraryPlanNotDeleted } from "./libraryPlanDeletionRepository";
 import type { SqliteKernel, SqliteReadTransactionExecutor, SqliteTransactionExecutor } from "../sqliteKernel";
 import {
   evaluateRunningReadiness,
@@ -101,6 +103,7 @@ async function readRunningLifecyclePreview(
   planId: string,
   action: RunningLifecycleAction,
 ): Promise<RunningLifecyclePreview> {
+  await assertLibraryPlanNotDeleted(executor, planId);
   const [target] = await executor.queryAll<{
     plan_id: string; plan_name: string; plan_revision: number; plan_active: number;
     running_status: string; schedule_id: string; schedule_revision: number;
@@ -191,7 +194,8 @@ export async function readRunningPlanAggregate(
       }>(
         `SELECT plan.id, plan.name, plan.revision, running.created_at_ms, plan.is_active, running.status
          FROM plans plan JOIN running_plans running ON running.plan_id = plan.id
-         WHERE plan.id = ? AND plan.plan_kind = 'running'`,
+         WHERE plan.id = ? AND plan.plan_kind = 'running'
+           AND NOT EXISTS (SELECT 1 FROM app_settings deleted WHERE deleted.key = '${LIBRARY_PLAN_DELETION_KEY_PREFIX}' || plan.id)`,
         [planId],
       );
       if (plan === undefined) return null;
@@ -302,6 +306,7 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
     },
     async confirmLifecycle(input: ConfirmRunningLifecycleInput): Promise<Readonly<{ planId: string; lifecycle: RunningPlanAggregate["lifecycle"] }>> {
       return kernel.write(async (transaction) => {
+        await assertLibraryPlanNotDeleted(transaction, input.preview.planId);
         const [receipt] = await transaction.queryAll<{
           request_sha256: string; operation: string; result_json: string;
         }>("SELECT request_sha256, operation, result_json FROM running_plan_receipts WHERE request_id = ?", [input.requestId]);

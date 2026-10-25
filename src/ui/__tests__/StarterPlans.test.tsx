@@ -353,7 +353,7 @@ describe("starter detail", () => {
     expect(screen.getByText(
       "Barbell · Bench · Cable · Dumbbell · Machine · Squat Rack",
     )).toBeOnTheScreen();
-    expect(screen.getByText(bodyPart.progressionSummary)).toBeOnTheScreen();
+    expect(screen.queryByText(bodyPart.progressionSummary)).not.toBeOnTheScreen();
     expect(screen.getByText(
       "Monday Chest · Tuesday Back · Wednesday Shoulders · Thursday Legs · Friday Arms",
     )).toBeOnTheScreen();
@@ -390,7 +390,7 @@ describe("starter detail", () => {
     });
   });
 
-  it("preserves complete long source notes and uses compact push versus expanded detail pane semantics", async () => {
+  it("omits source notes and progression while preserving compact and expanded detail semantics", async () => {
     const catalog = await acceptedCatalog();
     const template = catalog.templates[0]!;
     const longText = `${template.sourceNotes[0]!.text} ${"source ".repeat(80)}`;
@@ -405,7 +405,10 @@ describe("starter detail", () => {
     };
     const { rendered } = await renderDetail(longTemplate, { width: 920 });
 
-    expect(await screen.findByText(longText)).toBeOnTheScreen();
+    expect(await screen.findByRole("header", { name: longTemplate.displayName })).toBeOnTheScreen();
+    expect(screen.queryByText(longText)).not.toBeOnTheScreen();
+    expect(screen.queryByText("Progression summary")).not.toBeOnTheScreen();
+    expect(screen.queryByText("Source notes")).not.toBeOnTheScreen();
     expect(screen.getByLabelText("expanded layout")).toBeOnTheScreen();
     expect(screen.getByTestId("adaptive-secondary-region")).toBeOnTheScreen();
 
@@ -594,8 +597,8 @@ describe("starter activation", () => {
     expect(screen.getByText(
       "Monday Chest · Tuesday Back · Wednesday Shoulders · Thursday Legs · Friday Arms",
     )).toBeOnTheScreen();
-    expect(screen.getByText(bodyPart.progressionSummary)).toBeOnTheScreen();
-    expect(screen.getByText(bodyPart.sourceNotes[0]!.text)).toBeOnTheScreen();
+    expect(screen.queryByText(bodyPart.progressionSummary)).not.toBeOnTheScreen();
+    expect(screen.queryByText(bodyPart.sourceNotes[0]!.text)).not.toBeOnTheScreen();
     expect(screen.getByText("Bench Press")).toBeOnTheScreen();
     expect(screen.getAllByText(/Load \+ reps/u).length).toBe(20);
 

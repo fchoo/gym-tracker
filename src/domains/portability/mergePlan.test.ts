@@ -2296,6 +2296,30 @@ describe("portable merge plan", () => {
     })).rejects.toEqual(new MergePlanError("merge_plan_invalid"));
   });
 
+  it("remaps Library deletion markers through keep-both plan mappings and rejects malformed binding", () => {
+    const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 });
+    const archiveWith = (value_json: string) => snapshot(
+      { id: "archive", marker: "archive", modifiedAtMs: 2 },
+      { app_settings: [{ key: "gym_tracker.library_plan_deletion.v1:archive-plan", value_json }] },
+    );
+    const valid = __mergePlanTestOnly.settingPlan(
+      archiveWith(JSON.stringify({ version: 1, planId: "archive-plan", deletedAtMs: 10 })),
+      local, new Map([["archive-plan", "kept-copy"]]),
+    );
+    expect(valid.inserts).toEqual([expect.objectContaining({
+      key: "gym_tracker.library_plan_deletion.v1:kept-copy",
+      value_json: JSON.stringify({ version: 1, planId: "kept-copy", deletedAtMs: 10 }),
+    })]);
+    for (const value of [null, {}, { version: 1, planId: "wrong", deletedAtMs: 10 },
+      { version: 1, planId: "archive-plan", deletedAtMs: -1 }, { version: 1, planId: "archive-plan" }]) {
+      expect(() => __mergePlanTestOnly.settingPlan(archiveWith(JSON.stringify(value)), local,
+        new Map([["archive-plan", "kept-copy"]]))).toThrow(new MergePlanError("merge_plan_invalid"));
+    }
+    expect(() => __mergePlanTestOnly.settingPlan(
+      archiveWith(JSON.stringify({ version: 1, planId: "archive-plan", deletedAtMs: 10 })), local, new Map(),
+    )).toThrow(new MergePlanError("merge_plan_invalid"));
+  });
+
   it("remaps plan preferences and rejects every malformed preference payload", () => {
     const preferenceKey = "gym_tracker.workout_plan_preferences.v1:archive-plan";
     const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 });

@@ -22,6 +22,7 @@ import type {
 import type {
   SearchFilters,
 } from "../../domains/library/search";
+import type { LibraryPlanDeletionResult } from "../../domains/library/planDeletion";
 import type {
   V12AcceptanceBenchmarkPort,
 } from "../../bootstrap/v12AcceptanceBenchmark";
@@ -72,6 +73,7 @@ export type LibraryPlanSummary = Readonly<{
   scheduleSummary?: string;
   missingRequirement?: string | null;
   templateUpdateTemplateId?: string;
+  deletionEligible?: boolean;
 }>;
 
 export type LibraryStarterPlanSummary = Readonly<{
@@ -157,6 +159,7 @@ type LibraryScreenProps = Readonly<{
   onCreatePlan(): void;
   onOpenExercise(exerciseId: string): void;
   onOpenPlan(planId: string): void;
+  deletePlan?(input: Readonly<{ planId: string }>): Promise<LibraryPlanDeletionResult>;
   onOpenSettings?(): void;
   onOpenStarter?(templateId: string): void;
   onOpenTemplateUpdate?(input: Readonly<{
@@ -502,6 +505,7 @@ function PlansContent({
   onOpenTemplateUpdate,
   selectedId,
   starterFilters,
+  onRequestDelete,
 }: Readonly<{
   onClearSearchAndFilters(): void;
   onCreatePlan(): void;
@@ -515,6 +519,7 @@ function PlansContent({
   }>): void;
   selectedId: string | null;
   starterFilters: StarterFilters;
+  onRequestDelete?(plan: LibraryPlanSummary, trigger: React.RefObject<View | null>): void;
 }>) {
   const { colors } = useAppTheme();
   const sourceActive = snapshot.plans.activePlans
@@ -582,8 +587,9 @@ function PlansContent({
           </Text>
         </>
       ) : active.map((item) => (
-        <PlanRow
+        <LibraryOwnedPlanRow
           item={item}
+          {...(onRequestDelete === undefined ? {} : { onRequestDelete })}
           {...(item.templateUpdateTemplateId === undefined
               || onOpenTemplateUpdate === undefined
             ? {}
@@ -598,14 +604,15 @@ function PlansContent({
           selected={selectedId === item.id}
         />
       ))}
-      <SectionHeader title="My Plans" />
+      <SectionHeader title="My Plans" action={<SecondaryAction label="Create plan" onPress={onCreatePlan} testID="library-create-plan" />} />
       {owned.length === 0 ? (
         <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
           No personal plans yet
         </Text>
       ) : owned.map((item) => (
-        <PlanRow
+        <LibraryOwnedPlanRow
           item={item}
+          {...(onRequestDelete === undefined ? {} : { onRequestDelete })}
           key={item.id}
           {...(item.templateUpdateTemplateId === undefined
               || onOpenTemplateUpdate === undefined
@@ -637,6 +644,28 @@ function PlansContent({
         />
       ))}
     </>
+  );
+}
+
+function LibraryOwnedPlanRow({ item, onRequestDelete, ...props }: Readonly<{
+  item: LibraryPlanSummary;
+  onPress(): void;
+  onOpenTemplateUpdate?(): void;
+  selected: boolean;
+  onRequestDelete?(plan: LibraryPlanSummary, trigger: React.RefObject<View | null>): void;
+}>) {
+  const trigger = useRef<View>(null);
+  return (
+    <View style={styles.planWithActions}>
+      <PlanRow item={item} {...props} />
+      {item.deletionEligible === true && onRequestDelete !== undefined ? (
+        <SecondaryAction
+          label={`Delete ${item.name}`}
+          onPress={() => onRequestDelete(item, trigger)}
+          ref={trigger}
+        />
+      ) : null}
+    </View>
   );
 }
 
@@ -1237,6 +1266,7 @@ export function LibraryScreen({
   onCreatePlan,
   onOpenExercise,
   onOpenPlan,
+  deletePlan,
   onOpenSettings = noOp,
   onOpenStarter = onOpenPlan,
   onOpenTemplateUpdate,
@@ -1272,6 +1302,13 @@ export function LibraryScreen({
   const [actionsVisible, setActionsVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [starterFilters, setStarterFilters] = useState<StarterFilters>({});
+  const [deleteSelection, setDeleteSelection] = useState<Readonly<{
+    plan: LibraryPlanSummary;
+    trigger: React.RefObject<View | null>;
+  }> | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const deleteInFlightRef = useRef(false);
   const filterActionRef = useRef<View>(null);
   const actionsActionRef = useRef<View>(null);
   const reviewActionRef = useRef<View>(null);
@@ -1638,24 +1675,49 @@ export function LibraryScreen({
     )
     && updateKey !== null
     && !dismissedUpdateKeys.has(updateKey);
-  const headerAction = section === "plans"
-    ? (
-        <PrimaryAction
-          label="Create plan"
-          onPress={onCreatePlan}
-          testID="library-create-plan"
-        />
-      )
-    : (
-        <PrimaryAction
-          label="Create custom exercise"
-          onPress={onCreateExercise}
-        />
-      );
+
+  async function confirmDeletePlan() {
+    if (deleteSelection === null || deletePlan === undefined || deleteInFlightRef.current) return;
+    const { plan } = deleteSelection;
+    deleteInFlightRef.current = true;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      const result = await deletePlan({ planId: plan.id });
+      if (!mountedRef.current) return;
+      if (result.outcome === "deleted" && result.planId === plan.id) {
+        setSnapshot((current) => current === null ? null : {
+          ...current,
+          plans: {
+            ...current.plans,
+            active: current.plans.active?.id === plan.id ? null : current.plans.active,
+            ...(current.plans.activePlans === undefined ? {} : {
+              activePlans: current.plans.activePlans.filter(({ id }) => id !== plan.id),
+            }),
+            owned: current.plans.owned.filter(({ id }) => id !== plan.id),
+          },
+        });
+        setDeleteSelection(null);
+      } else {
+        setDeleteSelection(null);
+        setDeleteError(result.outcome === "ineligible" && result.reason === "workout_linked"
+          ? "This plan is linked to a workout and cannot be deleted."
+          : "This plan changed. Refresh Library before deleting it.");
+        const fresh = await refreshLibrary();
+        if (mountedRef.current) setSnapshot(fresh);
+      }
+    } catch {
+      if (mountedRef.current) setDeleteError("The plan could not be deleted. Try again.");
+    } finally {
+      deleteInFlightRef.current = false;
+      if (mountedRef.current) setDeleteBusy(false);
+    }
+  }
 
   return (
     <>
       <AdaptiveScreen
+        contentPaddingTop={0}
         primary={
           <>
             <ScreenHeader
@@ -1663,7 +1725,7 @@ export function LibraryScreen({
                 ? {}
                 : { ref: headingRef as React.Ref<View> })}
               actions={[
-                headerAction,
+                ...(section === "exercises" ? [<PrimaryAction key="create-exercise" label="Create custom exercise" onPress={onCreateExercise} />] : []),
                 (
                   <SecondaryAction
                     label={LIBRARY_ACTION_SHEET_CONFIGURATION.triggerLabel}
@@ -1685,6 +1747,7 @@ export function LibraryScreen({
                 ),
               ]}
               title="Library"
+              density="deep"
             />
             <SegmentedControl
               busySection={busySection}
@@ -1824,6 +1887,9 @@ export function LibraryScreen({
                 tone="error"
               />
             )}
+            {deleteError !== null && deleteSelection === null ? (
+              <InlineNotice heading="Plan could not be deleted" body={deleteError} tone="error" />
+            ) : null}
             {loadFailed ? (
               <InlineNotice
                 action={
@@ -1849,6 +1915,12 @@ export function LibraryScreen({
               </>
             ) : section === "plans" ? (
               <PlansContent
+                {...(deletePlan === undefined ? {} : {
+                  onRequestDelete: (plan: LibraryPlanSummary, trigger: React.RefObject<View | null>) => {
+                    setDeleteError(null);
+                    setDeleteSelection({ plan, trigger });
+                  },
+                })}
                 onClearSearchAndFilters={() => {
                   updateSectionState("plans", { query: "", filters: {} });
                   setStarterFilters({});
@@ -1944,6 +2016,18 @@ export function LibraryScreen({
         />
       )}
       <BottomSheet
+        heading={deleteSelection === null ? "Delete plan" : `Delete ${deleteSelection.plan.name}?`}
+        onCancel={() => { if (!deleteInFlightRef.current) setDeleteSelection(null); }}
+        {...(deleteSelection === null ? {} : { restoreFocusRef: deleteSelection.trigger })}
+        testID="library-delete-plan-sheet"
+        visible={deleteSelection !== null}
+      >
+        <Text>This unused plan will be removed from your Library.</Text>
+        {deleteError === null ? null : <InlineNotice heading="Plan could not be deleted" body={deleteError} tone="error" />}
+        <PrimaryAction label="Delete plan" busy={deleteBusy} onPress={() => { void confirmDeletePlan(); }} />
+        <SecondaryAction label="Keep plan" disabled={deleteBusy} onPress={() => setDeleteSelection(null)} />
+      </BottomSheet>
+      <BottomSheet
         heading={LIBRARY_ACTION_SHEET_CONFIGURATION.heading}
         onCancel={() => setActionsVisible(false)}
         restoreFocusRef={actionsActionRef}
@@ -1997,6 +2081,9 @@ export function libraryScrollOffset(
 }
 
 const styles = StyleSheet.create({
+  planWithActions: {
+    gap: space[1],
+  },
   segmentedControl: {
     borderRadius: radius.standard,
     borderWidth: StyleSheet.hairlineWidth,

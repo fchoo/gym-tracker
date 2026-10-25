@@ -2,6 +2,7 @@ import type {
   MetricIdentity,
   MetricTarget,
 } from "../../../domains/metrics";
+import { LIBRARY_PLAN_DELETION_KEY_PREFIX } from "../../../domains/library/planDeletion";
 import {
   OFF_ADVANCED_TIMING_CONFIG,
   canonicalAdvancedTimingConfigJson,
@@ -575,7 +576,8 @@ async function readPlan(
             state.lifecycle, state.graph_status, state.missing_requirement
      FROM plans plan
      JOIN owned_plan_aggregate_states state ON state.plan_id = plan.id
-     WHERE plan.id = ?`,
+     WHERE plan.id = ?
+       AND NOT EXISTS (SELECT 1 FROM app_settings deleted WHERE deleted.key = '${LIBRARY_PLAN_DELETION_KEY_PREFIX}' || plan.id)`,
     [planId],
   );
   return row;

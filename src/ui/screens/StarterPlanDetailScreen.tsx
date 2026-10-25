@@ -115,20 +115,6 @@ function Overview({
       </View>
       <SectionHeader title="Suggested schedule" tone="card" />
       <Text style={factStyle}>{scheduleSummary(template)}</Text>
-      <SectionHeader title="Progression summary" tone="card" />
-      <Text style={factStyle}>{template.progressionSummary}</Text>
-      <SectionHeader title="Source notes" tone="card" />
-      {template.sourceNotes.map((note) => (
-        <View key={note.id} style={styles.sourceNote}>
-          <Text style={factStyle}>{note.text}</Text>
-          <Text style={[
-            typeScale.label as TextStyle,
-            { color: colors.contentCardTextSecondary },
-          ]}>
-          {`Source: ${starterFactLabel(note.provenance)}`}
-          </Text>
-        </View>
-      ))}
     </ContentCard>
   );
 }

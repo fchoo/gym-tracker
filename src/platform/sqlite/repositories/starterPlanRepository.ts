@@ -1,3 +1,5 @@
+import { LIBRARY_PLAN_DELETION_KEY_PREFIX } from "../../../domains/library/planDeletion";
+import { assertLibraryPlanNotDeleted } from "./libraryPlanDeletionRepository";
 import type {
   AcceptedStarterPack,
   AcceptedScheduleBinding,
@@ -295,6 +297,7 @@ async function readCopies(
      WHERE source.source_namespace = ?
        AND source.template_id = ?
        AND source.source_revision = ?
+       AND NOT EXISTS (SELECT 1 FROM app_settings deleted WHERE deleted.key = '${LIBRARY_PLAN_DELETION_KEY_PREFIX}' || plan.id)
      ORDER BY plan.id`,
     [input.pack.namespace, input.template.id, input.template.revision],
   );
@@ -1203,8 +1206,15 @@ export function createStarterPlanRepository(
     ): Promise<AcceptedStarterPlanActivation> {
       const outcome = await kernel.write<ActivationOutcome>(
         async (transaction) => {
+          if (input.copyChoice?.type === "reactivate_existing") {
+            await assertLibraryPlanNotDeleted(transaction, input.copyChoice.planId);
+          }
           const receipt = await readReceipt(transaction, input.requestId);
           if (receipt !== undefined) {
+            if (receipt.request_sha256 === input.requestSha256) {
+              const result = parseCommittedResult(receipt.result_json);
+              await assertLibraryPlanNotDeleted(transaction, result.plan.id);
+            }
             return receipt.request_sha256 === input.requestSha256
               ? {
                   kind: "result",

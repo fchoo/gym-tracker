@@ -1,3 +1,4 @@
+import { assertLibraryPlanNotDeleted } from "./libraryPlanDeletionRepository";
 import {
   differenceInLocalDays,
   parseLocalDate,
@@ -936,6 +937,7 @@ async function activateRunningScheduleTransaction(
     activatedAtMs: number;
   }>,
 ): Promise<void> {
+  await assertLibraryPlanNotDeleted(transaction, input.planId);
   if (await hasActiveWorkout(transaction)) {
     throw new ScheduleRepositoryError("schedule_active_workout_blocked");
   }
@@ -1107,6 +1109,7 @@ async function activateScheduleTransaction(
   input: ActivateOwnedPlanScheduleRepositoryInput,
   observer: ScheduleRepositoryTestObserver,
 ): Promise<ActivateOwnedPlanScheduleResult> {
+  await assertLibraryPlanNotDeleted(transaction, input.planId);
   const receipt = await readReceipt(transaction, input.requestId);
   if (receipt !== null) {
     return replayResult(

@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react-native";
 import {
   describe,
@@ -1588,4 +1589,68 @@ describe("LibraryScreen committed content update and UI truths", () => {
     expect(await screen.findByLabelText("Search exercises"))
       .toBeOnTheScreen();
   });
+  it("removes the top Create plan banner and keeps create within My Plans", async () => {
+    await renderLibrary();
+    await screen.findByLabelText("Search plans");
+    expect(screen.getByRole("button", { name: "Create plan" })).toBeOnTheScreen();
+    const header = screen.getByTestId("screen-header-actions");
+    expect(within(header).queryByRole("button", { name: "Create plan" })).not.toBeOnTheScreen();
+    expect(screen.getByTestId("library-screen")).toHaveStyle({ paddingTop: 0 });
+  });
+
+  it("offers deletion only for eligible plans and waits for confirmation", async () => {
+    const deletePlan = jest.fn(async () => ({ outcome: "deleted" as const, planId: "unused" }));
+    await renderLibrary({
+      deletePlan,
+      loadLibrary: jest.fn(async () => ({ ...snapshot(), plans: {
+        active: null, owned: [
+          { id: "unused", name: "Unused Plan", daysPerWeek: 1, deletionEligible: true },
+          { id: "used", name: "Used Plan", daysPerWeek: 1, deletionEligible: false },
+        ], starters: [],
+      } })),
+    });
+    await screen.findByRole("button", { name: "Delete Unused Plan" });
+    expect(screen.queryByRole("button", { name: "Delete Used Plan" })).not.toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Delete Unused Plan" }));
+    expect(deletePlan).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", { name: "Keep plan" }));
+    expect(deletePlan).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", { name: "Delete Unused Plan" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Delete plan" }));
+    await waitFor(() => expect(deletePlan).toHaveBeenCalledWith({ planId: "unused" }));
+    await waitFor(() => expect(screen.queryByTestId("library-plan-card-unused")).not.toBeOnTheScreen());
+    expect(screen.getByTestId("library-plan-card-used")).toBeOnTheScreen();
+  });
+
+  it("keeps a plan when an authoritative link appeared after the preview and refreshes eligibility", async () => {
+    const plan = { id: "unused", name: "Unused Plan", daysPerWeek: 1, deletionEligible: true };
+    const initial = { ...snapshot(), plans: { active: null, owned: [plan], starters: [] } };
+    const refreshLibrary = jest.fn(async () => ({ ...initial, plans: {
+      ...initial.plans, owned: [{ ...plan, deletionEligible: false }],
+    } }));
+    await renderLibrary({ loadLibrary: jest.fn(async () => initial), refreshLibrary,
+      deletePlan: jest.fn(async () => ({ outcome: "ineligible" as const, planId: "unused", reason: "workout_linked" as const })),
+    });
+    await fireEvent.press(await screen.findByRole("button", { name: "Delete Unused Plan" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Delete plan" }));
+    await waitFor(() => expect(refreshLibrary).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Delete Unused Plan" })).not.toBeOnTheScreen());
+    expect(screen.getByTestId("library-plan-card-unused")).toBeOnTheScreen();
+    expect(screen.getByText("This plan is linked to a workout and cannot be deleted.")).toBeOnTheScreen();
+  });
+
+  it("prevents duplicate deletion writes while the confirmation is pending", async () => {
+    const pending = deferred<{ outcome: "deleted"; planId: string }>();
+    const deletePlan = jest.fn(() => pending.promise);
+    await renderLibrary({ deletePlan, loadLibrary: jest.fn(async () => ({ ...snapshot(), plans: {
+      active: null, owned: [{ id: "unused", name: "Unused Plan", daysPerWeek: 1, deletionEligible: true }], starters: [],
+    } })) });
+    await fireEvent.press(await screen.findByRole("button", { name: "Delete Unused Plan" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Delete plan" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Delete plan" }));
+    expect(deletePlan).toHaveBeenCalledTimes(1);
+    await act(async () => pending.resolve({ outcome: "deleted", planId: "unused" }));
+    expect(screen.queryByTestId("library-plan-card-unused")).not.toBeOnTheScreen();
+  });
+
 });

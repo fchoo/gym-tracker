@@ -14,6 +14,7 @@ import {
 } from "./restoreCommands";
 
 type MergeTables = Readonly<Record<string, readonly LogicalBackupRow[]>>;
+const LIBRARY_PLAN_DELETION_KEY_PREFIX = "gym_tracker.library_plan_deletion.v1:";
 
 function workoutPreferenceKey(planId: string): string {
   return `gym_tracker.workout_plan_preferences.v1:${planId}`;
@@ -1135,8 +1136,11 @@ function settingPlan(
   const operations = rowsFor(archive, "app_settings").map((source) => {
     let row = source;
     let key = textId(row.key);
-    if (key.startsWith("gym_tracker.workout_plan_preferences.v1:")) {
-      const archivePlanId = key.slice("gym_tracker.workout_plan_preferences.v1:".length);
+    const planSettingPrefix = key.startsWith("gym_tracker.workout_plan_preferences.v1:")
+      ? "gym_tracker.workout_plan_preferences.v1:"
+      : key.startsWith(LIBRARY_PLAN_DELETION_KEY_PREFIX) ? LIBRARY_PLAN_DELETION_KEY_PREFIX : null;
+    if (planSettingPrefix !== null) {
+      const archivePlanId = key.slice(planSettingPrefix.length);
       const localPlanId = planMappings.get(archivePlanId);
       if (localPlanId === undefined) invalid();
       let value: unknown;
@@ -1144,7 +1148,10 @@ function settingPlan(
       if (typeof value !== "object" || value === null || Array.isArray(value)
         || (value as Record<string, unknown>).version !== 1
         || (value as Record<string, unknown>).planId !== archivePlanId) invalid();
-      row = Object.freeze({ ...row, key: workoutPreferenceKey(localPlanId), value_json: JSON.stringify({
+      if (planSettingPrefix === LIBRARY_PLAN_DELETION_KEY_PREFIX
+        && (!Number.isSafeInteger((value as Record<string, unknown>).deletedAtMs)
+          || Number((value as Record<string, unknown>).deletedAtMs) < 0)) invalid();
+      row = Object.freeze({ ...row, key: `${planSettingPrefix}${localPlanId}`, value_json: JSON.stringify({
         ...(value as Record<string, unknown>), planId: localPlanId,
       }) });
       key = textId(row.key);
