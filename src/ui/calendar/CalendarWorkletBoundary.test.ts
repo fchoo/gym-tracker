@@ -14,11 +14,12 @@ type Worklet = ((...args: any[]) => unknown) & {
 // Compile exactly the Android production callbacks, then unpack their closures
 // into a separate UI context. Jest's ordinary Reanimated mock runs both sides
 // on JS and cannot detect synchronous calls to a remote JS function.
+const androidProductionCaller = { name: "metro", platform: "android", isDev: false };
 const compiled = transformFileSync(path.join(__dirname, "CalendarMonthViewport.tsx"), {
   babelrc: false,
   configFile: false,
   presets: ["babel-preset-expo"],
-  caller: { name: "metro", platform: "android", isDev: false },
+  caller: androidProductionCaller,
   envName: "production",
 })!.code!;
 
@@ -147,7 +148,7 @@ function harness(command: CalendarMotionCommand | null = null) {
     } : null,
     month: "2026-11-01", onCancel: jest.fn(), onComplete, onPreview, onRelease, onInteractionDiagnosticComplete,
     renderMonth: () => null, renderWeek: () => null,
-    transition: { mode: "month", phase: command === null ? "idle" : "settling", epoch: command?.epoch ?? 0, reducedMotion: false },
+    transition: { mode: "month", phase: command === null ? "idle" : "settling", epoch: command !== null && "epoch" in command ? command.epoch : 0, reducedMotion: false },
   });
   tree.props.children.props.children.props.onLayout({ nativeEvent: { layout: { width: 400, height: 500 } } });
   return {
