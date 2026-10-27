@@ -62,3 +62,8 @@ Planning estimate, not measured runtime:30–60minutes for evidence reconciliati
 ## Scope of this proposal
 
 No new product feature, public deployment, phone data reset, broad retesting, dependency installation, new worktree, approval re-request for already authorized actions or memory update is included. The prior personal phone workflow remains closed until execution of a new acceptance scope is explicitly requested.
+
+
+## Effective profile correction — 2026-10-27
+
+The original approved proposal/profile remains retained. The effectivev2 profile reconciles two accidentally included FIT prototype pairs with the prior final owner exclusion of manualFIT import:153 pairs required,6695 deferred; all172 requirements,208 integrity files and112 recovery transitions unchanged. See `VERIFICATION-CLOSEOUT-SCOPE-ERRATUM-20261027.md`; no new owner approval is claimed, no omitted case becomes PASS.

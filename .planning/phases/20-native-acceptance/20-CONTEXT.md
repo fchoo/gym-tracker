@@ -88,3 +88,8 @@ Public release ceremony/Terminal Seal, store distribution, Wear OS, Health Conne
 ## Personal-use acceptance execution approved — 2026-10-27
 
 The owner authorized the concrete reduced gap-only proposal. [Profile](../../verification/personal-closeout-profile-20261027.json) explicitly selects155 UI observations and defers6693 configurations; real SQLite integrity and all112 recovery transitions remain unsampled. Retained passing evidence is reusable only with proved compatible input identity. Personal-profile completion is separate from the unchanged exhaustive final seal. Current outcome: evidence reconciliation in progress, no new native PASS claimed.
+
+
+## Effective source-precedence correction — 2026-10-27
+
+The separate effective profile is `personal-use-closeout-20261027-v2`:153 required/6695 deferred visual pairs, with172 requirements,208 integrity files, ten SQLite categories,112 recovery transitions and eight provider probes unchanged. BW-099/BW-103 are explicitly deferred superseded FIT prototype states under the existing owner account-JSON selection; they never become PASS. Original155-profile evidence and the exhaustive contract remain preserved. See `../../verification/VERIFICATION-CLOSEOUT-SCOPE-ERRATUM-20261027.md` and the effective profile SHA256 `ecf1c6d08ece2e5b9c56c3d5fdfbc00af47633c51a3d0925a8871f8afcceeee9`. Execution remains in progress.
