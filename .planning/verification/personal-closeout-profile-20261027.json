@@ -185,8 +185,8 @@
   "configuration_ids": [
     "AP-L-C360-P-F100",
     "AP-D-C360-P-F100",
-    "AP-L-C360-P-F200",
-    "AP-D-C360-L-F200",
+    "AP-D-C360-P-F200",
+    "AP-L-C360-L-F200",
     "AP-L-M600-P-F100"
   ],
   "required_ui_observations": [
@@ -668,99 +668,99 @@
     },
     {
       "state_id": "BW-001",
-      "configuration_id": "AP-L-C360-P-F200"
+      "configuration_id": "AP-D-C360-P-F200"
     },
     {
       "state_id": "BW-008",
-      "configuration_id": "AP-L-C360-P-F200"
+      "configuration_id": "AP-D-C360-P-F200"
     },
     {
       "state_id": "BW-009",
-      "configuration_id": "AP-L-C360-P-F200"
+      "configuration_id": "AP-D-C360-P-F200"
     },
     {
       "state_id": "BW-017",
-      "configuration_id": "AP-L-C360-P-F200"
+      "configuration_id": "AP-D-C360-P-F200"
     },
     {
       "state_id": "BW-022",
-      "configuration_id": "AP-L-C360-P-F200"
+      "configuration_id": "AP-D-C360-P-F200"
     },
     {
       "state_id": "BW-026",
-      "configuration_id": "AP-L-C360-P-F200"
+      "configuration_id": "AP-D-C360-P-F200"
     },
     {
       "state_id": "BW-034",
-      "configuration_id": "AP-L-C360-P-F200"
+      "configuration_id": "AP-D-C360-P-F200"
     },
     {
       "state_id": "BW-038",
-      "configuration_id": "AP-L-C360-P-F200"
+      "configuration_id": "AP-D-C360-P-F200"
     },
     {
       "state_id": "BW-046",
-      "configuration_id": "AP-L-C360-P-F200"
+      "configuration_id": "AP-D-C360-P-F200"
     },
     {
       "state_id": "BW-057",
-      "configuration_id": "AP-L-C360-P-F200"
+      "configuration_id": "AP-D-C360-P-F200"
     },
     {
       "state_id": "BW-061",
-      "configuration_id": "AP-L-C360-P-F200"
+      "configuration_id": "AP-D-C360-P-F200"
     },
     {
       "state_id": "BW-100",
-      "configuration_id": "AP-L-C360-P-F200"
+      "configuration_id": "AP-D-C360-P-F200"
     },
     {
       "state_id": "BW-001",
-      "configuration_id": "AP-D-C360-L-F200"
+      "configuration_id": "AP-L-C360-L-F200"
     },
     {
       "state_id": "BW-008",
-      "configuration_id": "AP-D-C360-L-F200"
+      "configuration_id": "AP-L-C360-L-F200"
     },
     {
       "state_id": "BW-009",
-      "configuration_id": "AP-D-C360-L-F200"
+      "configuration_id": "AP-L-C360-L-F200"
     },
     {
       "state_id": "BW-017",
-      "configuration_id": "AP-D-C360-L-F200"
+      "configuration_id": "AP-L-C360-L-F200"
     },
     {
       "state_id": "BW-022",
-      "configuration_id": "AP-D-C360-L-F200"
+      "configuration_id": "AP-L-C360-L-F200"
     },
     {
       "state_id": "BW-026",
-      "configuration_id": "AP-D-C360-L-F200"
+      "configuration_id": "AP-L-C360-L-F200"
     },
     {
       "state_id": "BW-034",
-      "configuration_id": "AP-D-C360-L-F200"
+      "configuration_id": "AP-L-C360-L-F200"
     },
     {
       "state_id": "BW-038",
-      "configuration_id": "AP-D-C360-L-F200"
+      "configuration_id": "AP-L-C360-L-F200"
     },
     {
       "state_id": "BW-046",
-      "configuration_id": "AP-D-C360-L-F200"
+      "configuration_id": "AP-L-C360-L-F200"
     },
     {
       "state_id": "BW-057",
-      "configuration_id": "AP-D-C360-L-F200"
+      "configuration_id": "AP-L-C360-L-F200"
     },
     {
       "state_id": "BW-061",
-      "configuration_id": "AP-D-C360-L-F200"
+      "configuration_id": "AP-L-C360-L-F200"
     },
     {
       "state_id": "BW-100",
-      "configuration_id": "AP-D-C360-L-F200"
+      "configuration_id": "AP-L-C360-L-F200"
     },
     {
       "state_id": "BW-001",
@@ -814,13 +814,13 @@
   "deferred_ui_observations": [
     {
       "state_id": "BW-001",
-      "configuration_id": "AP-L-C360-L-F100",
+      "configuration_id": "AP-L-C360-P-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-001",
-      "configuration_id": "AP-L-C360-L-F200",
+      "configuration_id": "AP-L-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -892,13 +892,13 @@
     },
     {
       "state_id": "BW-001",
-      "configuration_id": "AP-D-C360-P-F200",
+      "configuration_id": "AP-D-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-001",
-      "configuration_id": "AP-D-C360-L-F100",
+      "configuration_id": "AP-D-C360-L-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -3436,13 +3436,13 @@
     },
     {
       "state_id": "BW-008",
-      "configuration_id": "AP-L-C360-L-F100",
+      "configuration_id": "AP-L-C360-P-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-008",
-      "configuration_id": "AP-L-C360-L-F200",
+      "configuration_id": "AP-L-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -3514,13 +3514,13 @@
     },
     {
       "state_id": "BW-008",
-      "configuration_id": "AP-D-C360-P-F200",
+      "configuration_id": "AP-D-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-008",
-      "configuration_id": "AP-D-C360-L-F100",
+      "configuration_id": "AP-D-C360-L-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -3790,13 +3790,13 @@
     },
     {
       "state_id": "BW-009",
-      "configuration_id": "AP-L-C360-L-F100",
+      "configuration_id": "AP-L-C360-P-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-009",
-      "configuration_id": "AP-L-C360-L-F200",
+      "configuration_id": "AP-L-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -3868,13 +3868,13 @@
     },
     {
       "state_id": "BW-009",
-      "configuration_id": "AP-D-C360-P-F200",
+      "configuration_id": "AP-D-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-009",
-      "configuration_id": "AP-D-C360-L-F100",
+      "configuration_id": "AP-D-C360-L-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -6790,13 +6790,13 @@
     },
     {
       "state_id": "BW-017",
-      "configuration_id": "AP-L-C360-L-F100",
+      "configuration_id": "AP-L-C360-P-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-017",
-      "configuration_id": "AP-L-C360-L-F200",
+      "configuration_id": "AP-L-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -6868,13 +6868,13 @@
     },
     {
       "state_id": "BW-017",
-      "configuration_id": "AP-D-C360-P-F200",
+      "configuration_id": "AP-D-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-017",
-      "configuration_id": "AP-D-C360-L-F100",
+      "configuration_id": "AP-D-C360-L-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -8656,13 +8656,13 @@
     },
     {
       "state_id": "BW-022",
-      "configuration_id": "AP-L-C360-L-F100",
+      "configuration_id": "AP-L-C360-P-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-022",
-      "configuration_id": "AP-L-C360-L-F200",
+      "configuration_id": "AP-L-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -8734,13 +8734,13 @@
     },
     {
       "state_id": "BW-022",
-      "configuration_id": "AP-D-C360-P-F200",
+      "configuration_id": "AP-D-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-022",
-      "configuration_id": "AP-D-C360-L-F100",
+      "configuration_id": "AP-D-C360-L-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -10144,13 +10144,13 @@
     },
     {
       "state_id": "BW-026",
-      "configuration_id": "AP-L-C360-L-F100",
+      "configuration_id": "AP-L-C360-P-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-026",
-      "configuration_id": "AP-L-C360-L-F200",
+      "configuration_id": "AP-L-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -10222,13 +10222,13 @@
     },
     {
       "state_id": "BW-026",
-      "configuration_id": "AP-D-C360-P-F200",
+      "configuration_id": "AP-D-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-026",
-      "configuration_id": "AP-D-C360-L-F100",
+      "configuration_id": "AP-D-C360-L-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -13144,13 +13144,13 @@
     },
     {
       "state_id": "BW-034",
-      "configuration_id": "AP-L-C360-L-F100",
+      "configuration_id": "AP-L-C360-P-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-034",
-      "configuration_id": "AP-L-C360-L-F200",
+      "configuration_id": "AP-L-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -13222,13 +13222,13 @@
     },
     {
       "state_id": "BW-034",
-      "configuration_id": "AP-D-C360-P-F200",
+      "configuration_id": "AP-D-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-034",
-      "configuration_id": "AP-D-C360-L-F100",
+      "configuration_id": "AP-D-C360-L-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -14632,13 +14632,13 @@
     },
     {
       "state_id": "BW-038",
-      "configuration_id": "AP-L-C360-L-F100",
+      "configuration_id": "AP-L-C360-P-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-038",
-      "configuration_id": "AP-L-C360-L-F200",
+      "configuration_id": "AP-L-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -14710,13 +14710,13 @@
     },
     {
       "state_id": "BW-038",
-      "configuration_id": "AP-D-C360-P-F200",
+      "configuration_id": "AP-D-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-038",
-      "configuration_id": "AP-D-C360-L-F100",
+      "configuration_id": "AP-D-C360-L-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -17632,13 +17632,13 @@
     },
     {
       "state_id": "BW-046",
-      "configuration_id": "AP-L-C360-L-F100",
+      "configuration_id": "AP-L-C360-P-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-046",
-      "configuration_id": "AP-L-C360-L-F200",
+      "configuration_id": "AP-L-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -17710,13 +17710,13 @@
     },
     {
       "state_id": "BW-046",
-      "configuration_id": "AP-D-C360-P-F200",
+      "configuration_id": "AP-D-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-046",
-      "configuration_id": "AP-D-C360-L-F100",
+      "configuration_id": "AP-D-C360-L-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -21766,13 +21766,13 @@
     },
     {
       "state_id": "BW-057",
-      "configuration_id": "AP-L-C360-L-F100",
+      "configuration_id": "AP-L-C360-P-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-057",
-      "configuration_id": "AP-L-C360-L-F200",
+      "configuration_id": "AP-L-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -21844,13 +21844,13 @@
     },
     {
       "state_id": "BW-057",
-      "configuration_id": "AP-D-C360-P-F200",
+      "configuration_id": "AP-D-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-057",
-      "configuration_id": "AP-D-C360-L-F100",
+      "configuration_id": "AP-D-C360-L-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -23254,13 +23254,13 @@
     },
     {
       "state_id": "BW-061",
-      "configuration_id": "AP-L-C360-L-F100",
+      "configuration_id": "AP-L-C360-P-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-061",
-      "configuration_id": "AP-L-C360-L-F200",
+      "configuration_id": "AP-L-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -23332,13 +23332,13 @@
     },
     {
       "state_id": "BW-061",
-      "configuration_id": "AP-D-C360-P-F200",
+      "configuration_id": "AP-D-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-061",
-      "configuration_id": "AP-D-C360-L-F100",
+      "configuration_id": "AP-D-C360-L-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -37972,13 +37972,13 @@
     },
     {
       "state_id": "BW-100",
-      "configuration_id": "AP-L-C360-L-F100",
+      "configuration_id": "AP-L-C360-P-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-100",
-      "configuration_id": "AP-L-C360-L-F200",
+      "configuration_id": "AP-L-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -38050,13 +38050,13 @@
     },
     {
       "state_id": "BW-100",
-      "configuration_id": "AP-D-C360-P-F200",
+      "configuration_id": "AP-D-C360-L-F100",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
     {
       "state_id": "BW-100",
-      "configuration_id": "AP-D-C360-L-F100",
+      "configuration_id": "AP-D-C360-L-F200",
       "disposition": "DEFERRED",
       "reason": "owner-approved personal-use covering configuration set"
     },
@@ -40996,5 +40996,226 @@
     "owner_general_verification_not_invented_as_detailed_attendance": true
   },
   "completion_label": "personal-use-verification-complete-with-deferred-configurations",
-  "original_exhaustive_contract": "preserved; not claimed passed"
+  "original_exhaustive_contract": "preserved; not claimed passed",
+  "critical_integrity_files": [
+    "app/__garmin-bridge-diagnostic.tsx",
+    "app/__garmin-sync-diagnostic.tsx",
+    "app/__v12-recovery-archive.tsx",
+    "scripts/build-android-cffi.mjs",
+    "scripts/capture-v12-visual.mjs",
+    "scripts/compare-v12-visual.mjs",
+    "scripts/create-v12-readiness-handoff.mjs",
+    "scripts/garmin-android-native.mjs",
+    "scripts/garmin-cli-coverage-evidence.mjs",
+    "scripts/native-contract-log-transport.mjs",
+    "scripts/phase20-subprocess-coverage.mjs",
+    "scripts/v12-airplane-mode-status.mjs",
+    "scripts/v12-artifact-privacy.mjs",
+    "scripts/v12-atomic-shard-publication.mjs",
+    "scripts/v12-blocker-row-resolver.mjs",
+    "scripts/v12-calendar-artifact-transport.mjs",
+    "scripts/v12-native-adapter.mjs",
+    "scripts/v12-native-execution-origin.mjs",
+    "scripts/v12-native-rollback-bridge.mjs",
+    "scripts/v12-native-time-budgets.mjs",
+    "scripts/v12-posix-process-tree.mjs",
+    "scripts/v12-production-native-calendar-action.mjs",
+    "scripts/v12-production-native-quality-actions.mjs",
+    "scripts/v12-rollback-archive-inspection.mjs",
+    "scripts/v12-rollback-evidence.mjs",
+    "scripts/v12-sqlite-producer-contract.mjs",
+    "scripts/v12-sqlite-shard.mjs",
+    "scripts/v12-visual-streaming.mjs",
+    "scripts/validate-development-test-native-access.mjs",
+    "scripts/verify-garmin-android-binaries.mjs",
+    "scripts/verify-garmin-python-lock.mjs",
+    "scripts/verify-personal-closeout.mjs",
+    "scripts/verify-v12-native-evidence.mjs",
+    "src/bootstrap/garminImportRuntime.tsx",
+    "src/bootstrap/phase16CalendarTestControls.ts",
+    "src/bootstrap/phase18GarminBenchmarkRuntime.ts",
+    "src/bootstrap/runningPlanRuntime.tsx",
+    "src/bootstrap/trainingFoundationRuntime.ts",
+    "src/bootstrap/v12AcceptanceBenchmark.ts",
+    "src/bootstrap/workoutAppRuntime.tsx",
+    "src/domains/activities/activityDetails.ts",
+    "src/domains/activities/activityIdentity.ts",
+    "src/domains/activities/garminActivitySourcePort.ts",
+    "src/domains/activities/importCommands.ts",
+    "src/domains/advancedTiming/advancedTimingCommands.ts",
+    "src/domains/advancedTiming/advancedTimingConfig.ts",
+    "src/domains/advancedTiming/advancedTimingState.ts",
+    "src/domains/backup/automaticBackupContracts.ts",
+    "src/domains/backup/automaticBackupCoordinator.ts",
+    "src/domains/backup/automaticBackupScheduler.ts",
+    "src/domains/bodyweight/commands.ts",
+    "src/domains/bodyweight/contracts.ts",
+    "src/domains/content/catalog.ts",
+    "src/domains/history/metricHistory.ts",
+    "src/domains/library/customExerciseCommands.ts",
+    "src/domains/library/search.ts",
+    "src/domains/metrics/aggregates.ts",
+    "src/domains/metrics/comparators.ts",
+    "src/domains/metrics/contracts.ts",
+    "src/domains/metrics/exposure.ts",
+    "src/domains/metrics/migrateCustomExerciseMetricProfile.ts",
+    "src/domains/metrics/observations.ts",
+    "src/domains/metrics/registry.ts",
+    "src/domains/plans/activateStarterPlan.ts",
+    "src/domains/plans/ownedPlanCommands.ts",
+    "src/domains/plans/planImpactCommands.ts",
+    "src/domains/portability/automaticPortability.ts",
+    "src/domains/portability/backupCommands.ts",
+    "src/domains/portability/backupContracts.ts",
+    "src/domains/portability/backupFormat.ts",
+    "src/domains/portability/csvExport.ts",
+    "src/domains/portability/mergeCommands.ts",
+    "src/domains/portability/mergePlan.ts",
+    "src/domains/portability/portableIdentity.ts",
+    "src/domains/portability/restoreCommands.ts",
+    "src/domains/progress/dashboardProjection.ts",
+    "src/domains/progress/periodProjection.ts",
+    "src/domains/progress/relativeStrength.ts",
+    "src/domains/progress/runningPacing.ts",
+    "src/domains/progression/loadRepsV1.ts",
+    "src/domains/progression/recommendationCommands.ts",
+    "src/domains/progression/recommendationContracts.ts",
+    "src/domains/rest/restCommands.ts",
+    "src/domains/rest/restState.ts",
+    "src/domains/running/activityMatchCommands.ts",
+    "src/domains/running/commands.ts",
+    "src/domains/running/contracts.ts",
+    "src/domains/running/lifecycle.ts",
+    "src/domains/scheduling/activation.ts",
+    "src/domains/scheduling/localDate.ts",
+    "src/domains/scheduling/scheduleCommands.ts",
+    "src/domains/scheduling/scheduleState.ts",
+    "src/domains/scheduling/timeZone.ts",
+    "src/domains/shared/clock.ts",
+    "src/domains/shared/contracts.ts",
+    "src/domains/shared/diagnostics.ts",
+    "src/domains/shared/errors.ts",
+    "src/domains/workout/activeWorkout.ts",
+    "src/domains/workout/finishWorkout.ts",
+    "src/domains/workout/outcomes.ts",
+    "src/domains/workout/sessionDetail.ts",
+    "src/domains/workout/sessionExerciseCommands.ts",
+    "src/domains/workout/setCommands.ts",
+    "src/domains/workout/startWorkout.ts",
+    "src/domains/workout/undoCompletedSet.ts",
+    "src/platform/crypto/aesGcmArchivePort.ts",
+    "src/platform/crypto/candidateKdfDescriptor.ts",
+    "src/platform/crypto/passwordKdf.ts",
+    "src/platform/crypto/runtimeSha256.ts",
+    "src/platform/files/expoBackupFilePort.ts",
+    "src/platform/files/expoCsvFilePort.ts",
+    "src/platform/garmin/canonicalGarminPayload.ts",
+    "src/platform/garmin/garminActivityAdapter.ts",
+    "src/platform/garmin/garminSyncCoordinator.ts",
+    "src/platform/garmin/normalizeGarminActivity.ts",
+    "src/platform/google/driveBackupStoreAdapter.ts",
+    "src/platform/google/googleAuthAdapter.ts",
+    "src/platform/notifications/expoForegroundRestFeedbackAdapter.ts",
+    "src/platform/notifications/expoRestNotificationAdapter.ts",
+    "src/platform/notifications/restNotificationReconciler.ts",
+    "src/platform/preferences/restAlertPreferenceStore.ts",
+    "src/platform/sqlite/connection.ts",
+    "src/platform/sqlite/effects/effectRunner.ts",
+    "src/platform/sqlite/effects/effectStore.ts",
+    "src/platform/sqlite/foregroundRestFeedbackStore.ts",
+    "src/platform/sqlite/migrationRunner.ts",
+    "src/platform/sqlite/migrations/0001_initial.ts",
+    "src/platform/sqlite/migrations/0002_outcome_effort.ts",
+    "src/platform/sqlite/migrations/0003_exercise_history_index.ts",
+    "src/platform/sqlite/migrations/0004_content_library.ts",
+    "src/platform/sqlite/migrations/0005_exercise_search_fts.ts",
+    "src/platform/sqlite/migrations/0006_metric_profiles.ts",
+    "src/platform/sqlite/migrations/0008_schedule_activation.ts",
+    "src/platform/sqlite/migrations/0009_owned_plans.ts",
+    "src/platform/sqlite/migrations/0010_owned_recommendations.ts",
+    "src/platform/sqlite/migrations/0011_foreground_rest_feedback.ts",
+    "src/platform/sqlite/migrations/0012_foreground_rest_feedback_attempts.ts",
+    "src/platform/sqlite/migrations/0015_progression_evidence.ts",
+    "src/platform/sqlite/migrations/0016_portability_restore_state.ts",
+    "src/platform/sqlite/migrations/0018_workout_remove_receipt_entity_ids.ts",
+    "src/platform/sqlite/migrations/0019_session_exercise_editing.ts",
+    "src/platform/sqlite/migrations/0020_session_exercise_edit_receipts.ts",
+    "src/platform/sqlite/migrations/0021_advanced_set_timing.ts",
+    "src/platform/sqlite/migrations/0022_portable_owner_identities.ts",
+    "src/platform/sqlite/migrations/0023_automatic_drive_backup.ts",
+    "src/platform/sqlite/migrations/0028_multi_plan_running_foundation.ts",
+    "src/platform/sqlite/migrations/0029_running_session_roots.ts",
+    "src/platform/sqlite/migrations/0030_imported_activity_evidence.ts",
+    "src/platform/sqlite/migrations/0031_bodyweight_source_history.ts",
+    "src/platform/sqlite/migrations/0032_strength_occurrence_provenance.ts",
+    "src/platform/sqlite/migrations/0033_completed_set_correction_receipts.ts",
+    "src/platform/sqlite/migrations/0034_running_activity_match_ledger.ts",
+    "src/platform/sqlite/migrations/0035_imported_activity_lifecycle_state.ts",
+    "src/platform/sqlite/migrations/0037_exercise_instruction_sets.ts",
+    "src/platform/sqlite/migrations/0038_running_plan_lifecycle_receipts.ts",
+    "src/platform/sqlite/migrations/0039_running_session_slot_membership.ts",
+    "src/platform/sqlite/migrations/0040_schedule_collision_outcomes.ts",
+    "src/platform/sqlite/migrations/0045_recommendation_decision_receipts.ts",
+    "src/platform/sqlite/migrations/index.ts",
+    "src/platform/sqlite/recoveryBackup.ts",
+    "src/platform/sqlite/repositories/advancedTimingRepository.ts",
+    "src/platform/sqlite/repositories/automaticBackupStateRepository.ts",
+    "src/platform/sqlite/repositories/automaticSnapshotCapture.ts",
+    "src/platform/sqlite/repositories/bodyweightRepository.ts",
+    "src/platform/sqlite/repositories/contentRepository.ts",
+    "src/platform/sqlite/repositories/csvExportRepository.ts",
+    "src/platform/sqlite/repositories/customExerciseRepository.ts",
+    "src/platform/sqlite/repositories/exerciseSearchIndexRepository.ts",
+    "src/platform/sqlite/repositories/garminSyncSummaryRepository.ts",
+    "src/platform/sqlite/repositories/historyRepository.ts",
+    "src/platform/sqlite/repositories/importedActivityRepository.ts",
+    "src/platform/sqlite/repositories/libraryPlanDeletionRepository.ts",
+    "src/platform/sqlite/repositories/librarySearchRepository.ts",
+    "src/platform/sqlite/repositories/logicalBackupRepository.ts",
+    "src/platform/sqlite/repositories/logicalMergeRepository.ts",
+    "src/platform/sqlite/repositories/logicalRestoreRepository.ts",
+    "src/platform/sqlite/repositories/metricRepository.ts",
+    "src/platform/sqlite/repositories/ownedPlanRepository.ts",
+    "src/platform/sqlite/repositories/planImpactRepository.ts",
+    "src/platform/sqlite/repositories/plansWorkoutRepository.ts",
+    "src/platform/sqlite/repositories/progressRepository.ts",
+    "src/platform/sqlite/repositories/restorePreflightAdapters.ts",
+    "src/platform/sqlite/repositories/restoreReconciliationRepository.ts",
+    "src/platform/sqlite/repositories/runningActivityMatchRepository.ts",
+    "src/platform/sqlite/repositories/runningPlanRepository.ts",
+    "src/platform/sqlite/repositories/scheduleRepository.ts",
+    "src/platform/sqlite/repositories/starterPlanRepository.ts",
+    "src/platform/sqlite/repositories/trainingCalendarRepository.ts",
+    "src/platform/sqlite/repositories/workoutOutcomeRepository.ts",
+    "src/platform/sqlite/serializedWriter.ts",
+    "src/platform/sqlite/sqliteKernel.ts",
+    "src/testing/contracts/contractProgress.ts",
+    "src/testing/contracts/phase15Workout.contract.ts",
+    "src/testing/contracts/progressNativeDiagnostics.ts",
+    "src/testing/contracts/v12Acceptance.contract.ts",
+    "src/testing/contracts/v12Accessibility.contract.ts",
+    "src/testing/contracts/v12CalendarAcceptance.contract.ts",
+    "src/testing/contracts/v12GarminAcceptance.contract.ts",
+    "src/testing/contracts/v12Recovery.contract.ts",
+    "src/testing/garminBridgeDiagnostic.ts",
+    "src/testing/garminSyncDiagnostic.ts",
+    "src/testing/v12NativeAcceptanceExecutor.ts",
+    "src/testing/v12NativeContractLogTransport.ts",
+    "src/testing/v12NativeRollbackBridge.ts",
+    "src/testing/v12RecoveryLogTransport.ts",
+    "src/testing/v12RecoveryRootContext.ts",
+    "src/ui/calendar/calendarTransitionController.ts",
+    "src/ui/garmin/useGarminConnectionController.ts"
+  ],
+  "required_route_probes": [
+    "settings-production-provider",
+    "removed-sessions-production-provider",
+    "backup-options",
+    "restore-review",
+    "completed-session-detail",
+    "history-correction",
+    "completion-readback",
+    "toast-after-confirmed-action"
+  ],
+  "route_probe_rule": "These distinct normal route/provider checks supplement the107-state registry. Synthetic screen/state captures do not establish provider integration, authenticated Garmin behavior or actual repository completion."
 }

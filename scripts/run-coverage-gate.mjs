@@ -599,6 +599,7 @@ const integrityCriticalFiles = [
   "src/platform/sqlite/repositories/automaticSnapshotCapture.ts",
   "src/platform/sqlite/repositories/bodyweightRepository.ts",
   "src/platform/sqlite/repositories/historyRepository.ts",
+  "src/platform/sqlite/repositories/libraryPlanDeletionRepository.ts",
   "src/platform/sqlite/repositories/garminSyncSummaryRepository.ts",
   "src/platform/sqlite/repositories/importedActivityRepository.ts",
   "src/platform/sqlite/repositories/plansWorkoutRepository.ts",

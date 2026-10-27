@@ -206,6 +206,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   assert.ok(gate.includes('["unit", "components", "sqlite-host", "integration", "native-router"]'));
   assert.match(gate, /const phase18IntegrityCriticalFiles = \[\s+"plugins\/withGarminConnectModule\.ts"/u);
   assert.match(gate, /const integrityCriticalFiles = \[\s+"plugins\/withGarminConnectModule\.ts"/u);
+  assert.ok(gate.includes('"src/platform/sqlite/repositories/libraryPlanDeletionRepository.ts"'));
   assert.match(gate, /const phase18TargetedTests = \[\s+"plugins\/withGarminConnectModule\.test\.ts"/u);
   assert.match(
     readFileSync("scripts/capture-v12-visual.test.mjs", "utf8"),
