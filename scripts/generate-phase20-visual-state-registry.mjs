@@ -121,14 +121,14 @@ const readinessTestIdFor = (component, name) => ({
 const scenarioStepsFor = (name) => {
   if (name === "appearance") return [{ action: "tap_id", value: "root-settings-trigger-index" }];
   if (name.startsWith("workout-day-")) {
-    const dates = ["2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02"];
-    return [{ action: "tap_id", value: `workout-day-preview-${dates[Number(name.at(-1))]}` }];
+    // Current owner scope uses dated fixture contexts, not a day toolbar.
+    return [];
   }
   if (name === "active-set-editor") return [{ action: "tap_text", value: "Current" }];
   if (name === "active-plan-settings") return [{ action: "tap_text", value: "More workout actions" }, { action: "tap_text", value: "Plan settings" }];
   if (name === "view-back-squat-trend") return [{ action: "tap_text", value: "View Back Squat trend" }];
   if (name === "open-back-squat-menu") return [{ action: "tap_text", value: "Open Back Squat menu" }];
-  if (name === "active-exercise-picker") return [{ action: "tap_id", value: "add-exercise" }];
+  if (name === "active-exercise-picker") return [{ action: "tap_text", value: "Add exercise" }];
   if (name === "set-action-menu") return [{ action: "tap_text", value: "Add set" }];
   if (name === "calendar-key") return [{ action: "tap_id", value: "calendar-info-action" }];
   if (name === "calendar-next") return [{ action: "tap_text", value: "Show November 2026" }];
@@ -146,7 +146,7 @@ const scenarioStepsFor = (name) => {
   if (name.endsWith("-12w")) steps.push({ action: "tap_text", value: "12 weeks" });
   if (name.endsWith("-all") && name !== "progress-all") steps.push({ action: "tap_text", value: "All time" });
   if (name.startsWith("running-effort-")) steps.push({ action: "tap_text", value: `Open best efforts for ${name.endsWith("2.4") ? "2.4 km" : name.endsWith("10") ? "10 km" : "Half Marathon"}` });
-  if (name.startsWith("running-target-")) steps.push({ action: "tap_text", value: `Set target for ${name.endsWith("2.4") ? "2.4 km" : name.endsWith("10") ? "10 km" : "Half Marathon"}` });
+  if (name.startsWith("running-target-")) steps.push({ action: "tap_text", value: `Edit target for ${name.endsWith("2.4") ? "2.4 km" : name.endsWith("10") ? "10 km" : "Half Marathon"}` });
   if (name === "progress-recommendation") steps.push({ action: "tap_text", value: "Review target for Back Squat" });
   if (name === "bodyweight-history") return [{ action: "tap_text", value: "Body metrics" }];
   if (name === "progress-settings") return [{ action: "tap_text", value: "Settings" }];
@@ -157,58 +157,114 @@ const scenarioStepsFor = (name) => {
   return steps;
 };
 
-const readinessSemanticsFor = (component, name) => {
-  if (component === "TodayScreen") return ["Workout"];
-  if (component === "ActiveWorkoutScreen") return ["Active"];
-  if (component === "CalendarScreen") return ["Calendar"];
-  if (component === "PlannedWorkoutDetailScreen") return ["Workout preview"];
-  if (component === "LibraryScreen") return ["Library"];
-  if (component === "OwnedPlanDetailScreen") return [name === "library-plan-strength" ? "Strength Reset" : "Full Body Foundation"];
-  if (component === "StarterPlanDetailScreen") return [name === "library-plan-home" ? "Minimal Equipment Full Body" : "Full Body Foundation"];
-  if (component === "StarterActivationScreen") return ["Full Body Foundation"];
-  if (component === "OwnedPlanEditorScreen") return [name === "create-strength" ? "Create plan" : "Plan editor"];
-  if (component === "ScheduleEditorScreen") return ["Schedule"];
-  if (component === "RunningPlanDetailScreen") return ["Running"];
-  if (component === "RunningPlanEditorScreen") return [name === "create-running" ? "Create running plan" : "Edit running plan"];
-  if (component === "RunningSessionEditorScreen") return ["Workout type"];
-  if (component === "PlanTypeChooserScreen") return ["What are you training for?"];
-  if (component === "ExerciseDetailScreen") return ["Back Squat"];
-  if (component === "ExerciseEditorScreen") return [name === "custom-exercise-create" ? "Create exercise" : "Tempo Goblet Squat"];
-  if (component === "ExerciseHistoryScreen") return [name.endsWith("squat") ? "Back Squat" : name.endsWith("bench") ? "Bench Press" : "Plank"];
-  if (component === "ProgressScreen") return ["Progress"];
-  if (component === "GarminSyncScreen") return ["Garmin Sync"];
-  if (component === "ImportedActivityDetailScreen") return ["Activity detail"];
-  if (component === "ActivityMatchScreen") return ["Match activity"];
-  throw new Error(`phase20_visual_state_readiness_missing:${name}`);
-};
-
-function linesFor(entry) {
-  return [...new Set(entry.text.split(/\r?\n/u).map((line) => line.trim()).filter((line) => line.length > 2
-    && line !== "9:41" && line !== "▮ ◒" && !["Workout", "Calendar", "Library", "Progress"].includes(line)))];
+// Native readiness follows production callbacks. Browser controls remain in
+// interactions/reference as retained authority; they are not native selectors.
+function productionReadinessFor(component, name, fixtureVariant) {
+  const action = (label, id = null) => ({ id, label });
+  const back = action("Go back");
+  const rootSettings = (root) => action("Open App Settings", `root-settings-trigger-${root}`);
+  const bases = {
+    PlannedWorkoutDetailScreen: { semantics: ["Workout preview", "Planned Strength target facts"], actions: [action("Back to Calendar")] },
+    OwnedPlanDetailScreen: { semantics: [name === "library-plan-strength" ? "Strength Reset" : "Full Body Foundation", "Edit plan"], actions: [back, action("Edit plan"), action("Edit schedule"), action("Duplicate plan")] },
+    StarterPlanDetailScreen: { semantics: [name === "library-plan-home" ? "Minimal Equipment Full Body" : "Full Body Foundation", "Activate plan"], actions: [back, action("Save editable copy"), action("Activate plan")] },
+    StarterActivationScreen: { semantics: ["Schedule setup", "Start date"], actions: [back, action("Start date"), action("Activate plan")] },
+    OwnedPlanEditorScreen: name === "create-strength"
+      ? { semantics: ["Create my own", "First day name"], actions: [back, action("Plan name", "owned-plan-create-name"), action("First day name", "owned-plan-create-first-day"), action("Create draft")] }
+      : { semantics: ["Plan editor", "Plan name"], actions: [back, action("Plan name", "owned-plan-editor-name"), action("Save Plan Changes")] },
+    ScheduleEditorScreen: { semantics: ["Edit schedule", "Effective date"], actions: [back, action("Effective date"), action("Schedule timezone"), action("Save schedule")] },
+    RunningPlanDetailScreen: { semantics: ["Running plan", "Goal distance"], actions: [back, action("Sync Garmin / match activity"), action("Edit running plan")] },
+    RunningPlanEditorScreen: { semantics: ["Plan name", "Goal distance (metres)"], actions: [back, action("Plan name"), action("Goal distance (metres)"), action("Target time")] },
+    RunningSessionEditorScreen: { semantics: ["Edit session", "Workout type"], actions: [back, action("Save session")] },
+    PlanTypeChooserScreen: { semantics: ["Create plan", "Strength", "Running"], actions: [back, action("Strength"), action("Running")] },
+    ExerciseDetailScreen: { semantics: ["Exercise facts", "Back Squat"], actions: [back, action("View exercise history")] },
+    ExerciseEditorScreen: { semantics: ["Exercise name", "Save exercise"], actions: [back, action("Exercise name", "exercise-editor-name"), action("Equipment", "exercise-editor-equipment"), action("Save exercise", name === "custom-exercise-create" ? "exercise-editor-save-create" : "exercise-editor-save-edit")] },
+    ExerciseHistoryScreen: { semantics: ["Exercise history", name.endsWith("squat") ? "Back Squat" : name.endsWith("bench") ? "Bench Press" : "Plank"], actions: [back] },
+    ImportedActivityDetailScreen: { semantics: ["Activity detail", name.includes("treadmill") ? "Treadmill run" : "Outdoor run"], actions: [back, action("Match to scheduled workout")] },
+    ActivityMatchScreen: { semantics: ["Match to scheduled workout", name.includes("confirmed") ? "Matched" : "Confirm match"], actions: name.includes("confirmed") ? [back, action("Leave unmatched")] : [back, action("Confirm match"), action("Leave unmatched")] },
+  };
+  let result = bases[component];
+  if (name === "archive-confirmation") result = { semantics: ["Confirm archive", "Cancel lifecycle review"], actions: [action("Confirm archive"), action("Cancel lifecycle review")] };
+  if (component === "TodayScreen") {
+    result = { semantics: ["Workout", "Choose another day"], actions: [rootSettings("index"), action("Choose another day", "today-choose-plan-day")], gaps: [] };
+    const dayIndex = name.startsWith("workout-day-") ? Number(name.at(-1)) : 3;
+    const plannedDay = dayIndex % 2 === 0 ? "Full Body A" : "Full Body B";
+    result.semantics = ["Workout", plannedDay, `Start ${plannedDay}`];
+    result.actions.push(action(`Start ${plannedDay}`, "today-start-workout"));
+    if (name === "appearance") result = { semantics: ["App Settings", "Appearance"], actions: [action("Light"), action("Dark"), action("System"), action("Close App Settings", "bottom-sheet-close-action")], gaps: [] };
+  }
+  if (component === "ActiveWorkoutScreen") {
+    result = { semantics: ["Workout", "Working sets"], actions: [action("More workout actions", "workout-more-actions")], gaps: [] };
+    if (name === "active-overview" || name === "warmup-before-working" || name === "warmup-committed-no-rest" || name === "rest-skipped") result.actions.push(action(name === "warmup-before-working" ? "Complete Set 1" : name === "rest-skipped" ? "Complete Set 3" : "Complete Set 2", "workout-complete-set"));
+    if (["working-committed-rest", "rest-paused", "rest-adjusted", "rest-resumed"].includes(name)) {
+      const paused = name === "rest-paused" || name === "rest-adjusted";
+      result.semantics = ["Workout", paused ? "Resume rest" : "Pause rest"];
+      result.actions = [action(paused ? "Resume rest" : "Pause rest"), action("Subtract 15 seconds from rest"), action("Add 15 seconds to rest"), action("Skip rest")];
+      result.ids = [paused ? "rest-resume" : "rest-pause"];
+    }
+    if (name === "active-set-editor") result = { semantics: ["Edit Back Squat", "Repetitions"], actions: [action("Repetitions"), action("Save set values"), action("Return to Workout", "bottom-sheet-close-action")] };
+    if (name === "active-plan-settings") result = { semantics: ["Plan settings", "Default between-set rest seconds"], actions: [action("Default between-set rest seconds"), action("Save default rest"), action("Edit plan after workout · Schedule")] };
+    if (name === "view-back-squat-trend") result = { semantics: ["Back Squat trend", "Return to Workout"], actions: [action("Return to Workout", "bottom-sheet-close-action")] };
+    if (name === "open-back-squat-menu") result = { semantics: ["Exercise actions", "Timing"], actions: [action("Timing"), action("Replace exercise"), action("Delete exercise")] };
+    if (name === "active-exercise-picker") result = { semantics: ["Choose exercise", "Search exercises"], actions: [action("Search exercises"), action("Return to Workout", "bottom-sheet-close-action")] };
+    if (name === "set-action-menu") result = { semantics: ["Add set", "Add working set"], actions: [action("Add warm-up set"), action("Add working set")] };
+  }
+  if (component === "CalendarScreen") {
+    const month = name === "calendar-next" ? "November 2026" : name === "calendar-previous" ? "September 2026" : "October 2026";
+    result = { semantics: ["Calendar", month], actions: [rootSettings("calendar"), action("Open Calendar key", "calendar-info-action"), action(`Choose month and year, ${month}`), action("Return to today, 1 October 2026")], gaps: [] };
+    if (name === "calendar-key") result = { semantics: ["Activity type", "Strength", "Running"], actions: [action("Close Calendar key", "bottom-sheet-close-action")] };
+    if (name.startsWith("calendar-agenda-") || name === "calendar-adjacent-week") { result.semantics = ["Calendar", name.startsWith("calendar-agenda-") ? `${Number(name.slice(-2))} October 2026` : "12 October 2026"]; result.actions = [action("Collapse day and return to month")]; }
+  }
+  if (component === "LibraryScreen") {
+    const exercises = name === "library-exercises";
+    result = { semantics: ["Library", exercises ? "All Exercises" : "My Plans", exercises ? "Create custom exercise" : "Create plan"], actions: [action("Actions", "library-actions-trigger"), rootSettings("library"), action("Plans"), action("Exercises"), action(exercises ? "Search exercises" : "Search plans"), action("Filters", "library-filters-chip"), action(exercises ? "Create custom exercise" : "Create plan", exercises ? null : "library-create-plan")], ids: [`library-search-${exercises ? "exercises" : "plans"}`] };
+    if (name === "plan-filters") result = { semantics: ["Plan filters", "Show results"], actions: [action("Show results"), action("Keep Current Filters"), action("Close Plan filters", "bottom-sheet-close-action")] };
+    if (name === "library-actions") result = { semantics: ["Library actions", "Create plan", "Import plan, unavailable, Later"], actions: [action("Create plan"), action("Create exercise"), action("Close Library actions", "bottom-sheet-close-action")], unavailable: [{ label: "Import plan, unavailable, Later", enabled: false, reason: "Source-owned unavailable Later action; not an actionable match." }] };
+  }
+  if (component === "ProgressScreen") {
+    const params = progressRouteParams(name);
+    const period = params.period === "all_time" ? "All time" : params.period === "12_weeks" ? "12 weeks" : "4 weeks";
+    result = { semantics: ["Progress", params.sport, period], actions: [rootSettings("progress"), action("Body metrics"), action("Settings"), action("All"), action("Strength"), action("Running"), action("4 weeks"), action("12 weeks"), action("All time")], gaps: [] };
+    if (name === "progress-running-loading") result.semantics = ["Progress", "Loading progress"];
+    if (name === "progress-settings") result = { semantics: ["Progress settings", "Bodyweight history"], actions: [action("Bodyweight history"), action("Close progress settings", "bottom-sheet-close-action")] };
+    if (name === "bodyweight-history") result = { semantics: ["Bodyweight", "No bodyweight entries"], actions: [action("Add first entry"), action("Close bodyweight", "bottom-sheet-close-action")] };
+    if (name === "progress-recommendation") result = { semantics: ["Review target", "Keep target unchanged"], actions: [action("Keep target unchanged"), action("Use target"), action("Close review target", "bottom-sheet-close-action")] };
+    if (name.startsWith("running-target-")) result = { semantics: ["Running target", "Target time", "Current benchmark"], actions: [action("Target time"), action("Optional target date"), action("Save target"), action("Discard target changes")], unavailable: [{ label: "Current benchmark", editable: false, reason: "Source fact, not the browser editable benchmark field." }] };
+    if (name.startsWith("running-effort-")) {
+      const distance = name.endsWith("2.4") ? "2.4 km" : name.endsWith("10") ? "10 km" : "Half Marathon";
+      result = { semantics: [`${distance} best efforts`, "Best efforts compare elapsed time at the same distance. Faster is lower on the clock."], actions: [action(`Close ${distance} best efforts`, "bottom-sheet-close-action")] };
+    }
+  }
+  if (component === "GarminSyncScreen") {
+    const disconnected = ["garmin-disconnected", "garmin-file-import", "garmin-revoked"].includes(name);
+    result = { semantics: ["Garmin Sync", disconnected ? "Garmin not connected" : "Connected to Garmin"], actions: disconnected ? [action("Connect Garmin")] : [action("Sync now"), action("Disconnect Garmin")], gaps: [] };
+    if (name === "garmin-consent") result = { semantics: ["Connect Garmin", "Email", "Password"], actions: [action("Email"), action("Password"), action("Continue"), action("Cancel")] };
+    if (name === "garmin-syncing") result = { semantics: ["Garmin Sync", "Syncing Garmin activities"], actions: [action("Disconnect Garmin")], unavailable: [{ label: "Sync now", enabled: false, reason: "Busy foreground sync action is not a new actionable match." }] };
+    if (name === "garmin-error") result = { semantics: ["Garmin Sync", "Retry Garmin sync"], actions: [action("Retry Garmin sync"), action("Disconnect Garmin")] };
+    if (name === "garmin-file-import") result.gaps.push("Current production Garmin root has no FIT chooser or preview callbacks. This retained browser state has no production equivalent.");
+  }
+  if (result === undefined) throw new Error(`phase20_production_readiness_missing:${component}:${name}`);
+  return result;
 }
 
 function readinessFor(light, id, component, name, fixtureVariant, steps) {
-  const specific = linesFor(light);
-  const base = readinessSemanticsFor(component, name);
-  const semantics = [...new Set([...base, ...specific.slice(-3)])];
-  const controls = light.controls.filter(({ id: controlId, text }) => controlId || text).map(({ id: controlId, text }, index) => ({
-    id: controlId || null,
-    label: text || null,
-    order: index,
-  }));
-  const sourceIds = light.controls.map(({ id: controlId }) => controlId).filter(Boolean);
+  const source = productionReadinessFor(component, name, fixtureVariant);
+  const semantics = source.semantics;
+  const controls = source.actions.map((control, order) => ({ ...control, order }));
+  const sourceIds = controls.map(({ id: controlId }) => controlId).filter(Boolean);
   const screenTestId = readinessTestIdFor(component, "");
   const readyTestId = readinessTestIdFor(component, name);
   return {
     status: name.includes("loading") || name === "garmin-syncing" ? "loading" : "ready",
     screen_test_id: screenTestId,
     test_id: readyTestId,
-    test_ids: [...new Set([screenTestId, readyTestId, `phase20-visual-state-${id}`, ...sourceIds])],
+    test_ids: [...new Set([screenTestId, readyTestId, `phase20-visual-state-${id}`, ...sourceIds, ...(source.ids ?? [])])],
     semantics,
     actions: controls,
     order: semantics,
-    non_color: specific.filter((value) => /(Active|Completed|Current|Planned|REST|Loading|Ready|Sparse|Empty|connected|revoked|Sync|Match|Imported|No )/u.test(value)).slice(0, 4).concat(semantics.slice(-1)).filter((value, index, values) => values.indexOf(value) === index),
-    focus: { target: light.controls.find(({ id: controlId }) => controlId)?.id ?? steps[0]?.value ?? "screen-heading", required: true },
+    non_color: semantics.slice(1),
+    focus: { target: source.focus ?? semantics[0], required: true },
+    unavailable_controls: source.unavailable ?? [],
+    alignment_gaps: source.gaps ?? [],
     source_receipt: { assertions: [`state:${name}`, `fixture:${fixtureVariant}`, `theme:${light.theme}`] },
   };
 }
@@ -233,7 +289,7 @@ const states = walk.slice(0, 107).map((light, index) => {
     fixture_id: "v12-synthetic-fixtures-r18", fixture_seed: fixtureSeedFor(index), scenario: name, fixture_variant: fixtureVariant,
     fixture_facts: { date: "2026-10-01", locale: "en-SG", timezone: "Asia/Singapore", sqlite: "authoritative-synthetic" },
     interactions: controls, expected_visible_semantics: controls.filter((control) => control.text).map((control) => control.text),
-    focus_target: controls.find((control) => control.id)?.id || controls.find((control) => control.text)?.text || "screen-heading",
+    focus_target: productionReadinessFor(destination.component, name, fixtureVariant).focus ?? productionReadinessFor(destination.component, name, fixtureVariant).semantics[0],
     scenario_steps: scenarioSteps,
     readiness: readinessFor(light, `BW-${String(index + 1).padStart(3, "0")}`, destination.component, name, fixtureVariant, scenarioSteps),
     evidence_scope: index >= 91 ? "visual_only" : "production_screen",
@@ -292,4 +348,6 @@ const flow = [
   "          timeout: 15000",
   "",
 ].join("\n");
-writeFileSync(path.join(root, "maestro/v1.2/visual-production-states.yaml"), flow);
+if (!process.argv.includes("--registry-only")) {
+  writeFileSync(path.join(root, "maestro/v1.2/visual-production-states.yaml"), flow);
+}

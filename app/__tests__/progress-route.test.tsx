@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
 import { AppearanceProvider } from "../../src/ui/theme";
+import { Phase20VisualContextProvider } from "../../src/testing/phase20VisualContext";
 
 const mockPush = jest.fn();
 const mockLoadProgress = jest.fn(async (input: { sport?: string; period: string }) => ({
@@ -36,6 +37,7 @@ jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
       saveRunningTarget: jest.fn(),
     },
     workoutRefreshGeneration: 0,
+    progressBodyweightRuntime: { createId: () => "synthetic-bodyweight", loadHistory: async () => [], save: async () => [], delete: async () => [] },
   }),
 }));
 
@@ -43,6 +45,23 @@ import ProgressRoute from "../(tabs)/progress";
 
 describe("ProgressRoute", () => {
   beforeEach(() => { mockPush.mockReset(); mockLoadProgress.mockClear(); });
+
+  it.each(["BW-089", "BW-090"] as const)("keeps a genuine pending Progress read for isolated visual state %s", async (state) => {
+    mockLoadProgress.mockResolvedValueOnce({ sport: "Running", period: "4_weeks", freshness: "current",
+      dashboard: { sport: "Running", state: "empty", goals: [] } } as never);
+    await render(<AppearanceProvider><Phase20VisualContextProvider request={{ state, nonce: "a".repeat(32),
+      configuration: "AP-L-C390-P-F100", appearance: "Light", mode: "capture" }}><ProgressRoute /></Phase20VisualContextProvider></AppearanceProvider>);
+    await waitFor(() => expect(mockLoadProgress).toHaveBeenCalledWith(expect.objectContaining({ sport: "Running", nowLocalDate: "2026-10-01" })));
+    expect(screen.getByLabelText("Loading progress")).toHaveProp("accessibilityRole", "progressbar");
+    expect(screen.getByTestId("progress-skeleton", { includeHiddenElements: true })).toBeOnTheScreen();
+    expect(screen.queryByText("No imported running efforts yet")).toBeNull();
+    if (state === "BW-090") {
+      await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
+      await screen.findByTestId("progress-settings-sheet");
+      expect(screen.getByRole("button", { name: "Bodyweight history" })).toBeOnTheScreen();
+      expect(screen.getByTestId("progress-skeleton", { includeHiddenElements: true })).toBeOnTheScreen();
+    }
+  });
 
   it("forwards only selected sport/range requests through the typed runtime adapter", async () => {
     await render(<AppearanceProvider><ProgressRoute /></AppearanceProvider>);

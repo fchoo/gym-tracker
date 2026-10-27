@@ -126,7 +126,7 @@ function controlledTool(state, executable, args, options = {}) {
     const ids = state.visualState.readiness.test_ids.map((id, index) => `<node resource-id="${escape(id)}" package="com.fchoo.gymtracker.devtest" clickable="${index === 0 ? "true" : "false"}" enabled="true" focusable="true" focused="${id === focusId ? "true" : "false"}" bounds="[16,${20 + index * 2}][374,${68 + index * 2}]" />`);
     ids.push(`<node resource-id="phase20-production-instance-7" package="com.fchoo.gymtracker.devtest" clickable="false" enabled="true" focusable="false" focused="false" bounds="[0,0][390,844]" />`);
     ids.push(`<node resource-id="plan-type-chooser-scroll" package="com.fchoo.gymtracker.devtest" clickable="false" enabled="true" focusable="false" focused="false" scrollable="true" bounds="[0,0][390,844]" />`);
-    const semantics = state.visualState.readiness.semantics.map((text, index) => `<node text="${escape(text)}" package="com.fchoo.gymtracker.devtest" bounds="[16,${100 + index * 50}][374,${148 + index * 50}]" />`);
+    const semantics = state.visualState.readiness.semantics.map((text, index) => `<node text="${escape(text)}" package="com.fchoo.gymtracker.devtest" focusable="${text === state.visualState.readiness.focus.target}" focused="${text === focusId}" bounds="[16,${100 + index * 50}][374,${148 + index * 50}]" />`);
     const actions = state.visualState.readiness.actions.map((entry, index) => { const left = index % 2 === 0 ? 10 : 200; const top = 220 + Math.floor(index / 2) * 52; return `<node ${entry.id ? `resource-id="${escape(entry.id)}"` : ""} content-desc="${escape(entry.label ?? entry.id)}" package="com.fchoo.gymtracker.devtest" clickable="true" enabled="true" selected="false" focusable="true" focused="false" bounds="[${left},${top}][${left + 170},${top + 48}]" />`; });
     return ok(`<hierarchy>${ids.join("")}${semantics.join("")}${actions.join("")}</hierarchy>`);
   }
@@ -246,7 +246,10 @@ test("System light to dark switches in place and preserves the mounted state rec
   const result = await f.call("visual-capture", systemDark);
   assert.deepEqual(result.settings.state_receipt.system_transition.before, result.settings.state_receipt.system_transition.after);
   assert.deepEqual(result.settings.state_receipt.system_transition.color_scheme, { before: "light", after: "dark" });
-  assert.equal(result.settings.state_receipt.system_transition.before.native_focus.resource_id, f.state.visualState.readiness.focus.target);
+  assert.equal(result.settings.state_receipt.system_transition.before.native_focus.resource_id, null);
+  assert.equal(result.settings.state_receipt.system_transition.before.native_focus.bounds, "[16,100][374,148]");
+  assert.deepEqual(result.settings.observation.readiness.focus, { target: f.state.visualState.readiness.focus.target, matched: true, focusable: true, focused: true });
+  assert.deepEqual(result.settings.state_receipt.system_transition.before.native_focus, result.settings.state_receipt.system_transition.after.native_focus);
   assert.deepEqual(result.settings.state_receipt.system_transition.before.scroll_offsets, [{ native_id: "plan-type-chooser-scroll", x: 0, y: 144 }]);
   assert.deepEqual(result.settings.state_receipt.system_transition.before.timer, { state: "paused", revision: 7, remaining_ms: 90_000, ends_at_ms: null });
   assert.equal(result.settings.state_receipt.system_transition.before.production_instance_id, "phase20-production-instance-7");
@@ -277,6 +280,142 @@ test("invalid input, state mapping and identity fail before configuration work",
   assert.equal(f.state.commands.length, 0);
   f.state.wrongApk = true; await assert.rejects(f.call(), /apk_mismatch/u);
   assert.ok(!f.state.commands.some((x) => x.join(" ").includes("'put'")));
+});
+
+test("excluded FIT gaps may remain in the registry while a bound selected state captures", async (t) => {
+  const f = fixture(t);
+  const registry = JSON.parse(readFileSync(path.join(f.root, "src/testing/phase20VisualStateRegistry.json"), "utf8"));
+  for (const id of ["BW-099", "BW-103"]) assert.ok(registry.find((entry) => entry.id === id).readiness.alignment_gaps.length);
+  assert.equal((await f.call()).settings.state_receipt.state_id, "BW-054");
+});
+
+test("selected unbound states reject before any device or configuration command", async (t) => {
+  const f = fixture(t);
+  for (const id of ["BW-099", "BW-103"]) {
+    await assert.rejects(f.call("visual-capture", { ...f.payload, state_id: id }), /v12_production_visual_state_alignment_unresolved/u);
+  }
+  assert.equal(f.state.commands.length, 0);
+});
+
+test("malformed optional alignment metadata never becomes valid registry evidence", async (t) => {
+  const f = fixture(t); const file = path.join(f.root, "src/testing/phase20VisualStateRegistry.json");
+  const original = JSON.parse(readFileSync(file, "utf8"));
+  for (const value of [null, false, [1], [""]]) {
+    const registry = structuredClone(original); registry[98].readiness.alignment_gaps = value;
+    writeFileSync(file, JSON.stringify(registry));
+    await assert.rejects(f.call(), /v12_production_visual_state_route_missing/u);
+  }
+  assert.equal(f.state.commands.length, 0);
+});
+
+test("unavailable controls cannot impersonate enabled or actionable native controls", async (t) => {
+  const f = fixture(t); const file = path.join(f.root, "src/testing/phase20VisualStateRegistry.json");
+  const original = JSON.parse(readFileSync(file, "utf8"));
+  for (const value of [null, [null], [{}], [{ label: 1, reason: "fixture", enabled: false }],
+    [{ label: "", reason: "fixture", enabled: false }], [{ label: "fixture", reason: 1, enabled: false }],
+    [{ label: "fixture", reason: "", enabled: false }], [{ label: "fixture", reason: "fixture" }],
+    [{ label: "fixture", reason: "fixture", enabled: true }], [{ label: "fixture", reason: "fixture", enabled: false, editable: true }],
+    [{ label: "fixture", reason: "fixture", enabled: true, editable: false }],
+    [{ label: "Connect Garmin", reason: "fixture", enabled: false }],
+    [{ label: "fixture", reason: "fixture", enabled: false, extra: true }]]) {
+    const registry = structuredClone(original); registry[98].readiness.unavailable_controls = value;
+    writeFileSync(file, JSON.stringify(registry));
+    await assert.rejects(f.call(), /v12_production_visual_state_route_missing/u);
+  }
+  assert.equal(f.state.commands.length, 0);
+});
+
+test("legacy registries may omit optional alignment annotations without bypassing capture readback", async (t) => {
+  const f = fixture(t); const file = path.join(f.root, "src/testing/phase20VisualStateRegistry.json");
+  const registry = JSON.parse(readFileSync(file, "utf8"));
+  for (const entry of registry) { delete entry.readiness.alignment_gaps; delete entry.readiness.unavailable_controls; }
+  writeFileSync(file, JSON.stringify(registry));
+  f.attestation.source_tree_sha256 = sourceTreeSha256(f.root);
+  f.manifest.source.tree_sha256 = f.attestation.source_tree_sha256;
+  writeFileSync(path.join(f.runDir, "build.json"), JSON.stringify(f.manifest));
+  const captured = await f.call();
+  assert.equal(captured.settings.state_receipt.png_sha256, hash(Buffer.from(f.state.png, "base64")));
+  assert.equal(captured.settings.restored, true);
+});
+
+test("invalid configuration and duplicate capture windows reject before commands", async (t) => {
+  const f = fixture(t);
+  for (const value of [undefined, "AP-L-X999-P-F100", "AP-L-C390-P-F300", "bad"]) {
+    assert.throws(() => resolveV12ProductionVisualConfiguration(value), /payload_invalid/u);
+  }
+  for (const body of [null, {}, { run_id: runId }, { run_id: runId, captures: [] },
+    { run_id: runId, captures: [{ state_id: "BW-054", configuration_id: config }, { state_id: "BW-054", configuration_id: config }] }]) {
+    await assert.rejects(f.call("visual-capture-batch", body), /payload_invalid/u);
+  }
+  assert.equal(f.state.commands.length, 0);
+});
+
+test("route parameters enter the controlled link only after source string validation", async (t) => {
+  const f = fixture(t); const file = path.join(f.root, "src/testing/phase20VisualStateRegistry.json");
+  const original = JSON.parse(readFileSync(file, "utf8"));
+  const rebind = (params) => {
+    const registry = structuredClone(original); registry[53].route_params = params;
+    writeFileSync(file, JSON.stringify(registry)); f.state.visualState = registry[53];
+    f.attestation.source_tree_sha256 = sourceTreeSha256(f.root); f.manifest.source.tree_sha256 = f.attestation.source_tree_sha256;
+    writeFileSync(path.join(f.runDir, "build.json"), JSON.stringify(f.manifest));
+  };
+  rebind({ planId: "source-owned-plan" });
+  await f.call();
+  assert.equal(f.state.routeParams.planId, "source-owned-plan");
+  for (const params of [{ "bad-key": "x" }, { planId: 1 }, { planId: "" }, { planId: "x".repeat(257) }]) {
+    rebind(params); await assert.rejects(f.call(), /restoration_failed/u);
+    assert.equal(f.state.lock, true);
+    // Independent invalid-source cases retain a failed lock in production.
+    // Reset only this controlled fixture between cases.
+    f.state.lock = false;
+  }
+});
+
+test("source file symlinks, missing registry and oversized registry never reach a device", async (t) => {
+  const f = fixture(t); const file = path.join(f.root, "src/testing/phase20VisualStateRegistry.json");
+  const bytes = readFileSync(file); const link = path.join(f.root, "registry-copy.json");
+  writeFileSync(link, bytes); rmSync(file); symlinkSync(link, file);
+  await assert.rejects(f.call(), /state_route_missing/u); rmSync(file);
+  await assert.rejects(f.call(), /state_route_missing/u);
+  writeFileSync(file, Buffer.alloc(32 * 1024 * 1024 + 1));
+  await assert.rejects(f.call(), /state_route_missing/u);
+  assert.equal(f.state.commands.length, 0);
+});
+
+test("unrecognized dependency errors remain bounded without exposing their detail", async (t) => {
+  const f = fixture(t);
+  await assert.rejects(f.call("visual-capture", f.payload, { now: () => { throw new Error("private clock failure"); } }),
+    (error) => error.message === "v12_production_visual_failed");
+});
+
+test("every malformed attestation field rejects before any device command", async (t) => {
+  const f = fixture(t);
+  for (const mutation of [{ schema_version: 2 }, { action: "visual-compare" }, { run_id: "other" },
+    { build_profile: "production" }, { suite: "other" }, { source_tree_sha256: "x" },
+    { apk_sha256: "x" }, { installed_apk_sha256: "x" }, { apk_signature_sha256: "x" },
+    { device_identity_sha256: "x" }, { launcher_source_sha256: "x" }, { package: "other" }, { unexpected: true }]) {
+    await assert.rejects(f.call("visual-capture", f.payload, { attestation: { ...f.attestation, ...mutation } }),
+      mutation.run_id === undefined ? /attestation_invalid|source_mismatch/u : /payload_invalid/u);
+  }
+  assert.equal(f.state.commands.length, 0);
+});
+
+test("screenshot identity, malformed registry and attested file bytes remain strict", async (t) => {
+  const f = fixture(t);
+  await assert.rejects(f.call("visual-capture", { ...f.payload, screenshot_id: "wrong.png" }), /payload_invalid/u);
+  assert.equal((await f.call("visual-capture", { ...f.payload, screenshot_id: `v12/BW-054/${config}.png` })).settings.restored, true);
+  const registryPath = path.join(f.root, "src/testing/phase20VisualStateRegistry.json");
+  const original = readFileSync(registryPath); const invalid = JSON.parse(original); invalid[0] = null;
+  writeFileSync(registryPath, JSON.stringify(invalid));
+  await assert.rejects(f.call(), /state_route_missing/u); writeFileSync(registryPath, original);
+  await assert.rejects(f.call("visual-capture", f.payload, { attestation: { ...f.attestation, launcher_source_sha256: "0".repeat(64) } }), /attestation_invalid/u);
+  await assert.rejects(f.call("visual-capture", f.payload, { attestation: { ...f.attestation, apk_signature_sha256: undefined } }), /attestation_invalid/u);
+  const apk = path.join(f.root, f.manifest.build.apk.path); const apkBytes = readFileSync(apk);
+  writeFileSync(apk, "changed APK bytes"); await assert.rejects(f.call(), /apk_mismatch/u); writeFileSync(apk, apkBytes);
+  for (const badPath of ["./file", "../file", "a//file"]) {
+    writeFileSync(path.join(f.runDir, "build.json"), JSON.stringify({ ...f.manifest, build: { ...f.manifest.build, apk: { ...f.manifest.build.apk, path: badPath } } }));
+    await assert.rejects(f.call(), /apk_mismatch/u);
+  }
 });
 test("source/launcher/manifest attestation mismatch is rejected before ADB", async (t) => {
   const f = fixture(t);

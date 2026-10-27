@@ -1,13 +1,17 @@
 import fullBodyFoundationAsset from "../../assets/content/full-body-foundation.v1.json";
+import starterPlansAsset from "../../assets/content/starter-plans.v2.json";
+import starterPlansAcceptanceAsset from "../../artifacts/review/phase2/starter-plans-acceptance.json";
 import type { WorkoutAppRuntimeDependencies } from "../bootstrap/workoutAppRuntime";
 import { createOwnedPlanRuntimePort } from "../bootstrap/ownedPlanRuntime";
 import { createRunningPlanRuntimePort } from "../bootstrap/runningPlanRuntime";
+import { createScheduleRuntimePort, type ScheduleTodayRead } from "../bootstrap/scheduleRuntime";
 import { parseFullBodyFoundation } from "../domains/content";
 import { createCustomExercise as createCustomExerciseCommand } from "../domains/library/customExerciseCommands";
 import { confirmGarminImportDate, prepareGarminImport } from "../domains/activities/importCommands";
 import { canonicalJson } from "../domains/activities/importContracts";
 import type { GarminSourceEnvelope } from "../domains/activities/garminActivitySourcePort";
-import { activateStarterPlan } from "../domains/plans";
+import { activateStarterPlan, createStarterPlanCopy } from "../domains/plans";
+import { createStarterPlanRepository } from "../platform/sqlite/repositories/starterPlanRepository";
 import type { RunningPlanAggregate, RunningSessionKind, RunningSessionRevision } from "../domains/running/contracts";
 import { startWorkout } from "../domains/workout";
 import { createCustomExerciseRepository } from "../platform/sqlite/repositories/customExerciseRepository";
@@ -28,6 +32,65 @@ export const PHASE20_VISUAL_ACTIVE_SESSION_ID = `session_${PHASE20_VISUAL_NOW_MS
 export const PHASE20_VISUAL_OWNED_PLAN_ID = "phase20-strength-foundation";
 export const PHASE20_VISUAL_RUNNING_PLAN_ID = "phase20-running-2k";
 export const PHASE20_VISUAL_CUSTOM_EXERCISE_ID = "phase20-tempo-goblet-squat";
+
+const TODAY_CONTEXT_DATES = ["2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02"] as const;
+
+/** Review fixtures change only their dependency clock, never the device clock. */
+export function phase20VisualFixtureNow(request: Phase20VisualRequest): Date {
+  const name = phase20VisualState(request.state)?.name;
+  const date = name?.startsWith("workout-day-") ? TODAY_CONTEXT_DATES[Number(name.at(-1))] : undefined;
+  return date === undefined ? new Date(PHASE20_VISUAL_NOW) : new Date(`${date}T01:41:00.000Z`);
+}
+
+/** Source-backed date contexts for the existing Today identity/preview/start UI. */
+export async function seedPhase20VisualTodayContext(kernel: SqliteKernel, request: Phase20VisualRequest): Promise<ScheduleTodayRead> {
+  const now = phase20VisualFixtureNow(request);
+  const localDate = now.toISOString().slice(0, 10);
+  const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] as const;
+  const copy = await createStarterPlanCopy({
+    starterPackBytes: `${JSON.stringify(starterPlansAsset, null, 2)}\n`,
+    acceptanceBytes: `${JSON.stringify(starterPlansAcceptanceAsset, null, 2)}\n`,
+    sha256: fixtureSha256,
+    repository: createStarterPlanRepository(kernel),
+    requestId: "phase20-today-owned-copy",
+    createdAtMs: now.getTime(),
+    sourceOwnedPlanId: "starter:full-body-foundation:r2",
+    expectedSourcePlanRevision: 2,
+    expectedActiveScheduleRevision: null,
+    templateId: "full-body-foundation", templateRevision: 2,
+    startLocalDate: "2026-09-27", timeZone: "Asia/Singapore", mode: "weekday",
+    bindings: weekdays.map((weekday, ordinal) => ({ weekday, ordinal, weekIndex: 0,
+      planDaySourceId: ordinal % 2 === 0 ? "full-body-a" : "full-body-b" })),
+  });
+  let generated = 0;
+  const dependencies = { now: () => new Date(now), nowMs: () => now.getTime(),
+    randomUUID: () => `phase20-today-${++generated}`, sha256: fixtureSha256 };
+  const owned = createOwnedPlanRuntimePort(kernel, dependencies);
+  const schedules = createScheduleRuntimePort(kernel, owned, dependencies);
+  const current = await schedules.loadSchedule(copy.plan.id);
+  if (current?.current === null || current === null || current.current.mode !== "weekday") {
+    throw new Error("phase20_visual_fixture_today_schedule_missing");
+  }
+  await schedules.saveSchedule({
+    requestId: "phase20-today-activate-schedule", planId: current.planId,
+    scheduleId: current.scheduleId, expectedPlanRevision: current.planRevision,
+    expectedScheduleRevision: current.scheduleRevision, expectedActivePair: current.activeSchedule,
+    before: current.current, todayLocalDate: localDate,
+    next: { effectiveLocalDate: localDate, mode: "weekday", timeZone: "Asia/Singapore",
+      bindings: current.current.bindings.map((binding) => {
+        if (!("weekday" in binding)) throw new Error("phase20_visual_fixture_today_binding_invalid");
+        return binding;
+      }) },
+  });
+  const today = await schedules.loadToday(now.getTime());
+  if (today === null || today.view.state !== "scheduled" || today.localDate !== localDate
+    || today.selectedStrengthOccurrence?.localDate !== localDate
+    || today.selectedStrengthOccurrence.planDayId !== today.view.dayId
+    || today.selectedStrengthOccurrence.planId !== copy.plan.id) {
+    throw new Error("phase20_visual_fixture_today_context_unavailable");
+  }
+  return today;
+}
 
 type CleanupStatus = "pending" | "complete" | "failed";
 const cleanupStates = new Map<string, CleanupStatus>();
@@ -481,9 +544,9 @@ export async function bootstrapPhase20VisualFixture(
   if (state === null || state.fixture_id !== "v12-synthetic-fixtures-r18") {
     throw new Error("phase20_visual_fixture_state_invalid");
   }
-  if (state.fixture_seed === "phase20-shell-workout" || state.fixture_seed === "phase20-active-workout") {
-    await seedLegacyStrengthWorkout(kernel, state.fixture_seed === "phase20-active-workout");
-  }
+  const todayContext = state.fixture_seed === "phase20-shell-workout"
+    ? await seedPhase20VisualTodayContext(kernel, request) : null;
+  if (state.fixture_seed === "phase20-active-workout") await seedLegacyStrengthWorkout(kernel, true);
   if (state.fixture_seed === "phase20-active-workout") {
     await configureActiveScenario(kernel, state.fixture_variant);
   }
@@ -511,6 +574,9 @@ export async function bootstrapPhase20VisualFixture(
         fixtureVariant: state.fixture_variant,
         stateId: state.id,
         configurationId: request.configuration,
+        ...(todayContext === null ? {} : { todayContext: { localDate: todayContext.localDate,
+          planId: todayContext.planId, planDayId: todayContext.selectedStrengthOccurrence?.planDayId,
+          opportunityId: todayContext.selectedStrengthOccurrence?.opportunityId } }),
       }), PHASE20_VISUAL_NOW_MS],
     );
   });
@@ -520,11 +586,12 @@ export function createPhase20VisualRuntimeDependencies(
   request: Phase20VisualRequest,
 ): WorkoutAppRuntimeDependencies {
   const databaseName = phase20VisualDatabaseName(request.nonce);
+  const now = phase20VisualFixtureNow(request);
   cleanupStates.set(request.nonce, "pending");
   return createStrictIsolatedWorkoutRuntimeDependencies({
     databaseName,
-    now: () => new Date(PHASE20_VISUAL_NOW),
-    nowMs: () => PHASE20_VISUAL_NOW_MS,
+    now: () => new Date(now),
+    nowMs: () => now.getTime(),
     prepareRuntime: ({ kernel }) => bootstrapPhase20VisualFixture(kernel, request),
     onDisposed: () => { cleanupStates.set(request.nonce, "complete"); },
     onDisposalFailure: () => { cleanupStates.set(request.nonce, "failed"); },

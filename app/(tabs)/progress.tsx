@@ -46,7 +46,7 @@ export default function ProgressRoute() {
   const loadProgress = React.useCallback(
     (input: Parameters<typeof runtime.loadProgress>[0]) => {
       const source = runtime.loadProgress(input);
-      return visualRequest?.state === "BW-089"
+      return visualRequest?.state === "BW-089" || visualRequest?.state === "BW-090"
         ? source.then(() => new Promise<never>(() => undefined))
         : source;
     },

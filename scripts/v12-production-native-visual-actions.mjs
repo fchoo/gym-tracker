@@ -97,7 +97,7 @@ function visualRegistry(root) {
       || !Array.isArray(entry.expected_visible_semantics) || !entry.expected_visible_semantics.length
       || !Array.isArray(entry.scenario_steps)
       || typeof entry.fixture_variant !== "string" || !entry.fixture_variant
-      || !object(entry.readiness) || !keys(entry.readiness, ["status", "screen_test_id", "test_id", "test_ids", "semantics", "actions", "order", "non_color", "focus", "source_receipt"])
+      || !object(entry.readiness) || !keys(entry.readiness, ["status", "screen_test_id", "test_id", "test_ids", "semantics", "actions", "order", "non_color", "focus", "source_receipt"], ["alignment_gaps", "unavailable_controls"])
       || typeof entry.readiness.screen_test_id !== "string" || !entry.readiness.screen_test_id
       || typeof entry.readiness.test_id !== "string" || !entry.readiness.test_id || !["ready", "loading"].includes(entry.readiness.status)
       || !Array.isArray(entry.readiness.test_ids) || entry.readiness.test_ids.length < 2
@@ -105,6 +105,16 @@ function visualRegistry(root) {
       || !Array.isArray(entry.readiness.actions) || !entry.readiness.actions.length || !Array.isArray(entry.readiness.order) || entry.readiness.order.length < 2
       || !Array.isArray(entry.readiness.non_color) || !entry.readiness.non_color.length || !object(entry.readiness.focus)
       || !Array.isArray(entry.readiness.source_receipt?.assertions) || !entry.readiness.source_receipt.assertions.length
+      || entry.readiness.alignment_gaps !== undefined && (!Array.isArray(entry.readiness.alignment_gaps)
+        || entry.readiness.alignment_gaps.some((gap) => typeof gap !== "string" || gap.trim().length === 0))
+      || entry.readiness.unavailable_controls !== undefined && (!Array.isArray(entry.readiness.unavailable_controls)
+        || entry.readiness.unavailable_controls.some((control) => !keys(control, ["label", "reason"], ["enabled", "editable"])
+          || typeof control.label !== "string" || !control.label.trim()
+          || typeof control.reason !== "string" || !control.reason.trim()
+          || control.enabled !== false && control.editable !== false
+          || control.enabled !== undefined && control.enabled !== false
+          || control.editable !== undefined && control.editable !== false
+          || entry.readiness.actions.some((action) => action.label === control.label)))
       || entry.evidence_scope !== (index >= 91 ? "visual_only" : "production_screen")
       || !object(entry.reference) || !["retained_png", "approved_source"].includes(entry.reference.kind)) fail("state_route_missing");
   }
@@ -119,6 +129,9 @@ function item(root, value, runId) {
       || !Number.isSafeInteger(value.capture_index_size) || value.capture_index_size < 1 || value.capture_index_size > 16 * 1024 * 1024)) fail("payload_invalid");
   const state = visualRegistry(root).find((entry) => entry.id === value.state_id);
   if (!state) fail("state_route_missing");
+  // Excluded registry states may retain documented gaps. A selected unbound
+  // state must fail before attestation, device access or capture begins.
+  if (state.readiness.alignment_gaps?.length) fail("state_alignment_unresolved");
   const config = resolveV12ProductionVisualConfiguration(value.configuration_id);
   if (value.screenshot_id !== undefined && value.screenshot_id !== `v12/${value.state_id}/${config.id}.png`) fail("payload_invalid");
   return { state_id: value.state_id, config, state,

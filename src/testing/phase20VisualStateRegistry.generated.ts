@@ -152,7 +152,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Dark",
       "System"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "App Settings",
     "scenario_steps": [
       {
         "action": "tap_id",
@@ -167,130 +167,47 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "adaptive-screen",
         "app-settings-sheet",
         "phase20-visual-state-BW-001",
-        "root-settings",
-        "root-day-1",
-        "root-day-2",
-        "root-day-3",
-        "root-day-4",
-        "root-day-5",
-        "view-running-plan",
-        "sync-running-activity",
-        "start-workout",
-        "root-scrim"
+        "bottom-sheet-close-action"
       ],
       "semantics": [
-        "Workout",
-        "Light",
-        "Dark",
-        "System"
+        "App Settings",
+        "Appearance"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
-          "order": 0
-        },
-        {
-          "id": "root-day-1",
-          "label": "Mon\n29",
-          "order": 1
-        },
-        {
-          "id": "root-day-2",
-          "label": "Tue\n30",
-          "order": 2
-        },
-        {
-          "id": "root-day-3",
-          "label": "Wed\n01",
-          "order": 3
-        },
-        {
-          "id": "root-day-4",
-          "label": "Thu\n02",
-          "order": 4
-        },
-        {
-          "id": "root-day-5",
-          "label": "Fri\n03",
-          "order": 5
-        },
-        {
-          "id": "view-running-plan",
-          "label": "View plan",
-          "order": 6
-        },
-        {
-          "id": "sync-running-activity",
-          "label": "Sync Garmin",
-          "order": 7
-        },
-        {
-          "id": "start-workout",
-          "label": "Start Full Body A\n→",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 12
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Close App Settings",
-          "order": 14
-        },
-        {
           "id": null,
           "label": "Light",
-          "order": 15
+          "order": 0
         },
         {
           "id": null,
           "label": "Dark",
-          "order": 16
+          "order": 1
         },
         {
           "id": null,
           "label": "System",
-          "order": 17
+          "order": 2
+        },
+        {
+          "id": "bottom-sheet-close-action",
+          "label": "Close App Settings",
+          "order": 3
         }
       ],
       "order": [
-        "Workout",
-        "Light",
-        "Dark",
-        "System"
+        "App Settings",
+        "Appearance"
       ],
       "non_color": [
-        "Sync Garmin",
-        "Appearance applies to all four destinations and Active Workout together.",
-        "System"
+        "Appearance"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "App Settings",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:appearance",
@@ -427,7 +344,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Workout",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -436,103 +353,47 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "adaptive-screen",
         "phase20-visual-state-BW-002",
-        "root-settings",
-        "root-day-1",
-        "root-day-2",
-        "root-day-3",
-        "root-day-4",
-        "root-day-5",
-        "view-running-plan",
-        "sync-running-activity",
-        "start-workout"
+        "root-settings-trigger-index",
+        "today-choose-plan-day",
+        "today-start-workout"
       ],
       "semantics": [
         "Workout",
-        "View plan",
-        "Sync Garmin",
-        "Start Full Body A"
+        "Full Body B",
+        "Start Full Body B"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-index",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "root-day-1",
-          "label": "Mon\n29",
+          "id": "today-choose-plan-day",
+          "label": "Choose another day",
           "order": 1
         },
         {
-          "id": "root-day-2",
-          "label": "Tue\n30",
+          "id": "today-start-workout",
+          "label": "Start Full Body B",
           "order": 2
-        },
-        {
-          "id": "root-day-3",
-          "label": "Wed\n01",
-          "order": 3
-        },
-        {
-          "id": "root-day-4",
-          "label": "Thu\n02",
-          "order": 4
-        },
-        {
-          "id": "root-day-5",
-          "label": "Fri\n03",
-          "order": 5
-        },
-        {
-          "id": "view-running-plan",
-          "label": "View plan",
-          "order": 6
-        },
-        {
-          "id": "sync-running-activity",
-          "label": "Sync Garmin",
-          "order": 7
-        },
-        {
-          "id": "start-workout",
-          "label": "Start Full Body A\n→",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 12
         }
       ],
       "order": [
         "Workout",
-        "View plan",
-        "Sync Garmin",
-        "Start Full Body A"
+        "Full Body B",
+        "Start Full Body B"
       ],
       "non_color": [
-        "Sync Garmin",
-        "Start Full Body A"
+        "Full Body B",
+        "Start Full Body B"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Workout",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:workout-root",
@@ -680,13 +541,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
-    "scenario_steps": [
-      {
-        "action": "tap_id",
-        "value": "workout-day-preview-2026-09-28"
-      }
-    ],
+    "focus_target": "Workout",
+    "scenario_steps": [],
     "readiness": {
       "status": "ready",
       "screen_test_id": "adaptive-screen",
@@ -694,103 +550,47 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "adaptive-screen",
         "phase20-visual-state-BW-003",
-        "root-settings",
-        "root-day-1",
-        "root-day-2",
-        "root-day-3",
-        "root-day-4",
-        "root-day-5",
-        "view-running-plan",
-        "sync-running-activity",
-        "start-workout"
+        "root-settings-trigger-index",
+        "today-choose-plan-day",
+        "today-start-workout"
       ],
       "semantics": [
         "Workout",
-        "View plan",
-        "Sync Garmin",
-        "Nothing scheduled"
+        "Full Body A",
+        "Start Full Body A"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-index",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "root-day-1",
-          "label": "Mon\n29",
+          "id": "today-choose-plan-day",
+          "label": "Choose another day",
           "order": 1
         },
         {
-          "id": "root-day-2",
-          "label": "Tue\n30",
+          "id": "today-start-workout",
+          "label": "Start Full Body A",
           "order": 2
-        },
-        {
-          "id": "root-day-3",
-          "label": "Wed\n01",
-          "order": 3
-        },
-        {
-          "id": "root-day-4",
-          "label": "Thu\n02",
-          "order": 4
-        },
-        {
-          "id": "root-day-5",
-          "label": "Fri\n03",
-          "order": 5
-        },
-        {
-          "id": "view-running-plan",
-          "label": "View plan",
-          "order": 6
-        },
-        {
-          "id": "sync-running-activity",
-          "label": "Sync Garmin",
-          "order": 7
-        },
-        {
-          "id": "start-workout",
-          "label": "Nothing scheduled\n→",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 12
         }
       ],
       "order": [
         "Workout",
-        "View plan",
-        "Sync Garmin",
-        "Nothing scheduled"
+        "Full Body A",
+        "Start Full Body A"
       ],
       "non_color": [
-        "Sync Garmin",
-        "Nothing scheduled"
+        "Full Body A",
+        "Start Full Body A"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Workout",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:workout-day-0",
@@ -927,13 +727,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
-    "scenario_steps": [
-      {
-        "action": "tap_id",
-        "value": "workout-day-preview-2026-09-29"
-      }
-    ],
+    "focus_target": "Workout",
+    "scenario_steps": [],
     "readiness": {
       "status": "ready",
       "screen_test_id": "adaptive-screen",
@@ -941,104 +736,47 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "adaptive-screen",
         "phase20-visual-state-BW-004",
-        "root-settings",
-        "root-day-1",
-        "root-day-2",
-        "root-day-3",
-        "root-day-4",
-        "root-day-5",
-        "view-running-plan",
-        "sync-running-activity",
-        "start-workout"
+        "root-settings-trigger-index",
+        "today-choose-plan-day",
+        "today-start-workout"
       ],
       "semantics": [
         "Workout",
-        "View plan",
-        "Sync Garmin",
-        "Nothing scheduled"
+        "Full Body B",
+        "Start Full Body B"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-index",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "root-day-1",
-          "label": "Mon\n29",
+          "id": "today-choose-plan-day",
+          "label": "Choose another day",
           "order": 1
         },
         {
-          "id": "root-day-2",
-          "label": "Tue\n30",
+          "id": "today-start-workout",
+          "label": "Start Full Body B",
           "order": 2
-        },
-        {
-          "id": "root-day-3",
-          "label": "Wed\n01",
-          "order": 3
-        },
-        {
-          "id": "root-day-4",
-          "label": "Thu\n02",
-          "order": 4
-        },
-        {
-          "id": "root-day-5",
-          "label": "Fri\n03",
-          "order": 5
-        },
-        {
-          "id": "view-running-plan",
-          "label": "View plan",
-          "order": 6
-        },
-        {
-          "id": "sync-running-activity",
-          "label": "Sync Garmin",
-          "order": 7
-        },
-        {
-          "id": "start-workout",
-          "label": "Nothing scheduled\n→",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 12
         }
       ],
       "order": [
         "Workout",
-        "View plan",
-        "Sync Garmin",
-        "Nothing scheduled"
+        "Full Body B",
+        "Start Full Body B"
       ],
       "non_color": [
-        "No workout planned",
-        "Sync Garmin",
-        "Nothing scheduled"
+        "Full Body B",
+        "Start Full Body B"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Workout",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:workout-day-1",
@@ -1175,13 +913,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
-    "scenario_steps": [
-      {
-        "action": "tap_id",
-        "value": "workout-day-preview-2026-09-30"
-      }
-    ],
+    "focus_target": "Workout",
+    "scenario_steps": [],
     "readiness": {
       "status": "ready",
       "screen_test_id": "adaptive-screen",
@@ -1189,103 +922,47 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "adaptive-screen",
         "phase20-visual-state-BW-005",
-        "root-settings",
-        "root-day-1",
-        "root-day-2",
-        "root-day-3",
-        "root-day-4",
-        "root-day-5",
-        "view-running-plan",
-        "sync-running-activity",
-        "start-workout"
+        "root-settings-trigger-index",
+        "today-choose-plan-day",
+        "today-start-workout"
       ],
       "semantics": [
         "Workout",
-        "View plan",
-        "Sync Garmin",
+        "Full Body A",
         "Start Full Body A"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-index",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "root-day-1",
-          "label": "Mon\n29",
+          "id": "today-choose-plan-day",
+          "label": "Choose another day",
           "order": 1
         },
         {
-          "id": "root-day-2",
-          "label": "Tue\n30",
+          "id": "today-start-workout",
+          "label": "Start Full Body A",
           "order": 2
-        },
-        {
-          "id": "root-day-3",
-          "label": "Wed\n01",
-          "order": 3
-        },
-        {
-          "id": "root-day-4",
-          "label": "Thu\n02",
-          "order": 4
-        },
-        {
-          "id": "root-day-5",
-          "label": "Fri\n03",
-          "order": 5
-        },
-        {
-          "id": "view-running-plan",
-          "label": "View plan",
-          "order": 6
-        },
-        {
-          "id": "sync-running-activity",
-          "label": "Sync Garmin",
-          "order": 7
-        },
-        {
-          "id": "start-workout",
-          "label": "Start Full Body A\n→",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 12
         }
       ],
       "order": [
         "Workout",
-        "View plan",
-        "Sync Garmin",
+        "Full Body A",
         "Start Full Body A"
       ],
       "non_color": [
-        "Sync Garmin",
+        "Full Body A",
         "Start Full Body A"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Workout",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:workout-day-2",
@@ -1422,13 +1099,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
-    "scenario_steps": [
-      {
-        "action": "tap_id",
-        "value": "workout-day-preview-2026-10-01"
-      }
-    ],
+    "focus_target": "Workout",
+    "scenario_steps": [],
     "readiness": {
       "status": "ready",
       "screen_test_id": "adaptive-screen",
@@ -1436,104 +1108,47 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "adaptive-screen",
         "phase20-visual-state-BW-006",
-        "root-settings",
-        "root-day-1",
-        "root-day-2",
-        "root-day-3",
-        "root-day-4",
-        "root-day-5",
-        "view-running-plan",
-        "sync-running-activity",
-        "start-workout"
+        "root-settings-trigger-index",
+        "today-choose-plan-day",
+        "today-start-workout"
       ],
       "semantics": [
         "Workout",
-        "View plan",
-        "Sync Garmin",
-        "Nothing scheduled"
+        "Full Body B",
+        "Start Full Body B"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-index",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "root-day-1",
-          "label": "Mon\n29",
+          "id": "today-choose-plan-day",
+          "label": "Choose another day",
           "order": 1
         },
         {
-          "id": "root-day-2",
-          "label": "Tue\n30",
+          "id": "today-start-workout",
+          "label": "Start Full Body B",
           "order": 2
-        },
-        {
-          "id": "root-day-3",
-          "label": "Wed\n01",
-          "order": 3
-        },
-        {
-          "id": "root-day-4",
-          "label": "Thu\n02",
-          "order": 4
-        },
-        {
-          "id": "root-day-5",
-          "label": "Fri\n03",
-          "order": 5
-        },
-        {
-          "id": "view-running-plan",
-          "label": "View plan",
-          "order": 6
-        },
-        {
-          "id": "sync-running-activity",
-          "label": "Sync Garmin",
-          "order": 7
-        },
-        {
-          "id": "start-workout",
-          "label": "Nothing scheduled\n→",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 12
         }
       ],
       "order": [
         "Workout",
-        "View plan",
-        "Sync Garmin",
-        "Nothing scheduled"
+        "Full Body B",
+        "Start Full Body B"
       ],
       "non_color": [
-        "No workout planned",
-        "Sync Garmin",
-        "Nothing scheduled"
+        "Full Body B",
+        "Start Full Body B"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Workout",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:workout-day-3",
@@ -1670,13 +1285,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
-    "scenario_steps": [
-      {
-        "action": "tap_id",
-        "value": "workout-day-preview-2026-10-02"
-      }
-    ],
+    "focus_target": "Workout",
+    "scenario_steps": [],
     "readiness": {
       "status": "ready",
       "screen_test_id": "adaptive-screen",
@@ -1684,103 +1294,47 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "adaptive-screen",
         "phase20-visual-state-BW-007",
-        "root-settings",
-        "root-day-1",
-        "root-day-2",
-        "root-day-3",
-        "root-day-4",
-        "root-day-5",
-        "view-running-plan",
-        "sync-running-activity",
-        "start-workout"
+        "root-settings-trigger-index",
+        "today-choose-plan-day",
+        "today-start-workout"
       ],
       "semantics": [
         "Workout",
-        "View plan",
-        "Sync Garmin",
-        "Start Full Body B"
+        "Full Body A",
+        "Start Full Body A"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-index",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "root-day-1",
-          "label": "Mon\n29",
+          "id": "today-choose-plan-day",
+          "label": "Choose another day",
           "order": 1
         },
         {
-          "id": "root-day-2",
-          "label": "Tue\n30",
+          "id": "today-start-workout",
+          "label": "Start Full Body A",
           "order": 2
-        },
-        {
-          "id": "root-day-3",
-          "label": "Wed\n01",
-          "order": 3
-        },
-        {
-          "id": "root-day-4",
-          "label": "Thu\n02",
-          "order": 4
-        },
-        {
-          "id": "root-day-5",
-          "label": "Fri\n03",
-          "order": 5
-        },
-        {
-          "id": "view-running-plan",
-          "label": "View plan",
-          "order": 6
-        },
-        {
-          "id": "sync-running-activity",
-          "label": "Sync Garmin",
-          "order": 7
-        },
-        {
-          "id": "start-workout",
-          "label": "Start Full Body B\n→",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 12
         }
       ],
       "order": [
         "Workout",
-        "View plan",
-        "Sync Garmin",
-        "Start Full Body B"
+        "Full Body A",
+        "Start Full Body A"
       ],
       "non_color": [
-        "Sync Garmin",
-        "Start Full Body B"
+        "Full Body A",
+        "Start Full Body A"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Workout",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:workout-day-4",
@@ -1944,7 +1498,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "+ Add exercise",
       "Complete set 2"
     ],
-    "focus_target": "open-plan-settings",
+    "focus_target": "Workout",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -1953,115 +1507,38 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "active-workout",
         "phase20-visual-state-BW-008",
-        "open-plan-settings",
-        "open-add-exercise",
-        "complete-current"
+        "workout-more-actions",
+        "workout-complete-set"
       ],
       "semantics": [
-        "Active",
-        "Complete set 2",
-        "Demo reset to Back Squat · set 2.",
-        "light theme applied to both screens."
+        "Workout",
+        "Working sets"
       ],
       "actions": [
         {
-          "id": null,
-          "label": "Back to workout plan",
+          "id": "workout-more-actions",
+          "label": "More workout actions",
           "order": 0
         },
         {
-          "id": "open-plan-settings",
-          "label": "Open Plan settings",
+          "id": "workout-complete-set",
+          "label": "Complete Set 2",
           "order": 1
-        },
-        {
-          "id": null,
-          "label": "View Back Squat trend",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Open Back Squat menu",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "+ Add set",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "View Bench Press trend",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Open Bench Press menu",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "View Lat Pulldown trend",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Open Lat Pulldown menu",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "View Plank trend",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Open Plank menu",
-          "order": 13
-        },
-        {
-          "id": "open-add-exercise",
-          "label": "+ Add exercise",
-          "order": 14
-        },
-        {
-          "id": "complete-current",
-          "label": "Complete set 2",
-          "order": 15
         }
       ],
       "order": [
-        "Active",
-        "Complete set 2",
-        "Demo reset to Back Squat · set 2.",
-        "light theme applied to both screens."
+        "Workout",
+        "Working sets"
       ],
       "non_color": [
-        "Active · saved offline",
-        "Completed",
-        "Current",
-        "Planned",
-        "light theme applied to both screens."
+        "Working sets"
       ],
       "focus": {
-        "target": "open-plan-settings",
+        "target": "Workout",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:active-overview",
@@ -2236,7 +1713,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "+ Add exercise",
       "Complete set 2"
     ],
-    "focus_target": "open-plan-settings",
+    "focus_target": "Edit Back Squat",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -2251,115 +1728,42 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "active-workout",
         "workout-set-editor-sheet",
         "phase20-visual-state-BW-009",
-        "open-plan-settings",
-        "open-add-exercise",
-        "complete-current"
+        "bottom-sheet-close-action"
       ],
       "semantics": [
-        "Active",
-        "Complete set 2",
-        "Demo reset to Back Squat · set 2.",
-        "light theme applied to both screens."
+        "Edit Back Squat",
+        "Repetitions"
       ],
       "actions": [
         {
           "id": null,
-          "label": "Back to workout plan",
+          "label": "Repetitions",
           "order": 0
         },
         {
-          "id": "open-plan-settings",
-          "label": "Open Plan settings",
+          "id": null,
+          "label": "Save set values",
           "order": 1
         },
         {
-          "id": null,
-          "label": "View Back Squat trend",
+          "id": "bottom-sheet-close-action",
+          "label": "Return to Workout",
           "order": 2
-        },
-        {
-          "id": null,
-          "label": "Open Back Squat menu",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "+ Add set",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "View Bench Press trend",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Open Bench Press menu",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "View Lat Pulldown trend",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Open Lat Pulldown menu",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "View Plank trend",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Open Plank menu",
-          "order": 13
-        },
-        {
-          "id": "open-add-exercise",
-          "label": "+ Add exercise",
-          "order": 14
-        },
-        {
-          "id": "complete-current",
-          "label": "Complete set 2",
-          "order": 15
         }
       ],
       "order": [
-        "Active",
-        "Complete set 2",
-        "Demo reset to Back Squat · set 2.",
-        "light theme applied to both screens."
+        "Edit Back Squat",
+        "Repetitions"
       ],
       "non_color": [
-        "Active · saved offline",
-        "Completed",
-        "Current",
-        "Planned",
-        "light theme applied to both screens."
+        "Repetitions"
       ],
       "focus": {
-        "target": "open-plan-settings",
+        "target": "Edit Back Squat",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:active-set-editor",
@@ -2582,7 +1986,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "5",
       "Edit plan after workout\nSchedule"
     ],
-    "focus_target": "open-plan-settings",
+    "focus_target": "Plan settings",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -2600,154 +2004,42 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "active-workout",
         "workout-plan-settings-sheet",
-        "phase20-visual-state-BW-010",
-        "open-plan-settings",
-        "open-add-exercise",
-        "complete-current",
-        "phone-scrim",
-        "plan-rest",
-        "edit-plan-later"
+        "phase20-visual-state-BW-010"
       ],
       "semantics": [
-        "Active",
-        "Schedule",
-        "Demo reset to Back Squat · set 2.",
-        "light theme applied to both screens."
+        "Plan settings",
+        "Default between-set rest seconds"
       ],
       "actions": [
         {
           "id": null,
-          "label": "Back to workout plan",
+          "label": "Default between-set rest seconds",
           "order": 0
         },
         {
-          "id": "open-plan-settings",
-          "label": "Open Plan settings",
+          "id": null,
+          "label": "Save default rest",
           "order": 1
         },
         {
           "id": null,
-          "label": "View Back Squat trend",
+          "label": "Edit plan after workout · Schedule",
           "order": 2
-        },
-        {
-          "id": null,
-          "label": "Open Back Squat menu",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "+ Add set",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "View Bench Press trend",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Open Bench Press menu",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "View Lat Pulldown trend",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Open Lat Pulldown menu",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "View Plank trend",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Open Plank menu",
-          "order": 13
-        },
-        {
-          "id": "open-add-exercise",
-          "label": "+ Add exercise",
-          "order": 14
-        },
-        {
-          "id": "complete-current",
-          "label": "Complete set 2",
-          "order": 15
-        },
-        {
-          "id": "phone-scrim",
-          "label": "Close bottom sheet",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Close Plan settings",
-          "order": 17
-        },
-        {
-          "id": "plan-rest",
-          "label": "Default between-set rest seconds",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "1.25",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "2.5",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "5",
-          "order": 21
-        },
-        {
-          "id": "edit-plan-later",
-          "label": "Edit plan after workout\nSchedule",
-          "order": 22
         }
       ],
       "order": [
-        "Active",
-        "Schedule",
-        "Demo reset to Back Squat · set 2.",
-        "light theme applied to both screens."
+        "Plan settings",
+        "Default between-set rest seconds"
       ],
       "non_color": [
-        "Active · saved offline",
-        "Completed",
-        "Current",
-        "Planned",
-        "light theme applied to both screens."
+        "Default between-set rest seconds"
       ],
       "focus": {
-        "target": "open-plan-settings",
+        "target": "Plan settings",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:active-plan-settings",
@@ -2923,7 +2215,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Close bottom sheet",
       "Close exercise trend"
     ],
-    "focus_target": "open-plan-settings",
+    "focus_target": "Back Squat trend",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -2938,126 +2230,32 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "active-workout",
         "exercise-trend-sheet",
         "phase20-visual-state-BW-011",
-        "open-plan-settings",
-        "open-add-exercise",
-        "complete-current",
-        "phone-scrim"
+        "bottom-sheet-close-action"
       ],
       "semantics": [
-        "Active",
-        "75 kg",
-        "Demo reset to Back Squat · set 2.",
-        "light theme applied to both screens."
+        "Back Squat trend",
+        "Return to Workout"
       ],
       "actions": [
         {
-          "id": null,
-          "label": "Back to workout plan",
+          "id": "bottom-sheet-close-action",
+          "label": "Return to Workout",
           "order": 0
-        },
-        {
-          "id": "open-plan-settings",
-          "label": "Open Plan settings",
-          "order": 1
-        },
-        {
-          "id": null,
-          "label": "View Back Squat trend",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Open Back Squat menu",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "+ Add set",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "View Bench Press trend",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Open Bench Press menu",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "View Lat Pulldown trend",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Open Lat Pulldown menu",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "View Plank trend",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Open Plank menu",
-          "order": 13
-        },
-        {
-          "id": "open-add-exercise",
-          "label": "+ Add exercise",
-          "order": 14
-        },
-        {
-          "id": "complete-current",
-          "label": "Complete set 2",
-          "order": 15
-        },
-        {
-          "id": "phone-scrim",
-          "label": "Close bottom sheet",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Close exercise trend",
-          "order": 17
         }
       ],
       "order": [
-        "Active",
-        "75 kg",
-        "Demo reset to Back Squat · set 2.",
-        "light theme applied to both screens."
+        "Back Squat trend",
+        "Return to Workout"
       ],
       "non_color": [
-        "Active · saved offline",
-        "Completed",
-        "Current",
-        "Planned",
-        "light theme applied to both screens."
+        "Return to Workout"
       ],
       "focus": {
-        "target": "open-plan-settings",
+        "target": "Back Squat trend",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:view-back-squat-trend",
@@ -3251,7 +2449,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Replace exercise\nLibrary",
       "Delete exercise\n×"
     ],
-    "focus_target": "open-plan-settings",
+    "focus_target": "Exercise actions",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -3265,145 +2463,42 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "active-workout",
         "exercise-actions-sheet",
-        "phase20-visual-state-BW-012",
-        "open-plan-settings",
-        "open-add-exercise",
-        "complete-current",
-        "phone-scrim",
-        "exercise-rest",
-        "replace-exercise",
-        "delete-exercise"
+        "phase20-visual-state-BW-012"
       ],
       "semantics": [
-        "Active",
-        "Delete exercise",
-        "Demo reset to Back Squat · set 2.",
-        "light theme applied to both screens."
+        "Exercise actions",
+        "Timing"
       ],
       "actions": [
         {
           "id": null,
-          "label": "Back to workout plan",
+          "label": "Timing",
           "order": 0
         },
         {
-          "id": "open-plan-settings",
-          "label": "Open Plan settings",
+          "id": null,
+          "label": "Replace exercise",
           "order": 1
         },
         {
           "id": null,
-          "label": "View Back Squat trend",
+          "label": "Delete exercise",
           "order": 2
-        },
-        {
-          "id": null,
-          "label": "Open Back Squat menu",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "+ Add set",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "View Bench Press trend",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Open Bench Press menu",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "View Lat Pulldown trend",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Open Lat Pulldown menu",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "View Plank trend",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Open Plank menu",
-          "order": 13
-        },
-        {
-          "id": "open-add-exercise",
-          "label": "+ Add exercise",
-          "order": 14
-        },
-        {
-          "id": "complete-current",
-          "label": "Complete set 2",
-          "order": 15
-        },
-        {
-          "id": "phone-scrim",
-          "label": "Close bottom sheet",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Close exercise menu",
-          "order": 17
-        },
-        {
-          "id": "exercise-rest",
-          "label": "Between-set rest seconds",
-          "order": 18
-        },
-        {
-          "id": "replace-exercise",
-          "label": "Replace exercise\nLibrary",
-          "order": 19
-        },
-        {
-          "id": "delete-exercise",
-          "label": "Delete exercise\n×",
-          "order": 20
         }
       ],
       "order": [
-        "Active",
-        "Delete exercise",
-        "Demo reset to Back Squat · set 2.",
-        "light theme applied to both screens."
+        "Exercise actions",
+        "Timing"
       ],
       "non_color": [
-        "Active · saved offline",
-        "Completed",
-        "Current",
-        "Planned",
-        "light theme applied to both screens."
+        "Timing"
       ],
       "focus": {
-        "target": "open-plan-settings",
+        "target": "Exercise actions",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:open-back-squat-menu",
@@ -3630,11 +2725,11 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Single-Arm Cable Lat Pulldown\nBack",
       "Side Plank\nCore"
     ],
-    "focus_target": "open-plan-settings",
+    "focus_target": "Choose exercise",
     "scenario_steps": [
       {
-        "action": "tap_id",
-        "value": "add-exercise"
+        "action": "tap_text",
+        "value": "Add exercise"
       }
     ],
     "readiness": {
@@ -3645,157 +2740,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "active-workout",
         "add-exercise-sheet",
         "phase20-visual-state-BW-013",
-        "open-plan-settings",
-        "open-add-exercise",
-        "complete-current",
-        "phone-scrim",
-        "exercise-search"
+        "bottom-sheet-close-action"
       ],
       "semantics": [
-        "Active",
-        "Core",
-        "Demo reset to Back Squat · set 2.",
-        "light theme applied to both screens."
+        "Choose exercise",
+        "Search exercises"
       ],
       "actions": [
         {
           "id": null,
-          "label": "Back to workout plan",
+          "label": "Search exercises",
           "order": 0
         },
         {
-          "id": "open-plan-settings",
-          "label": "Open Plan settings",
+          "id": "bottom-sheet-close-action",
+          "label": "Return to Workout",
           "order": 1
-        },
-        {
-          "id": null,
-          "label": "View Back Squat trend",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Open Back Squat menu",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "+ Add set",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "View Bench Press trend",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Open Bench Press menu",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "View Lat Pulldown trend",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Open Lat Pulldown menu",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "View Plank trend",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Open Plank menu",
-          "order": 13
-        },
-        {
-          "id": "open-add-exercise",
-          "label": "+ Add exercise",
-          "order": 14
-        },
-        {
-          "id": "complete-current",
-          "label": "Complete set 2",
-          "order": 15
-        },
-        {
-          "id": "phone-scrim",
-          "label": "Close bottom sheet",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Close exercise picker",
-          "order": 17
-        },
-        {
-          "id": "exercise-search",
-          "label": "Search exercises",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Romanian Deadlift\nPosterior",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Dumbbell Row\nBack",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Walking Lunge\nLegs",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Single-Arm Cable Lat Pulldown\nBack",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Side Plank\nCore",
-          "order": 23
         }
       ],
       "order": [
-        "Active",
-        "Core",
-        "Demo reset to Back Squat · set 2.",
-        "light theme applied to both screens."
+        "Choose exercise",
+        "Search exercises"
       ],
       "non_color": [
-        "Active · saved offline",
-        "Completed",
-        "Current",
-        "Planned",
-        "light theme applied to both screens."
+        "Search exercises"
       ],
       "focus": {
-        "target": "open-plan-settings",
+        "target": "Choose exercise",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:active-exercise-picker",
@@ -3983,7 +2958,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Add warm-up set\n40 kg",
       "Add working set\nUse target"
     ],
-    "focus_target": "open-plan-settings",
+    "focus_target": "Add set",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -3997,139 +2972,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "active-workout",
         "add-set-sheet",
-        "phase20-visual-state-BW-014",
-        "open-plan-settings",
-        "open-add-exercise",
-        "complete-current",
-        "phone-scrim",
-        "add-warmup",
-        "add-working"
+        "phase20-visual-state-BW-014"
       ],
       "semantics": [
-        "Active",
-        "Use target",
-        "Demo reset to Back Squat · set 2.",
-        "light theme applied to both screens."
+        "Add set",
+        "Add working set"
       ],
       "actions": [
         {
           "id": null,
-          "label": "Back to workout plan",
+          "label": "Add warm-up set",
           "order": 0
         },
         {
-          "id": "open-plan-settings",
-          "label": "Open Plan settings",
+          "id": null,
+          "label": "Add working set",
           "order": 1
-        },
-        {
-          "id": null,
-          "label": "View Back Squat trend",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Open Back Squat menu",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "+ Add set",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "View Bench Press trend",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Open Bench Press menu",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "View Lat Pulldown trend",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Open Lat Pulldown menu",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "View Plank trend",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Open Plank menu",
-          "order": 13
-        },
-        {
-          "id": "open-add-exercise",
-          "label": "+ Add exercise",
-          "order": 14
-        },
-        {
-          "id": "complete-current",
-          "label": "Complete set 2",
-          "order": 15
-        },
-        {
-          "id": "phone-scrim",
-          "label": "Close bottom sheet",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Close set actions",
-          "order": 17
-        },
-        {
-          "id": "add-warmup",
-          "label": "Add warm-up set\n40 kg",
-          "order": 18
-        },
-        {
-          "id": "add-working",
-          "label": "Add working set\nUse target",
-          "order": 19
         }
       ],
       "order": [
-        "Active",
-        "Use target",
-        "Demo reset to Back Squat · set 2.",
-        "light theme applied to both screens."
+        "Add set",
+        "Add working set"
       ],
       "non_color": [
-        "Active · saved offline",
-        "Completed",
-        "Current",
-        "Planned",
-        "light theme applied to both screens."
+        "Add working set"
       ],
       "focus": {
-        "target": "open-plan-settings",
+        "target": "Add set",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:set-action-menu",
@@ -4301,7 +3174,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "+ Add exercise",
       "Complete warm-up W1"
     ],
-    "focus_target": "open-plan-settings",
+    "focus_target": "Workout",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -4310,120 +3183,38 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "active-workout",
         "phase20-visual-state-BW-015",
-        "open-plan-settings",
-        "open-add-exercise",
-        "complete-current"
+        "workout-more-actions",
+        "workout-complete-set"
       ],
       "semantics": [
-        "Active",
-        "Complete warm-up W1",
-        "Warm-up set added to Back Squat.",
-        "light theme applied to both screens."
+        "Workout",
+        "Working sets"
       ],
       "actions": [
         {
-          "id": null,
-          "label": "Back to workout plan",
+          "id": "workout-more-actions",
+          "label": "More workout actions",
           "order": 0
         },
         {
-          "id": "open-plan-settings",
-          "label": "Open Plan settings",
+          "id": "workout-complete-set",
+          "label": "Complete Set 1",
           "order": 1
-        },
-        {
-          "id": null,
-          "label": "View Back Squat trend",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Open Back Squat menu",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "W1\n—\nprevious\n40 × 5\nkg × reps\nCurrent",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "+ Add set",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "View Bench Press trend",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Open Bench Press menu",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "View Lat Pulldown trend",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Open Lat Pulldown menu",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "View Plank trend",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Open Plank menu",
-          "order": 14
-        },
-        {
-          "id": "open-add-exercise",
-          "label": "+ Add exercise",
-          "order": 15
-        },
-        {
-          "id": "complete-current",
-          "label": "Complete warm-up W1",
-          "order": 16
         }
       ],
       "order": [
-        "Active",
-        "Complete warm-up W1",
-        "Warm-up set added to Back Squat.",
-        "light theme applied to both screens."
+        "Workout",
+        "Working sets"
       ],
       "non_color": [
-        "Active · saved offline",
-        "Current",
-        "Completed",
-        "Planned",
-        "light theme applied to both screens."
+        "Working sets"
       ],
       "focus": {
-        "target": "open-plan-settings",
+        "target": "Workout",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:warmup-before-working",
@@ -4595,7 +3386,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "+ Add exercise",
       "Complete set 2"
     ],
-    "focus_target": "open-plan-settings",
+    "focus_target": "Workout",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -4604,120 +3395,38 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "active-workout",
         "phase20-visual-state-BW-016",
-        "open-plan-settings",
-        "open-add-exercise",
-        "complete-current"
+        "workout-more-actions",
+        "workout-complete-set"
       ],
       "semantics": [
-        "Active",
-        "Complete set 2",
-        "Back Squat warm-up set 1 committed offline.",
-        "Back Squat, warm-up set 1 committed. Back Squat, working set 2 is next."
+        "Workout",
+        "Working sets"
       ],
       "actions": [
         {
-          "id": null,
-          "label": "Back to workout plan",
+          "id": "workout-more-actions",
+          "label": "More workout actions",
           "order": 0
         },
         {
-          "id": "open-plan-settings",
-          "label": "Open Plan settings",
+          "id": "workout-complete-set",
+          "label": "Complete Set 2",
           "order": 1
-        },
-        {
-          "id": null,
-          "label": "View Back Squat trend",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Open Back Squat menu",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "W1\n—\nprevious\n40 × 5\nkg × reps\nCompleted",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "+ Add set",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "View Bench Press trend",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Open Bench Press menu",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "View Lat Pulldown trend",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Open Lat Pulldown menu",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "View Plank trend",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Open Plank menu",
-          "order": 14
-        },
-        {
-          "id": "open-add-exercise",
-          "label": "+ Add exercise",
-          "order": 15
-        },
-        {
-          "id": "complete-current",
-          "label": "Complete set 2",
-          "order": 16
         }
       ],
       "order": [
-        "Active",
-        "Complete set 2",
-        "Back Squat warm-up set 1 committed offline.",
-        "Back Squat, warm-up set 1 committed. Back Squat, working set 2 is next."
+        "Workout",
+        "Working sets"
       ],
       "non_color": [
-        "Active · saved offline",
-        "Completed",
-        "Current",
-        "Planned",
-        "Back Squat, warm-up set 1 committed. Back Squat, working set 2 is next."
+        "Working sets"
       ],
       "focus": {
-        "target": "open-plan-settings",
+        "target": "Workout",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:warmup-committed-no-rest",
@@ -4901,7 +3610,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "+15",
       "Skip"
     ],
-    "focus_target": "open-plan-settings",
+    "focus_target": "Workout",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -4910,132 +3619,47 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "active-workout",
         "phase20-visual-state-BW-017",
-        "open-plan-settings",
-        "rest-minus",
-        "rest-pause",
-        "rest-plus",
-        "rest-skip"
+        "rest-pause"
       ],
       "semantics": [
-        "Active",
-        "Skip",
-        "Back Squat working set 2 committed offline.",
-        "Back Squat, working set 2 committed. Back Squat, working set 3 is next. Rest timer started."
+        "Workout",
+        "Pause rest"
       ],
       "actions": [
         {
           "id": null,
-          "label": "Back to workout plan",
+          "label": "Pause rest",
           "order": 0
         },
         {
-          "id": "open-plan-settings",
-          "label": "Open Plan settings",
+          "id": null,
+          "label": "Subtract 15 seconds from rest",
           "order": 1
         },
         {
           "id": null,
-          "label": "View Back Squat trend",
+          "label": "Add 15 seconds to rest",
           "order": 2
         },
         {
           "id": null,
-          "label": "Open Back Squat menu",
+          "label": "Skip rest",
           "order": 3
-        },
-        {
-          "id": null,
-          "label": "W1\n—\nprevious\n40 × 5\nkg × reps\nCompleted",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "+ Add set",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "View Bench Press trend",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Open Bench Press menu",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "View Lat Pulldown trend",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Open Lat Pulldown menu",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "View Plank trend",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Open Plank menu",
-          "order": 14
-        },
-        {
-          "id": "rest-minus",
-          "label": "−15",
-          "order": 15
-        },
-        {
-          "id": "rest-pause",
-          "label": "Pause",
-          "order": 16
-        },
-        {
-          "id": "rest-plus",
-          "label": "+15",
-          "order": 17
-        },
-        {
-          "id": "rest-skip",
-          "label": "Skip",
-          "order": 18
         }
       ],
       "order": [
-        "Active",
-        "Skip",
-        "Back Squat working set 2 committed offline.",
-        "Back Squat, working set 2 committed. Back Squat, working set 3 is next. Rest timer started."
+        "Workout",
+        "Pause rest"
       ],
       "non_color": [
-        "Active · saved offline",
-        "Completed",
-        "Current",
-        "RESTING",
-        "Back Squat, working set 2 committed. Back Squat, working set 3 is next. Rest timer started."
+        "Pause rest"
       ],
       "focus": {
-        "target": "open-plan-settings",
+        "target": "Workout",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:working-committed-rest",
@@ -5230,7 +3854,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "+15",
       "Skip"
     ],
-    "focus_target": "open-plan-settings",
+    "focus_target": "Workout",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -5239,132 +3863,47 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "active-workout",
         "phase20-visual-state-BW-018",
-        "open-plan-settings",
-        "rest-minus",
-        "rest-pause",
-        "rest-plus",
-        "rest-skip"
+        "rest-resume"
       ],
       "semantics": [
-        "Active",
-        "Skip",
-        "Back Squat working set 2 committed offline.",
-        "Rest timer paused."
+        "Workout",
+        "Resume rest"
       ],
       "actions": [
         {
           "id": null,
-          "label": "Back to workout plan",
+          "label": "Resume rest",
           "order": 0
         },
         {
-          "id": "open-plan-settings",
-          "label": "Open Plan settings",
+          "id": null,
+          "label": "Subtract 15 seconds from rest",
           "order": 1
         },
         {
           "id": null,
-          "label": "View Back Squat trend",
+          "label": "Add 15 seconds to rest",
           "order": 2
         },
         {
           "id": null,
-          "label": "Open Back Squat menu",
+          "label": "Skip rest",
           "order": 3
-        },
-        {
-          "id": null,
-          "label": "W1\n—\nprevious\n40 × 5\nkg × reps\nCompleted",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "+ Add set",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "View Bench Press trend",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Open Bench Press menu",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "View Lat Pulldown trend",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Open Lat Pulldown menu",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "View Plank trend",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Open Plank menu",
-          "order": 14
-        },
-        {
-          "id": "rest-minus",
-          "label": "−15",
-          "order": 15
-        },
-        {
-          "id": "rest-pause",
-          "label": "Resume",
-          "order": 16
-        },
-        {
-          "id": "rest-plus",
-          "label": "+15",
-          "order": 17
-        },
-        {
-          "id": "rest-skip",
-          "label": "Skip",
-          "order": 18
         }
       ],
       "order": [
-        "Active",
-        "Skip",
-        "Back Squat working set 2 committed offline.",
-        "Rest timer paused."
+        "Workout",
+        "Resume rest"
       ],
       "non_color": [
-        "Active · saved offline",
-        "Completed",
-        "Current",
-        "REST PAUSED",
-        "Rest timer paused."
+        "Resume rest"
       ],
       "focus": {
-        "target": "open-plan-settings",
+        "target": "Workout",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:rest-paused",
@@ -5548,7 +4087,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "+15",
       "Skip"
     ],
-    "focus_target": "open-plan-settings",
+    "focus_target": "Workout",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -5557,132 +4096,47 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "active-workout",
         "phase20-visual-state-BW-019",
-        "open-plan-settings",
-        "rest-minus",
-        "rest-pause",
-        "rest-plus",
-        "rest-skip"
+        "rest-resume"
       ],
       "semantics": [
-        "Active",
-        "Skip",
-        "Back Squat working set 2 committed offline.",
-        "Rest timer paused."
+        "Workout",
+        "Resume rest"
       ],
       "actions": [
         {
           "id": null,
-          "label": "Back to workout plan",
+          "label": "Resume rest",
           "order": 0
         },
         {
-          "id": "open-plan-settings",
-          "label": "Open Plan settings",
+          "id": null,
+          "label": "Subtract 15 seconds from rest",
           "order": 1
         },
         {
           "id": null,
-          "label": "View Back Squat trend",
+          "label": "Add 15 seconds to rest",
           "order": 2
         },
         {
           "id": null,
-          "label": "Open Back Squat menu",
+          "label": "Skip rest",
           "order": 3
-        },
-        {
-          "id": null,
-          "label": "W1\n—\nprevious\n40 × 5\nkg × reps\nCompleted",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "+ Add set",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "View Bench Press trend",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Open Bench Press menu",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "View Lat Pulldown trend",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Open Lat Pulldown menu",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "View Plank trend",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Open Plank menu",
-          "order": 14
-        },
-        {
-          "id": "rest-minus",
-          "label": "−15",
-          "order": 15
-        },
-        {
-          "id": "rest-pause",
-          "label": "Resume",
-          "order": 16
-        },
-        {
-          "id": "rest-plus",
-          "label": "+15",
-          "order": 17
-        },
-        {
-          "id": "rest-skip",
-          "label": "Skip",
-          "order": 18
         }
       ],
       "order": [
-        "Active",
-        "Skip",
-        "Back Squat working set 2 committed offline.",
-        "Rest timer paused."
+        "Workout",
+        "Resume rest"
       ],
       "non_color": [
-        "Active · saved offline",
-        "Completed",
-        "Current",
-        "REST PAUSED",
-        "Rest timer paused."
+        "Resume rest"
       ],
       "focus": {
-        "target": "open-plan-settings",
+        "target": "Workout",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:rest-adjusted",
@@ -5866,7 +4320,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "+15",
       "Skip"
     ],
-    "focus_target": "open-plan-settings",
+    "focus_target": "Workout",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -5875,132 +4329,47 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "active-workout",
         "phase20-visual-state-BW-020",
-        "open-plan-settings",
-        "rest-minus",
-        "rest-pause",
-        "rest-plus",
-        "rest-skip"
+        "rest-pause"
       ],
       "semantics": [
-        "Active",
-        "Skip",
-        "Back Squat working set 2 committed offline.",
-        "Rest timer resumed."
+        "Workout",
+        "Pause rest"
       ],
       "actions": [
         {
           "id": null,
-          "label": "Back to workout plan",
+          "label": "Pause rest",
           "order": 0
         },
         {
-          "id": "open-plan-settings",
-          "label": "Open Plan settings",
+          "id": null,
+          "label": "Subtract 15 seconds from rest",
           "order": 1
         },
         {
           "id": null,
-          "label": "View Back Squat trend",
+          "label": "Add 15 seconds to rest",
           "order": 2
         },
         {
           "id": null,
-          "label": "Open Back Squat menu",
+          "label": "Skip rest",
           "order": 3
-        },
-        {
-          "id": null,
-          "label": "W1\n—\nprevious\n40 × 5\nkg × reps\nCompleted",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "+ Add set",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "View Bench Press trend",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Open Bench Press menu",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "View Lat Pulldown trend",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Open Lat Pulldown menu",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "View Plank trend",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Open Plank menu",
-          "order": 14
-        },
-        {
-          "id": "rest-minus",
-          "label": "−15",
-          "order": 15
-        },
-        {
-          "id": "rest-pause",
-          "label": "Pause",
-          "order": 16
-        },
-        {
-          "id": "rest-plus",
-          "label": "+15",
-          "order": 17
-        },
-        {
-          "id": "rest-skip",
-          "label": "Skip",
-          "order": 18
         }
       ],
       "order": [
-        "Active",
-        "Skip",
-        "Back Squat working set 2 committed offline.",
-        "Rest timer resumed."
+        "Workout",
+        "Pause rest"
       ],
       "non_color": [
-        "Active · saved offline",
-        "Completed",
-        "Current",
-        "RESTING",
-        "Rest timer resumed."
+        "Pause rest"
       ],
       "focus": {
-        "target": "open-plan-settings",
+        "target": "Workout",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:rest-resumed",
@@ -6172,7 +4541,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "+ Add exercise",
       "Complete set 3"
     ],
-    "focus_target": "open-plan-settings",
+    "focus_target": "Workout",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -6181,119 +4550,38 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "active-workout",
         "phase20-visual-state-BW-021",
-        "open-plan-settings",
-        "open-add-exercise",
-        "complete-current"
+        "workout-more-actions",
+        "workout-complete-set"
       ],
       "semantics": [
-        "Active",
-        "Complete set 3",
-        "Rest skipped. Next set ready.",
-        "Rest timer resumed."
+        "Workout",
+        "Working sets"
       ],
       "actions": [
         {
-          "id": null,
-          "label": "Back to workout plan",
+          "id": "workout-more-actions",
+          "label": "More workout actions",
           "order": 0
         },
         {
-          "id": "open-plan-settings",
-          "label": "Open Plan settings",
+          "id": "workout-complete-set",
+          "label": "Complete Set 3",
           "order": 1
-        },
-        {
-          "id": null,
-          "label": "View Back Squat trend",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Open Back Squat menu",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "W1\n—\nprevious\n40 × 5\nkg × reps\nCompleted",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "+ Add set",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "View Bench Press trend",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Open Bench Press menu",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "View Lat Pulldown trend",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Open Lat Pulldown menu",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "View Plank trend",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Open Plank menu",
-          "order": 14
-        },
-        {
-          "id": "open-add-exercise",
-          "label": "+ Add exercise",
-          "order": 15
-        },
-        {
-          "id": "complete-current",
-          "label": "Complete set 3",
-          "order": 16
         }
       ],
       "order": [
-        "Active",
-        "Complete set 3",
-        "Rest skipped. Next set ready.",
-        "Rest timer resumed."
+        "Workout",
+        "Working sets"
       ],
       "non_color": [
-        "Active · saved offline",
-        "Completed",
-        "Current",
-        "Rest timer resumed."
+        "Working sets"
       ],
       "focus": {
-        "target": "open-plan-settings",
+        "target": "Workout",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:rest-skipped",
@@ -6676,7 +4964,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "calendar-info",
+    "focus_target": "Calendar",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -6685,253 +4973,48 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "adaptive-screen",
         "phase20-visual-state-BW-022",
-        "calendar-info",
-        "root-settings",
-        "cal-previous-month",
-        "cal-return-today",
-        "cal-next-month"
+        "root-settings-trigger-calendar",
+        "calendar-info-action"
       ],
       "semantics": [
         "Calendar",
-        "Tread",
-        "Tempo",
-        "Long"
+        "October 2026"
       ],
       "actions": [
         {
-          "id": "calendar-info",
-          "label": "Open Calendar legend",
+          "id": "root-settings-trigger-calendar",
+          "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": "calendar-info-action",
+          "label": "Open Calendar key",
           "order": 1
         },
         {
-          "id": "cal-previous-month",
-          "label": "Previous month",
+          "id": null,
+          "label": "Choose month and year, October 2026",
           "order": 2
         },
         {
-          "id": "cal-return-today",
-          "label": "Today",
+          "id": null,
+          "label": "Return to today, 1 October 2026",
           "order": 3
-        },
-        {
-          "id": "cal-next-month",
-          "label": "Next month",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "28",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "29",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "30",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "1\nFull A",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "2",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "3\nFull A",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "4\nEasy",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "5\n−",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "6",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "7\nFull B\nEasy",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "8",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "9\n6×400",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "10\nTread",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "11",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "12\nFull B",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "13",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "14\nTempo",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "15",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "16",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "17",
-          "order": 24
-        },
-        {
-          "id": null,
-          "label": "18\nLong",
-          "order": 25
-        },
-        {
-          "id": null,
-          "label": "19",
-          "order": 26
-        },
-        {
-          "id": null,
-          "label": "20",
-          "order": 27
-        },
-        {
-          "id": null,
-          "label": "21",
-          "order": 28
-        },
-        {
-          "id": null,
-          "label": "22",
-          "order": 29
-        },
-        {
-          "id": null,
-          "label": "23",
-          "order": 30
-        },
-        {
-          "id": null,
-          "label": "24",
-          "order": 31
-        },
-        {
-          "id": null,
-          "label": "25",
-          "order": 32
-        },
-        {
-          "id": null,
-          "label": "26",
-          "order": 33
-        },
-        {
-          "id": null,
-          "label": "27",
-          "order": 34
-        },
-        {
-          "id": null,
-          "label": "28",
-          "order": 35
-        },
-        {
-          "id": null,
-          "label": "29",
-          "order": 36
-        },
-        {
-          "id": null,
-          "label": "30",
-          "order": 37
-        },
-        {
-          "id": null,
-          "label": "31",
-          "order": 38
-        },
-        {
-          "id": null,
-          "label": "1",
-          "order": 39
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 40
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 41
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 42
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 43
         }
       ],
       "order": [
         "Calendar",
-        "Tread",
-        "Tempo",
-        "Long"
+        "October 2026"
       ],
       "non_color": [
-        "Long"
+        "October 2026"
       ],
       "focus": {
-        "target": "calendar-info",
+        "target": "Calendar",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:calendar-month",
@@ -7337,7 +5420,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Close App Settings",
       "Close Calendar key"
     ],
-    "focus_target": "calendar-info",
+    "focus_target": "Activity type",
     "scenario_steps": [
       {
         "action": "tap_id",
@@ -7352,264 +5435,35 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "adaptive-screen",
         "calendar-key-sheet",
         "phase20-visual-state-BW-023",
-        "calendar-info",
-        "root-settings",
-        "cal-previous-month",
-        "cal-return-today",
-        "cal-next-month",
-        "root-scrim"
+        "bottom-sheet-close-action"
       ],
       "semantics": [
-        "Calendar",
-        "Complete",
-        "Partial",
-        "Planned"
+        "Activity type",
+        "Strength",
+        "Running"
       ],
       "actions": [
         {
-          "id": "calendar-info",
-          "label": "Open Calendar legend",
-          "order": 0
-        },
-        {
-          "id": "root-settings",
-          "label": "Open App Settings",
-          "order": 1
-        },
-        {
-          "id": "cal-previous-month",
-          "label": "Previous month",
-          "order": 2
-        },
-        {
-          "id": "cal-return-today",
-          "label": "Today",
-          "order": 3
-        },
-        {
-          "id": "cal-next-month",
-          "label": "Next month",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "28",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "29",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "30",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "1\nFull A",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "2",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "3\nFull A",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "4\nEasy",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "5\n−",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "6",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "7\nFull B\nEasy",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "8",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "9\n6×400",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "10\nTread",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "11",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "12\nFull B",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "13",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "14\nTempo",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "15",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "16",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "17",
-          "order": 24
-        },
-        {
-          "id": null,
-          "label": "18\nLong",
-          "order": 25
-        },
-        {
-          "id": null,
-          "label": "19",
-          "order": 26
-        },
-        {
-          "id": null,
-          "label": "20",
-          "order": 27
-        },
-        {
-          "id": null,
-          "label": "21",
-          "order": 28
-        },
-        {
-          "id": null,
-          "label": "22",
-          "order": 29
-        },
-        {
-          "id": null,
-          "label": "23",
-          "order": 30
-        },
-        {
-          "id": null,
-          "label": "24",
-          "order": 31
-        },
-        {
-          "id": null,
-          "label": "25",
-          "order": 32
-        },
-        {
-          "id": null,
-          "label": "26",
-          "order": 33
-        },
-        {
-          "id": null,
-          "label": "27",
-          "order": 34
-        },
-        {
-          "id": null,
-          "label": "28",
-          "order": 35
-        },
-        {
-          "id": null,
-          "label": "29",
-          "order": 36
-        },
-        {
-          "id": null,
-          "label": "30",
-          "order": 37
-        },
-        {
-          "id": null,
-          "label": "31",
-          "order": 38
-        },
-        {
-          "id": null,
-          "label": "1",
-          "order": 39
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 40
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 41
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 42
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 43
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 44
-        },
-        {
-          "id": null,
+          "id": "bottom-sheet-close-action",
           "label": "Close Calendar key",
-          "order": 45
+          "order": 0
         }
       ],
       "order": [
-        "Calendar",
-        "Complete",
-        "Partial",
-        "Planned"
+        "Activity type",
+        "Strength",
+        "Running"
       ],
       "non_color": [
-        "Planned"
+        "Strength",
+        "Running"
       ],
       "focus": {
-        "target": "calendar-info",
+        "target": "Activity type",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:calendar-key",
@@ -8059,7 +5913,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "calendar-info",
+    "focus_target": "Calendar",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -8073,288 +5927,48 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "adaptive-screen",
         "phase20-visual-state-BW-024",
-        "calendar-info",
-        "root-settings",
-        "cal-previous-month",
-        "cal-return-today",
-        "cal-next-month"
+        "root-settings-trigger-calendar",
+        "calendar-info-action"
       ],
       "semantics": [
         "Calendar",
-        "Tread",
-        "Tempo",
-        "Long"
+        "November 2026"
       ],
       "actions": [
         {
-          "id": "calendar-info",
-          "label": "Open Calendar legend",
+          "id": "root-settings-trigger-calendar",
+          "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": "calendar-info-action",
+          "label": "Open Calendar key",
           "order": 1
         },
         {
-          "id": "cal-previous-month",
-          "label": "Previous month",
+          "id": null,
+          "label": "Choose month and year, November 2026",
           "order": 2
         },
         {
-          "id": "cal-return-today",
-          "label": "Today",
+          "id": null,
+          "label": "Return to today, 1 October 2026",
           "order": 3
-        },
-        {
-          "id": "cal-next-month",
-          "label": "Next month",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "26",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "27",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "28",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "29",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "30",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "31",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "1",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "2",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "3",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "4",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "5",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "6",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "7",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "8",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "9",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "10",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "11",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "12",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "13",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "14",
-          "order": 24
-        },
-        {
-          "id": null,
-          "label": "15",
-          "order": 25
-        },
-        {
-          "id": null,
-          "label": "16",
-          "order": 26
-        },
-        {
-          "id": null,
-          "label": "17",
-          "order": 27
-        },
-        {
-          "id": null,
-          "label": "18",
-          "order": 28
-        },
-        {
-          "id": null,
-          "label": "19",
-          "order": 29
-        },
-        {
-          "id": null,
-          "label": "20",
-          "order": 30
-        },
-        {
-          "id": null,
-          "label": "21",
-          "order": 31
-        },
-        {
-          "id": null,
-          "label": "22",
-          "order": 32
-        },
-        {
-          "id": null,
-          "label": "23",
-          "order": 33
-        },
-        {
-          "id": null,
-          "label": "24",
-          "order": 34
-        },
-        {
-          "id": null,
-          "label": "25",
-          "order": 35
-        },
-        {
-          "id": null,
-          "label": "26",
-          "order": 36
-        },
-        {
-          "id": null,
-          "label": "27",
-          "order": 37
-        },
-        {
-          "id": null,
-          "label": "28",
-          "order": 38
-        },
-        {
-          "id": null,
-          "label": "29",
-          "order": 39
-        },
-        {
-          "id": null,
-          "label": "30",
-          "order": 40
-        },
-        {
-          "id": null,
-          "label": "1",
-          "order": 41
-        },
-        {
-          "id": null,
-          "label": "2",
-          "order": 42
-        },
-        {
-          "id": null,
-          "label": "3",
-          "order": 43
-        },
-        {
-          "id": null,
-          "label": "4",
-          "order": 44
-        },
-        {
-          "id": null,
-          "label": "5",
-          "order": 45
-        },
-        {
-          "id": null,
-          "label": "6",
-          "order": 46
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 47
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 48
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 49
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 50
         }
       ],
       "order": [
         "Calendar",
-        "Tread",
-        "Tempo",
-        "Long"
+        "November 2026"
       ],
       "non_color": [
-        "Long"
+        "November 2026"
       ],
       "focus": {
-        "target": "calendar-info",
+        "target": "Calendar",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:calendar-next",
@@ -8737,7 +6351,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "calendar-info",
+    "focus_target": "Calendar",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -8751,253 +6365,48 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "adaptive-screen",
         "phase20-visual-state-BW-025",
-        "calendar-info",
-        "root-settings",
-        "cal-previous-month",
-        "cal-return-today",
-        "cal-next-month"
+        "root-settings-trigger-calendar",
+        "calendar-info-action"
       ],
       "semantics": [
         "Calendar",
-        "Tread",
-        "Tempo",
-        "Long"
+        "September 2026"
       ],
       "actions": [
         {
-          "id": "calendar-info",
-          "label": "Open Calendar legend",
+          "id": "root-settings-trigger-calendar",
+          "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": "calendar-info-action",
+          "label": "Open Calendar key",
           "order": 1
         },
         {
-          "id": "cal-previous-month",
-          "label": "Previous month",
+          "id": null,
+          "label": "Choose month and year, September 2026",
           "order": 2
         },
         {
-          "id": "cal-return-today",
-          "label": "Today",
+          "id": null,
+          "label": "Return to today, 1 October 2026",
           "order": 3
-        },
-        {
-          "id": "cal-next-month",
-          "label": "Next month",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "28",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "29",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "30",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "1\nFull A",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "2",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "3\nFull A",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "4\nEasy",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "5\n−",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "6",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "7\nFull B\nEasy",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "8",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "9\n6×400",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "10\nTread",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "11",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "12\nFull B",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "13",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "14\nTempo",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "15",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "16",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "17",
-          "order": 24
-        },
-        {
-          "id": null,
-          "label": "18\nLong",
-          "order": 25
-        },
-        {
-          "id": null,
-          "label": "19",
-          "order": 26
-        },
-        {
-          "id": null,
-          "label": "20",
-          "order": 27
-        },
-        {
-          "id": null,
-          "label": "21",
-          "order": 28
-        },
-        {
-          "id": null,
-          "label": "22",
-          "order": 29
-        },
-        {
-          "id": null,
-          "label": "23",
-          "order": 30
-        },
-        {
-          "id": null,
-          "label": "24",
-          "order": 31
-        },
-        {
-          "id": null,
-          "label": "25",
-          "order": 32
-        },
-        {
-          "id": null,
-          "label": "26",
-          "order": 33
-        },
-        {
-          "id": null,
-          "label": "27",
-          "order": 34
-        },
-        {
-          "id": null,
-          "label": "28",
-          "order": 35
-        },
-        {
-          "id": null,
-          "label": "29",
-          "order": 36
-        },
-        {
-          "id": null,
-          "label": "30",
-          "order": 37
-        },
-        {
-          "id": null,
-          "label": "31",
-          "order": 38
-        },
-        {
-          "id": null,
-          "label": "1",
-          "order": 39
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 40
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 41
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 42
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 43
         }
       ],
       "order": [
         "Calendar",
-        "Tread",
-        "Tempo",
-        "Long"
+        "September 2026"
       ],
       "non_color": [
-        "Long"
+        "September 2026"
       ],
       "focus": {
-        "target": "calendar-info",
+        "target": "Calendar",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:calendar-previous",
@@ -9241,7 +6650,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "calendar-info",
+    "focus_target": "Calendar",
     "scenario_steps": [
       {
         "action": "tap_id",
@@ -9255,167 +6664,32 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "adaptive-screen",
         "calendar-agenda-region",
-        "phase20-visual-state-BW-026",
-        "calendar-info",
-        "root-settings",
-        "cal-previous-month",
-        "cal-return-today",
-        "cal-next-month",
-        "cal-collapse-day"
+        "phase20-visual-state-BW-026"
       ],
       "semantics": [
         "Calendar",
-        "Running plan",
-        "Tempo",
-        "Long"
+        "7 October 2026"
       ],
       "actions": [
         {
-          "id": "calendar-info",
-          "label": "Open Calendar legend",
-          "order": 0
-        },
-        {
-          "id": "root-settings",
-          "label": "Open App Settings",
-          "order": 1
-        },
-        {
-          "id": "cal-previous-month",
-          "label": "Previous month",
-          "order": 2
-        },
-        {
-          "id": "cal-return-today",
-          "label": "Today",
-          "order": 3
-        },
-        {
-          "id": "cal-next-month",
-          "label": "Next month",
-          "order": 4
-        },
-        {
           "id": null,
-          "label": "5\n−",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "6",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "7\nFull B\nEasy",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "8",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "9\n6×400",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "10\nTread",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "11",
-          "order": 11
-        },
-        {
-          "id": "cal-collapse-day",
           "label": "Collapse day and return to month",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Full Body B\nPlanned · about 42 min\nStrength · planned\nGym Tracker\n›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Easy Run\nPlanned · 25 minutes\nRunning · planned\nRunning plan\n›",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "12\nFull B",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "13",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "14\nTempo",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "15",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "16",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "17",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "18\nLong",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 24
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 25
+          "order": 0
         }
       ],
       "order": [
         "Calendar",
-        "Running plan",
-        "Tempo",
-        "Long"
+        "7 October 2026"
       ],
       "non_color": [
-        "Planned · about 42 min",
-        "Planned · 25 minutes",
-        "Long"
+        "7 October 2026"
       ],
       "focus": {
-        "target": "calendar-info",
+        "target": "Calendar",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:calendar-agenda-2026-10-07",
@@ -9711,7 +6985,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "calendar-info",
+    "focus_target": "Workout preview",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -9719,195 +6993,32 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "adaptive-screen",
       "test_ids": [
         "adaptive-screen",
-        "phase20-visual-state-BW-027",
-        "calendar-info",
-        "root-settings",
-        "cal-previous-month",
-        "cal-return-today",
-        "cal-next-month",
-        "cal-collapse-day",
-        "cal-detail-back"
+        "phase20-visual-state-BW-027"
       ],
       "semantics": [
         "Workout preview",
-        "18 × 8",
-        "20 × 8",
-        "Historical workout facts are read only here. Corrections remain available from the session history workflow."
+        "Planned Strength target facts"
       ],
       "actions": [
         {
-          "id": "calendar-info",
-          "label": "Open Calendar legend",
+          "id": null,
+          "label": "Back to Calendar",
           "order": 0
-        },
-        {
-          "id": "root-settings",
-          "label": "Open App Settings",
-          "order": 1
-        },
-        {
-          "id": "cal-previous-month",
-          "label": "Previous month",
-          "order": 2
-        },
-        {
-          "id": "cal-return-today",
-          "label": "Today",
-          "order": 3
-        },
-        {
-          "id": "cal-next-month",
-          "label": "Next month",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "5\n−",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "6",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "7\nFull B\nEasy",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "8",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "9\n6×400",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "10\nTread",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "11",
-          "order": 11
-        },
-        {
-          "id": "cal-collapse-day",
-          "label": "Collapse day and return to month",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Full Body B\nPlanned · about 42 min\nStrength · planned\nGym Tracker\n›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Easy Run\nPlanned · 25 minutes\nRunning · planned\nRunning plan\n›",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "12\nFull B",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "13",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "14\nTempo",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "15",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "16",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "17",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "18\nLong",
-          "order": 21
-        },
-        {
-          "id": "cal-detail-back",
-          "label": "Back to Calendar agenda",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Deadlift\n3 × 5 · 95 kg · 0/3 complete\n›",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "Incline Dumbbell Press\n3 × 8 · 24 kg · 0/3 complete\n›",
-          "order": 24
-        },
-        {
-          "id": null,
-          "label": "Seated Cable Row\n3 × 10 · 55 kg · 0/3 complete\n›",
-          "order": 25
-        },
-        {
-          "id": null,
-          "label": "Bulgarian Split Squat\n3 × 8 · 20 kg · 0/3 complete\n›",
-          "order": 26
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 27
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 28
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 29
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 30
         }
       ],
       "order": [
         "Workout preview",
-        "18 × 8",
-        "20 × 8",
-        "Historical workout facts are read only here. Corrections remain available from the session history workflow."
+        "Planned Strength target facts"
       ],
       "non_color": [
-        "Planned · about 42 min",
-        "Planned · 25 minutes",
-        "Planned preview · read only",
-        "Planned",
-        "Historical workout facts are read only here. Corrections remain available from the session history workflow."
+        "Planned Strength target facts"
       ],
       "focus": {
-        "target": "calendar-info",
+        "target": "Workout preview",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:calendar-planned-strength-detail",
@@ -10154,7 +7265,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "calendar-info",
+    "focus_target": "Calendar",
     "scenario_steps": [
       {
         "action": "tap_id",
@@ -10168,160 +7279,32 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "adaptive-screen",
         "calendar-agenda-region",
-        "phase20-visual-state-BW-028",
-        "calendar-info",
-        "root-settings",
-        "cal-previous-month",
-        "cal-return-today",
-        "cal-next-month",
-        "cal-collapse-day"
+        "phase20-visual-state-BW-028"
       ],
       "semantics": [
         "Calendar",
-        "Full B",
-        "6×400",
-        "Tread"
+        "4 October 2026"
       ],
       "actions": [
         {
-          "id": "calendar-info",
-          "label": "Open Calendar legend",
-          "order": 0
-        },
-        {
-          "id": "root-settings",
-          "label": "Open App Settings",
-          "order": 1
-        },
-        {
-          "id": "cal-previous-month",
-          "label": "Previous month",
-          "order": 2
-        },
-        {
-          "id": "cal-return-today",
-          "label": "Today",
-          "order": 3
-        },
-        {
-          "id": "cal-next-month",
-          "label": "Next month",
-          "order": 4
-        },
-        {
           "id": null,
-          "label": "28",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "29",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "30",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "1\nFull A",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "2",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "3\nFull A",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "4\nEasy",
-          "order": 11
-        },
-        {
-          "id": "cal-collapse-day",
           "label": "Collapse day and return to month",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Outdoor Run\nComplete · 3.2 km · 18:42\nRunning · completed\nGarmin imported\n›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "5\n−",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "6",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "7\nFull B\nEasy",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "8",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "9\n6×400",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "10\nTread",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "11",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 24
+          "order": 0
         }
       ],
       "order": [
         "Calendar",
-        "Full B",
-        "6×400",
-        "Tread"
+        "4 October 2026"
       ],
       "non_color": [
-        "Tread"
+        "4 October 2026"
       ],
       "focus": {
-        "target": "calendar-info",
+        "target": "Calendar",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:calendar-agenda-2026-10-04",
@@ -10557,7 +7540,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "calendar-info",
+    "focus_target": "Calendar",
     "scenario_steps": [
       {
         "action": "tap_id",
@@ -10571,161 +7554,32 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "adaptive-screen",
         "calendar-agenda-region",
-        "phase20-visual-state-BW-029",
-        "calendar-info",
-        "root-settings",
-        "cal-previous-month",
-        "cal-return-today",
-        "cal-next-month",
-        "cal-collapse-day"
+        "phase20-visual-state-BW-029"
       ],
       "semantics": [
         "Calendar",
-        "Running plan",
-        "Tempo",
-        "Long"
+        "9 October 2026"
       ],
       "actions": [
         {
-          "id": "calendar-info",
-          "label": "Open Calendar legend",
-          "order": 0
-        },
-        {
-          "id": "root-settings",
-          "label": "Open App Settings",
-          "order": 1
-        },
-        {
-          "id": "cal-previous-month",
-          "label": "Previous month",
-          "order": 2
-        },
-        {
-          "id": "cal-return-today",
-          "label": "Today",
-          "order": 3
-        },
-        {
-          "id": "cal-next-month",
-          "label": "Next month",
-          "order": 4
-        },
-        {
           "id": null,
-          "label": "5\n−",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "6",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "7\nFull B\nEasy",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "8",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "9\n6×400",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "10\nTread",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "11",
-          "order": 11
-        },
-        {
-          "id": "cal-collapse-day",
           "label": "Collapse day and return to month",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "6 × 400 m\nPlanned · 1:50/lap\nRunning · planned\nRunning plan\n›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "12\nFull B",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "13",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "14\nTempo",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "15",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "16",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "17",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "18\nLong",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 24
+          "order": 0
         }
       ],
       "order": [
         "Calendar",
-        "Running plan",
-        "Tempo",
-        "Long"
+        "9 October 2026"
       ],
       "non_color": [
-        "Planned · 1:50/lap",
-        "Long"
+        "9 October 2026"
       ],
       "focus": {
-        "target": "calendar-info",
+        "target": "Calendar",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:calendar-agenda-2026-10-09",
@@ -10961,7 +7815,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "calendar-info",
+    "focus_target": "Calendar",
     "scenario_steps": [
       {
         "action": "tap_id",
@@ -10975,161 +7829,32 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "adaptive-screen",
         "calendar-agenda-region",
-        "phase20-visual-state-BW-030",
-        "calendar-info",
-        "root-settings",
-        "cal-previous-month",
-        "cal-return-today",
-        "cal-next-month",
-        "cal-collapse-day"
+        "phase20-visual-state-BW-030"
       ],
       "semantics": [
         "Calendar",
-        "Garmin imported",
-        "Tempo",
-        "Long"
+        "10 October 2026"
       ],
       "actions": [
         {
-          "id": "calendar-info",
-          "label": "Open Calendar legend",
-          "order": 0
-        },
-        {
-          "id": "root-settings",
-          "label": "Open App Settings",
-          "order": 1
-        },
-        {
-          "id": "cal-previous-month",
-          "label": "Previous month",
-          "order": 2
-        },
-        {
-          "id": "cal-return-today",
-          "label": "Today",
-          "order": 3
-        },
-        {
-          "id": "cal-next-month",
-          "label": "Next month",
-          "order": 4
-        },
-        {
           "id": null,
-          "label": "5\n−",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "6",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "7\nFull B\nEasy",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "8",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "9\n6×400",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "10\nTread",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "11",
-          "order": 11
-        },
-        {
-          "id": "cal-collapse-day",
           "label": "Collapse day and return to month",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Treadmill Run\nImported · 2.4 km · 11:31\nRunning · completed\nGarmin imported\n›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "12\nFull B",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "13",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "14\nTempo",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "15",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "16",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "17",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "18\nLong",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 24
+          "order": 0
         }
       ],
       "order": [
         "Calendar",
-        "Garmin imported",
-        "Tempo",
-        "Long"
+        "10 October 2026"
       ],
       "non_color": [
-        "Imported · 2.4 km · 11:31",
-        "Long"
+        "10 October 2026"
       ],
       "focus": {
-        "target": "calendar-info",
+        "target": "Calendar",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:calendar-agenda-2026-10-10",
@@ -11357,7 +8082,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "calendar-info",
+    "focus_target": "Calendar",
     "scenario_steps": [
       {
         "action": "tap_id",
@@ -11371,157 +8096,32 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "adaptive-screen",
         "calendar-agenda-region",
-        "phase20-visual-state-BW-031",
-        "calendar-info",
-        "root-settings",
-        "cal-previous-month",
-        "cal-return-today",
-        "cal-next-month",
-        "cal-collapse-day"
+        "phase20-visual-state-BW-031"
       ],
       "semantics": [
         "Calendar",
-        "No scheduled or imported activity for this date.",
-        "Tempo",
-        "Long"
+        "5 October 2026"
       ],
       "actions": [
         {
-          "id": "calendar-info",
-          "label": "Open Calendar legend",
-          "order": 0
-        },
-        {
-          "id": "root-settings",
-          "label": "Open App Settings",
-          "order": 1
-        },
-        {
-          "id": "cal-previous-month",
-          "label": "Previous month",
-          "order": 2
-        },
-        {
-          "id": "cal-return-today",
-          "label": "Today",
-          "order": 3
-        },
-        {
-          "id": "cal-next-month",
-          "label": "Next month",
-          "order": 4
-        },
-        {
           "id": null,
-          "label": "5\n−",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "6",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "7\nFull B\nEasy",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "8",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "9\n6×400",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "10\nTread",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "11",
-          "order": 11
-        },
-        {
-          "id": "cal-collapse-day",
           "label": "Collapse day and return to month",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "12\nFull B",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "13",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "14\nTempo",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "15",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "16",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "17",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "18\nLong",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 23
+          "order": 0
         }
       ],
       "order": [
         "Calendar",
-        "No scheduled or imported activity for this date.",
-        "Tempo",
-        "Long"
+        "5 October 2026"
       ],
       "non_color": [
-        "No workout",
-        "No scheduled or imported activity for this date.",
-        "Long"
+        "5 October 2026"
       ],
       "focus": {
-        "target": "calendar-info",
+        "target": "Calendar",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:calendar-agenda-2026-10-05",
@@ -11757,7 +8357,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "calendar-info",
+    "focus_target": "Calendar",
     "scenario_steps": [
       {
         "action": "tap_id",
@@ -11771,161 +8371,32 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "adaptive-screen",
         "calendar-agenda-region",
-        "phase20-visual-state-BW-032",
-        "calendar-info",
-        "root-settings",
-        "cal-previous-month",
-        "cal-return-today",
-        "cal-next-month",
-        "cal-collapse-day"
+        "phase20-visual-state-BW-032"
       ],
       "semantics": [
         "Calendar",
-        "Planned · about 42 min",
-        "Strength · planned",
-        "Gym Tracker"
+        "12 October 2026"
       ],
       "actions": [
         {
-          "id": "calendar-info",
-          "label": "Open Calendar legend",
-          "order": 0
-        },
-        {
-          "id": "root-settings",
-          "label": "Open App Settings",
-          "order": 1
-        },
-        {
-          "id": "cal-previous-month",
-          "label": "Previous month",
-          "order": 2
-        },
-        {
-          "id": "cal-return-today",
-          "label": "Today",
-          "order": 3
-        },
-        {
-          "id": "cal-next-month",
-          "label": "Next month",
-          "order": 4
-        },
-        {
           "id": null,
-          "label": "12\nFull B",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "13",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "14\nTempo",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "15",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "16",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "17",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "18\nLong",
-          "order": 11
-        },
-        {
-          "id": "cal-collapse-day",
           "label": "Collapse day and return to month",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Full Body B\nPlanned · about 42 min\nStrength · planned\nGym Tracker\n›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "19",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "20",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "21",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "22",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "23",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "24",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "25",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 24
+          "order": 0
         }
       ],
       "order": [
         "Calendar",
-        "Planned · about 42 min",
-        "Strength · planned",
-        "Gym Tracker"
+        "12 October 2026"
       ],
       "non_color": [
-        "Planned · about 42 min",
-        "Gym Tracker"
+        "12 October 2026"
       ],
       "focus": {
-        "target": "calendar-info",
+        "target": "Calendar",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:calendar-adjacent-week",
@@ -12308,7 +8779,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "calendar-info",
+    "focus_target": "Calendar",
     "scenario_steps": [
       {
         "action": "tap_id",
@@ -12326,253 +8797,48 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "adaptive-screen",
         "phase20-visual-state-BW-033",
-        "calendar-info",
-        "root-settings",
-        "cal-previous-month",
-        "cal-return-today",
-        "cal-next-month"
+        "root-settings-trigger-calendar",
+        "calendar-info-action"
       ],
       "semantics": [
         "Calendar",
-        "Tread",
-        "Tempo",
-        "Long"
+        "October 2026"
       ],
       "actions": [
         {
-          "id": "calendar-info",
-          "label": "Open Calendar legend",
+          "id": "root-settings-trigger-calendar",
+          "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": "calendar-info-action",
+          "label": "Open Calendar key",
           "order": 1
         },
         {
-          "id": "cal-previous-month",
-          "label": "Previous month",
+          "id": null,
+          "label": "Choose month and year, October 2026",
           "order": 2
         },
         {
-          "id": "cal-return-today",
-          "label": "Today",
+          "id": null,
+          "label": "Return to today, 1 October 2026",
           "order": 3
-        },
-        {
-          "id": "cal-next-month",
-          "label": "Next month",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "28",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "29",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "30",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "1\nFull A",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "2",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "3\nFull A",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "4\nEasy",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "5\n−",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "6",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "7\nFull B\nEasy",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "8",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "9\n6×400",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "10\nTread",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "11",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "12\nFull B",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "13",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "14\nTempo",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "15",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "16",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "17",
-          "order": 24
-        },
-        {
-          "id": null,
-          "label": "18\nLong",
-          "order": 25
-        },
-        {
-          "id": null,
-          "label": "19",
-          "order": 26
-        },
-        {
-          "id": null,
-          "label": "20",
-          "order": 27
-        },
-        {
-          "id": null,
-          "label": "21",
-          "order": 28
-        },
-        {
-          "id": null,
-          "label": "22",
-          "order": 29
-        },
-        {
-          "id": null,
-          "label": "23",
-          "order": 30
-        },
-        {
-          "id": null,
-          "label": "24",
-          "order": 31
-        },
-        {
-          "id": null,
-          "label": "25",
-          "order": 32
-        },
-        {
-          "id": null,
-          "label": "26",
-          "order": 33
-        },
-        {
-          "id": null,
-          "label": "27",
-          "order": 34
-        },
-        {
-          "id": null,
-          "label": "28",
-          "order": 35
-        },
-        {
-          "id": null,
-          "label": "29",
-          "order": 36
-        },
-        {
-          "id": null,
-          "label": "30",
-          "order": 37
-        },
-        {
-          "id": null,
-          "label": "31",
-          "order": 38
-        },
-        {
-          "id": null,
-          "label": "1",
-          "order": 39
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 40
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 41
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 42
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 43
         }
       ],
       "order": [
         "Calendar",
-        "Tread",
-        "Tempo",
-        "Long"
+        "October 2026"
       ],
       "non_color": [
-        "Long"
+        "October 2026"
       ],
       "focus": {
-        "target": "calendar-info",
+        "target": "Calendar",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:calendar-collapsed",
@@ -12757,7 +9023,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Library",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -12766,130 +9032,69 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "library-screen",
         "phase20-visual-state-BW-034",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions"
+        "library-actions-trigger",
+        "root-settings-trigger-library",
+        "library-filters-chip",
+        "library-create-plan",
+        "library-search-plans"
       ],
       "semantics": [
         "Library",
-        "Bodyweight Basics",
-        "4 days / week · 4 flexible days · Bodyweight",
+        "My Plans",
         "Create plan"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": "library-actions-trigger",
+          "label": "Actions",
           "order": 0
         },
         {
-          "id": "lib-plans-tab",
-          "label": "Plans",
+          "id": "root-settings-trigger-library",
+          "label": "Open App Settings",
           "order": 1
         },
         {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
+          "id": null,
+          "label": "Plans",
           "order": 2
         },
         {
-          "id": "lib-search",
-          "label": "Search plans",
+          "id": null,
+          "label": "Exercises",
           "order": 3
         },
         {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
+          "id": null,
+          "label": "Search plans",
           "order": 4
         },
         {
-          "id": "lib-open-actions",
-          "label": "•••",
+          "id": "library-filters-chip",
+          "label": "Filters",
           "order": 5
         },
         {
-          "id": null,
-          "label": "›",
+          "id": "library-create-plan",
+          "label": "Create plan",
           "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 18
         }
       ],
       "order": [
         "Library",
-        "Bodyweight Basics",
-        "4 days / week · 4 flexible days · Bodyweight",
+        "My Plans",
         "Create plan"
       ],
       "non_color": [
-        "Active Plans",
+        "My Plans",
         "Create plan"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Library",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:library-plans",
@@ -13157,7 +9362,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Clear filters",
       "Show results"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Plan filters",
     "scenario_steps": [
       {
         "action": "tap_id",
@@ -13172,183 +9377,42 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "library-screen",
         "starter-filter-sheet-frame",
         "phase20-visual-state-BW-035",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "root-scrim",
-        "lib-clear-filters",
-        "lib-apply-filters"
+        "bottom-sheet-close-action"
       ],
       "semantics": [
-        "Library",
-        "4 days",
-        "Clear filters",
+        "Plan filters",
         "Show results"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Show results",
           "order": 0
         },
         {
-          "id": "lib-plans-tab",
-          "label": "Plans",
+          "id": null,
+          "label": "Keep Current Filters",
           "order": 1
         },
         {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
+          "id": "bottom-sheet-close-action",
+          "label": "Close Plan filters",
           "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 18
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Close Library filters",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "All",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "My plans",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Starter",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "Any",
-          "order": 24
-        },
-        {
-          "id": null,
-          "label": "3 days",
-          "order": 25
-        },
-        {
-          "id": null,
-          "label": "4 days",
-          "order": 26
-        },
-        {
-          "id": "lib-clear-filters",
-          "label": "Clear filters",
-          "order": 27
-        },
-        {
-          "id": "lib-apply-filters",
-          "label": "Show results",
-          "order": 28
         }
       ],
       "order": [
-        "Library",
-        "4 days",
-        "Clear filters",
+        "Plan filters",
         "Show results"
       ],
       "non_color": [
-        "Active Plans",
         "Show results"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Plan filters",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:plan-filters",
@@ -13569,7 +9633,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Create exercise\n+",
       "Import plan\nLater"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Library actions",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -13584,156 +9648,51 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "library-screen",
         "library-actions-sheet-frame",
         "phase20-visual-state-BW-036",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "root-scrim"
+        "bottom-sheet-close-action"
       ],
       "semantics": [
-        "Library",
-        "Create exercise",
-        "Import plan",
-        "Later"
+        "Library actions",
+        "Create plan",
+        "Import plan, unavailable, Later"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Create plan",
           "order": 0
         },
         {
-          "id": "lib-plans-tab",
-          "label": "Plans",
+          "id": null,
+          "label": "Create exercise",
           "order": 1
         },
         {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
-          "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 18
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 19
-        },
-        {
-          "id": null,
+          "id": "bottom-sheet-close-action",
           "label": "Close Library actions",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Create plan\nStrength or Running",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Create exercise\n+",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Import plan\nLater",
-          "order": 23
+          "order": 2
         }
       ],
       "order": [
-        "Library",
-        "Create exercise",
-        "Import plan",
-        "Later"
+        "Library actions",
+        "Create plan",
+        "Import plan, unavailable, Later"
       ],
       "non_color": [
-        "Active Plans",
-        "Later"
+        "Create plan",
+        "Import plan, unavailable, Later"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Library actions",
         "required": true
       },
+      "unavailable_controls": [
+        {
+          "label": "Import plan, unavailable, Later",
+          "enabled": false,
+          "reason": "Source-owned unavailable Later action; not an actionable match."
+        }
+      ],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:library-actions",
@@ -13958,7 +9917,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Full Body Foundation",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -13966,157 +9925,47 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "owned-plan-detail",
       "test_ids": [
         "owned-plan-detail",
-        "phase20-visual-state-BW-037",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back"
+        "phase20-visual-state-BW-037"
       ],
       "semantics": [
         "Full Body Foundation",
-        "Full Body B",
-        "Deadlift · Overhead Press · Seated Row · Dead Bug",
-        "Edit planEdit scheduleDuplicateArchive plan"
+        "Edit plan"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "lib-plans-tab",
-          "label": "Plans",
-          "order": 1
-        },
-        {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
-          "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
         },
         {
           "id": null,
           "label": "Edit plan",
-          "order": 16
+          "order": 1
         },
         {
           "id": null,
           "label": "Edit schedule",
-          "order": 17
+          "order": 2
         },
         {
           "id": null,
-          "label": "Duplicate",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Archive plan",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 23
+          "label": "Duplicate plan",
+          "order": 3
         }
       ],
       "order": [
         "Full Body Foundation",
-        "Full Body B",
-        "Deadlift · Overhead Press · Seated Row · Dead Bug",
-        "Edit planEdit scheduleDuplicateArchive plan"
+        "Edit plan"
       ],
       "non_color": [
-        "Active Plans",
-        "Edit planEdit scheduleDuplicateArchive plan"
+        "Edit plan"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Full Body Foundation",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:library-plan-foundation",
@@ -14336,7 +10185,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Plan editor",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -14345,158 +10194,42 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "owned-plan-editor",
         "phase20-visual-state-BW-038",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back",
-        "ldr-plan-name"
+        "owned-plan-editor-name"
       ],
       "semantics": [
         "Plan editor",
-        "Full Body A",
-        "Back Squat · Bench Press · Lat Pulldown · Plank",
-        "Save plan"
+        "Plan name"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
         },
         {
-          "id": "lib-plans-tab",
-          "label": "Plans",
+          "id": "owned-plan-editor-name",
+          "label": "Plan name",
           "order": 1
         },
         {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
+          "id": null,
+          "label": "Save Plan Changes",
           "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
-        },
-        {
-          "id": "ldr-plan-name",
-          "label": null,
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "↑",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "+",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Save plan",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 23
         }
       ],
       "order": [
         "Plan editor",
-        "Full Body A",
-        "Back Squat · Bench Press · Lat Pulldown · Plank",
-        "Save plan"
+        "Plan name"
       ],
       "non_color": [
-        "Active Plans",
-        "Future schedule changes only. Completed history remains unchanged.",
-        "Save plan"
+        "Plan name"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Plan editor",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:strength-editor",
@@ -14753,7 +10486,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Edit schedule",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -14761,178 +10494,47 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "schedule-editor",
       "test_ids": [
         "schedule-editor",
-        "phase20-visual-state-BW-039",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back"
+        "phase20-visual-state-BW-039"
       ],
       "semantics": [
-        "Schedule",
-        "Saving recalculates upcoming dates only.",
-        "Completed workouts, set history, and targets remain unchanged.",
-        "Save schedule"
+        "Edit schedule",
+        "Effective date"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
         },
         {
-          "id": "lib-plans-tab",
-          "label": "Plans",
+          "id": null,
+          "label": "Effective date",
           "order": 1
         },
         {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
+          "id": null,
+          "label": "Schedule timezone",
           "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "M",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "T",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "W",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "T",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "F",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "S",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "S",
-          "order": 22
         },
         {
           "id": null,
           "label": "Save schedule",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 24
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 25
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 26
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 27
+          "order": 3
         }
       ],
       "order": [
-        "Schedule",
-        "Saving recalculates upcoming dates only.",
-        "Completed workouts, set history, and targets remain unchanged.",
-        "Save schedule"
+        "Edit schedule",
+        "Effective date"
       ],
       "non_color": [
-        "Active Plans",
-        "Completed workouts, set history, and targets remain unchanged.",
-        "Save schedule"
+        "Effective date"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Edit schedule",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:schedule-editor",
@@ -15157,7 +10759,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Confirm archive",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -15170,157 +10772,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "owned-plan-detail",
       "test_ids": [
         "owned-plan-detail",
-        "phase20-visual-state-BW-040",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back"
+        "phase20-visual-state-BW-040"
       ],
       "semantics": [
-        "Full Body Foundation",
-        "Full Body B",
-        "Deadlift · Overhead Press · Seated Row · Dead Bug",
-        "Edit planEdit scheduleDuplicateConfirm archive Full Body Foundation"
+        "Confirm archive",
+        "Cancel lifecycle review"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Confirm archive",
           "order": 0
         },
         {
-          "id": "lib-plans-tab",
-          "label": "Plans",
+          "id": null,
+          "label": "Cancel lifecycle review",
           "order": 1
-        },
-        {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
-          "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Edit plan",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Edit schedule",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Duplicate",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Confirm archive Full Body Foundation",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 23
         }
       ],
       "order": [
-        "Full Body Foundation",
-        "Full Body B",
-        "Deadlift · Overhead Press · Seated Row · Dead Bug",
-        "Edit planEdit scheduleDuplicateConfirm archive Full Body Foundation"
+        "Confirm archive",
+        "Cancel lifecycle review"
       ],
       "non_color": [
-        "Active Plans",
-        "Edit planEdit scheduleDuplicateConfirm archive Full Body Foundation"
+        "Cancel lifecycle review"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Confirm archive",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:archive-confirmation",
@@ -15545,7 +11027,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Strength Reset",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -15553,157 +11035,47 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "owned-plan-detail",
       "test_ids": [
         "owned-plan-detail",
-        "phase20-visual-state-BW-041",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back"
+        "phase20-visual-state-BW-041"
       ],
       "semantics": [
         "Strength Reset",
-        "Reset B",
-        "Deadlift · Bench · Pulldown",
-        "Edit planEdit scheduleDuplicateReactivate plan"
+        "Edit plan"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "lib-plans-tab",
-          "label": "Plans",
-          "order": 1
-        },
-        {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
-          "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
         },
         {
           "id": null,
           "label": "Edit plan",
-          "order": 16
+          "order": 1
         },
         {
           "id": null,
           "label": "Edit schedule",
-          "order": 17
+          "order": 2
         },
         {
           "id": null,
-          "label": "Duplicate",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Reactivate plan",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 23
+          "label": "Duplicate plan",
+          "order": 3
         }
       ],
       "order": [
         "Strength Reset",
-        "Reset B",
-        "Deadlift · Bench · Pulldown",
-        "Edit planEdit scheduleDuplicateReactivate plan"
+        "Edit plan"
       ],
       "non_color": [
-        "Active Plans",
-        "Edit planEdit scheduleDuplicateReactivate plan"
+        "Edit plan"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Strength Reset",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:library-plan-strength",
@@ -15912,7 +11284,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Full Body Foundation",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -15920,147 +11292,42 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "starter-plan-detail",
       "test_ids": [
         "starter-plan-detail",
-        "phase20-visual-state-BW-042",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back"
+        "phase20-visual-state-BW-042"
       ],
       "semantics": [
         "Full Body Foundation",
-        "Strength B",
-        "Deadlift · Press · Pulldown",
-        "Preview activationSave editable copy"
+        "Activate plan"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "lib-plans-tab",
-          "label": "Plans",
-          "order": 1
-        },
-        {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
-          "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Preview activation",
-          "order": 16
         },
         {
           "id": null,
           "label": "Save editable copy",
-          "order": 17
+          "order": 1
         },
         {
           "id": null,
-          "label": "Workout",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 21
+          "label": "Activate plan",
+          "order": 2
         }
       ],
       "order": [
         "Full Body Foundation",
-        "Strength B",
-        "Deadlift · Press · Pulldown",
-        "Preview activationSave editable copy"
+        "Activate plan"
       ],
       "non_color": [
-        "Active Plans",
-        "Preview activationSave editable copy"
+        "Activate plan"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Full Body Foundation",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:library-plan-beginner",
@@ -16269,7 +11536,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Schedule setup",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -16277,148 +11544,42 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "starter-activation",
       "test_ids": [
         "starter-activation",
-        "phase20-visual-state-BW-043",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back"
+        "phase20-visual-state-BW-043"
       ],
       "semantics": [
-        "Full Body Foundation",
-        "Activation creates an editable owned copy.",
-        "The current strength schedule would be replaced. Completed history stays available. The future Running schedule remains a separate concurrent-plan concept and requires multi-active-plan architecture.",
-        "Create and activate copySave without activating"
+        "Schedule setup",
+        "Start date"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
         },
         {
-          "id": "lib-plans-tab",
-          "label": "Plans",
+          "id": null,
+          "label": "Start date",
           "order": 1
         },
         {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
+          "id": null,
+          "label": "Activate plan",
           "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Create and activate copy",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Save without activating",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 21
         }
       ],
       "order": [
-        "Full Body Foundation",
-        "Activation creates an editable owned copy.",
-        "The current strength schedule would be replaced. Completed history stays available. The future Running schedule remains a separate concurrent-plan concept and requires multi-active-plan architecture.",
-        "Create and activate copySave without activating"
+        "Schedule setup",
+        "Start date"
       ],
       "non_color": [
-        "Active Plans",
-        "The current strength schedule would be replaced. Completed history stays available. The future Running schedule remains a separate concurrent-plan concept and requires multi-active-plan architecture.",
-        "Create and activate copySave without activating"
+        "Start date"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Schedule setup",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:starter-activation-preview",
@@ -16627,7 +11788,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Minimal Equipment Full Body",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -16635,147 +11796,42 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "starter-plan-detail",
       "test_ids": [
         "starter-plan-detail",
-        "phase20-visual-state-BW-044",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back"
+        "phase20-visual-state-BW-044"
       ],
       "semantics": [
         "Minimal Equipment Full Body",
-        "Basics B",
-        "Lunge · Row · Dead Bug",
-        "Preview activationSave editable copy"
+        "Activate plan"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "lib-plans-tab",
-          "label": "Plans",
-          "order": 1
-        },
-        {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
-          "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Preview activation",
-          "order": 16
         },
         {
           "id": null,
           "label": "Save editable copy",
-          "order": 17
+          "order": 1
         },
         {
           "id": null,
-          "label": "Workout",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 21
+          "label": "Activate plan",
+          "order": 2
         }
       ],
       "order": [
         "Minimal Equipment Full Body",
-        "Basics B",
-        "Lunge · Row · Dead Bug",
-        "Preview activationSave editable copy"
+        "Activate plan"
       ],
       "non_color": [
-        "Active Plans",
-        "Preview activationSave editable copy"
+        "Activate plan"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Minimal Equipment Full Body",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:library-plan-home",
@@ -16992,7 +12048,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Running plan",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -17000,152 +12056,42 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "running-plan-detail",
       "test_ids": [
         "running-plan-detail",
-        "phase20-visual-state-BW-045",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back"
+        "phase20-visual-state-BW-045"
       ],
       "semantics": [
-        "Running",
-        "60 min · Easy throughout",
-        "This plan does not guarantee the target. Concurrent activation requires a future multi-active-plan schedule architecture. Garmin records runs; imported activities require owner confirmation before matching.",
-        "Sync Garmin / match activityEdit running planResolve Friday conflict"
+        "Running plan",
+        "Goal distance"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "lib-plans-tab",
-          "label": "Plans",
-          "order": 1
-        },
-        {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
-          "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
         },
         {
           "id": null,
           "label": "Sync Garmin / match activity",
-          "order": 16
+          "order": 1
         },
         {
           "id": null,
           "label": "Edit running plan",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Resolve Friday conflict",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 22
+          "order": 2
         }
       ],
       "order": [
-        "Running",
-        "60 min · Easy throughout",
-        "This plan does not guarantee the target. Concurrent activation requires a future multi-active-plan schedule architecture. Garmin records runs; imported activities require owner confirmation before matching.",
-        "Sync Garmin / match activityEdit running planResolve Friday conflict"
+        "Running plan",
+        "Goal distance"
       ],
       "non_color": [
-        "Active Plans",
-        "Sync Garmin / match activityEdit running planResolve Friday conflict"
+        "Goal distance"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Running plan",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:library-plan-running-2k",
@@ -17461,7 +12407,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Plan name",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -17469,205 +12415,47 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "running-plan-editor",
       "test_ids": [
         "running-plan-editor",
-        "phase20-visual-state-BW-046",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back",
-        "ldr-run-distance",
-        "ldr-run-time"
+        "phase20-visual-state-BW-046"
       ],
       "semantics": [
-        "Edit running plan",
-        "Flexible fast and easy speed play",
-        "Every structured session can include warm-up, work and recovery steps, an intensity target, and cool-down. Targets accept pace, heart-rate zone, or RPE.",
-        "Save running plan"
+        "Plan name",
+        "Goal distance (metres)"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
         },
         {
-          "id": "lib-plans-tab",
-          "label": "Plans",
+          "id": null,
+          "label": "Plan name",
           "order": 1
         },
         {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
+          "id": null,
+          "label": "Goal distance (metres)",
           "order": 2
         },
         {
-          "id": "lib-search",
-          "label": "Search plans",
+          "id": null,
+          "label": "Target time",
           "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
-        },
-        {
-          "id": "ldr-run-distance",
-          "label": "2.4 km\n10 km\nHalf Marathon",
-          "order": 16
-        },
-        {
-          "id": "ldr-run-time",
-          "label": null,
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Tue\nRecovery\n30 min · RPE 2–3 · conversational\n›",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Fri\nIntervals\n6 × 400 m · 90 sec jog\n›",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Sun\nLong run\n60 min · Easy throughout\n›",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Recovery\nShort, easy aerobic running",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Long run\nSustained easy endurance",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Progression\nStart easy and finish faster",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "Tempo\nContinuous or repeated threshold work",
-          "order": 24
-        },
-        {
-          "id": null,
-          "label": "Intervals\nMeasured work with recovery",
-          "order": 25
-        },
-        {
-          "id": null,
-          "label": "Hills\nUphill repetitions with return recovery",
-          "order": 26
-        },
-        {
-          "id": null,
-          "label": "Fartlek\nFlexible fast and easy speed play",
-          "order": 27
-        },
-        {
-          "id": null,
-          "label": "Save running plan",
-          "order": 28
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 29
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 30
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 31
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 32
         }
       ],
       "order": [
-        "Edit running plan",
-        "Flexible fast and easy speed play",
-        "Every structured session can include warm-up, work and recovery steps, an intensity target, and cool-down. Targets accept pace, heart-rate zone, or RPE.",
-        "Save running plan"
+        "Plan name",
+        "Goal distance (metres)"
       ],
       "non_color": [
-        "Active Plans",
-        "Current benchmark",
-        "Save running plan"
+        "Goal distance (metres)"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Plan name",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:running-editor",
@@ -17910,7 +12698,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Edit session",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -17918,153 +12706,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "running-session-editor",
       "test_ids": [
         "running-session-editor",
-        "phase20-visual-state-BW-047",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back",
-        "ldr-run-session-type"
+        "phase20-visual-state-BW-047"
       ],
       "semantics": [
-        "Workout type",
-        "Session preview",
-        "30 min · RPE 2–3 · conversational",
-        "Save session"
+        "Edit session",
+        "Workout type"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "lib-plans-tab",
-          "label": "Plans",
-          "order": 1
-        },
-        {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
-          "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
-        },
-        {
-          "id": "ldr-run-session-type",
-          "label": "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
-          "order": 17
         },
         {
           "id": null,
           "label": "Save session",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 22
+          "order": 1
         }
       ],
       "order": [
-        "Workout type",
-        "Session preview",
-        "30 min · RPE 2–3 · conversational",
-        "Save session"
+        "Edit session",
+        "Workout type"
       ],
       "non_color": [
-        "Active Plans",
-        "Save session"
+        "Workout type"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Edit session",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:running-session-recovery",
@@ -18302,7 +12974,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Edit session",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -18310,158 +12982,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "running-session-editor",
       "test_ids": [
         "running-session-editor",
-        "phase20-visual-state-BW-048",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back",
-        "ldr-run-session-type"
+        "phase20-visual-state-BW-048"
       ],
       "semantics": [
-        "Workout type",
-        "Session preview",
-        "60 min · Easy throughout",
-        "Save session"
+        "Edit session",
+        "Workout type"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "lib-plans-tab",
-          "label": "Plans",
-          "order": 1
-        },
-        {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
-          "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
-        },
-        {
-          "id": "ldr-run-session-type",
-          "label": "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Easy throughout\nSteady finish\nProgression finish",
-          "order": 18
         },
         {
           "id": null,
           "label": "Save session",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 23
+          "order": 1
         }
       ],
       "order": [
-        "Workout type",
-        "Session preview",
-        "60 min · Easy throughout",
-        "Save session"
+        "Edit session",
+        "Workout type"
       ],
       "non_color": [
-        "Active Plans",
-        "Save session"
+        "Workout type"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Edit session",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:running-session-long",
@@ -18703,7 +13254,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Edit session",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -18711,153 +13262,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "running-session-editor",
       "test_ids": [
         "running-session-editor",
-        "phase20-visual-state-BW-049",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back",
-        "ldr-run-session-type"
+        "phase20-visual-state-BW-049"
       ],
       "semantics": [
-        "Workout type",
-        "Session preview",
-        "45 min · 3 stages · Easy · RPE 3 → Tempo · RPE 7",
-        "Save session"
+        "Edit session",
+        "Workout type"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "lib-plans-tab",
-          "label": "Plans",
-          "order": 1
-        },
-        {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
-          "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
-        },
-        {
-          "id": "ldr-run-session-type",
-          "label": "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
-          "order": 17
         },
         {
           "id": null,
           "label": "Save session",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 22
+          "order": 1
         }
       ],
       "order": [
-        "Workout type",
-        "Session preview",
-        "45 min · 3 stages · Easy · RPE 3 → Tempo · RPE 7",
-        "Save session"
+        "Edit session",
+        "Workout type"
       ],
       "non_color": [
-        "Active Plans",
-        "Save session"
+        "Workout type"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Edit session",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:running-session-progression",
@@ -19105,7 +13540,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Edit session",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -19113,158 +13548,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "running-session-editor",
       "test_ids": [
         "running-session-editor",
-        "phase20-visual-state-BW-050",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back",
-        "ldr-run-session-type"
+        "phase20-visual-state-BW-050"
       ],
       "semantics": [
-        "Workout type",
-        "Session preview",
-        "20 min continuous · Threshold · RPE 7",
-        "Save session"
+        "Edit session",
+        "Workout type"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "lib-plans-tab",
-          "label": "Plans",
-          "order": 1
-        },
-        {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
-          "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
-        },
-        {
-          "id": "ldr-run-session-type",
-          "label": "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Continuous\nTempo repeats",
-          "order": 18
         },
         {
           "id": null,
           "label": "Save session",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 23
+          "order": 1
         }
       ],
       "order": [
-        "Workout type",
-        "Session preview",
-        "20 min continuous · Threshold · RPE 7",
-        "Save session"
+        "Edit session",
+        "Workout type"
       ],
       "non_color": [
-        "Active Plans",
-        "Save session"
+        "Workout type"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Edit session",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:running-session-tempo",
@@ -19506,7 +13820,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Edit session",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -19514,153 +13828,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "running-session-editor",
       "test_ids": [
         "running-session-editor",
-        "phase20-visual-state-BW-051",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back",
-        "ldr-run-session-type"
+        "phase20-visual-state-BW-051"
       ],
       "semantics": [
-        "Workout type",
-        "Session preview",
-        "6 × 400 m · 90 sec jog",
-        "Save session"
+        "Edit session",
+        "Workout type"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "lib-plans-tab",
-          "label": "Plans",
-          "order": 1
-        },
-        {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
-          "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
-        },
-        {
-          "id": "ldr-run-session-type",
-          "label": "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
-          "order": 17
         },
         {
           "id": null,
           "label": "Save session",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 22
+          "order": 1
         }
       ],
       "order": [
-        "Workout type",
-        "Session preview",
-        "6 × 400 m · 90 sec jog",
-        "Save session"
+        "Edit session",
+        "Workout type"
       ],
       "non_color": [
-        "Active Plans",
-        "Save session"
+        "Workout type"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Edit session",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:running-session-intervals",
@@ -19913,7 +14111,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Edit session",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -19921,153 +14119,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "running-session-editor",
       "test_ids": [
         "running-session-editor",
-        "phase20-visual-state-BW-052",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back",
-        "ldr-run-session-type"
+        "phase20-visual-state-BW-052"
       ],
       "semantics": [
-        "Workout type",
-        "Session preview",
-        "8 × 45 sec uphill · Jog down + 60 sec",
-        "Save session"
+        "Edit session",
+        "Workout type"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "lib-plans-tab",
-          "label": "Plans",
-          "order": 1
-        },
-        {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
-          "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
-        },
-        {
-          "id": "ldr-run-session-type",
-          "label": "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
-          "order": 17
         },
         {
           "id": null,
           "label": "Save session",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 22
+          "order": 1
         }
       ],
       "order": [
-        "Workout type",
-        "Session preview",
-        "8 × 45 sec uphill · Jog down + 60 sec",
-        "Save session"
+        "Edit session",
+        "Workout type"
       ],
       "non_color": [
-        "Active Plans",
-        "Save session"
+        "Workout type"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Edit session",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:running-session-hills",
@@ -20315,7 +14397,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Edit session",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -20323,158 +14405,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "running-session-editor",
       "test_ids": [
         "running-session-editor",
-        "phase20-visual-state-BW-053",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back",
-        "ldr-run-session-type"
+        "phase20-visual-state-BW-053"
       ],
       "semantics": [
-        "Workout type",
-        "Session preview",
-        "10 × 1 min fast / 1 min float",
-        "Save session"
+        "Edit session",
+        "Workout type"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "lib-plans-tab",
-          "label": "Plans",
-          "order": 1
-        },
-        {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
-          "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
-        },
-        {
-          "id": "ldr-run-session-type",
-          "label": "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Structured\nUnstructured",
-          "order": 18
         },
         {
           "id": null,
           "label": "Save session",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 23
+          "order": 1
         }
       ],
       "order": [
-        "Workout type",
-        "Session preview",
-        "10 × 1 min fast / 1 min float",
-        "Save session"
+        "Edit session",
+        "Workout type"
       ],
       "non_color": [
-        "Active Plans",
-        "Save session"
+        "Workout type"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Edit session",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:running-session-fartlek",
@@ -20681,7 +14642,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Create plan",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -20689,147 +14650,45 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "plan-type-chooser",
       "test_ids": [
         "plan-type-chooser",
-        "phase20-visual-state-BW-054",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back"
+        "phase20-visual-state-BW-054"
       ],
       "semantics": [
-        "What are you training for?",
-        "Running",
-        "Distance and time goal, benchmark, and structured weekly sessions.",
-        "Garmin connection is optional after a Running plan is created. Imported activities never create or activate a plan automatically."
+        "Create plan",
+        "Strength",
+        "Running"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
         },
         {
-          "id": "lib-plans-tab",
-          "label": "Plans",
+          "id": null,
+          "label": "Strength",
           "order": 1
         },
         {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
+          "id": null,
+          "label": "Running",
           "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search plans",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "GYM\nStrength\nExercises, sets, targets, and a gym schedule.\n›",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "RUN\nRunning\nDistance and time goal, benchmark, and structured weekly sessions.\n›",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 21
         }
       ],
       "order": [
-        "What are you training for?",
-        "Running",
-        "Distance and time goal, benchmark, and structured weekly sessions.",
-        "Garmin connection is optional after a Running plan is created. Imported activities never create or activate a plan automatically."
+        "Create plan",
+        "Strength",
+        "Running"
       ],
       "non_color": [
-        "Active Plans",
-        "Garmin connection is optional after a Running plan is created. Imported activities never create or activate a plan automatically."
+        "Strength",
+        "Running"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Create plan",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:plan-type-chooser",
@@ -21047,7 +14906,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Create my own",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -21057,153 +14916,48 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "owned-plan-editor",
         "owned-plan-create",
         "phase20-visual-state-BW-055",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back",
-        "ldr-new-plan-name",
-        "ldr-new-plan-day"
+        "owned-plan-create-name",
+        "owned-plan-create-first-day"
       ],
       "semantics": [
-        "Create plan",
-        "Plan name",
-        "First day",
-        "Continue to editor"
+        "Create my own",
+        "First day name"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
         },
         {
-          "id": "lib-plans-tab",
-          "label": "Plans",
+          "id": "owned-plan-create-name",
+          "label": "Plan name",
           "order": 1
         },
         {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
+          "id": "owned-plan-create-first-day",
+          "label": "First day name",
           "order": 2
         },
         {
-          "id": "lib-search",
-          "label": "Search plans",
+          "id": null,
+          "label": "Create draft",
           "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
-        },
-        {
-          "id": "ldr-new-plan-name",
-          "label": null,
-          "order": 16
-        },
-        {
-          "id": "ldr-new-plan-day",
-          "label": null,
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Continue to editor",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 22
         }
       ],
       "order": [
-        "Create plan",
-        "Plan name",
-        "First day",
-        "Continue to editor"
+        "Create my own",
+        "First day name"
       ],
       "non_color": [
-        "Active Plans",
-        "Continue to editor"
+        "First day name"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Create my own",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:create-strength",
@@ -21506,7 +15260,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Plan name",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -21514,205 +15268,47 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "running-plan-editor",
       "test_ids": [
         "running-plan-editor",
-        "phase20-visual-state-BW-056",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back",
-        "ldr-run-distance",
-        "ldr-run-time"
+        "phase20-visual-state-BW-056"
       ],
       "semantics": [
-        "Create running plan",
-        "Fartlek",
-        "Flexible fast and easy speed play",
-        "Every structured session can include warm-up, work and recovery steps, an intensity target, and cool-down. Targets accept pace, heart-rate zone, or RPE."
+        "Plan name",
+        "Goal distance (metres)"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
         },
         {
-          "id": "lib-plans-tab",
-          "label": "Plans",
+          "id": null,
+          "label": "Plan name",
           "order": 1
         },
         {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
+          "id": null,
+          "label": "Goal distance (metres)",
           "order": 2
         },
         {
-          "id": "lib-search",
-          "label": "Search plans",
+          "id": null,
+          "label": "Target time",
           "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open plan filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "›",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Create plan\n+",
-          "order": 14
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 15
-        },
-        {
-          "id": "ldr-run-distance",
-          "label": "2.4 km\n10 km\nHalf Marathon",
-          "order": 16
-        },
-        {
-          "id": "ldr-run-time",
-          "label": null,
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Tue\nRecovery\n30 min · RPE 2–3 · conversational\n›",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Fri\nIntervals\n6 × 400 m · 90 sec jog\n›",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Sun\nLong run\n60 min · Easy throughout\n›",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Recovery\nShort, easy aerobic running",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Long run\nSustained easy endurance",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Progression\nStart easy and finish faster",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "Tempo\nContinuous or repeated threshold work",
-          "order": 24
-        },
-        {
-          "id": null,
-          "label": "Intervals\nMeasured work with recovery",
-          "order": 25
-        },
-        {
-          "id": null,
-          "label": "Hills\nUphill repetitions with return recovery",
-          "order": 26
-        },
-        {
-          "id": null,
-          "label": "Fartlek\nFlexible fast and easy speed play",
-          "order": 27
-        },
-        {
-          "id": null,
-          "label": "Create running plan",
-          "order": 28
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 29
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 30
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 31
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 32
         }
       ],
       "order": [
-        "Create running plan",
-        "Fartlek",
-        "Flexible fast and easy speed play",
-        "Every structured session can include warm-up, work and recovery steps, an intensity target, and cool-down. Targets accept pace, heart-rate zone, or RPE."
+        "Plan name",
+        "Goal distance (metres)"
       ],
       "non_color": [
-        "Active Plans",
-        "Current benchmark",
-        "Every structured session can include warm-up, work and recovery steps, an intensity target, and cool-down. Targets accept pace, heart-rate zone, or RPE."
+        "Goal distance (metres)"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Plan name",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:create-running",
@@ -22033,7 +15629,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Library",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -22047,214 +15643,68 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "library-screen",
         "phase20-visual-state-BW-057",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions"
+        "library-actions-trigger",
+        "root-settings-trigger-library",
+        "library-filters-chip",
+        "library-search-exercises"
       ],
       "semantics": [
         "Library",
-        "reps · Core · Bodyweight",
-        "Tempo Goblet Squat",
-        "kg × reps · Custom · Dumbbell"
+        "All Exercises",
+        "Create custom exercise"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": "library-actions-trigger",
+          "label": "Actions",
           "order": 0
         },
         {
-          "id": "lib-plans-tab",
-          "label": "Plans",
+          "id": "root-settings-trigger-library",
+          "label": "Open App Settings",
           "order": 1
         },
         {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
+          "id": null,
+          "label": "Plans",
           "order": 2
         },
         {
-          "id": "lib-search",
-          "label": "Search exercises",
+          "id": null,
+          "label": "Exercises",
           "order": 3
         },
         {
-          "id": "lib-open-filters",
-          "label": "Open exercise filters",
+          "id": null,
+          "label": "Search exercises",
           "order": 4
         },
         {
-          "id": "lib-open-actions",
-          "label": "•••",
+          "id": "library-filters-chip",
+          "label": "Filters",
           "order": 5
         },
         {
           "id": null,
-          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
+          "label": "Create custom exercise",
           "order": 6
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Plank\n\nseconds · Core · Bodyweight",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "Plank\n\nseconds · Core · Bodyweight",
-          "order": 24
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 25
-        },
-        {
-          "id": null,
-          "label": "Deadlift\n\nkg × reps · Strength · Barbell",
-          "order": 26
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 27
-        },
-        {
-          "id": null,
-          "label": "Dead Bug\n\nreps · Core · Bodyweight",
-          "order": 28
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 29
-        },
-        {
-          "id": null,
-          "label": "Tempo Goblet Squat\n\nkg × reps · Custom · Dumbbell",
-          "order": 30
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 31
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 32
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 33
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 34
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 35
         }
       ],
       "order": [
         "Library",
-        "reps · Core · Bodyweight",
-        "Tempo Goblet Squat",
-        "kg × reps · Custom · Dumbbell"
+        "All Exercises",
+        "Create custom exercise"
       ],
       "non_color": [
-        "kg × reps · Custom · Dumbbell"
+        "All Exercises",
+        "Create custom exercise"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Library",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:library-exercises",
@@ -22610,7 +16060,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Exercise facts",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -22618,232 +16068,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "exercise-detail-screen",
       "test_ids": [
         "exercise-detail-screen",
-        "phase20-visual-state-BW-058",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back"
+        "phase20-visual-state-BW-058"
       ],
       "semantics": [
-        "Back Squat",
-        "Used in",
-        "Full Body Foundation · Strength Reset",
-        "Toggle favoriteHide from pickers"
+        "Exercise facts",
+        "Back Squat"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
         },
         {
-          "id": "lib-plans-tab",
-          "label": "Plans",
+          "id": null,
+          "label": "View exercise history",
           "order": 1
-        },
-        {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
-          "order": 2
-        },
-        {
-          "id": "lib-search",
-          "label": "Search exercises",
-          "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open exercise filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Plank\n\nseconds · Core · Bodyweight",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "Plank\n\nseconds · Core · Bodyweight",
-          "order": 24
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 25
-        },
-        {
-          "id": null,
-          "label": "Deadlift\n\nkg × reps · Strength · Barbell",
-          "order": 26
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 27
-        },
-        {
-          "id": null,
-          "label": "Dead Bug\n\nreps · Core · Bodyweight",
-          "order": 28
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 29
-        },
-        {
-          "id": null,
-          "label": "Tempo Goblet Squat\n\nkg × reps · Custom · Dumbbell",
-          "order": 30
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 31
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 32
-        },
-        {
-          "id": null,
-          "label": "Toggle favorite",
-          "order": 33
-        },
-        {
-          "id": null,
-          "label": "Hide from pickers",
-          "order": 34
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 35
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 36
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 37
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 38
         }
       ],
       "order": [
-        "Back Squat",
-        "Used in",
-        "Full Body Foundation · Strength Reset",
-        "Toggle favoriteHide from pickers"
+        "Exercise facts",
+        "Back Squat"
       ],
       "non_color": [
-        "Brace before unracking and repeat a stable range. No unlicensed media is bundled.",
-        "Toggle favoriteHide from pickers"
+        "Back Squat"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Exercise facts",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:exercise-back-squat",
@@ -23202,7 +16457,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Exercise name",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -23211,248 +16466,49 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "exercise-editor-screen",
         "phase20-visual-state-BW-059",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back",
-        "ldr-custom-name",
-        "ldr-custom-metric",
-        "ldr-custom-equipment"
+        "exercise-editor-name",
+        "exercise-editor-equipment",
+        "exercise-editor-save-edit"
       ],
       "semantics": [
-        "Tempo Goblet Squat",
-        "Equipment",
-        "Save custom exercise",
-        "Archive custom exercise"
+        "Exercise name",
+        "Save exercise"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
         },
         {
-          "id": "lib-plans-tab",
-          "label": "Plans",
+          "id": "exercise-editor-name",
+          "label": "Exercise name",
           "order": 1
         },
         {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
+          "id": "exercise-editor-equipment",
+          "label": "Equipment",
           "order": 2
         },
         {
-          "id": "lib-search",
-          "label": "Search exercises",
+          "id": "exercise-editor-save-edit",
+          "label": "Save exercise",
           "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open exercise filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Plank\n\nseconds · Core · Bodyweight",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "Plank\n\nseconds · Core · Bodyweight",
-          "order": 24
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 25
-        },
-        {
-          "id": null,
-          "label": "Deadlift\n\nkg × reps · Strength · Barbell",
-          "order": 26
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 27
-        },
-        {
-          "id": null,
-          "label": "Dead Bug\n\nreps · Core · Bodyweight",
-          "order": 28
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 29
-        },
-        {
-          "id": null,
-          "label": "Tempo Goblet Squat\n\nkg × reps · Custom · Dumbbell",
-          "order": 30
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 31
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 32
-        },
-        {
-          "id": "ldr-custom-name",
-          "label": null,
-          "order": 33
-        },
-        {
-          "id": "ldr-custom-metric",
-          "label": "Weight × reps\nDuration\nReps",
-          "order": 34
-        },
-        {
-          "id": "ldr-custom-equipment",
-          "label": null,
-          "order": 35
-        },
-        {
-          "id": null,
-          "label": "Save custom exercise",
-          "order": 36
-        },
-        {
-          "id": null,
-          "label": "Archive custom exercise",
-          "order": 37
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 38
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 39
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 40
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 41
         }
       ],
       "order": [
-        "Tempo Goblet Squat",
-        "Equipment",
-        "Save custom exercise",
-        "Archive custom exercise"
+        "Exercise name",
+        "Save exercise"
       ],
       "non_color": [
-        "Archive custom exercise"
+        "Save exercise"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Exercise name",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:exercise-tempo-goblet",
@@ -23801,7 +16857,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Exercise name",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -23810,243 +16866,49 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "exercise-editor-screen",
         "phase20-visual-state-BW-060",
-        "root-settings",
-        "lib-plans-tab",
-        "lib-exercises-tab",
-        "lib-search",
-        "lib-open-filters",
-        "lib-open-actions",
-        "lib-deep-back",
-        "ldr-new-custom-name",
-        "ldr-new-custom-metric",
-        "ldr-new-custom-equipment"
+        "exercise-editor-name",
+        "exercise-editor-equipment",
+        "exercise-editor-save-create"
       ],
       "semantics": [
-        "Create exercise",
-        "Reps",
-        "Equipment",
-        "Create exercise+ opened."
+        "Exercise name",
+        "Save exercise"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
         },
         {
-          "id": "lib-plans-tab",
-          "label": "Plans",
+          "id": "exercise-editor-name",
+          "label": "Exercise name",
           "order": 1
         },
         {
-          "id": "lib-exercises-tab",
-          "label": "Exercises",
+          "id": "exercise-editor-equipment",
+          "label": "Equipment",
           "order": 2
         },
         {
-          "id": "lib-search",
-          "label": "Search exercises",
+          "id": "exercise-editor-save-create",
+          "label": "Save exercise",
           "order": 3
-        },
-        {
-          "id": "lib-open-filters",
-          "label": "Open exercise filters",
-          "order": 4
-        },
-        {
-          "id": "lib-open-actions",
-          "label": "•••",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Plank\n\nseconds · Core · Bodyweight",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "Plank\n\nseconds · Core · Bodyweight",
-          "order": 24
-        },
-        {
-          "id": null,
-          "label": "★",
-          "order": 25
-        },
-        {
-          "id": null,
-          "label": "Deadlift\n\nkg × reps · Strength · Barbell",
-          "order": 26
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 27
-        },
-        {
-          "id": null,
-          "label": "Dead Bug\n\nreps · Core · Bodyweight",
-          "order": 28
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 29
-        },
-        {
-          "id": null,
-          "label": "Tempo Goblet Squat\n\nkg × reps · Custom · Dumbbell",
-          "order": 30
-        },
-        {
-          "id": null,
-          "label": "☆",
-          "order": 31
-        },
-        {
-          "id": "lib-deep-back",
-          "label": "Back to Library",
-          "order": 32
-        },
-        {
-          "id": "ldr-new-custom-name",
-          "label": null,
-          "order": 33
-        },
-        {
-          "id": "ldr-new-custom-metric",
-          "label": "Weight × reps\nDuration\nReps",
-          "order": 34
-        },
-        {
-          "id": "ldr-new-custom-equipment",
-          "label": null,
-          "order": 35
-        },
-        {
-          "id": null,
-          "label": "Create exercise",
-          "order": 36
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 37
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 38
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 39
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 40
         }
       ],
       "order": [
-        "Create exercise",
-        "Reps",
-        "Equipment",
-        "Create exercise+ opened."
+        "Exercise name",
+        "Save exercise"
       ],
       "non_color": [
-        "Create exercise+ opened."
+        "Save exercise"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Exercise name",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:custom-exercise-create",
@@ -24212,7 +17074,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -24221,47 +17083,41 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "phase20-visual-state-BW-061",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running"
+        "root-settings-trigger-progress"
       ],
       "semantics": [
         "Progress",
-        "One quality run, one squat exposure",
-        "6 × 400 m rehearses the chosen 2.4 km pace. The next squat repeats 60 kg × 8 before review.",
-        "Running preview: ready."
+        "All",
+        "4 weeks"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-progress",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
+          "id": null,
           "label": "Body metrics",
           "order": 1
         },
         {
-          "id": "pv2-open-settings",
+          "id": null,
           "label": "Settings",
           "order": 2
         },
         {
-          "id": "pv2-tab-all",
+          "id": null,
           "label": "All",
           "order": 3
         },
         {
-          "id": "pv2-tab-strength",
+          "id": null,
           "label": "Strength",
           "order": 4
         },
         {
-          "id": "pv2-tab-running",
+          "id": null,
           "label": "Running",
           "order": 5
         },
@@ -24279,59 +17135,23 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
           "id": null,
           "label": "All time",
           "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Back Squat · 62.5 kg × 8\nLatest 60 kg × 8\nOn track\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 15
         }
       ],
       "order": [
         "Progress",
-        "One quality run, one squat exposure",
-        "6 × 400 m rehearses the chosen 2.4 km pace. The next squat repeats 60 kg × 8 before review.",
-        "Running preview: ready."
+        "All",
+        "4 weeks"
       ],
       "non_color": [
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "Active goals",
-        "Planned next",
-        "Running preview: ready."
+        "All",
+        "4 weeks"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-all",
@@ -24508,7 +17328,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -24517,47 +17337,41 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "phase20-visual-state-BW-062",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running"
+        "root-settings-trigger-progress"
       ],
       "semantics": [
         "Progress",
-        "One quality run, one squat exposure",
-        "6 × 400 m rehearses the chosen 2.4 km pace. The next squat repeats 60 kg × 8 before review.",
-        "Running preview: ready."
+        "All",
+        "4 weeks"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-progress",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
+          "id": null,
           "label": "Body metrics",
           "order": 1
         },
         {
-          "id": "pv2-open-settings",
+          "id": null,
           "label": "Settings",
           "order": 2
         },
         {
-          "id": "pv2-tab-all",
+          "id": null,
           "label": "All",
           "order": 3
         },
         {
-          "id": "pv2-tab-strength",
+          "id": null,
           "label": "Strength",
           "order": 4
         },
         {
-          "id": "pv2-tab-running",
+          "id": null,
           "label": "Running",
           "order": 5
         },
@@ -24575,59 +17389,23 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
           "id": null,
           "label": "All time",
           "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Back Squat · 62.5 kg × 8\nLatest 60 kg × 8\nOn track\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 15
         }
       ],
       "order": [
         "Progress",
-        "One quality run, one squat exposure",
-        "6 × 400 m rehearses the chosen 2.4 km pace. The next squat repeats 60 kg × 8 before review.",
-        "Running preview: ready."
+        "All",
+        "4 weeks"
       ],
       "non_color": [
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "Active goals",
-        "Planned next",
-        "Running preview: ready."
+        "All",
+        "4 weeks"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-all-4w",
@@ -24793,7 +17571,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -24807,47 +17585,41 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "phase20-visual-state-BW-063",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running"
+        "root-settings-trigger-progress"
       ],
       "semantics": [
         "Progress",
-        "One quality run, one squat exposure",
-        "6 × 400 m rehearses the chosen 2.4 km pace. The next squat repeats 60 kg × 8 before review.",
-        "Running preview: ready."
+        "All",
+        "12 weeks"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-progress",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
+          "id": null,
           "label": "Body metrics",
           "order": 1
         },
         {
-          "id": "pv2-open-settings",
+          "id": null,
           "label": "Settings",
           "order": 2
         },
         {
-          "id": "pv2-tab-all",
+          "id": null,
           "label": "All",
           "order": 3
         },
         {
-          "id": "pv2-tab-strength",
+          "id": null,
           "label": "Strength",
           "order": 4
         },
         {
-          "id": "pv2-tab-running",
+          "id": null,
           "label": "Running",
           "order": 5
         },
@@ -24865,59 +17637,23 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
           "id": null,
           "label": "All time",
           "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Back Squat · 62.5 kg × 8\nLatest 60 kg × 8\nOn track\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 15
         }
       ],
       "order": [
         "Progress",
-        "One quality run, one squat exposure",
-        "6 × 400 m rehearses the chosen 2.4 km pace. The next squat repeats 60 kg × 8 before review.",
-        "Running preview: ready."
+        "All",
+        "12 weeks"
       ],
       "non_color": [
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "Active goals",
-        "Planned next",
-        "Running preview: ready."
+        "All",
+        "12 weeks"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-all-12w",
@@ -25083,7 +17819,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -25097,47 +17833,41 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "phase20-visual-state-BW-064",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running"
+        "root-settings-trigger-progress"
       ],
       "semantics": [
         "Progress",
-        "One quality run, one squat exposure",
-        "6 × 400 m rehearses the chosen 2.4 km pace. The next squat repeats 60 kg × 8 before review.",
-        "Running preview: ready."
+        "All",
+        "All time"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-progress",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
+          "id": null,
           "label": "Body metrics",
           "order": 1
         },
         {
-          "id": "pv2-open-settings",
+          "id": null,
           "label": "Settings",
           "order": 2
         },
         {
-          "id": "pv2-tab-all",
+          "id": null,
           "label": "All",
           "order": 3
         },
         {
-          "id": "pv2-tab-strength",
+          "id": null,
           "label": "Strength",
           "order": 4
         },
         {
-          "id": "pv2-tab-running",
+          "id": null,
           "label": "Running",
           "order": 5
         },
@@ -25155,59 +17885,23 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
           "id": null,
           "label": "All time",
           "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Back Squat · 62.5 kg × 8\nLatest 60 kg × 8\nOn track\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 15
         }
       ],
       "order": [
         "Progress",
-        "One quality run, one squat exposure",
-        "6 × 400 m rehearses the chosen 2.4 km pace. The next squat repeats 60 kg × 8 before review.",
-        "Running preview: ready."
+        "All",
+        "All time"
       ],
       "non_color": [
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "Active goals",
-        "Planned next",
-        "Running preview: ready."
+        "All",
+        "All time"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-all-all",
@@ -25389,7 +18083,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -25403,47 +18097,41 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "phase20-visual-state-BW-065",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running"
+        "root-settings-trigger-progress"
       ],
       "semantics": [
         "Progress",
-        "Plank",
-        "45 sec · target 50 sec",
-        "Running preview: ready."
+        "Strength",
+        "4 weeks"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-progress",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
+          "id": null,
           "label": "Body metrics",
           "order": 1
         },
         {
-          "id": "pv2-open-settings",
+          "id": null,
           "label": "Settings",
           "order": 2
         },
         {
-          "id": "pv2-tab-all",
+          "id": null,
           "label": "All",
           "order": 3
         },
         {
-          "id": "pv2-tab-strength",
+          "id": null,
           "label": "Strength",
           "order": 4
         },
         {
-          "id": "pv2-tab-running",
+          "id": null,
           "label": "Running",
           "order": 5
         },
@@ -25461,67 +18149,23 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
           "id": null,
           "label": "All time",
           "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 62.5",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Plank\n45 sec · target 50 sec\nOn track\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 17
         }
       ],
       "order": [
         "Progress",
-        "Plank",
-        "45 sec · target 50 sec",
-        "Running preview: ready."
+        "Strength",
+        "4 weeks"
       ],
       "non_color": [
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "Running preview: ready."
+        "Strength",
+        "4 weeks"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-strength",
@@ -25714,7 +18358,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -25728,47 +18372,41 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "phase20-visual-state-BW-066",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running"
+        "root-settings-trigger-progress"
       ],
       "semantics": [
         "Progress",
-        "Plank",
-        "45 sec · target 50 sec",
-        "Running preview: ready."
+        "Strength",
+        "4 weeks"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-progress",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
+          "id": null,
           "label": "Body metrics",
           "order": 1
         },
         {
-          "id": "pv2-open-settings",
+          "id": null,
           "label": "Settings",
           "order": 2
         },
         {
-          "id": "pv2-tab-all",
+          "id": null,
           "label": "All",
           "order": 3
         },
         {
-          "id": "pv2-tab-strength",
+          "id": null,
           "label": "Strength",
           "order": 4
         },
         {
-          "id": "pv2-tab-running",
+          "id": null,
           "label": "Running",
           "order": 5
         },
@@ -25786,67 +18424,23 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
           "id": null,
           "label": "All time",
           "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 62.5",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Plank\n45 sec · target 50 sec\nOn track\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 17
         }
       ],
       "order": [
         "Progress",
-        "Plank",
-        "45 sec · target 50 sec",
-        "Running preview: ready."
+        "Strength",
+        "4 weeks"
       ],
       "non_color": [
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "Running preview: ready."
+        "Strength",
+        "4 weeks"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-strength-4w",
@@ -26028,7 +18622,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -26046,47 +18640,41 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "phase20-visual-state-BW-067",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running"
+        "root-settings-trigger-progress"
       ],
       "semantics": [
         "Progress",
-        "Plank",
-        "45 sec · target 50 sec",
-        "Running preview: ready."
+        "Strength",
+        "12 weeks"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-progress",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
+          "id": null,
           "label": "Body metrics",
           "order": 1
         },
         {
-          "id": "pv2-open-settings",
+          "id": null,
           "label": "Settings",
           "order": 2
         },
         {
-          "id": "pv2-tab-all",
+          "id": null,
           "label": "All",
           "order": 3
         },
         {
-          "id": "pv2-tab-strength",
+          "id": null,
           "label": "Strength",
           "order": 4
         },
         {
-          "id": "pv2-tab-running",
+          "id": null,
           "label": "Running",
           "order": 5
         },
@@ -26104,67 +18692,23 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
           "id": null,
           "label": "All time",
           "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 62.5",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Plank\n45 sec · target 50 sec\nOn track\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 17
         }
       ],
       "order": [
         "Progress",
-        "Plank",
-        "45 sec · target 50 sec",
-        "Running preview: ready."
+        "Strength",
+        "12 weeks"
       ],
       "non_color": [
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "Running preview: ready."
+        "Strength",
+        "12 weeks"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-strength-12w",
@@ -26346,7 +18890,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -26364,47 +18908,41 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "phase20-visual-state-BW-068",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running"
+        "root-settings-trigger-progress"
       ],
       "semantics": [
         "Progress",
-        "Plank",
-        "45 sec · target 50 sec",
-        "Running preview: ready."
+        "Strength",
+        "All time"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-progress",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
+          "id": null,
           "label": "Body metrics",
           "order": 1
         },
         {
-          "id": "pv2-open-settings",
+          "id": null,
           "label": "Settings",
           "order": 2
         },
         {
-          "id": "pv2-tab-all",
+          "id": null,
           "label": "All",
           "order": 3
         },
         {
-          "id": "pv2-tab-strength",
+          "id": null,
           "label": "Strength",
           "order": 4
         },
         {
-          "id": "pv2-tab-running",
+          "id": null,
           "label": "Running",
           "order": 5
         },
@@ -26422,67 +18960,23 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
           "id": null,
           "label": "All time",
           "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 62.5",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Plank\n45 sec · target 50 sec\nOn track\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 17
         }
       ],
       "order": [
         "Progress",
-        "Plank",
-        "45 sec · target 50 sec",
-        "Running preview: ready."
+        "Strength",
+        "All time"
       ],
       "non_color": [
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "Running preview: ready."
+        "Strength",
+        "All time"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-strength-all",
@@ -26680,7 +19174,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -26694,47 +19188,41 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "phase20-visual-state-BW-069",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running"
+        "root-settings-trigger-progress"
       ],
       "semantics": [
         "Progress",
-        "10 km next; Half Marathon later",
-        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
-        "Running preview: ready."
+        "Running",
+        "4 weeks"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-progress",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
+          "id": null,
           "label": "Body metrics",
           "order": 1
         },
         {
-          "id": "pv2-open-settings",
+          "id": null,
           "label": "Settings",
           "order": 2
         },
         {
-          "id": "pv2-tab-all",
+          "id": null,
           "label": "All",
           "order": 3
         },
         {
-          "id": "pv2-tab-strength",
+          "id": null,
           "label": "Strength",
           "order": 4
         },
         {
-          "id": "pv2-tab-running",
+          "id": null,
           "label": "Running",
           "order": 5
         },
@@ -26752,80 +19240,23 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
           "id": null,
           "label": "All time",
           "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "10 km\n2 imported efforts\n54:20\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "2.4 km\n4 imported efforts\n11:24\n→",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 19
         }
       ],
       "order": [
         "Progress",
-        "10 km next; Half Marathon later",
-        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
-        "Running preview: ready."
+        "Running",
+        "4 weeks"
       ],
       "non_color": [
-        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "No effort recorded",
-        "No effort",
-        "Running preview: ready."
+        "Running",
+        "4 weeks"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-running",
@@ -27034,7 +19465,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -27048,47 +19479,41 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "phase20-visual-state-BW-070",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running"
+        "root-settings-trigger-progress"
       ],
       "semantics": [
         "Progress",
-        "10 km next; Half Marathon later",
-        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
-        "Running preview: ready."
+        "Running",
+        "4 weeks"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-progress",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
+          "id": null,
           "label": "Body metrics",
           "order": 1
         },
         {
-          "id": "pv2-open-settings",
+          "id": null,
           "label": "Settings",
           "order": 2
         },
         {
-          "id": "pv2-tab-all",
+          "id": null,
           "label": "All",
           "order": 3
         },
         {
-          "id": "pv2-tab-strength",
+          "id": null,
           "label": "Strength",
           "order": 4
         },
         {
-          "id": "pv2-tab-running",
+          "id": null,
           "label": "Running",
           "order": 5
         },
@@ -27106,80 +19531,23 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
           "id": null,
           "label": "All time",
           "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "10 km\n2 imported efforts\n54:20\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "2.4 km\n4 imported efforts\n11:24\n→",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 19
         }
       ],
       "order": [
         "Progress",
-        "10 km next; Half Marathon later",
-        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
-        "Running preview: ready."
+        "Running",
+        "4 weeks"
       ],
       "non_color": [
-        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "No effort recorded",
-        "No effort",
-        "Running preview: ready."
+        "Running",
+        "4 weeks"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-running-4w",
@@ -27377,7 +19745,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -27395,47 +19763,41 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "phase20-visual-state-BW-071",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running"
+        "root-settings-trigger-progress"
       ],
       "semantics": [
         "Progress",
-        "10 km next; Half Marathon later",
-        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
-        "Running preview: ready."
+        "Running",
+        "12 weeks"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-progress",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
+          "id": null,
           "label": "Body metrics",
           "order": 1
         },
         {
-          "id": "pv2-open-settings",
+          "id": null,
           "label": "Settings",
           "order": 2
         },
         {
-          "id": "pv2-tab-all",
+          "id": null,
           "label": "All",
           "order": 3
         },
         {
-          "id": "pv2-tab-strength",
+          "id": null,
           "label": "Strength",
           "order": 4
         },
         {
-          "id": "pv2-tab-running",
+          "id": null,
           "label": "Running",
           "order": 5
         },
@@ -27453,80 +19815,23 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
           "id": null,
           "label": "All time",
           "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "10 km\n2 imported efforts\n54:20\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "2.4 km\n4 imported efforts\n11:24\n→",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 19
         }
       ],
       "order": [
         "Progress",
-        "10 km next; Half Marathon later",
-        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
-        "Running preview: ready."
+        "Running",
+        "12 weeks"
       ],
       "non_color": [
-        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "No effort recorded",
-        "No effort",
-        "Running preview: ready."
+        "Running",
+        "12 weeks"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-running-12w",
@@ -27724,7 +20029,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -27742,47 +20047,41 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "phase20-visual-state-BW-072",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running"
+        "root-settings-trigger-progress"
       ],
       "semantics": [
         "Progress",
-        "10 km next; Half Marathon later",
-        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
-        "Running preview: ready."
+        "Running",
+        "All time"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-progress",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
+          "id": null,
           "label": "Body metrics",
           "order": 1
         },
         {
-          "id": "pv2-open-settings",
+          "id": null,
           "label": "Settings",
           "order": 2
         },
         {
-          "id": "pv2-tab-all",
+          "id": null,
           "label": "All",
           "order": 3
         },
         {
-          "id": "pv2-tab-strength",
+          "id": null,
           "label": "Strength",
           "order": 4
         },
         {
-          "id": "pv2-tab-running",
+          "id": null,
           "label": "Running",
           "order": 5
         },
@@ -27800,80 +20099,23 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
           "id": null,
           "label": "All time",
           "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "10 km\n2 imported efforts\n54:20\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "2.4 km\n4 imported efforts\n11:24\n→",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 19
         }
       ],
       "order": [
         "Progress",
-        "10 km next; Half Marathon later",
-        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
-        "Running preview: ready."
+        "Running",
+        "All time"
       ],
       "non_color": [
-        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "No effort recorded",
-        "No effort",
-        "Running preview: ready."
+        "Running",
+        "All time"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-running-all",
@@ -28068,7 +20310,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Close App Settings",
       "Close history"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Exercise history",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -28076,137 +20318,32 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "exercise-history-screen",
       "test_ids": [
         "exercise-history-screen",
-        "phase20-visual-state-BW-073",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running",
-        "root-scrim"
+        "phase20-visual-state-BW-073"
       ],
       "semantics": [
-        "Back Squat",
-        "45 sec · target 50 sec",
-        "Running preview: ready.",
-        "Comparable completed personal history with the goal shown as a separate line."
+        "Exercise history",
+        "Back Squat"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "pv2-open-bodyweight",
-          "label": "Body metrics",
-          "order": 1
-        },
-        {
-          "id": "pv2-open-settings",
-          "label": "Settings",
-          "order": 2
-        },
-        {
-          "id": "pv2-tab-all",
-          "label": "All",
-          "order": 3
-        },
-        {
-          "id": "pv2-tab-strength",
-          "label": "Strength",
-          "order": 4
-        },
-        {
-          "id": "pv2-tab-running",
-          "label": "Running",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "4 weeks",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "12 weeks",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "All time",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 62.5",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Plank\n45 sec · target 50 sec\nOn track\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 17
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Close history",
-          "order": 19
         }
       ],
       "order": [
-        "Back Squat",
-        "45 sec · target 50 sec",
-        "Running preview: ready.",
-        "Comparable completed personal history with the goal shown as a separate line."
+        "Exercise history",
+        "Back Squat"
       ],
       "non_color": [
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "Comparable completed personal history with the goal shown as a separate line."
+        "Back Squat"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Exercise history",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:strength-detail-squat",
@@ -28401,7 +20538,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Close App Settings",
       "Close history"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Exercise history",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -28409,137 +20546,32 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "exercise-history-screen",
       "test_ids": [
         "exercise-history-screen",
-        "phase20-visual-state-BW-074",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running",
-        "root-scrim"
+        "phase20-visual-state-BW-074"
       ],
       "semantics": [
-        "Bench Press",
-        "42.5 kg × 10",
-        "Goal 42.5",
-        "Comparable completed personal history with the goal shown as a separate line."
+        "Exercise history",
+        "Bench Press"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "pv2-open-bodyweight",
-          "label": "Body metrics",
-          "order": 1
-        },
-        {
-          "id": "pv2-open-settings",
-          "label": "Settings",
-          "order": 2
-        },
-        {
-          "id": "pv2-tab-all",
-          "label": "All",
-          "order": 3
-        },
-        {
-          "id": "pv2-tab-strength",
-          "label": "Strength",
-          "order": 4
-        },
-        {
-          "id": "pv2-tab-running",
-          "label": "Running",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "4 weeks",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "12 weeks",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "All time",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 62.5",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Plank\n45 sec · target 50 sec\nOn track\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 17
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Close history",
-          "order": 19
         }
       ],
       "order": [
-        "Bench Press",
-        "42.5 kg × 10",
-        "Goal 42.5",
-        "Comparable completed personal history with the goal shown as a separate line."
+        "Exercise history",
+        "Bench Press"
       ],
       "non_color": [
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "Comparable completed personal history with the goal shown as a separate line."
+        "Bench Press"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Exercise history",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:strength-detail-bench",
@@ -28734,7 +20766,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Close App Settings",
       "Close history"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Exercise history",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -28742,137 +20774,32 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "exercise-history-screen",
       "test_ids": [
         "exercise-history-screen",
-        "phase20-visual-state-BW-075",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running",
-        "root-scrim"
+        "phase20-visual-state-BW-075"
       ],
       "semantics": [
-        "Plank",
-        "50 sec",
-        "Goal 50",
-        "Comparable completed personal history with the goal shown as a separate line."
+        "Exercise history",
+        "Plank"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "pv2-open-bodyweight",
-          "label": "Body metrics",
-          "order": 1
-        },
-        {
-          "id": "pv2-open-settings",
-          "label": "Settings",
-          "order": 2
-        },
-        {
-          "id": "pv2-tab-all",
-          "label": "All",
-          "order": 3
-        },
-        {
-          "id": "pv2-tab-strength",
-          "label": "Strength",
-          "order": 4
-        },
-        {
-          "id": "pv2-tab-running",
-          "label": "Running",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "4 weeks",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "12 weeks",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "All time",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 62.5",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Plank\n45 sec · target 50 sec\nOn track\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 17
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Close history",
-          "order": 19
         }
       ],
       "order": [
-        "Plank",
-        "50 sec",
-        "Goal 50",
-        "Comparable completed personal history with the goal shown as a separate line."
+        "Exercise history",
+        "Plank"
       ],
       "non_color": [
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "Comparable completed personal history with the goal shown as a separate line."
+        "Plank"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Exercise history",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:strength-detail-plank",
@@ -29078,7 +21005,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Keep current",
       "Use target"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Review target",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -29097,150 +21024,42 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "progress-screen",
         "recommendation-review-sheet",
         "phase20-visual-state-BW-076",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running",
-        "root-scrim",
-        "pv2-keep-target",
-        "pv2-use-target"
+        "bottom-sheet-close-action"
       ],
       "semantics": [
-        "Progress",
-        "No automatic change without confirmation",
-        "Keep current",
-        "Use target"
+        "Review target",
+        "Keep target unchanged"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Keep target unchanged",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
-          "label": "Body metrics",
+          "id": null,
+          "label": "Use target",
           "order": 1
         },
         {
-          "id": "pv2-open-settings",
-          "label": "Settings",
+          "id": "bottom-sheet-close-action",
+          "label": "Close review target",
           "order": 2
-        },
-        {
-          "id": "pv2-tab-all",
-          "label": "All",
-          "order": 3
-        },
-        {
-          "id": "pv2-tab-strength",
-          "label": "Strength",
-          "order": 4
-        },
-        {
-          "id": "pv2-tab-running",
-          "label": "Running",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "4 weeks",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "12 weeks",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "All time",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 62.5",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Plank\n45 sec · target 50 sec\nOn track\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 17
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Close recommendation",
-          "order": 19
-        },
-        {
-          "id": "pv2-keep-target",
-          "label": "Keep current",
-          "order": 20
-        },
-        {
-          "id": "pv2-use-target",
-          "label": "Use target",
-          "order": 21
         }
       ],
       "order": [
-        "Progress",
-        "No automatic change without confirmation",
-        "Keep current",
-        "Use target"
+        "Review target",
+        "Keep target unchanged"
       ],
       "non_color": [
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "Current",
-        "No automatic change without confirmation",
-        "Use target"
+        "Keep target unchanged"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Review target",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-recommendation",
@@ -29450,7 +21269,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Close App Settings",
       "Close history"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "2.4 km best efforts",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -29469,149 +21288,32 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "progress-screen",
         "running-history-sheet",
         "phase20-visual-state-BW-077",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running",
-        "root-scrim"
+        "bottom-sheet-close-action"
       ],
       "semantics": [
-        "Progress",
         "2.4 km best efforts",
-        "Target 11:00",
         "Best efforts compare elapsed time at the same distance. Faster is lower on the clock."
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": "bottom-sheet-close-action",
+          "label": "Close 2.4 km best efforts",
           "order": 0
-        },
-        {
-          "id": "pv2-open-bodyweight",
-          "label": "Body metrics",
-          "order": 1
-        },
-        {
-          "id": "pv2-open-settings",
-          "label": "Settings",
-          "order": 2
-        },
-        {
-          "id": "pv2-tab-all",
-          "label": "All",
-          "order": 3
-        },
-        {
-          "id": "pv2-tab-strength",
-          "label": "Strength",
-          "order": 4
-        },
-        {
-          "id": "pv2-tab-running",
-          "label": "Running",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "4 weeks",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "12 weeks",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "All time",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "10 km\n2 imported efforts\n54:20\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "2.4 km\n4 imported efforts\n11:24\n→",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 19
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Close history",
-          "order": 21
         }
       ],
       "order": [
-        "Progress",
         "2.4 km best efforts",
-        "Target 11:00",
         "Best efforts compare elapsed time at the same distance. Faster is lower on the clock."
       ],
       "non_color": [
-        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "No effort recorded",
-        "No effort",
         "Best efforts compare elapsed time at the same distance. Faster is lower on the clock."
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "2.4 km best efforts",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:running-effort-2.4",
@@ -29910,7 +21612,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Cancel",
       "Save target"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Running target",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -29918,7 +21620,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       },
       {
         "action": "tap_text",
-        "value": "Set target for 2.4 km"
+        "value": "Edit target for 2.4 km"
       }
     ],
     "readiness": {
@@ -29928,219 +21630,56 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "running-target-sheet",
-        "phase20-visual-state-BW-078",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running",
-        "root-scrim",
-        "pv2-target-distance",
-        "pv2-target-time",
-        "pv2-target-date",
-        "pv2-target-benchmark"
+        "phase20-visual-state-BW-078"
       ],
       "semantics": [
-        "Progress",
-        "Calculated pacing guides do not predict or guarantee an outcome.",
-        "Cancel",
-        "Save target"
+        "Running target",
+        "Target time",
+        "Current benchmark"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Target time",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
-          "label": "Body metrics",
+          "id": null,
+          "label": "Optional target date",
           "order": 1
-        },
-        {
-          "id": "pv2-open-settings",
-          "label": "Settings",
-          "order": 2
-        },
-        {
-          "id": "pv2-tab-all",
-          "label": "All",
-          "order": 3
-        },
-        {
-          "id": "pv2-tab-strength",
-          "label": "Strength",
-          "order": 4
-        },
-        {
-          "id": "pv2-tab-running",
-          "label": "Running",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "4 weeks",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "12 weeks",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "All time",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "10 km\n2 imported efforts\n54:20\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "2.4 km\n4 imported efforts\n11:24\n→",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 19
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Close target editor",
-          "order": 21
-        },
-        {
-          "id": "pv2-target-distance",
-          "label": "2.4 km\n10 km\nHalf Marathon",
-          "order": 22
-        },
-        {
-          "id": "pv2-target-time",
-          "label": null,
-          "order": 23
-        },
-        {
-          "id": "pv2-target-date",
-          "label": null,
-          "order": 24
-        },
-        {
-          "id": "pv2-target-benchmark",
-          "label": null,
-          "order": 25
-        },
-        {
-          "id": null,
-          "label": "M",
-          "order": 26
-        },
-        {
-          "id": null,
-          "label": "T",
-          "order": 27
-        },
-        {
-          "id": null,
-          "label": "W",
-          "order": 28
-        },
-        {
-          "id": null,
-          "label": "T",
-          "order": 29
-        },
-        {
-          "id": null,
-          "label": "F",
-          "order": 30
-        },
-        {
-          "id": null,
-          "label": "S",
-          "order": 31
-        },
-        {
-          "id": null,
-          "label": "S",
-          "order": 32
-        },
-        {
-          "id": null,
-          "label": "Cancel",
-          "order": 33
         },
         {
           "id": null,
           "label": "Save target",
-          "order": 34
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Discard target changes",
+          "order": 3
         }
       ],
       "order": [
-        "Progress",
-        "Calculated pacing guides do not predict or guarantee an outcome.",
-        "Cancel",
-        "Save target"
+        "Running target",
+        "Target time",
+        "Current benchmark"
       ],
       "non_color": [
-        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "No effort recorded",
-        "No effort",
-        "Save target"
+        "Target time",
+        "Current benchmark"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Running target",
         "required": true
       },
+      "unavailable_controls": [
+        {
+          "label": "Current benchmark",
+          "editable": false,
+          "reason": "Source fact, not the browser editable benchmark field."
+        }
+      ],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:running-target-2.4",
@@ -30350,7 +21889,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Close App Settings",
       "Close history"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "10 km best efforts",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -30369,149 +21908,32 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "progress-screen",
         "running-history-sheet",
         "phase20-visual-state-BW-079",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running",
-        "root-scrim"
+        "bottom-sheet-close-action"
       ],
       "semantics": [
-        "Progress",
         "10 km best efforts",
-        "Target unset",
         "Best efforts compare elapsed time at the same distance. Faster is lower on the clock."
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": "bottom-sheet-close-action",
+          "label": "Close 10 km best efforts",
           "order": 0
-        },
-        {
-          "id": "pv2-open-bodyweight",
-          "label": "Body metrics",
-          "order": 1
-        },
-        {
-          "id": "pv2-open-settings",
-          "label": "Settings",
-          "order": 2
-        },
-        {
-          "id": "pv2-tab-all",
-          "label": "All",
-          "order": 3
-        },
-        {
-          "id": "pv2-tab-strength",
-          "label": "Strength",
-          "order": 4
-        },
-        {
-          "id": "pv2-tab-running",
-          "label": "Running",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "4 weeks",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "12 weeks",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "All time",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "10 km\n2 imported efforts\n54:20\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "2.4 km\n4 imported efforts\n11:24\n→",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 19
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Close history",
-          "order": 21
         }
       ],
       "order": [
-        "Progress",
         "10 km best efforts",
-        "Target unset",
         "Best efforts compare elapsed time at the same distance. Faster is lower on the clock."
       ],
       "non_color": [
-        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "No effort recorded",
-        "No effort",
         "Best efforts compare elapsed time at the same distance. Faster is lower on the clock."
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "10 km best efforts",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:running-effort-10",
@@ -30810,7 +22232,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Cancel",
       "Save target"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Running target",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -30818,7 +22240,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       },
       {
         "action": "tap_text",
-        "value": "Set target for 10 km"
+        "value": "Edit target for 10 km"
       }
     ],
     "readiness": {
@@ -30828,219 +22250,56 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "running-target-sheet",
-        "phase20-visual-state-BW-080",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running",
-        "root-scrim",
-        "pv2-target-distance",
-        "pv2-target-time",
-        "pv2-target-date",
-        "pv2-target-benchmark"
+        "phase20-visual-state-BW-080"
       ],
       "semantics": [
-        "Progress",
-        "Calculated pacing guides do not predict or guarantee an outcome.",
-        "Cancel",
-        "Save target"
+        "Running target",
+        "Target time",
+        "Current benchmark"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Target time",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
-          "label": "Body metrics",
+          "id": null,
+          "label": "Optional target date",
           "order": 1
-        },
-        {
-          "id": "pv2-open-settings",
-          "label": "Settings",
-          "order": 2
-        },
-        {
-          "id": "pv2-tab-all",
-          "label": "All",
-          "order": 3
-        },
-        {
-          "id": "pv2-tab-strength",
-          "label": "Strength",
-          "order": 4
-        },
-        {
-          "id": "pv2-tab-running",
-          "label": "Running",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "4 weeks",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "12 weeks",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "All time",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "10 km\n2 imported efforts\n54:20\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "2.4 km\n4 imported efforts\n11:24\n→",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 19
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Close target editor",
-          "order": 21
-        },
-        {
-          "id": "pv2-target-distance",
-          "label": "2.4 km\n10 km\nHalf Marathon",
-          "order": 22
-        },
-        {
-          "id": "pv2-target-time",
-          "label": null,
-          "order": 23
-        },
-        {
-          "id": "pv2-target-date",
-          "label": null,
-          "order": 24
-        },
-        {
-          "id": "pv2-target-benchmark",
-          "label": null,
-          "order": 25
-        },
-        {
-          "id": null,
-          "label": "M",
-          "order": 26
-        },
-        {
-          "id": null,
-          "label": "T",
-          "order": 27
-        },
-        {
-          "id": null,
-          "label": "W",
-          "order": 28
-        },
-        {
-          "id": null,
-          "label": "T",
-          "order": 29
-        },
-        {
-          "id": null,
-          "label": "F",
-          "order": 30
-        },
-        {
-          "id": null,
-          "label": "S",
-          "order": 31
-        },
-        {
-          "id": null,
-          "label": "S",
-          "order": 32
-        },
-        {
-          "id": null,
-          "label": "Cancel",
-          "order": 33
         },
         {
           "id": null,
           "label": "Save target",
-          "order": 34
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Discard target changes",
+          "order": 3
         }
       ],
       "order": [
-        "Progress",
-        "Calculated pacing guides do not predict or guarantee an outcome.",
-        "Cancel",
-        "Save target"
+        "Running target",
+        "Target time",
+        "Current benchmark"
       ],
       "non_color": [
-        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "No effort recorded",
-        "No effort",
-        "Save target"
+        "Target time",
+        "Current benchmark"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Running target",
         "required": true
       },
+      "unavailable_controls": [
+        {
+          "label": "Current benchmark",
+          "editable": false,
+          "reason": "Source fact, not the browser editable benchmark field."
+        }
+      ],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:running-target-10",
@@ -31250,7 +22509,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Close App Settings",
       "Close history"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Half Marathon best efforts",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -31269,149 +22528,32 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "progress-screen",
         "running-history-sheet",
         "phase20-visual-state-BW-081",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running",
-        "root-scrim"
+        "bottom-sheet-close-action"
       ],
       "semantics": [
-        "Progress",
-        "Running preview: ready.",
         "Half Marathon best efforts",
-        "Complete this distance once to establish a benchmark. No zero result is plotted."
+        "Best efforts compare elapsed time at the same distance. Faster is lower on the clock."
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": "bottom-sheet-close-action",
+          "label": "Close Half Marathon best efforts",
           "order": 0
-        },
-        {
-          "id": "pv2-open-bodyweight",
-          "label": "Body metrics",
-          "order": 1
-        },
-        {
-          "id": "pv2-open-settings",
-          "label": "Settings",
-          "order": 2
-        },
-        {
-          "id": "pv2-tab-all",
-          "label": "All",
-          "order": 3
-        },
-        {
-          "id": "pv2-tab-strength",
-          "label": "Strength",
-          "order": 4
-        },
-        {
-          "id": "pv2-tab-running",
-          "label": "Running",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "4 weeks",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "12 weeks",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "All time",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "10 km\n2 imported efforts\n54:20\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "2.4 km\n4 imported efforts\n11:24\n→",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 19
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Close history",
-          "order": 21
         }
       ],
       "order": [
-        "Progress",
-        "Running preview: ready.",
         "Half Marathon best efforts",
-        "Complete this distance once to establish a benchmark. No zero result is plotted."
+        "Best efforts compare elapsed time at the same distance. Faster is lower on the clock."
       ],
       "non_color": [
-        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "No effort recorded",
-        "No effort",
-        "Complete this distance once to establish a benchmark. No zero result is plotted."
+        "Best efforts compare elapsed time at the same distance. Faster is lower on the clock."
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Half Marathon best efforts",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:running-effort-hm",
@@ -31710,7 +22852,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Cancel",
       "Save target"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Running target",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -31718,7 +22860,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       },
       {
         "action": "tap_text",
-        "value": "Set target for Half Marathon"
+        "value": "Edit target for Half Marathon"
       }
     ],
     "readiness": {
@@ -31728,219 +22870,56 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "running-target-sheet",
-        "phase20-visual-state-BW-082",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running",
-        "root-scrim",
-        "pv2-target-distance",
-        "pv2-target-time",
-        "pv2-target-date",
-        "pv2-target-benchmark"
+        "phase20-visual-state-BW-082"
       ],
       "semantics": [
-        "Progress",
-        "Calculated pacing guides do not predict or guarantee an outcome.",
-        "Cancel",
-        "Save target"
+        "Running target",
+        "Target time",
+        "Current benchmark"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Target time",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
-          "label": "Body metrics",
+          "id": null,
+          "label": "Optional target date",
           "order": 1
-        },
-        {
-          "id": "pv2-open-settings",
-          "label": "Settings",
-          "order": 2
-        },
-        {
-          "id": "pv2-tab-all",
-          "label": "All",
-          "order": 3
-        },
-        {
-          "id": "pv2-tab-strength",
-          "label": "Strength",
-          "order": 4
-        },
-        {
-          "id": "pv2-tab-running",
-          "label": "Running",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "4 weeks",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "12 weeks",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "All time",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "10 km\n2 imported efforts\n54:20\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "2.4 km\n4 imported efforts\n11:24\n→",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 19
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Close target editor",
-          "order": 21
-        },
-        {
-          "id": "pv2-target-distance",
-          "label": "2.4 km\n10 km\nHalf Marathon",
-          "order": 22
-        },
-        {
-          "id": "pv2-target-time",
-          "label": null,
-          "order": 23
-        },
-        {
-          "id": "pv2-target-date",
-          "label": null,
-          "order": 24
-        },
-        {
-          "id": "pv2-target-benchmark",
-          "label": null,
-          "order": 25
-        },
-        {
-          "id": null,
-          "label": "M",
-          "order": 26
-        },
-        {
-          "id": null,
-          "label": "T",
-          "order": 27
-        },
-        {
-          "id": null,
-          "label": "W",
-          "order": 28
-        },
-        {
-          "id": null,
-          "label": "T",
-          "order": 29
-        },
-        {
-          "id": null,
-          "label": "F",
-          "order": 30
-        },
-        {
-          "id": null,
-          "label": "S",
-          "order": 31
-        },
-        {
-          "id": null,
-          "label": "S",
-          "order": 32
-        },
-        {
-          "id": null,
-          "label": "Cancel",
-          "order": 33
         },
         {
           "id": null,
           "label": "Save target",
-          "order": 34
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Discard target changes",
+          "order": 3
         }
       ],
       "order": [
-        "Progress",
-        "Calculated pacing guides do not predict or guarantee an outcome.",
-        "Cancel",
-        "Save target"
+        "Running target",
+        "Target time",
+        "Current benchmark"
       ],
       "non_color": [
-        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "No effort recorded",
-        "No effort",
-        "Save target"
+        "Target time",
+        "Current benchmark"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Running target",
         "required": true
       },
+      "unavailable_controls": [
+        {
+          "label": "Current benchmark",
+          "editable": false,
+          "reason": "Source fact, not the browser editable benchmark field."
+        }
+      ],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:running-target-hm",
@@ -32158,7 +23137,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Close Bodyweight history",
       "Add first entry"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Bodyweight",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -32173,154 +23152,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "progress-screen",
         "bodyweight-history-sheet",
         "phase20-visual-state-BW-083",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running",
-        "root-scrim"
+        "bottom-sheet-close-action"
       ],
       "semantics": [
-        "Progress",
-        "No bodyweight entries",
-        "Add one only if bodyweight-relative strength is useful to you. Nothing else in Progress depends on it.",
-        "Add first entry"
+        "Bodyweight",
+        "No bodyweight entries"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Add first entry",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
-          "label": "Body metrics",
+          "id": "bottom-sheet-close-action",
+          "label": "Close bodyweight",
           "order": 1
-        },
-        {
-          "id": "pv2-open-settings",
-          "label": "Settings",
-          "order": 2
-        },
-        {
-          "id": "pv2-tab-all",
-          "label": "All",
-          "order": 3
-        },
-        {
-          "id": "pv2-tab-strength",
-          "label": "Strength",
-          "order": 4
-        },
-        {
-          "id": "pv2-tab-running",
-          "label": "Running",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "4 weeks",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "12 weeks",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "All time",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "10 km\n2 imported efforts\n54:20\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "2.4 km\n4 imported efforts\n11:24\n→",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 19
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Close Bodyweight history",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Add first entry",
-          "order": 22
         }
       ],
       "order": [
-        "Progress",
-        "No bodyweight entries",
-        "Add one only if bodyweight-relative strength is useful to you. Nothing else in Progress depends on it.",
-        "Add first entry"
+        "Bodyweight",
+        "No bodyweight entries"
       ],
       "non_color": [
-        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "No effort recorded",
-        "No effort",
-        "Add first entry"
+        "No bodyweight entries"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Bodyweight",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:bodyweight-history",
@@ -32568,7 +23430,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Empty",
       "Loading"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress settings",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -32583,175 +23445,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "progress-screen",
         "progress-settings-sheet",
         "phase20-visual-state-BW-084",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running",
-        "root-scrim",
-        "pv2-settings-bodyweight"
+        "bottom-sheet-close-action"
       ],
       "semantics": [
-        "Progress",
-        "Sparse",
-        "Empty",
-        "Loading"
+        "Progress settings",
+        "Bodyweight history"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Bodyweight history",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
-          "label": "Body metrics",
+          "id": "bottom-sheet-close-action",
+          "label": "Close progress settings",
           "order": 1
-        },
-        {
-          "id": "pv2-open-settings",
-          "label": "Settings",
-          "order": 2
-        },
-        {
-          "id": "pv2-tab-all",
-          "label": "All",
-          "order": 3
-        },
-        {
-          "id": "pv2-tab-strength",
-          "label": "Strength",
-          "order": 4
-        },
-        {
-          "id": "pv2-tab-running",
-          "label": "Running",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "4 weeks",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "12 weeks",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "All time",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "10 km\n2 imported efforts\n54:20\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "2.4 km\n4 imported efforts\n11:24\n→",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 19
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Close Progress settings",
-          "order": 21
-        },
-        {
-          "id": "pv2-settings-bodyweight",
-          "label": "Bodyweight history\n→",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Ready",
-          "order": 23
-        },
-        {
-          "id": null,
-          "label": "Sparse",
-          "order": 24
-        },
-        {
-          "id": null,
-          "label": "Empty",
-          "order": 25
-        },
-        {
-          "id": null,
-          "label": "Loading",
-          "order": 26
         }
       ],
       "order": [
-        "Progress",
-        "Sparse",
-        "Empty",
-        "Loading"
+        "Progress settings",
+        "Bodyweight history"
       ],
       "non_color": [
-        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "No effort recorded",
-        "No effort",
-        "Loading"
+        "Bodyweight history"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress settings",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-settings",
@@ -32917,7 +23641,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -32931,47 +23655,41 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "phase20-visual-state-BW-085",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running"
+        "root-settings-trigger-progress"
       ],
       "semantics": [
         "Progress",
-        "Half Marathon · Set target",
-        "No effort recorded",
-        "Running preview: empty."
+        "Running",
+        "4 weeks"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-progress",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
+          "id": null,
           "label": "Body metrics",
           "order": 1
         },
         {
-          "id": "pv2-open-settings",
+          "id": null,
           "label": "Settings",
           "order": 2
         },
         {
-          "id": "pv2-tab-all",
+          "id": null,
           "label": "All",
           "order": 3
         },
         {
-          "id": "pv2-tab-strength",
+          "id": null,
           "label": "Strength",
           "order": 4
         },
         {
-          "id": "pv2-tab-running",
+          "id": null,
           "label": "Running",
           "order": 5
         },
@@ -32989,58 +23707,23 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
           "id": null,
           "label": "All time",
           "order": 8
-        },
-        {
-          "id": null,
-          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 15
         }
       ],
       "order": [
         "Progress",
-        "Half Marathon · Set target",
-        "No effort recorded",
-        "Running preview: empty."
+        "Running",
+        "4 weeks"
       ],
       "non_color": [
-        "No imported running efforts yet",
-        "No effort recorded",
-        "Running preview: empty."
+        "Running",
+        "4 weeks"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-running-empty",
@@ -33256,7 +23939,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Empty",
       "Loading"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress settings",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -33271,155 +23954,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "progress-screen",
         "progress-settings-sheet",
         "phase20-visual-state-BW-086",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running",
-        "root-scrim",
-        "pv2-settings-bodyweight"
+        "bottom-sheet-close-action"
       ],
       "semantics": [
-        "Progress",
-        "Sparse",
-        "Empty",
-        "Loading"
+        "Progress settings",
+        "Bodyweight history"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Bodyweight history",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
-          "label": "Body metrics",
+          "id": "bottom-sheet-close-action",
+          "label": "Close progress settings",
           "order": 1
-        },
-        {
-          "id": "pv2-open-settings",
-          "label": "Settings",
-          "order": 2
-        },
-        {
-          "id": "pv2-tab-all",
-          "label": "All",
-          "order": 3
-        },
-        {
-          "id": "pv2-tab-strength",
-          "label": "Strength",
-          "order": 4
-        },
-        {
-          "id": "pv2-tab-running",
-          "label": "Running",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "4 weeks",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "12 weeks",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "All time",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 15
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Close Progress settings",
-          "order": 17
-        },
-        {
-          "id": "pv2-settings-bodyweight",
-          "label": "Bodyweight history\n→",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Ready",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Sparse",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Empty",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Loading",
-          "order": 22
         }
       ],
       "order": [
-        "Progress",
-        "Sparse",
-        "Empty",
-        "Loading"
+        "Progress settings",
+        "Bodyweight history"
       ],
       "non_color": [
-        "No imported running efforts yet",
-        "No effort recorded",
-        "Personal history is the benchmark. No readiness or composite score is calculated.",
-        "Ready",
-        "Loading"
+        "Bodyweight history"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress settings",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-settings",
@@ -33593,7 +24158,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -33607,47 +24172,41 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "phase20-visual-state-BW-087",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running"
+        "root-settings-trigger-progress"
       ],
       "semantics": [
         "Progress",
-        "10 km next; Half Marathon later",
-        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
-        "Running preview: sparse."
+        "Running",
+        "4 weeks"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-progress",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
+          "id": null,
           "label": "Body metrics",
           "order": 1
         },
         {
-          "id": "pv2-open-settings",
+          "id": null,
           "label": "Settings",
           "order": 2
         },
         {
-          "id": "pv2-tab-all",
+          "id": null,
           "label": "All",
           "order": 3
         },
         {
-          "id": "pv2-tab-strength",
+          "id": null,
           "label": "Strength",
           "order": 4
         },
         {
-          "id": "pv2-tab-running",
+          "id": null,
           "label": "Running",
           "order": 5
         },
@@ -33665,65 +24224,23 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
           "id": null,
           "label": "All time",
           "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 16
         }
       ],
       "order": [
         "Progress",
-        "10 km next; Half Marathon later",
-        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
-        "Running preview: sparse."
+        "Running",
+        "4 weeks"
       ],
       "non_color": [
-        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "No effort recorded",
-        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
-        "Running preview: sparse."
+        "Running",
+        "4 weeks"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-running-sparse",
@@ -33947,7 +24464,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Empty",
       "Loading"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress settings",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -33962,160 +24479,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "progress-screen",
         "progress-settings-sheet",
         "phase20-visual-state-BW-088",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running",
-        "root-scrim",
-        "pv2-settings-bodyweight"
+        "bottom-sheet-close-action"
       ],
       "semantics": [
-        "Progress",
-        "Sparse",
-        "Empty",
-        "Loading"
+        "Progress settings",
+        "Bodyweight history"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Bodyweight history",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
-          "label": "Body metrics",
+          "id": "bottom-sheet-close-action",
+          "label": "Close progress settings",
           "order": 1
-        },
-        {
-          "id": "pv2-open-settings",
-          "label": "Settings",
-          "order": 2
-        },
-        {
-          "id": "pv2-tab-all",
-          "label": "All",
-          "order": 3
-        },
-        {
-          "id": "pv2-tab-strength",
-          "label": "Strength",
-          "order": 4
-        },
-        {
-          "id": "pv2-tab-running",
-          "label": "Running",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "4 weeks",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "12 weeks",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "All time",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 16
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Close Progress settings",
-          "order": 18
-        },
-        {
-          "id": "pv2-settings-bodyweight",
-          "label": "Bodyweight history\n→",
-          "order": 19
-        },
-        {
-          "id": null,
-          "label": "Ready",
-          "order": 20
-        },
-        {
-          "id": null,
-          "label": "Sparse",
-          "order": 21
-        },
-        {
-          "id": null,
-          "label": "Empty",
-          "order": 22
-        },
-        {
-          "id": null,
-          "label": "Loading",
-          "order": 23
         }
       ],
       "order": [
-        "Progress",
-        "Sparse",
-        "Empty",
-        "Loading"
+        "Progress settings",
+        "Bodyweight history"
       ],
       "non_color": [
-        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "No effort recorded",
-        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
-        "Loading"
+        "Bodyweight history"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress settings",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-settings",
@@ -34257,7 +24651,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -34271,47 +24665,40 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "phase20-visual-state-BW-089",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running"
+        "root-settings-trigger-progress"
       ],
       "semantics": [
         "Progress",
-        "12 weeks",
-        "All time",
-        "Running preview: loading."
+        "Loading progress"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-progress",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
+          "id": null,
           "label": "Body metrics",
           "order": 1
         },
         {
-          "id": "pv2-open-settings",
+          "id": null,
           "label": "Settings",
           "order": 2
         },
         {
-          "id": "pv2-tab-all",
+          "id": null,
           "label": "All",
           "order": 3
         },
         {
-          "id": "pv2-tab-strength",
+          "id": null,
           "label": "Strength",
           "order": 4
         },
         {
-          "id": "pv2-tab-running",
+          "id": null,
           "label": "Running",
           "order": 5
         },
@@ -34329,41 +24716,21 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
           "id": null,
           "label": "All time",
           "order": 8
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 12
         }
       ],
       "order": [
         "Progress",
-        "12 weeks",
-        "All time",
-        "Running preview: loading."
+        "Loading progress"
       ],
       "non_color": [
-        "Running preview: loading."
+        "Loading progress"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-running-loading",
@@ -34555,7 +24922,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Empty",
       "Loading"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress settings",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -34570,140 +24937,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "progress-screen",
         "progress-settings-sheet",
         "phase20-visual-state-BW-090",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running",
-        "root-scrim",
-        "pv2-settings-bodyweight"
+        "bottom-sheet-close-action"
       ],
       "semantics": [
-        "Progress",
-        "Sparse",
-        "Empty",
-        "Loading"
+        "Progress settings",
+        "Bodyweight history"
       ],
       "actions": [
         {
-          "id": "root-settings",
-          "label": "Open App Settings",
+          "id": null,
+          "label": "Bodyweight history",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
-          "label": "Body metrics",
+          "id": "bottom-sheet-close-action",
+          "label": "Close progress settings",
           "order": 1
-        },
-        {
-          "id": "pv2-open-settings",
-          "label": "Settings",
-          "order": 2
-        },
-        {
-          "id": "pv2-tab-all",
-          "label": "All",
-          "order": 3
-        },
-        {
-          "id": "pv2-tab-strength",
-          "label": "Strength",
-          "order": 4
-        },
-        {
-          "id": "pv2-tab-running",
-          "label": "Running",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "4 weeks",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "12 weeks",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "All time",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 12
-        },
-        {
-          "id": "root-scrim",
-          "label": "Close App Settings",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "Close Progress settings",
-          "order": 14
-        },
-        {
-          "id": "pv2-settings-bodyweight",
-          "label": "Bodyweight history\n→",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Ready",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Sparse",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Empty",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Loading",
-          "order": 19
         }
       ],
       "order": [
-        "Progress",
-        "Sparse",
-        "Empty",
-        "Loading"
+        "Progress settings",
+        "Bodyweight history"
       ],
       "non_color": [
-        "Personal history is the benchmark. No readiness or composite score is calculated.",
-        "Ready",
-        "Sparse",
-        "Empty",
-        "Loading"
+        "Bodyweight history"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress settings",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-settings",
@@ -34901,7 +25165,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "root-settings",
+    "focus_target": "Progress",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -34915,47 +25179,41 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_ids": [
         "progress-screen",
         "phase20-visual-state-BW-091",
-        "root-settings",
-        "pv2-open-bodyweight",
-        "pv2-open-settings",
-        "pv2-tab-all",
-        "pv2-tab-strength",
-        "pv2-tab-running"
+        "root-settings-trigger-progress"
       ],
       "semantics": [
         "Progress",
-        "10 km next; Half Marathon later",
-        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
-        "Running preview: ready."
+        "Running",
+        "4 weeks"
       ],
       "actions": [
         {
-          "id": "root-settings",
+          "id": "root-settings-trigger-progress",
           "label": "Open App Settings",
           "order": 0
         },
         {
-          "id": "pv2-open-bodyweight",
+          "id": null,
           "label": "Body metrics",
           "order": 1
         },
         {
-          "id": "pv2-open-settings",
+          "id": null,
           "label": "Settings",
           "order": 2
         },
         {
-          "id": "pv2-tab-all",
+          "id": null,
           "label": "All",
           "order": 3
         },
         {
-          "id": "pv2-tab-strength",
+          "id": null,
           "label": "Strength",
           "order": 4
         },
         {
-          "id": "pv2-tab-running",
+          "id": null,
           "label": "Running",
           "order": 5
         },
@@ -34973,80 +25231,23 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
           "id": null,
           "label": "All time",
           "order": 8
-        },
-        {
-          "id": null,
-          "label": "Personal history\nOpen →\nGoal 11:00",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
-          "order": 11
-        },
-        {
-          "id": null,
-          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-          "order": 12
-        },
-        {
-          "id": null,
-          "label": "10 km\n2 imported efforts\n54:20\n→",
-          "order": 13
-        },
-        {
-          "id": null,
-          "label": "2.4 km\n4 imported efforts\n11:24\n→",
-          "order": 14
-        },
-        {
-          "id": null,
-          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
-          "order": 15
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 16
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 17
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 18
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 19
         }
       ],
       "order": [
         "Progress",
-        "10 km next; Half Marathon later",
-        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
-        "Running preview: ready."
+        "Running",
+        "4 weeks"
       ],
       "non_color": [
-        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
-        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
-        "No effort recorded",
-        "No effort",
-        "Running preview: ready."
+        "Running",
+        "4 weeks"
       ],
       "focus": {
-        "target": "root-settings",
+        "target": "Progress",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:progress-running-ready",
@@ -35149,7 +25350,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "garmin-back",
+    "focus_target": "Garmin Sync",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -35157,73 +25358,32 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "garmin-sync-screen",
       "test_ids": [
         "garmin-sync-screen",
-        "phase20-visual-state-BW-092",
-        "garmin-back",
-        "garmin-settings"
+        "phase20-visual-state-BW-092"
       ],
       "semantics": [
         "Garmin Sync",
-        "Gym Tracker imports consented activities after Garmin Connect sync. It does not record runs.",
-        "Activity API access requires an approved Garmin Connect Developer Program application. OAuth2 PKCE consent is simulated here; typical integration is listed as 1–4 weeks.",
-        "Connect GarminImport FIT fallback"
+        "Garmin not connected"
       ],
       "actions": [
         {
-          "id": "garmin-back",
-          "label": "Back to Garmin activities",
-          "order": 0
-        },
-        {
-          "id": "garmin-settings",
-          "label": "Open Garmin appearance",
-          "order": 1
-        },
-        {
           "id": null,
           "label": "Connect Garmin",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Import FIT fallback",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 7
+          "order": 0
         }
       ],
       "order": [
         "Garmin Sync",
-        "Gym Tracker imports consented activities after Garmin Connect sync. It does not record runs.",
-        "Activity API access requires an approved Garmin Connect Developer Program application. OAuth2 PKCE consent is simulated here; typical integration is listed as 1–4 weeks.",
-        "Connect GarminImport FIT fallback"
+        "Garmin not connected"
       ],
       "non_color": [
-        "Garmin Sync",
-        "Garmin not connected",
-        "Connect GarminImport FIT fallback"
+        "Garmin not connected"
       ],
       "focus": {
-        "target": "garmin-back",
+        "target": "Garmin Sync",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:garmin-disconnected",
@@ -35337,7 +25497,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "garmin-back",
+    "focus_target": "Connect Garmin",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -35350,72 +25510,50 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "garmin-sync-screen",
       "test_ids": [
         "garmin-sync-screen",
-        "phase20-visual-state-BW-093",
-        "garmin-back",
-        "garmin-settings"
+        "phase20-visual-state-BW-093"
       ],
       "semantics": [
-        "Garmin Sync",
-        "Authorization code flow with code challenge and verifier. No credentials are entered in this prototype.",
-        "Activity API access requires Garmin Connect Developer Program approval. The program FAQ notes typical integration work can take 1–4 weeks after access and approval.",
-        "Continue simulated consentCancel"
+        "Connect Garmin",
+        "Email",
+        "Password"
       ],
       "actions": [
         {
-          "id": "garmin-back",
-          "label": "Back to Garmin activities",
+          "id": null,
+          "label": "Email",
           "order": 0
         },
         {
-          "id": "garmin-settings",
-          "label": "Open Garmin appearance",
+          "id": null,
+          "label": "Password",
           "order": 1
         },
         {
           "id": null,
-          "label": "Continue simulated consent",
+          "label": "Continue",
           "order": 2
         },
         {
           "id": null,
           "label": "Cancel",
           "order": 3
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 7
         }
       ],
       "order": [
-        "Garmin Sync",
-        "Authorization code flow with code challenge and verifier. No credentials are entered in this prototype.",
-        "Activity API access requires Garmin Connect Developer Program approval. The program FAQ notes typical integration work can take 1–4 weeks after access and approval.",
-        "Continue simulated consentCancel"
+        "Connect Garmin",
+        "Email",
+        "Password"
       ],
       "non_color": [
-        "Authorization code flow with code challenge and verifier. No credentials are entered in this prototype.",
-        "Continue simulated consentCancel"
+        "Email",
+        "Password"
       ],
       "focus": {
-        "target": "garmin-back",
+        "target": "Connect Garmin",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:garmin-consent",
@@ -35561,7 +25699,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "garmin-back",
+    "focus_target": "Garmin Sync",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -35569,95 +25707,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "garmin-sync-screen",
       "test_ids": [
         "garmin-sync-screen",
-        "phase20-visual-state-BW-094",
-        "garmin-back",
-        "garmin-settings"
+        "phase20-visual-state-BW-094"
       ],
       "semantics": [
         "Garmin Sync",
-        "Treadmill Run",
-        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
-        "Garmin connection simulated."
+        "Connected to Garmin"
       ],
       "actions": [
         {
-          "id": "garmin-back",
-          "label": "Back to Garmin activities",
+          "id": null,
+          "label": "Sync now",
           "order": 0
         },
         {
-          "id": "garmin-settings",
-          "label": "Open Garmin appearance",
+          "id": null,
+          "label": "Disconnect Garmin",
           "order": 1
-        },
-        {
-          "id": null,
-          "label": "Sync now",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Import FIT",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "Preview error",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "Revoke",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 11
         }
       ],
       "order": [
         "Garmin Sync",
-        "Treadmill Run",
-        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
-        "Garmin connection simulated."
+        "Connected to Garmin"
       ],
       "non_color": [
-        "Garmin Sync",
-        "Garmin account connected",
-        "Sync now",
-        "Garmin · Imported",
-        "Garmin connection simulated."
+        "Connected to Garmin"
       ],
       "focus": {
-        "target": "garmin-back",
+        "target": "Garmin Sync",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:garmin-connected",
@@ -35744,7 +25824,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "garmin-back",
+    "focus_target": "Garmin Sync",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -35757,62 +25837,38 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "garmin-sync-screen",
       "test_ids": [
         "garmin-sync-screen",
-        "phase20-visual-state-BW-095",
-        "garmin-back",
-        "garmin-settings"
+        "phase20-visual-state-BW-095"
       ],
       "semantics": [
         "Garmin Sync",
-        "Syncing Garmin activities",
-        "Checking consented Activity API updates and dedupe receipts.",
-        "Garmin connection simulated."
+        "Syncing Garmin activities"
       ],
       "actions": [
         {
-          "id": "garmin-back",
-          "label": "Back to Garmin activities",
+          "id": null,
+          "label": "Disconnect Garmin",
           "order": 0
-        },
-        {
-          "id": "garmin-settings",
-          "label": "Open Garmin appearance",
-          "order": 1
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 5
         }
       ],
       "order": [
         "Garmin Sync",
-        "Syncing Garmin activities",
-        "Checking consented Activity API updates and dedupe receipts.",
-        "Garmin connection simulated."
+        "Syncing Garmin activities"
       ],
       "non_color": [
-        "Syncing Garmin activities",
-        "Garmin connection simulated."
+        "Syncing Garmin activities"
       ],
       "focus": {
-        "target": "garmin-back",
+        "target": "Garmin Sync",
         "required": true
       },
+      "unavailable_controls": [
+        {
+          "label": "Sync now",
+          "enabled": false,
+          "reason": "Busy foreground sync action is not a new actionable match."
+        }
+      ],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:garmin-syncing",
@@ -35947,7 +26003,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "garmin-back",
+    "focus_target": "Garmin Sync",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -35960,95 +26016,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "garmin-sync-screen",
       "test_ids": [
         "garmin-sync-screen",
-        "phase20-visual-state-BW-096",
-        "garmin-back",
-        "garmin-settings"
+        "phase20-visual-state-BW-096"
       ],
       "semantics": [
         "Garmin Sync",
-        "Treadmill Run",
-        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
-        "Sync complete · no duplicates added."
+        "Connected to Garmin"
       ],
       "actions": [
         {
-          "id": "garmin-back",
-          "label": "Back to Garmin activities",
+          "id": null,
+          "label": "Sync now",
           "order": 0
         },
         {
-          "id": "garmin-settings",
-          "label": "Open Garmin appearance",
+          "id": null,
+          "label": "Disconnect Garmin",
           "order": 1
-        },
-        {
-          "id": null,
-          "label": "Sync now",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Import FIT",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "Preview error",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "Revoke",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 11
         }
       ],
       "order": [
         "Garmin Sync",
-        "Treadmill Run",
-        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
-        "Sync complete · no duplicates added."
+        "Connected to Garmin"
       ],
       "non_color": [
-        "Garmin Sync",
-        "Garmin account connected",
-        "Sync now",
-        "Garmin · Imported",
-        "Sync complete · no duplicates added."
+        "Connected to Garmin"
       ],
       "focus": {
-        "target": "garmin-back",
+        "target": "Garmin Sync",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:garmin-synced",
@@ -36183,7 +26181,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "garmin-back",
+    "focus_target": "Garmin Sync",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -36196,95 +26194,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "garmin-sync-screen",
       "test_ids": [
         "garmin-sync-screen",
-        "phase20-visual-state-BW-097",
-        "garmin-back",
-        "garmin-settings"
+        "phase20-visual-state-BW-097"
       ],
       "semantics": [
         "Garmin Sync",
-        "Treadmill Run",
-        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
-        "Sync complete · no duplicates added."
+        "Connected to Garmin"
       ],
       "actions": [
         {
-          "id": "garmin-back",
-          "label": "Back to Garmin activities",
+          "id": null,
+          "label": "Sync now",
           "order": 0
         },
         {
-          "id": "garmin-settings",
-          "label": "Open Garmin appearance",
+          "id": null,
+          "label": "Disconnect Garmin",
           "order": 1
-        },
-        {
-          "id": null,
-          "label": "Sync now",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Import FIT",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "Preview error",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "Revoke",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 11
         }
       ],
       "order": [
         "Garmin Sync",
-        "Treadmill Run",
-        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
-        "Sync complete · no duplicates added."
+        "Connected to Garmin"
       ],
       "non_color": [
-        "Garmin Sync",
-        "Garmin account connected",
-        "Sync now",
-        "Garmin · Imported",
-        "Sync complete · no duplicates added."
+        "Connected to Garmin"
       ],
       "focus": {
-        "target": "garmin-back",
+        "target": "Garmin Sync",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:garmin-idempotent",
@@ -36387,7 +26327,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "garmin-back",
+    "focus_target": "Garmin Sync",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -36400,72 +26340,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "garmin-sync-screen",
       "test_ids": [
         "garmin-sync-screen",
-        "phase20-visual-state-BW-098",
-        "garmin-back",
-        "garmin-settings"
+        "phase20-visual-state-BW-098"
       ],
       "semantics": [
         "Garmin Sync",
-        "Try again",
-        "Import FIT",
-        "Sync complete · no duplicates added."
+        "Retry Garmin sync"
       ],
       "actions": [
         {
-          "id": "garmin-back",
-          "label": "Back to Garmin activities",
+          "id": null,
+          "label": "Retry Garmin sync",
           "order": 0
         },
         {
-          "id": "garmin-settings",
-          "label": "Open Garmin appearance",
+          "id": null,
+          "label": "Disconnect Garmin",
           "order": 1
-        },
-        {
-          "id": null,
-          "label": "Try again",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Import FIT",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 7
         }
       ],
       "order": [
         "Garmin Sync",
-        "Try again",
-        "Import FIT",
-        "Sync complete · no duplicates added."
+        "Retry Garmin sync"
       ],
       "non_color": [
-        "Sync could not complete",
-        "Sync complete · no duplicates added."
+        "Retry Garmin sync"
       ],
       "focus": {
-        "target": "garmin-back",
+        "target": "Garmin Sync",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:garmin-error",
@@ -36573,7 +26478,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "garmin-back",
+    "focus_target": "Garmin Sync",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -36581,77 +26486,34 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "garmin-sync-screen",
       "test_ids": [
         "garmin-sync-screen",
-        "phase20-visual-state-BW-099",
-        "garmin-back",
-        "garmin-settings",
-        "garmin-fit-file"
+        "phase20-visual-state-BW-099"
       ],
       "semantics": [
         "Garmin Sync",
-        "Preview Treadmill FIT",
-        "Dedupe uses Garmin external activity ID when available, plus FIT/content hash. Importing the same receipt again does not create a duplicate.",
-        "Sync complete · no duplicates added."
+        "Garmin not connected"
       ],
       "actions": [
         {
-          "id": "garmin-back",
-          "label": "Back to Garmin activities",
+          "id": null,
+          "label": "Connect Garmin",
           "order": 0
-        },
-        {
-          "id": "garmin-settings",
-          "label": "Open Garmin appearance",
-          "order": 1
-        },
-        {
-          "id": "garmin-fit-file",
-          "label": null,
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Preview Outdoor FIT",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "Preview Treadmill FIT",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 8
         }
       ],
       "order": [
         "Garmin Sync",
-        "Preview Treadmill FIT",
-        "Dedupe uses Garmin external activity ID when available, plus FIT/content hash. Importing the same receipt again does not create a duplicate.",
-        "Sync complete · no duplicates added."
+        "Garmin not connected"
       ],
       "non_color": [
-        "Sync complete · no duplicates added."
+        "Garmin not connected"
       ],
       "focus": {
-        "target": "garmin-back",
+        "target": "Garmin Sync",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [
+        "Current production Garmin root has no FIT chooser or preview callbacks. This retained browser state has no production equivalent."
+      ],
       "source_receipt": {
         "assertions": [
           "state:garmin-file-import",
@@ -36747,7 +26609,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "garmin-back",
+    "focus_target": "Activity detail",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -36755,67 +26617,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "imported-activity-detail-screen",
       "test_ids": [
         "imported-activity-detail-screen",
-        "phase20-visual-state-BW-100",
-        "garmin-back",
-        "garmin-settings"
+        "phase20-visual-state-BW-100"
       ],
       "semantics": [
         "Activity detail",
-        "0.2 km\t1:12\t6:00/km",
-        "Match to scheduled workout",
-        "Outdoor Run FIT preview parsed."
+        "Outdoor run"
       ],
       "actions": [
         {
-          "id": "garmin-back",
-          "label": "Back to Garmin activities",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "garmin-settings",
-          "label": "Open Garmin appearance",
-          "order": 1
         },
         {
           "id": null,
           "label": "Match to scheduled workout",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 6
+          "order": 1
         }
       ],
       "order": [
         "Activity detail",
-        "0.2 km\t1:12\t6:00/km",
-        "Match to scheduled workout",
-        "Outdoor Run FIT preview parsed."
+        "Outdoor run"
       ],
       "non_color": [
-        "Match to scheduled workout",
-        "Outdoor Run FIT preview parsed."
+        "Outdoor run"
       ],
       "focus": {
-        "target": "garmin-back",
+        "target": "Activity detail",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:garmin-outdoor",
@@ -36942,7 +26774,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "garmin-back",
+    "focus_target": "Match to scheduled workout",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -36950,82 +26782,42 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "activity-match-screen",
       "test_ids": [
         "activity-match-screen",
-        "phase20-visual-state-BW-101",
-        "garmin-back",
-        "garmin-settings"
+        "phase20-visual-state-BW-101"
       ],
       "semantics": [
-        "Match activity",
-        "25 minutes · alternate candidate",
-        "Confirm matchLeave unmatched",
-        "Outdoor Run FIT preview parsed."
+        "Match to scheduled workout",
+        "Confirm match"
       ],
       "actions": [
         {
-          "id": "garmin-back",
-          "label": "Back to Garmin activities",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "garmin-settings",
-          "label": "Open Garmin appearance",
-          "order": 1
-        },
-        {
-          "id": null,
-          "label": "Match to 6 by 400 metre speed session",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Match to Easy Run",
-          "order": 3
         },
         {
           "id": null,
           "label": "Confirm match",
-          "order": 4
+          "order": 1
         },
         {
           "id": null,
           "label": "Leave unmatched",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 9
+          "order": 2
         }
       ],
       "order": [
-        "Match activity",
-        "25 minutes · alternate candidate",
-        "Confirm matchLeave unmatched",
-        "Outdoor Run FIT preview parsed."
+        "Match to scheduled workout",
+        "Confirm match"
       ],
       "non_color": [
-        "Match activity",
-        "Outdoor Run FIT preview parsed."
+        "Confirm match"
       ],
       "focus": {
-        "target": "garmin-back",
+        "target": "Match to scheduled workout",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:garmin-match-outdoor",
@@ -37161,7 +26953,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "garmin-back",
+    "focus_target": "Match to scheduled workout",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -37174,95 +26966,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "activity-match-screen",
       "test_ids": [
         "activity-match-screen",
-        "phase20-visual-state-BW-102",
-        "garmin-back",
-        "garmin-settings"
+        "phase20-visual-state-BW-102"
       ],
       "semantics": [
-        "Match activity",
-        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
-        "Garmin · Imported",
-        "Activity matched after owner confirmation."
+        "Match to scheduled workout",
+        "Matched"
       ],
       "actions": [
         {
-          "id": "garmin-back",
-          "label": "Back to Garmin activities",
+          "id": null,
+          "label": "Go back",
           "order": 0
         },
         {
-          "id": "garmin-settings",
-          "label": "Open Garmin appearance",
+          "id": null,
+          "label": "Leave unmatched",
           "order": 1
-        },
-        {
-          "id": null,
-          "label": "Sync now",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Import FIT",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "Preview error",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "Revoke",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported · Matched\n›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 11
         }
       ],
       "order": [
-        "Match activity",
-        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
-        "Garmin · Imported",
-        "Activity matched after owner confirmation."
+        "Match to scheduled workout",
+        "Matched"
       ],
       "non_color": [
-        "Garmin Sync",
-        "Garmin account connected",
-        "Sync now",
-        "Garmin · Imported · Matched",
-        "Activity matched after owner confirmation."
+        "Matched"
       ],
       "focus": {
-        "target": "garmin-back",
+        "target": "Match to scheduled workout",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:garmin-confirmed-outdoor",
@@ -37370,7 +27104,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "garmin-back",
+    "focus_target": "Garmin Sync",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -37378,77 +27112,34 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "garmin-sync-screen",
       "test_ids": [
         "garmin-sync-screen",
-        "phase20-visual-state-BW-103",
-        "garmin-back",
-        "garmin-settings",
-        "garmin-fit-file"
+        "phase20-visual-state-BW-103"
       ],
       "semantics": [
         "Garmin Sync",
-        "Preview Treadmill FIT",
-        "Dedupe uses Garmin external activity ID when available, plus FIT/content hash. Importing the same receipt again does not create a duplicate.",
-        "Activity matched after owner confirmation."
+        "Garmin not connected"
       ],
       "actions": [
         {
-          "id": "garmin-back",
-          "label": "Back to Garmin activities",
+          "id": null,
+          "label": "Connect Garmin",
           "order": 0
-        },
-        {
-          "id": "garmin-settings",
-          "label": "Open Garmin appearance",
-          "order": 1
-        },
-        {
-          "id": "garmin-fit-file",
-          "label": null,
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Preview Outdoor FIT",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "Preview Treadmill FIT",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 8
         }
       ],
       "order": [
         "Garmin Sync",
-        "Preview Treadmill FIT",
-        "Dedupe uses Garmin external activity ID when available, plus FIT/content hash. Importing the same receipt again does not create a duplicate.",
-        "Activity matched after owner confirmation."
+        "Garmin not connected"
       ],
       "non_color": [
-        "Activity matched after owner confirmation."
+        "Garmin not connected"
       ],
       "focus": {
-        "target": "garmin-back",
+        "target": "Garmin Sync",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [
+        "Current production Garmin root has no FIT chooser or preview callbacks. This retained browser state has no production equivalent."
+      ],
       "source_receipt": {
         "assertions": [
           "state:garmin-file-import",
@@ -37544,7 +27235,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "garmin-back",
+    "focus_target": "Activity detail",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -37552,68 +27243,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "imported-activity-detail-screen",
       "test_ids": [
         "imported-activity-detail-screen",
-        "phase20-visual-state-BW-104",
-        "garmin-back",
-        "garmin-settings"
+        "phase20-visual-state-BW-104"
       ],
       "semantics": [
         "Activity detail",
-        "2.4 km\t11:31\t4:48/km",
-        "Match to scheduled workout",
-        "Treadmill Run FIT preview parsed."
+        "Treadmill run"
       ],
       "actions": [
         {
-          "id": "garmin-back",
-          "label": "Back to Garmin activities",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "garmin-settings",
-          "label": "Open Garmin appearance",
-          "order": 1
         },
         {
           "id": null,
           "label": "Match to scheduled workout",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 6
+          "order": 1
         }
       ],
       "order": [
         "Activity detail",
-        "2.4 km\t11:31\t4:48/km",
-        "Match to scheduled workout",
-        "Treadmill Run FIT preview parsed."
+        "Treadmill run"
       ],
       "non_color": [
-        "No route for treadmill activity",
-        "Match to scheduled workout",
-        "Treadmill Run FIT preview parsed."
+        "Treadmill run"
       ],
       "focus": {
-        "target": "garmin-back",
+        "target": "Activity detail",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:garmin-treadmill",
@@ -37740,7 +27400,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "garmin-back",
+    "focus_target": "Match to scheduled workout",
     "scenario_steps": [],
     "readiness": {
       "status": "ready",
@@ -37748,82 +27408,42 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "activity-match-screen",
       "test_ids": [
         "activity-match-screen",
-        "phase20-visual-state-BW-105",
-        "garmin-back",
-        "garmin-settings"
+        "phase20-visual-state-BW-105"
       ],
       "semantics": [
-        "Match activity",
-        "25 minutes · alternate candidate",
-        "Confirm matchLeave unmatched",
-        "Treadmill Run FIT preview parsed."
+        "Match to scheduled workout",
+        "Confirm match"
       ],
       "actions": [
         {
-          "id": "garmin-back",
-          "label": "Back to Garmin activities",
+          "id": null,
+          "label": "Go back",
           "order": 0
-        },
-        {
-          "id": "garmin-settings",
-          "label": "Open Garmin appearance",
-          "order": 1
-        },
-        {
-          "id": null,
-          "label": "Match to 6 by 400 metre speed session",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Match to Easy Run",
-          "order": 3
         },
         {
           "id": null,
           "label": "Confirm match",
-          "order": 4
+          "order": 1
         },
         {
           "id": null,
           "label": "Leave unmatched",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 9
+          "order": 2
         }
       ],
       "order": [
-        "Match activity",
-        "25 minutes · alternate candidate",
-        "Confirm matchLeave unmatched",
-        "Treadmill Run FIT preview parsed."
+        "Match to scheduled workout",
+        "Confirm match"
       ],
       "non_color": [
-        "Match activity",
-        "Treadmill Run FIT preview parsed."
+        "Confirm match"
       ],
       "focus": {
-        "target": "garmin-back",
+        "target": "Match to scheduled workout",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:garmin-match-treadmill",
@@ -37959,7 +27579,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "garmin-back",
+    "focus_target": "Match to scheduled workout",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -37972,95 +27592,37 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "activity-match-screen",
       "test_ids": [
         "activity-match-screen",
-        "phase20-visual-state-BW-106",
-        "garmin-back",
-        "garmin-settings"
+        "phase20-visual-state-BW-106"
       ],
       "semantics": [
-        "Match activity",
-        "Treadmill Run",
-        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
-        "Activity matched after owner confirmation."
+        "Match to scheduled workout",
+        "Matched"
       ],
       "actions": [
         {
-          "id": "garmin-back",
-          "label": "Back to Garmin activities",
+          "id": null,
+          "label": "Go back",
           "order": 0
         },
         {
-          "id": "garmin-settings",
-          "label": "Open Garmin appearance",
+          "id": null,
+          "label": "Leave unmatched",
           "order": 1
-        },
-        {
-          "id": null,
-          "label": "Sync now",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Import FIT",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "Preview error",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "Revoke",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported · Matched\n›",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported · Matched\n›",
-          "order": 7
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 8
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 9
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 10
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 11
         }
       ],
       "order": [
-        "Match activity",
-        "Treadmill Run",
-        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
-        "Activity matched after owner confirmation."
+        "Match to scheduled workout",
+        "Matched"
       ],
       "non_color": [
-        "Garmin Sync",
-        "Garmin account connected",
-        "Sync now",
-        "Garmin · Imported · Matched",
-        "Activity matched after owner confirmation."
+        "Matched"
       ],
       "focus": {
-        "target": "garmin-back",
+        "target": "Match to scheduled workout",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:garmin-confirmed-treadmill",
@@ -38163,7 +27725,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Library",
       "Progress"
     ],
-    "focus_target": "garmin-back",
+    "focus_target": "Garmin Sync",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -38180,73 +27742,32 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "test_id": "garmin-sync-screen",
       "test_ids": [
         "garmin-sync-screen",
-        "phase20-visual-state-BW-107",
-        "garmin-back",
-        "garmin-settings"
+        "phase20-visual-state-BW-107"
       ],
       "semantics": [
         "Garmin Sync",
-        "Activity API access requires an approved Garmin Connect Developer Program application. OAuth2 PKCE consent is simulated here; typical integration is listed as 1–4 weeks.",
-        "Connect GarminImport FIT fallback",
-        "Garmin access revoked."
+        "Garmin not connected"
       ],
       "actions": [
         {
-          "id": "garmin-back",
-          "label": "Back to Garmin activities",
-          "order": 0
-        },
-        {
-          "id": "garmin-settings",
-          "label": "Open Garmin appearance",
-          "order": 1
-        },
-        {
           "id": null,
           "label": "Connect Garmin",
-          "order": 2
-        },
-        {
-          "id": null,
-          "label": "Import FIT fallback",
-          "order": 3
-        },
-        {
-          "id": null,
-          "label": "Workout",
-          "order": 4
-        },
-        {
-          "id": null,
-          "label": "Calendar",
-          "order": 5
-        },
-        {
-          "id": null,
-          "label": "Library",
-          "order": 6
-        },
-        {
-          "id": null,
-          "label": "Progress",
-          "order": 7
+          "order": 0
         }
       ],
       "order": [
         "Garmin Sync",
-        "Activity API access requires an approved Garmin Connect Developer Program application. OAuth2 PKCE consent is simulated here; typical integration is listed as 1–4 weeks.",
-        "Connect GarminImport FIT fallback",
-        "Garmin access revoked."
+        "Garmin not connected"
       ],
       "non_color": [
-        "Garmin Sync",
-        "Garmin not connected",
-        "Garmin access revoked."
+        "Garmin not connected"
       ],
       "focus": {
-        "target": "garmin-back",
+        "target": "Garmin Sync",
         "required": true
       },
+      "unavailable_controls": [],
+      "alignment_gaps": [],
       "source_receipt": {
         "assertions": [
           "state:garmin-revoked",

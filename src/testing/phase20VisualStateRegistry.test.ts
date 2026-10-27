@@ -52,20 +52,18 @@ describe("Phase 20 visual state registry", () => {
   it("keeps each Garmin browser occurrence and native-only state independently actionable", () => {
     const expected = [
       ["BW-092", "garmin-disconnected", "Connect Garmin"],
-      ["BW-093", "garmin-consent", "Continue simulated consent"],
+      ["BW-093", "garmin-consent", "Continue"],
       ["BW-094", "garmin-connected", "Sync now"],
       ["BW-095", "garmin-syncing", "Syncing Garmin activities"],
       ["BW-096", "garmin-synced", "Sync now"],
       ["BW-097", "garmin-idempotent", "Sync now"],
-      ["BW-098", "garmin-error", "Try again"],
-      ["BW-099", "garmin-file-import", "Preview Outdoor FIT"],
+      ["BW-098", "garmin-error", "Retry Garmin sync"],
       ["BW-100", "garmin-outdoor", "Match to scheduled workout"],
       ["BW-101", "garmin-match-outdoor", "Confirm match"],
-      ["BW-102", "garmin-confirmed-outdoor", "Activity matched"],
-      ["BW-103", "garmin-file-import", "Preview Treadmill FIT"],
+      ["BW-102", "garmin-confirmed-outdoor", "Matched"],
       ["BW-104", "garmin-treadmill", "Match to scheduled workout"],
       ["BW-105", "garmin-match-treadmill", "Confirm match"],
-      ["BW-106", "garmin-confirmed-treadmill", "Activity matched"],
+      ["BW-106", "garmin-confirmed-treadmill", "Matched"],
       ["BW-107", "garmin-revoked", "Connect Garmin"],
     ] as const;
     for (const [id, name, action] of expected) {
@@ -75,6 +73,12 @@ describe("Phase 20 visual state registry", () => {
         ...(state?.readiness.semantics ?? []),
         ...(state?.readiness.actions.map(({ label }) => label ?? "") ?? []),
       ].some((value) => value.includes(action))).toBe(true);
+    }
+    for (const id of ["BW-099", "BW-103"]) {
+      const state = phase20VisualState(id)!;
+      expect(state.name).toBe("garmin-file-import");
+      expect(state.readiness.alignment_gaps).toContain("Current production Garmin root has no FIT chooser or preview callbacks. This retained browser state has no production equivalent.");
+      expect(state.readiness.actions.some(({ label }) => /Preview.*FIT/u.test(label ?? ""))).toBe(false);
     }
     expect(PHASE20_NATIVE_ONLY_VISUAL_STATES.map(({ name, action }) => `${name}:${action}`)).toEqual([
       "garmin-login:Connect Garmin", "garmin-mfa:Continue", "garmin-session-expired:Sign in again",

@@ -18,31 +18,6 @@ tags: [v1.2, phase-20, visual, synthetic-fixture]
       - tapOn: { id: "root-settings-trigger-index" }
 - runFlow:
     when:
-      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-003'}
-    commands:
-      - tapOn: { id: "workout-day-preview-2026-09-28" }
-- runFlow:
-    when:
-      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-004'}
-    commands:
-      - tapOn: { id: "workout-day-preview-2026-09-29" }
-- runFlow:
-    when:
-      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-005'}
-    commands:
-      - tapOn: { id: "workout-day-preview-2026-09-30" }
-- runFlow:
-    when:
-      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-006'}
-    commands:
-      - tapOn: { id: "workout-day-preview-2026-10-01" }
-- runFlow:
-    when:
-      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-007'}
-    commands:
-      - tapOn: { id: "workout-day-preview-2026-10-02" }
-- runFlow:
-    when:
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-009'}
     commands:
       - tapOn: { text: "Current" }
@@ -66,7 +41,7 @@ tags: [v1.2, phase-20, visual, synthetic-fixture]
     when:
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-013'}
     commands:
-      - tapOn: { id: "add-exercise" }
+      - tapOn: { text: "Add exercise" }
 - runFlow:
     when:
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-014'}
@@ -214,7 +189,7 @@ tags: [v1.2, phase-20, visual, synthetic-fixture]
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-078'}
     commands:
       - tapOn: { text: "Running" }
-      - tapOn: { text: "Set target for 2.4 km" }
+      - tapOn: { text: "Edit target for 2.4 km" }
 - runFlow:
     when:
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-079'}
@@ -226,7 +201,7 @@ tags: [v1.2, phase-20, visual, synthetic-fixture]
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-080'}
     commands:
       - tapOn: { text: "Running" }
-      - tapOn: { text: "Set target for 10 km" }
+      - tapOn: { text: "Edit target for 10 km" }
 - runFlow:
     when:
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-081'}
@@ -238,7 +213,7 @@ tags: [v1.2, phase-20, visual, synthetic-fixture]
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-082'}
     commands:
       - tapOn: { text: "Running" }
-      - tapOn: { text: "Set target for Half Marathon" }
+      - tapOn: { text: "Edit target for Half Marathon" }
 - runFlow:
     when:
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-083'}
