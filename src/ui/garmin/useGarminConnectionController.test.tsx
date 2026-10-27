@@ -911,6 +911,32 @@ describe("useGarminConnectionController committed sync semantics", () => {
     expect(current?.state.pendingDateReview).toBeNull();
   });
 
+  it("reloads committed activity history and clears a partial sync after a confirmed date", async () => {
+    const committed = { kind: "imported" as const, activityId: activity.activityId, aggregateRevision: 1 };
+    let activities: readonly GarminActivityListItem[] = [];
+    const loadActivities = jest.fn(async () => activities);
+    await render(<Harness
+      confirmPendingDateReview={async () => { activities = [activity]; return committed; }}
+      coordinator={{ syncNow: async () => ({ kind: "partial", counts: emptyCounts,
+        failure: { code: "date_confirmation_required", retryable: false } }) }}
+      getPendingDateReview={() => null}
+      loadActivities={loadActivities}
+      source={source({ restoreSession: async () => ({ kind: "connected", account_namespace: "synthetic-account", generation: 1 }) })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("connected"));
+    await act(async () => current?.syncNow());
+    expect(current?.state.sync.kind).toBe("partial");
+    expect(current?.state.activities).toEqual([]);
+    expect(loadActivities).toHaveBeenCalledTimes(1);
+
+    let result: unknown;
+    await act(async () => { result = await current?.confirmPendingDateReview({ kind: "confirmed",
+      localDate: "2026-10-10", localTime: "09:00:00", timeZone: "Asia/Singapore", utcOffsetMinutes: 480 }); });
+    expect(result).toBe(committed);
+    expect(current?.state).toMatchObject({ activities: [activity], pendingDateReview: null, sync: { kind: "idle" } });
+    expect(loadActivities).toHaveBeenCalledTimes(2);
+  });
+
   it("does not publish a date decision that resolves after unmount", async () => {
     const decision = deferred<{
       kind: "not_committed";

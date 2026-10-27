@@ -38,7 +38,7 @@ describe("Calendar phone navigation", () => {
     const load = await renderCalendar();
     await fireEvent.press(screen.getByRole("button", { name: "Choose month and year, January 2024" }));
     await fireEvent.press(picker().getByRole("button", { name: "Show February 2024" }));
-    await screen.findByText("February 2024");
+    await screen.findByText("Feb 2024");
     await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
     expect(screen.getByRole("button", { name: /29 February 2024/u })).toHaveProp("accessibilityState", expect.objectContaining({ selected: true }));
 
@@ -46,7 +46,7 @@ describe("Calendar phone navigation", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Choose year, 2024" }));
     await fireEvent.press(screen.getByRole("button", { name: "Choose 2025" }));
     await fireEvent.press(screen.getByRole("button", { name: "Show February 2025" }));
-    await screen.findByText("February 2025");
+    await screen.findByText("Feb 2025");
     await waitFor(() => expect(load).toHaveBeenCalledTimes(3));
     expect(screen.getByRole("button", { name: /28 February 2025/u })).toHaveProp("accessibilityState", expect.objectContaining({ selected: true }));
     for (const [request] of load.mock.calls) {
@@ -80,7 +80,8 @@ describe("Calendar phone navigation", () => {
       await fireEvent.press(picker().getByRole("button", { name: "Choose 2035" }));
       await fireEvent.press(picker().getByRole("button", { name: "Show September 2035" }));
       await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
-      expect(screen.getByTestId("calendar-month-title")).toHaveTextContent("September 2035");
+    expect(screen.getByTestId("calendar-month-title")).toHaveTextContent("Sep 2035");
+    expect(screen.getByRole("button", { name: "Choose month and year, September 2035" })).toBeOnTheScreen();
       expect(screen.getByRole("button", { name: /^30 September 2035/u })).toHaveProp("accessibilityState", expect.objectContaining({ selected: true }));
     } finally {
       dimensions.mockRestore();
@@ -93,7 +94,7 @@ describe("Calendar phone navigation", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Choose year, 2024" }));
     await fireEvent.press(screen.getByRole("button", { name: "Choose 2025" }));
     await fireEvent.press(screen.getByRole("button", { name: "Close month and year picker" }));
-    expect(screen.getByTestId("calendar-month-title")).toHaveTextContent("January 2024");
+    expect(screen.getByTestId("calendar-month-title")).toHaveTextContent("Jan 2024");
     expect(load).toHaveBeenCalledTimes(1);
     await fireEvent.press(screen.getByRole("button", { name: "Choose month and year, January 2024" }));
     expect(screen.getByRole("button", { name: "Show January 2024" })).toHaveProp("accessibilityState", expect.objectContaining({ selected: true }));
@@ -120,11 +121,11 @@ describe("Calendar phone navigation", () => {
       };
       await swipe(-100);
       await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
-      expect(screen.getByTestId("calendar-month-title")).toHaveTextContent("February 2024");
+      expect(screen.getByTestId("calendar-month-title")).toHaveTextContent("Feb 2024");
       expect(screen.getByRole("button", { name: /29 February 2024/u })).toHaveProp("accessibilityState", expect.objectContaining({ selected: true }));
       await swipe(100);
       await waitFor(() => expect(load).toHaveBeenCalledTimes(3));
-      expect(screen.getByTestId("calendar-month-title")).toHaveTextContent("January 2024");
+      expect(screen.getByTestId("calendar-month-title")).toHaveTextContent("Jan 2024");
       expect(screen.getByRole("button", { name: /29 January 2024/u })).toHaveProp("accessibilityState", expect.objectContaining({ selected: true }));
     } finally {
       panSpy.mockRestore();

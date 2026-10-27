@@ -1008,6 +1008,13 @@ WorkoutOutcomeRepository & ProgressionRepository & Readonly<{
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((accept, fail) => { resolve = accept; reject = fail; });
+  return { promise, resolve, reject };
+}
+
 function runtimeNotifications(
   permission: "granted" | "denied" | "undetermined" = "granted",
 ): RestNotificationPort {
@@ -1613,6 +1620,9 @@ describe("WorkoutAppRuntimeProvider", () => {
   });
 
   beforeEach(() => {
+    // The Expo host mock must honor the removable subscription contract used by
+    // the device-timezone hook, including after individual listener spies reset.
+    jest.spyOn(AppState, "addEventListener").mockImplementation(() => ({ remove: jest.fn() }));
     mockNativeContractsEnabled = true;
     mockCommittedHaptic.mockClear();
     mockCueHaptic.mockClear();
@@ -1768,6 +1778,7 @@ describe("WorkoutAppRuntimeProvider", () => {
     expect(loadCalendarRange).toHaveBeenCalledWith({
       startLocalDate: "2026-10-01",
       endLocalDateExclusive: "2026-11-01",
+      displayTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
   });
 
@@ -4494,7 +4505,7 @@ describe("WorkoutAppRuntimeProvider", () => {
     let templateUpdateMode: "current" | "outdated" | "legacy" = "current";
     let previewHasActiveFacts = true;
     const queryAll = jest.fn(async (sql: string, parameters: readonly unknown[] = []) => {
-      if (sql.includes("FROM app_settings")) {
+      if (sql.includes("FROM app_settings") && !sql.includes("FROM plans plan")) {
         return sql.includes("revision")
           ? [{ value_version: 1, value_json: JSON.stringify({ section: "exercises" }), revision: 2 }]
           : [];
@@ -6497,7 +6508,7 @@ describe("WorkoutAppRuntimeProvider", () => {
 
   it("builds truthful Garmin identity copy from accepted source facts at the runtime facade", async () => {
     const repository = runtimeRepository([noPlanView], [null]);
-    let garminMode: "complete" | "sparse" | "invalid" = "complete";
+    let garminMode: "complete" | "sparse" | "missing_timestamp" | "invalid" = "complete";
     const kernel = {
       close: jest.fn(async () => undefined),
       queryAll: jest.fn(async (sql: string) => {
@@ -6511,6 +6522,7 @@ describe("WorkoutAppRuntimeProvider", () => {
             delete aggregate.normalized.moving_ms;
             delete aggregate.normalized.route;
           }
+          if (garminMode === "missing_timestamp") delete aggregate.normalized.started_at_ms;
           return [{
             activity_id: "activity-local-01",
             aggregate_json: garminMode === "invalid" ? "{}" : JSON.stringify(aggregate),
@@ -6553,8 +6565,9 @@ describe("WorkoutAppRuntimeProvider", () => {
         activityId: "activity-local-01",
         title: "Outdoor run",
         confirmedLocalDate: "2026-10-04",
+        startedAtMs: 1_791_097_920_000,
         summary: "5.00 km · 26:00",
-        identityCopy: "Accepted source title unavailable. Outdoor run on 2026-10-04.",
+        identityCopy: "Accepted source title unavailable.",
         matchState: "unmatched",
         revisionState: "accepted",
       }),
@@ -6567,9 +6580,11 @@ describe("WorkoutAppRuntimeProvider", () => {
         revisionState: "needs_review",
       }),
     ]);
-    garminMode = "invalid";
-    await expect(captured.garminImport.loadGarminActivities())
-      .rejects.toThrow("garmin_history_projection_unavailable");
+    for (const invalidMode of ["missing_timestamp", "invalid"] as const) {
+      garminMode = invalidMode;
+      await expect(captured.garminImport.loadGarminActivities())
+        .rejects.toThrow("garmin_history_projection_unavailable");
+    }
   });
 
   it("loads a bounded Garmin revision review with canonical changed-field copy", async () => {
@@ -8120,6 +8135,236 @@ describe("WorkoutAppRuntimeProvider", () => {
       mockBuildProfile = undefined;
       mockNativeContractSuite = undefined;
     }
+  });
+
+  it.each([0, 1] as const)("refreshes Today only when an unused Library plan is deleted (linked=%s)", async (linked) => {
+    let deleted = false;
+    const queryAll = jest.fn(async (sql: string) => {
+      if (sql.startsWith("SELECT origin FROM plans")) return [{ origin: "custom" }];
+      if (sql.startsWith("SELECT key FROM app_settings")) return deleted ? [{ key: "library_plan_deleted:plan-unused" }] : [];
+      if (sql.startsWith("WITH")) return [{ linked }];
+      return [];
+    });
+    const execute = jest.fn(async (sql: string) => {
+      if (sql.startsWith("INSERT INTO app_settings")) deleted = true;
+      return { changes: 1, lastInsertRowId: 0 };
+    });
+    const kernel = { queryAll, close: jest.fn(async () => undefined),
+      write: async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) => command({ queryAll, execute } as never) } as unknown as SqliteKernel;
+    const repository = runtimeRepository([noPlanView], [null]);
+    const schedules = runtimeScheduleAdapter();
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    const rendered = await render(<RuntimeCaptureHarness
+      dependencies={dependencies(repository, { openKernel: async () => kernel, createScheduleRuntime: () => schedules })}
+      onReady={(runtime) => { captured = runtime; }}
+    />);
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+    await act(async () => {
+      await expect(captured!.deleteLibraryPlan({ planId: "plan-unused" })).resolves.toEqual(linked === 0
+        ? { outcome: "deleted", planId: "plan-unused" }
+        : { outcome: "ineligible", planId: "plan-unused", reason: "workout_linked" });
+    });
+    expect(deleted).toBe(linked === 0);
+    expect(schedules.loadToday).toHaveBeenCalledTimes(linked === 0 ? 2 : 1);
+    if (linked === 1) expect(execute).not.toHaveBeenCalled();
+    await rendered.unmount();
+  });
+
+  it.each(["plan", "start", "draft"] as const)("returns a durable %s commit after unmount without publishing into the retired provider", async (operation) => {
+    const pendingCommit = deferred<any>();
+    const repository = runtimeRepository([noPlanView], [null]);
+    const workout = runtimeActiveWorkoutRepository();
+    const schedules = runtimeScheduleAdapter();
+    const owned = { createId: () => "retired-provider-plan", createDraft: jest.fn(() => pendingCommit.promise) };
+    mockedCreateOwnedPlanRuntimePort.mockReturnValueOnce(owned as never);
+    if (operation === "start") repository.startWorkout.mockReturnValueOnce(pendingCommit.promise);
+    if (operation === "draft") workout.updateActiveSetDraft.mockReturnValueOnce(pendingCommit.promise);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    const rendered = await render(<RuntimeCaptureHarness
+      dependencies={dependencies(repository, { createWorkoutRepository: () => workout, createScheduleRuntime: () => schedules })}
+      onReady={(runtime) => { captured = runtime; }}
+    />);
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+    const runtime = captured!;
+    const before = runtime.view;
+    const set = activeWorkoutView.currentExercise.workingSets[0]!;
+    let command!: Promise<unknown>;
+    await act(async () => {
+      command = operation === "plan" ? runtime.createOwnedPlanDraft({ name: "Unused plan", dayName: "Day 1" })
+        : operation === "start" ? runtime.startEmptyWorkout()
+        : runtime.updateActiveSetDraft({ sessionId: activeWorkoutView.id, setId: set.id,
+          expectedSetRevision: set.revision, metricIdentity: set.metricIdentity,
+          observation: set.valueSources[0]!.observation, updatedAtMs: 2_000 });
+      await Promise.resolve();
+    });
+    await rendered.unmount();
+    const result = operation === "plan" ? { outcome: "committed", planId: "retired-plan", revision: 1 }
+      : operation === "start" ? { id: "retired-workout", source: "empty", status: "in_progress", planId: null, planDayId: null, revision: 1 }
+      : activeWorkoutView;
+    await act(async () => { pendingCommit.resolve(result); });
+    await expect(command).resolves.toEqual(operation === "start" ? "retired-workout" : result);
+    expect(captured?.view).toBe(before);
+    expect(schedules.loadToday).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not run queued rest writes after the provider closes, and retains the first durable acknowledgement", async () => {
+    const rest = runtimeRestRepository();
+    const pendingCommit = deferred<RestCommandResult>();
+    jest.mocked(rest.adjustRest).mockReturnValueOnce(pendingCommit.promise);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    const rendered = await render(<RuntimeCaptureHarness dependencies={dependencies(runtimeRepository([activeView], [activation]), {
+      createRestRepository: () => rest,
+    })} onReady={(runtime) => { captured = runtime; }} />);
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+    const input = { sessionId: "session-1", expectedSessionRevision: 1, expectedRestRevision: 0, deltaMs: 15_000, nowMs: 2_000 } as const;
+    let first!: Promise<RestCommandResult>;
+    let second!: Promise<RestCommandResult>;
+    await act(async () => { first = captured!.adjustRest(input); second = captured!.adjustRest(input); await Promise.resolve(); });
+    const secondRejection = expect(second).rejects.toThrow("workout_runtime_not_trusted");
+    await rendered.unmount();
+    const durable: RestCommandResult = { state: { version: 1, state: "idle", revision: 1, nextSetId: null }, sessionRevision: 2,
+      invalidationScopes: [["active-workout", "session-1"], ["today"]] };
+    await act(async () => { pendingCommit.resolve(durable); });
+    await expect(first).resolves.toBe(durable);
+    await secondRejection;
+    expect(rest.adjustRest).toHaveBeenCalledTimes(1);
+  });
+
+  it("publishes the reconciled notification permission after a durable rest command", async () => {
+    const lifecycle = runtimeLifecycle();
+    const base = await runtimeLifecycle().trigger("launch");
+    lifecycle.trigger.mockResolvedValueOnce({ ...base, trigger: "launch", permission: "granted" })
+      .mockResolvedValueOnce({ ...base, trigger: "post_commit", permission: "denied" });
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    const rendered = await render(<RuntimeCaptureHarness dependencies={dependencies(runtimeRepository([activeView], [activation]), {
+      createLifecycle: () => lifecycle,
+    })} onReady={(runtime) => { captured = runtime; }} />);
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+    await act(async () => { await captured!.adjustRest({ sessionId: "session-1", expectedSessionRevision: 1,
+      expectedRestRevision: 0, deltaMs: 15_000, nowMs: 2_000 }); });
+    await waitFor(() => expect(captured?.notificationPermission).toBe("denied"));
+    expect(captured?.workoutRefreshGeneration).toBe(0);
+    await rendered.unmount();
+  });
+
+  it("keeps the current plan-day selection when a committed history removal refreshes Today", async () => {
+    mockRemoveHistorySession.mockResolvedValueOnce({ effectiveRevision: 2, lifecycle: "voided" } as never);
+    const repository = runtimeRepository([scheduledView, noPlanView], [activation]);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    const rendered = await render(<RuntimeCaptureHarness dependencies={dependencies(repository)}
+      onReady={(runtime) => { captured = runtime; }} />);
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+    expect(captured?.planDays).toEqual(activation.days);
+    await act(async () => { await expect(captured!.removeHistorySession({ sessionId: "session-1",
+      expectedEffectiveRevision: 1, confirmation: "remove_session" })).resolves.toEqual({ effectiveRevision: 2, lifecycle: "voided" }); });
+    expect(captured?.planDays).toEqual(activation.days);
+    expect(captured?.view).toEqual(noPlanView);
+    expect(captured?.workoutRefreshGeneration).toBe(1);
+    await rendered.unmount();
+  });
+
+  it("refreshes authoritative schedule selection after a committed history removal", async () => {
+    mockRemoveHistorySession.mockResolvedValueOnce({ effectiveRevision: 2, lifecycle: "voided" } as never);
+    const repository = runtimeRepository([noPlanView], [null]);
+    const schedules = runtimeScheduleAdapter();
+    jest.mocked(schedules.loadToday).mockResolvedValueOnce(null).mockResolvedValueOnce({
+      view: scheduledView, planDays: activation.days, scheduleToday: {}, selectedStrengthOccurrence: null,
+    } as never);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    const rendered = await render(<RuntimeCaptureHarness dependencies={dependencies(repository, { createScheduleRuntime: () => schedules })}
+      onReady={(runtime) => { captured = runtime; }} />);
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+    expect(captured?.view).toEqual(noPlanView);
+    await act(async () => { await captured!.removeHistorySession({ sessionId: "session-1", expectedEffectiveRevision: 1, confirmation: "remove_session" }); });
+    expect(captured?.view).toEqual(scheduledView);
+    expect(captured?.planDays).toEqual(activation.days);
+    await rendered.unmount();
+  });
+
+  it("keeps a committed plan result authoritative when its queued Today refresh fails", async () => {
+    const committed = { outcome: "committed", planId: "plan-committed", revision: 1 };
+    mockedCreateOwnedPlanRuntimePort.mockReturnValueOnce({ createId: () => "plan-commit-request",
+      createDraft: async () => committed } as never);
+    const repository = runtimeRepository([noPlanView], [null]);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    const rendered = await render(<RuntimeCaptureHarness dependencies={dependencies(repository)}
+      onReady={(runtime) => { captured = runtime; }} />);
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+    repository.getTodayView.mockRejectedValueOnce(new Error("source_refresh_temporarily_unavailable"));
+    await act(async () => { await expect(captured!.createOwnedPlanDraft({ name: "Committed plan", dayName: "Day 1" })).resolves.toBe(committed); });
+    expect(repository.getTodayView).toHaveBeenCalledTimes(2);
+    expect(captured?.launchState).toBe("trusted");
+    expect(captured?.view).toEqual(noPlanView);
+    await rendered.unmount();
+  });
+
+  it("contains a synchronous rest-reader failure after commit without reversing the durable acknowledgement", async () => {
+    const rest = runtimeRestRepository();
+    jest.mocked(rest.listActiveSessionIds).mockImplementation(() => { throw new Error("rest_reader_unavailable"); });
+    const lifecycle = runtimeLifecycle();
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    const rendered = await render(<RuntimeCaptureHarness dependencies={dependencies(runtimeRepository([activeView], [activation]), {
+      createRestRepository: () => rest, createLifecycle: () => lifecycle,
+    })} onReady={(runtime) => { captured = runtime; }} />);
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+    await act(async () => { await expect(captured!.adjustRest({ sessionId: "session-1", expectedSessionRevision: 1,
+      expectedRestRevision: 0, deltaMs: 15_000, nowMs: 2_000 })).resolves.toMatchObject({ sessionRevision: 2 }); });
+    expect(rest.listActiveSessionIds).toHaveBeenCalledTimes(1);
+    expect(lifecycle.trigger).toHaveBeenCalledTimes(1);
+    expect(captured?.notificationPermission).toBe("granted");
+    expect(captured?.launchState).toBe("trusted");
+    await rendered.unmount();
+  });
+
+  it.each(["queued", "reading"] as const)("does not reconcile precise alarms on a retired provider while %s", async (phase) => {
+    const lifecycle = runtimeLifecycle();
+    const base = await runtimeLifecycle().trigger("launch");
+    const priorEffect = deferred<typeof base>();
+    const rest = runtimeRestRepository();
+    const context = deferred<Awaited<ReturnType<RestRepository["getRestContext"]>>>();
+    const notifications = runtimeNotifications();
+    if (phase === "queued") lifecycle.trigger.mockResolvedValueOnce(base).mockReturnValueOnce(priorEffect.promise);
+    else jest.mocked(rest.getRestContext).mockReturnValueOnce(context.promise);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    const rendered = await render(<RuntimeCaptureHarness dependencies={dependencies(runtimeRepository([activeView], [activation]), {
+      createLifecycle: () => lifecycle, createRestRepository: () => rest, createNotifications: () => notifications,
+    })} onReady={(runtime) => { captured = runtime; }} />);
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+    if (phase === "queued") {
+      await act(async () => { await captured!.adjustRest({ sessionId: "session-1", expectedSessionRevision: 1,
+        expectedRestRevision: 0, deltaMs: 15_000, nowMs: 2_000 }); });
+      await waitFor(() => expect(lifecycle.trigger).toHaveBeenCalledTimes(2));
+    }
+    let refresh!: Promise<void>;
+    await act(async () => { refresh = captured!.refreshPreciseRestAlarms(); await Promise.resolve(); });
+    if (phase === "reading") await waitFor(() => expect(rest.getRestContext).toHaveBeenCalledTimes(1));
+    await rendered.unmount();
+    await act(async () => {
+      priorEffect.resolve(base);
+      context.resolve({ state: { version: 1, state: "running", revision: 1, startedAtMs: 1_786_853_600_000,
+        endsAtMs: 1_786_853_660_000, nextSetId: "set-2" }, sessionRevision: 2 });
+      await refresh;
+    });
+    expect(lifecycle.trigger).toHaveBeenCalledTimes(phase === "queued" ? 2 : 1);
+    if (phase === "queued") expect(notifications.cancel).not.toHaveBeenCalled();
+  });
+
+  it("publishes a committed warm-up label from a workout with an explicit exercise collection", async () => {
+    const view = activeWorkoutViewWithCommittedSet("warmup-visible", "warmup");
+    const warmup = view.currentExercise.warmups.at(-1)!;
+    const committed = { ...view, activeExerciseId: view.currentExercise.id, activeSetId: warmup.id, exercises: [view.currentExercise] };
+    const workout = runtimeActiveWorkoutRepository();
+    workout.updateActiveSetDraft.mockResolvedValueOnce(committed);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    const rendered = await render(<RuntimeCaptureHarness dependencies={dependencies(runtimeRepository([activeView], [activation]), {
+      createWorkoutRepository: () => workout,
+    })} onReady={(runtime) => { captured = runtime; }} />);
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+    await act(async () => { await captured!.updateActiveSetDraft({ sessionId: committed.id, setId: warmup.id,
+      expectedSetRevision: warmup.revision, metricIdentity: warmup.metricIdentity,
+      observation: { version: 1, profile: "load_reps", loadGrams: 20_000, reps: 5, source: "manual" }, updatedAtMs: 2_000 }); });
+    expect(captured?.view).toMatchObject({ exerciseName: view.currentExercise.name, setLabel: `Warm-up ${warmup.ordinal + 1}` });
+    await rendered.unmount();
   });
 
   it("rejects use outside its provider", async () => {

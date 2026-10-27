@@ -2259,12 +2259,12 @@ export function WorkoutAppRuntimeProvider({
     });
   }, []);
 
-  const queueTodaySelectionRefresh = useCallback((services: RuntimeServices, plansChanged = false) => {
+  const queueTodaySelectionRefresh = useCallback((services: RuntimeServices) => {
     clearCommittedActionFailure(services);
     const generation = ++selectionRefreshGenerationRef.current;
     selectionRefreshQueueRef.current = selectionRefreshQueueRef.current.then(async () => {
       if (servicesRef.current !== services || generation !== selectionRefreshGenerationRef.current) return;
-      await refreshTodaySelection(services, plansChanged);
+      await refreshTodaySelection(services, true);
     }).catch(() => undefined);
   }, [clearCommittedActionFailure, refreshTodaySelection]);
 
@@ -2850,7 +2850,8 @@ export function WorkoutAppRuntimeProvider({
         title: projected.detail.activityType,
         activityType: "Running",
         confirmedLocalDate: projected.detail.confirmedLocalDate,
-        ...(projected.detail.startedAtMs === undefined ? {} : { startedAtMs: projected.detail.startedAtMs }),
+        // A ready projection has passed the required normalized timestamp schema.
+        startedAtMs: projected.detail.startedAtMs!,
         identityCopy: "Accepted source title unavailable.",
         summary,
         matchState: row.match_count === 1 ? "matched" as const : "unmatched" as const,
@@ -3320,7 +3321,7 @@ export function WorkoutAppRuntimeProvider({
       nowMs: dependencies.nowMs,
     }).deletePlan(input);
     if (result.outcome === "deleted") {
-      queueTodaySelectionRefresh(services, true);
+      queueTodaySelectionRefresh(services);
     }
     return result;
   }, [dependencies, queueTodaySelectionRefresh, requireServices]);
@@ -3737,7 +3738,7 @@ export function WorkoutAppRuntimeProvider({
       result.outcome === "committed"
       || result.outcome === "already_committed"
     ) {
-      queueTodaySelectionRefresh(services, true);
+      queueTodaySelectionRefresh(services);
     }
     return result;
   }, [queueTodaySelectionRefresh, requireServices]);
@@ -3800,7 +3801,7 @@ export function WorkoutAppRuntimeProvider({
       result.outcome === "committed"
       || result.outcome === "already_committed"
     ) {
-      queueTodaySelectionRefresh(services, true);
+      queueTodaySelectionRefresh(services);
     }
     return result;
   }, [queueTodaySelectionRefresh, requireServices]);
@@ -3819,7 +3820,7 @@ export function WorkoutAppRuntimeProvider({
       result.outcome === "committed"
       || result.outcome === "already_committed"
     ) {
-      queueTodaySelectionRefresh(services, true);
+      queueTodaySelectionRefresh(services);
     }
     return result;
   }, [queueTodaySelectionRefresh, requireServices]);
@@ -3827,9 +3828,8 @@ export function WorkoutAppRuntimeProvider({
   const reconcileAfterCommit = useCallback((
     services: RuntimeServices,
     foregroundExpiry?: Readonly<{ sessionId: string; restRevision: number }>,
-    refreshWorkout = true,
   ) => {
-    const restGeneration = !refreshWorkout && foregroundExpiry === undefined
+    const restGeneration = foregroundExpiry === undefined
       ? ++restReconciliationGenerationRef.current
       : null;
     const isSuperseded = () => restGeneration !== null
@@ -3862,7 +3862,6 @@ export function WorkoutAppRuntimeProvider({
       if (servicesRef.current !== services) return;
       // RestCommandResult already updates the timer and Today rest status.
       // Reloading the full workout/progress tree here would reintroduce lag.
-      if (refreshWorkout) workoutRefreshGenerationRef.current += 1;
       setState((current) => current.notificationPermission === (lifecycleResult?.permission ?? permission)
         && current.workoutRefreshGeneration === workoutRefreshGenerationRef.current
         ? current : {
@@ -3898,7 +3897,7 @@ export function WorkoutAppRuntimeProvider({
         : current);
       reconcileAfterCommit(services, result.state.state === "expired"
         ? { sessionId, restRevision: result.state.revision }
-        : undefined, false);
+        : undefined);
       return result;
     });
     restCommandQueueRef.current = committed.then(() => undefined, () => undefined);
@@ -4168,7 +4167,7 @@ export function WorkoutAppRuntimeProvider({
       throw error;
     }
     publishCommittedWorkout(services, view);
-    reconcileAfterCommit(services, undefined, false);
+    reconcileAfterCommit(services);
     return committedSetId === undefined
       ? view
       : Object.freeze({ ...view, committedSetId });
@@ -4196,7 +4195,7 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw error;
     }
-    reconcileAfterCommit(services, undefined, false);
+    reconcileAfterCommit(services);
 
     let activeView: ActiveWorkoutView;
     try {
@@ -4244,7 +4243,7 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw error;
     }
-    reconcileAfterCommit(services, undefined, false);
+    reconcileAfterCommit(services);
 
     try {
       const activeView = await services.workoutRepository.getActiveWorkout(
@@ -4369,7 +4368,7 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw error;
     }
-    reconcileAfterCommit(services, undefined, false);
+    reconcileAfterCommit(services);
 
     try {
       const activeView = await services.workoutRepository.getActiveWorkout(
@@ -4429,7 +4428,7 @@ export function WorkoutAppRuntimeProvider({
       repository: services.workoutRepository,
       haptics: createExpoHapticsAdapter(),
       invalidate: async () => undefined,
-      drainEffects: async () => { reconcileAfterCommit(services, undefined, false); },
+      drainEffects: async () => { reconcileAfterCommit(services); },
       input,
     }).then((result) => {
       publishCommittedWorkout(services, result.view);
@@ -4458,7 +4457,7 @@ export function WorkoutAppRuntimeProvider({
   const setWorkoutPreferences = useCallback(async (input: WorkoutPreferenceWrite) => {
     const services = requireServices();
     const saved = await services.workoutPreferenceRepository.write(input);
-    reconcileAfterCommit(services, undefined, false);
+    reconcileAfterCommit(services);
     return saved;
   }, [reconcileAfterCommit, requireServices]);
 
@@ -4470,7 +4469,7 @@ export function WorkoutAppRuntimeProvider({
     }).then((result) => {
       if (result.outcome === "undone") {
         publishCommittedWorkout(services, result.view);
-        reconcileAfterCommit(services, undefined, false);
+        reconcileAfterCommit(services);
       }
       return result;
     });

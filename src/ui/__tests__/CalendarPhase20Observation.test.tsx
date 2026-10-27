@@ -55,7 +55,7 @@ describe("CalendarMonthViewport Phase 20 observation wiring", () => {
     const handlers = (latestPan as { handlers: {
       onTouchesDown?: (event: Readonly<{ allTouches: readonly Readonly<{ absoluteX: number; absoluteY: number }>[] }>) => void;
       onTouchesMove?: (event: Readonly<{ allTouches: readonly Readonly<{ absoluteX: number; absoluteY: number }>[] }>, manager: Readonly<{ activate(): void; fail(): void }>) => void;
-      onBegin?: () => void;
+      onStart?: () => void;
       onChange?: (event: Readonly<{ translationX: number; translationY: number; absoluteX?: number; absoluteY?: number }>) => void;
       onEnd?: (event: Readonly<{ translationX: number; translationY: number; absoluteX?: number; absoluteY?: number }>) => void;
       onFinalize?: (_event: unknown, success: boolean) => void;
@@ -64,7 +64,8 @@ describe("CalendarMonthViewport Phase 20 observation wiring", () => {
 
     handlers.onTouchesDown?.({ allTouches: [{ absoluteX: 300, absoluteY: 220 }] });
     handlers.onTouchesMove?.({ allTouches: [{ absoluteX: 211.5, absoluteY: 220 }] }, manager);
-    handlers.onBegin?.();
+    expect(handlers.onStart).toEqual(expect.any(Function));
+    handlers.onStart?.();
     handlers.onChange?.({ translationX: -88.5, translationY: 0, absoluteX: 211.5, absoluteY: 220 });
     handlers.onEnd?.({ translationX: -88.5, translationY: 0, absoluteX: 211.5, absoluteY: 220 });
     handlers.onFinalize?.({}, true);
@@ -82,7 +83,7 @@ describe("CalendarMonthViewport Phase 20 observation wiring", () => {
     expect(onRelease).toHaveBeenCalledTimes(1);
   });
 
-  it("records failed intent as a real cancelled finalization with no onEnd callback", async () => {
+  it("leaves vertical intent to scrolling without cancelling a drag that never activated", async () => {
     const recordPointer = jest.spyOn(Observation, "recordPhase20CalendarPointer");
     const createPan = Gesture.Pan.bind(Gesture);
     let latestPan: unknown;
@@ -91,15 +92,17 @@ describe("CalendarMonthViewport Phase 20 observation wiring", () => {
       return latestPan as ReturnType<typeof Gesture.Pan>;
     });
 
+    const onCancel = jest.fn();
+    const onRelease = jest.fn();
     await render(
       <CalendarMonthViewport
         command={null}
         focusedWeek={null}
         month={"2026-10-01" as LocalDate}
-        onCancel={jest.fn()}
+        onCancel={onCancel}
         onComplete={jest.fn()}
         onPreview={jest.fn()}
-        onRelease={jest.fn()}
+        onRelease={onRelease}
         renderMonth={() => <View />}
         renderWeek={() => <View />}
         transition={initial}
@@ -121,9 +124,12 @@ describe("CalendarMonthViewport Phase 20 observation wiring", () => {
 
     expect(manager.fail).toHaveBeenCalledTimes(1);
     expect(recordPointer).toHaveBeenLastCalledWith(expect.objectContaining({
-      callback: "onFinalize",
-      phase: "finalize-cancel",
+      callback: "onTouchesMove",
+      phase: "intent",
+      intentOwner: "vertical",
     }));
     expect(recordPointer.mock.calls.some(([event]) => event.callback === "onEnd")).toBe(false);
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onRelease).not.toHaveBeenCalled();
   });
 });
