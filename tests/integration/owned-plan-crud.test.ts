@@ -37,6 +37,7 @@ import {
 import {
   ownedPlansMigration,
 } from "../../src/platform/sqlite/migrations/0009_owned_plans";
+import { INITIAL_SCHEMA_STATEMENTS } from "../../src/platform/sqlite/migrations/0001_initial";
 import {
   ADVANCED_SET_TIMING_SCHEMA_STATEMENTS,
 } from "../../src/platform/sqlite/migrations/0021_advanced_set_timing";
@@ -169,6 +170,10 @@ async function setupRuntime(
     ),
     "utf8",
   ));
+  // The minimal v8 fixture omits the released app-settings table; current
+  // owned-plan reads require it to enforce the durable deletion marker.
+  fixtureDatabase.exec(INITIAL_SCHEMA_STATEMENTS.find((statement) =>
+    statement.startsWith("CREATE TABLE app_settings"))!);
   fixtureDatabase.close();
 
   const writer = new NodeSqliteConnection(new DatabaseSync(databasePath));
@@ -214,6 +219,8 @@ async function setupAdvancedTimingRuntime(
     ),
     "utf8",
   ));
+  fixtureDatabase.exec(INITIAL_SCHEMA_STATEMENTS.find((statement) =>
+    statement.startsWith("CREATE TABLE app_settings"))!);
   fixtureDatabase.close();
 
   const writer = new NodeSqliteConnection(new DatabaseSync(databasePath));

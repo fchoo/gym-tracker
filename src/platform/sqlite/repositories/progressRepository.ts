@@ -263,34 +263,6 @@ function displayWindow(input: Readonly<{ period: ProgressPeriod; nowLocalDate: s
   return { startMs: start === null ? null : bounds.startMs, endMs: bounds.endMs };
 }
 
-function withToSortedCompatibility<Result>(operation: () => Result): Result {
-  const arrayPrototype = Array.prototype as {
-    toSorted?: <Value>(
-      this: readonly Value[],
-      compareFn?: (left: Value, right: Value) => number,
-    ) => Value[];
-  };
-  if (arrayPrototype.toSorted !== undefined) {
-    return operation();
-  }
-  Object.defineProperty(arrayPrototype, "toSorted", {
-    configurable: true,
-    enumerable: false,
-    value: function toSorted<Value>(
-      this: readonly Value[],
-      compareFn?: (left: Value, right: Value) => number,
-    ): Value[] {
-      return [...this].sort(compareFn);
-    },
-    writable: true,
-  });
-  try {
-    return operation();
-  } finally {
-    delete arrayPrototype.toSorted;
-  }
-}
-
 function freshnessFor(rows: readonly RevisionRow[]): ProgressProjectionFreshness {
   return rows.every(({ revision, applied_revision }) => applied_revision === revision)
     ? "current"
@@ -1124,7 +1096,7 @@ export function createProgressRepository(
       const effectiveSetsById = new Map(sourceSessions.flatMap(({ metricSets }) =>
         metricSets.map((set) => [`${set.sessionId}\u0000${set.setId}`, set] as const)
       ));
-      const projection = withToSortedCompatibility(() => projectProgressPeriod({
+      const projection = projectProgressPeriod({
         period: input.period,
         nowLocalDate: input.nowLocalDate,
         periodInputs: periodRows.map(periodInputFromRow),
@@ -1150,7 +1122,7 @@ export function createProgressRepository(
           }) => Object.freeze({ exerciseId, exerciseName }))),
         })),
         recommendations,
-      }));
+      });
       const dashboardStrengthOrder = displayStrengthRows === null
         ? exposureRows.map(row => Object.freeze({
           fact: progressRecordFromExposure(exposureFromRow(row, effectiveSetsById)), effectiveAtMs: row.completed_at_ms,
@@ -1169,8 +1141,7 @@ export function createProgressRepository(
         dashboardStrengthOrder,
         dashboardFacts.goals,
       );
-      const dashboard = sport === undefined ? undefined : withToSortedCompatibility(() =>
-        projectProgressDashboard({
+      const dashboard = sport === undefined ? undefined : projectProgressDashboard({
           sport,
           running: {
             activities: dashboardFacts.activities,
@@ -1179,8 +1150,7 @@ export function createProgressRepository(
           strength: { facts: dashboardStrengthFacts },
           goals: dashboardGoalOrder,
           plannedNext,
-        })
-      );
+        });
       return Object.freeze({
         period: input.period,
         freshness: "current",

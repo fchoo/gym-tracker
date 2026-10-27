@@ -16,10 +16,6 @@ import {
 type MergeTables = Readonly<Record<string, readonly LogicalBackupRow[]>>;
 const LIBRARY_PLAN_DELETION_KEY_PREFIX = "gym_tracker.library_plan_deletion.v1:";
 
-function workoutPreferenceKey(planId: string): string {
-  return `gym_tracker.workout_plan_preferences.v1:${planId}`;
-}
-
 export type PortableMergeTableClass =
   | "metadata"
   | "app_setting"

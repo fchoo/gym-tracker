@@ -5,6 +5,8 @@ import type { SqliteKernel, SqliteReadTransactionExecutor, SqliteTransactionExec
 import { createTrainingCalendarRepository } from "../../src/platform/sqlite/repositories/trainingCalendarRepository";
 import { createProgressRepository } from "../../src/platform/sqlite/repositories/progressRepository";
 import { captureStrengthOccurrenceSnapshot } from "../../src/platform/sqlite/repositories/strengthOccurrenceSnapshot";
+import { readPendingScheduleOpportunityForStart } from "../../src/platform/sqlite/repositories/scheduleRepository";
+import type { SqliteParameter } from "../../src/platform/sqlite/connection";
 
 const databases: DatabaseSync[] = [];
 afterEach(() => { for (const db of databases.splice(0)) db.close(); });
@@ -128,6 +130,14 @@ it("Calendar suppresses a matched civil plan even when its imported display day 
   const repo = createTrainingCalendarRepository(kernel);
   expect((await repo.loadRange({ startLocalDate: "2026-11-01", endLocalDateExclusive: "2026-12-01", displayTimeZone: "America/Los_Angeles" })).events).toEqual([]);
   expect((await repo.loadRange({ startLocalDate: "2026-10-31", endLocalDateExclusive: "2026-11-01", displayTimeZone: "America/Los_Angeles" })).events[0]).toMatchObject({ status: "matched", localDate: "2026-10-31", scheduleId: "running-schedule", slotId: "running-slot" });
+  const incompleteMatchKernel = { ...kernel, readSnapshot: async <Result>(read: (reader: SqliteReadTransactionExecutor) => Promise<Result>) => read({
+    queryAll: async <Row extends Record<string, unknown>>(sql: string, parameters?: readonly SqliteParameter[]) => {
+      const rows = await kernel.queryAll<Row>(sql, parameters);
+      return rows.map(row => "matched_slot_id" in row ? { ...row, matched_slot_id: null } : row);
+    },
+  }) } as SqliteKernel;
+  const incomplete = await createTrainingCalendarRepository(incompleteMatchKernel).loadRange({ startLocalDate: "2026-11-01", endLocalDateExclusive: "2026-12-01", displayTimeZone: "America/Los_Angeles" });
+  expect(incomplete.events.map(event => [event.id, event.status])).toEqual([["running-opportunity", "planned"]]);
   expect(sourceSnapshot(db)).toBe(before);
 });
 
@@ -165,4 +175,90 @@ it("Progress strength display uses effective start bounds while cached projectio
   const raw = await repo.load({ period: "all_time", nowLocalDate: "2026-11-01", displayTimeZone: "Asia/Singapore" });
   expect(raw.sourceFacts?.bodyweight.entries[0]?.localDate).toBe("2026-10-04");
   expect(sourceSnapshot(db)).toBe(before);
+});
+
+// Read-adapter fault injection retains real SQLite queries and persisted facts.
+// The bad values cannot come from the normal bounded SQL result; this checks
+// defensive handling when a storage adapter returns a corrupted timestamp.
+it.each([-1, Number.NaN])("Progress and Calendar reject corrupted read timestamps %p without inventing display facts", async (startedAtMs) => {
+  const { db, kernel } = await fixture();
+  strength(db, "strength", "2026-11-01", "2026-11-01T10:00:00Z");
+  imported(db, "bad", "2026-11-01", "2026-11-01T11:00:00Z");
+  imported(db, "good", "2026-11-01", "2026-11-01T12:00:00Z");
+  const before = sourceSnapshot(db);
+  const displayInput = { startLocalDate: "2026-11-01", endLocalDateExclusive: "2026-11-02", displayTimeZone: "UTC" };
+  expect((await createTrainingCalendarRepository(kernel).loadRange(displayInput)).events).toHaveLength(3);
+  const faultyKernel = { ...kernel, readSnapshot: async <Result>(read: (reader: SqliteReadTransactionExecutor) => Promise<Result>) => read({
+    queryAll: async <Row extends Record<string, unknown>>(sql: string, parameters?: readonly SqliteParameter[]) => {
+      const rows = await kernel.queryAll<Row>(sql, parameters);
+      return rows.map(row => {
+        if (row.id === "bad" || row.id === "strength-opportunity") return { ...row, started_at_ms: startedAtMs };
+        if (row.session_id === "strength" && "display_started_at_ms" in row) return { ...row, display_started_at_ms: startedAtMs };
+        return row;
+      });
+    },
+  }) } as SqliteKernel;
+  expect((await createTrainingCalendarRepository(faultyKernel).loadRange(displayInput)).events.map(event => event.id)).toEqual(["good"]);
+  const progress = createProgressRepository(faultyKernel);
+  const running = await progress.load({ sport: "Running", period: "all_time", nowLocalDate: "2026-11-01", displayTimeZone: "UTC" });
+  if (running.dashboard?.sport !== "Running") throw new Error("running dashboard required");
+  expect(running.dashboard.goals.flatMap(goal => goal.history.map(point => point.effort.activityId))).toEqual(["good"]);
+  const displayStrength = await progress.load({ sport: "Strength", period: "all_time", nowLocalDate: "2026-11-01", displayTimeZone: "UTC" });
+  if (displayStrength.dashboard?.sport !== "Strength") throw new Error("strength dashboard required");
+  expect(displayStrength.dashboard.facts).toEqual([]);
+  expect(displayStrength.projection?.records).toHaveLength(1);
+  expect(sourceSnapshot(db)).toBe(before);
+});
+
+it("Progress and Calendar discard an imported timestamp outside the display-date range", async () => {
+  const { db, kernel } = await fixture();
+  strength(db, "strength", "2026-11-01", "2026-11-01T10:00:00Z");
+  imported(db, "bad", "2026-11-01", "2026-11-01T11:00:00Z");
+  imported(db, "good", "2026-11-01", "2026-11-01T12:00:00Z");
+  const before = sourceSnapshot(db);
+  const faultyKernel = { ...kernel, readSnapshot: async <Result>(read: (reader: SqliteReadTransactionExecutor) => Promise<Result>) => read({
+    queryAll: async <Row extends Record<string, unknown>>(sql: string, parameters?: readonly SqliteParameter[]) => {
+      const rows = await kernel.queryAll<Row>(sql, parameters);
+      return rows.map(row => row.id === "bad" ? { ...row, started_at_ms: Number.MAX_SAFE_INTEGER }
+        : row.session_id === "strength" && "display_started_at_ms" in row ? { ...row, display_started_at_ms: Number.MAX_SAFE_INTEGER } : row);
+    },
+  }) } as SqliteKernel;
+  expect((await createTrainingCalendarRepository(faultyKernel).loadRange({ startLocalDate: "2026-11-01", endLocalDateExclusive: "2026-11-02", displayTimeZone: "UTC" })).events.map(event => event.id).sort()).toEqual(["good", "strength-opportunity"]);
+  const result = await createProgressRepository(faultyKernel).load({ sport: "Running", period: "all_time", nowLocalDate: "2026-11-01", displayTimeZone: "UTC" });
+  if (result.dashboard?.sport !== "Running") throw new Error("running dashboard required");
+  expect(result.dashboard.goals.flatMap(goal => goal.history.map(point => point.effort.activityId))).toEqual(["good"]);
+  const strengthResult = await createProgressRepository(faultyKernel).load({ sport: "Strength", period: "all_time", nowLocalDate: "2026-11-01", displayTimeZone: "UTC" });
+  if (strengthResult.dashboard?.sport !== "Strength") throw new Error("strength dashboard required");
+  expect(strengthResult.dashboard.facts).toEqual([]);
+  expect(strengthResult.projection?.records).toHaveLength(1);
+  expect(sourceSnapshot(db)).toBe(before);
+});
+
+it("Progress preserves populated Strength history when the runtime lacks Array.toSorted", async () => {
+  const { db, kernel } = await fixture();
+  strength(db, "strength", "2026-11-01", "2026-11-01T10:00:00Z");
+  const repository = createProgressRepository(kernel);
+  const input = { sport: "Strength", period: "all_time", nowLocalDate: "2026-11-01" } as const;
+  const expected = await repository.load(input);
+  expect(expected.projection?.records).toHaveLength(1);
+  const descriptor = Object.getOwnPropertyDescriptor(Array.prototype, "toSorted");
+  delete (Array.prototype as { toSorted?: unknown }).toSorted;
+  try {
+    expect(await repository.load(input)).toEqual(expected);
+    expect(Object.prototype.hasOwnProperty.call(Array.prototype, "toSorted")).toBe(false);
+  } finally {
+    if (descriptor !== undefined) Object.defineProperty(Array.prototype, "toSorted", descriptor);
+  }
+});
+
+it("Workout start rejects missing or superseded schedule versions and resolves the current rotation pointer", async () => {
+  const { db, transaction } = await fixture();
+  const input = { scheduleId: "schedule", scheduleVersionId: "version", localDate: "2026-11-01" };
+  expect(await readPendingScheduleOpportunityForStart(transaction, input)).toBeNull();
+  db.exec("INSERT INTO plans(id,origin,name,days_per_week,is_active,revision) VALUES ('plan','custom','Rotation',2,1,1); INSERT INTO plan_days(id,plan_id,ordinal,name,revision) VALUES ('day-a','plan',0,'A',1),('day-b','plan',1,'B',1); INSERT INTO owned_plan_schedules(id,plan_id,lifecycle,revision,activated_at_ms) VALUES ('schedule','plan','active',2,1); INSERT INTO owned_plan_schedule_versions(id,schedule_id,version_number,effective_local_date,mode,timezone,rotation_pointer,created_at_ms) VALUES ('version','schedule',1,'2026-01-01','rotation','UTC',0,1); INSERT INTO owned_plan_schedule_bindings(id,schedule_version_id,mode,ordinal,plan_day_id) VALUES ('binding-a','version','rotation',0,'day-a'),('binding-b','version','rotation',1,'day-b'); INSERT INTO owned_plan_schedule_events(id,schedule_id,event_type,local_date,payload_json,schedule_revision,created_at_ms) VALUES ('advanced','schedule','rotation_skipped','2026-10-31','{\"domainEvents\":[{\"toPointer\":1}]}',2,2)");
+  expect(await readPendingScheduleOpportunityForStart(transaction, { ...input, scheduleVersionId: "stale-version" })).toBeNull();
+  expect(await readPendingScheduleOpportunityForStart(transaction, input)).toEqual({ version: 1, state: "pending", id: "schedule-opportunity:schedule:2026-11-01:rotation", source: "rotation", localDate: "2026-11-01", planDayId: "day-b", revision: 1 });
+  expect(await readPendingScheduleOpportunityForStart(transaction, { ...input, localDate: "2025-12-31" })).toBeNull();
+  db.exec("INSERT INTO owned_plan_schedule_versions(id,schedule_id,version_number,effective_local_date,mode,timezone,rotation_pointer,created_at_ms) VALUES ('empty-version','schedule',2,'2026-11-02','rotation','UTC',0,3)");
+  expect(await readPendingScheduleOpportunityForStart(transaction, { ...input, scheduleVersionId: "empty-version", localDate: "2026-11-02" })).toBeNull();
 });
