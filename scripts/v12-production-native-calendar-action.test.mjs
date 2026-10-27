@@ -52,11 +52,15 @@ test("Calendar action accepts only exact v1.2 attestation and source flow identi
     (value) => { value.suite = "phase16-calendar"; },
     (value) => { value.action = "recovery"; },
     (value) => { value.source_tree_sha256 = "bad"; },
+    (value) => { value.run_id = null; },
   ]) {
     const changed = structuredClone(attestation());
     mutate(changed);
     assert.throws(() => validateProductionCalendarActionRequest(payload, changed, { launcherSourceSha256: HASH }), /calendar_action_attestation_invalid/u);
   }
+  assert.throws(() => validateProductionCalendarActionRequest(
+    { ...payload, run_id: null }, { ...attestation(), run_id: null }, { launcherSourceSha256: HASH },
+  ), /calendar_action_attestation_invalid/u);
   assert.throws(() => validateProductionCalendarActionRequest({ ...payload, expected_outcome: "PASS" }, attestation(), { launcherSourceSha256: HASH }), /calendar_action_request_invalid/u);
 });
 

@@ -189,13 +189,13 @@ export function createV12CalendarDeviceSession(root, runId, executionTools, {
     || ![executionTools.adb, executionTools.maestro, executionTools.unzip].every((file) => typeof file === "string" && path.isAbsolute(file))) fail("toolchain_invalid");
   const deadline = Math.min(preparationStartedAt, Date.now())
     + 35 * (180_000 + 60_000) + V12_CALENDAR_REQUIREMENT_PROBE_COUNT * (180_000 + 60_000);
-  const command = (executable, args, { timeout = 180_000, binary = false, acceptFailure = false, cleanup = false, sdkDispatch = false } = {}) => {
-    if (!cleanup && Date.now() >= deadline) fail("timeout");
+  const command = (executable, args, { timeout = 180_000, binary = false, acceptFailure = false, sdkDispatch = false } = {}) => {
+    if (Date.now() >= deadline) fail("timeout");
     if (sdkDispatch) cleanupUncertain = true;
     const result = spawn(executable, args, {
       cwd: root,
       encoding: binary ? undefined : "utf8",
-      timeout: cleanup ? timeout : Math.min(timeout, Math.max(1, deadline - Date.now())),
+      timeout: Math.min(timeout, Math.max(1, deadline - Date.now())),
       maxBuffer: 32 * 1024 * 1024,
       stdio: ["ignore", "pipe", "pipe"],
     });
