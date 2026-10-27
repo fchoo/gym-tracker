@@ -106,9 +106,24 @@ import {
 import {
   createV12NativeContractExecutionRegistry,
   createV12NativeContractLogFrames,
+  V12_NATIVE_CONTRACT_EXECUTION_LIMIT,
 } from "../src/testing/v12NativeContractLogTransport";
 
 const v12NativeExecutions = createV12NativeContractExecutionRegistry();
+const scopedNativeExecutions = new Map<string, Promise<NativeContractResult>>();
+
+function onceForScopedNonce(suite: string, runId: string, execute: () => Promise<NativeContractResult>) {
+  const key = `${suite}|${runId}`;
+  const existing = scopedNativeExecutions.get(key);
+  if (existing !== undefined) return existing;
+  if (scopedNativeExecutions.size >= V12_NATIVE_CONTRACT_EXECUTION_LIMIT) throw new Error("native_contract_execution_capacity");
+  const pending = Promise.resolve().then(execute).then((result) => {
+    publishScopedNativeResult(runId, result);
+    return result;
+  });
+  scopedNativeExecutions.set(key, pending);
+  return pending;
+}
 
 function publishScopedNativeResult(runId: string, result: NativeContractResult) {
   for (const contractCase of result.cases) {
@@ -578,23 +593,12 @@ export default function NativeSqliteContractsScreen() {
           setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
-        if (selectedSuite === "portable-merge") {
-          const result = await verifyPortableMergeContract(
-            await createExpoPortableMergeContractAdapter(runId),
-          );
-          publishScopedNativeResult(runId, result);
-          setState({ status: "finished", runId, suite: selectedSuite, result });
-          return;
-        }
-        if (selectedSuite === "multi-plan-running") {
-          const result = await verifyMultiPlanRunningContract(runId);
-          publishScopedNativeResult(runId, result);
-          setState({ status: "finished", runId, suite: selectedSuite, result });
-          return;
-        }
-        if (selectedSuite === "progress-parity") {
-          const result = await verifyProgressParityContract(runId);
-          publishScopedNativeResult(runId, result);
+        if (selectedSuite === "portable-merge" || selectedSuite === "multi-plan-running" || selectedSuite === "progress-parity") {
+          const result = await onceForScopedNonce(selectedSuite, runId, async () => {
+            if (selectedSuite === "portable-merge") return verifyPortableMergeContract(await createExpoPortableMergeContractAdapter(runId));
+            if (selectedSuite === "multi-plan-running") return verifyMultiPlanRunningContract(runId);
+            return verifyProgressParityContract(runId);
+          });
           setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }

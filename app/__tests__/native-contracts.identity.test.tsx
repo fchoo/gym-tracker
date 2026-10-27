@@ -120,3 +120,28 @@ describe("personal closeout uses bounded packaged registry requests", () => {
     expect(JSON.parse(summary!.slice(marker.length))).toMatchObject({runId:nonce,summary:{total:1,status:"passed"}});
   });
 });
+
+
+describe("scoped native registry survives route remounts", () => {
+  afterEach(async () => { await cleanup(); jest.restoreAllMocks(); });
+  it("shares pending and completed work for the same suite and nonce",async()=>{
+    const progress=require("../../src/testing/contracts/progressParity.contract") as typeof import("../../src/testing/contracts/progressParity.contract");
+    let resolve!: (value: any)=>void;const pending=new Promise<any>(done=>{resolve=done;});
+    jest.mocked(progress.runProgressParityContract).mockClear().mockReturnValue(pending);
+    jest.spyOn(console,"log").mockImplementation(()=>undefined);
+    const runId=`v12-${"1".repeat(32)}`;mockParams={runId,suite:"progress-parity"};
+    const first=await render(<NativeSqliteContractsScreen/>);await waitFor(()=>expect(progress.runProgressParityContract).toHaveBeenCalledTimes(1));await first.unmount();
+    const second=await render(<NativeSqliteContractsScreen/>);
+    await act(async()=>{resolve({schemaVersion:1,contractVersion:1,status:"passed",total:1,passed:1,failed:0,skipped:0,cases:[{id:"pending-case",status:"passed"}]});});
+    await waitFor(()=>expect(machineResult().runId).toBe(runId));expect(progress.runProgressParityContract).toHaveBeenCalledTimes(1);await second.unmount();
+    await render(<NativeSqliteContractsScreen/>);await waitFor(()=>expect(machineResult().runId).toBe(runId));expect(progress.runProgressParityContract).toHaveBeenCalledTimes(1);
+  });
+  it("does not retry a rejected scoped nonce on a new mount",async()=>{
+    const multi=require("../../src/testing/contracts/multiPlanRunning.contract") as typeof import("../../src/testing/contracts/multiPlanRunning.contract");
+    jest.mocked(multi.runMultiPlanRunningContract).mockClear().mockRejectedValue(new Error("controlled_failure"));
+    jest.spyOn(console,"error").mockImplementation(()=>undefined);
+    mockParams={runId:`v12-${"2".repeat(32)}`,suite:"multi-plan-running"};
+    const first=await render(<NativeSqliteContractsScreen/>);await screen.findByText("Native SQLite contracts failed to start.");await first.unmount();
+    await render(<NativeSqliteContractsScreen/>);await screen.findByText("Native SQLite contracts failed to start.");expect(multi.runMultiPlanRunningContract).toHaveBeenCalledTimes(1);
+  });
+});
