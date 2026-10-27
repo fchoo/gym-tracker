@@ -211,3 +211,7 @@ No source-audit item is missing.
 - [ ] Samsung evidence is fresh observation-only and final handoff stops without release action or Terminal Seal.
 
 **Current authorization:** Focused personal APK corrections, affected checks, signed build and data-preserving phone update are authorized; final `908098f3` personal APK receipts confirm installation, byte matching, preserved data and launch, with owner manual verification closed on 2026-10-26. The 2026-10-22 source/host records above are retained with their historical hashes. Full Plans 20-08–20-12, exhaustive Samsung observations, sole final seal and independent goal/Nyquist verification remain deferred and incomplete. No full native acceptance, final readiness or milestone completion PASS is claimed.
+
+## Personal-use acceptance execution approved — 2026-10-27
+
+The owner authorized the concrete reduced gap-only proposal. [Profile](../../verification/personal-closeout-profile-20261027.json) explicitly selects155 UI observations and defers6693 configurations; real SQLite integrity and all112 recovery transitions remain unsampled. Retained passing evidence is reusable only with proved compatible input identity. Personal-profile completion is separate from the unchanged exhaustive final seal. Current outcome: evidence reconciliation in progress, no new native PASS claimed.

@@ -84,3 +84,7 @@ Public release ceremony/Terminal Seal, store distribution, Wear OS, Health Conne
 ---
 *Phase: 20-native-acceptance*
 *Context gathered: 2026-10-06*
+
+## Personal-use acceptance execution approved — 2026-10-27
+
+The owner authorized the concrete reduced gap-only proposal. [Profile](../../verification/personal-closeout-profile-20261027.json) explicitly selects155 UI observations and defers6693 configurations; real SQLite integrity and all112 recovery transitions remain unsampled. Retained passing evidence is reusable only with proved compatible input identity. Personal-profile completion is separate from the unchanged exhaustive final seal. Current outcome: evidence reconciliation in progress, no new native PASS claimed.
