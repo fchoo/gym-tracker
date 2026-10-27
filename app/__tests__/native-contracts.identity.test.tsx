@@ -2,6 +2,19 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, jest } from "@je
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react-native";
 import { createExpoV12AcceptanceSqliteContractAdapter, runV12AcceptanceSqliteContracts, type V12AcceptanceSqliteContractResult } from "../../src/testing/contracts/v12Acceptance.contract";
 
+jest.mock("../../src/testing/contracts/portableMerge.contract", () => ({
+  ...jest.requireActual<typeof import("../../src/testing/contracts/portableMerge.contract")>("../../src/testing/contracts/portableMerge.contract"),
+  createExpoPortableMergeContractAdapter: jest.fn(), runPortableMergeContract: jest.fn(),
+}));
+jest.mock("../../src/testing/contracts/multiPlanRunning.contract", () => ({
+  ...jest.requireActual<typeof import("../../src/testing/contracts/multiPlanRunning.contract")>("../../src/testing/contracts/multiPlanRunning.contract"),
+  runMultiPlanRunningContract: jest.fn(),
+}));
+jest.mock("../../src/testing/contracts/progressParity.contract", () => ({
+  ...jest.requireActual<typeof import("../../src/testing/contracts/progressParity.contract")>("../../src/testing/contracts/progressParity.contract"),
+  runProgressParityContract: jest.fn(),
+}));
+
 let mockParams: { runId?: string; suite?: string } = {};
 jest.mock("expo-router", () => ({ useLocalSearchParams: () => mockParams, Redirect: () => null }));
 jest.mock("expo-notifications", () => ({ AndroidImportance: { DEFAULT: 3 }, setNotificationHandler: jest.fn() }));
@@ -82,5 +95,28 @@ describe("native contract rendered execution identity", () => {
     await view.rerender(<NativeSqliteContractsScreen />);
     expect(machineResult().runId).toBe("native-1700");
     expect(runV12AcceptanceSqliteContracts).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe("personal closeout uses bounded packaged registry requests", () => {
+  afterEach(async () => { await cleanup(); jest.restoreAllMocks(); });
+  it.each(["portable-merge", "multi-plan-running", "progress-parity"])("runs only %s and emits nonce-bound cases", async (suite) => {
+    jest.clearAllMocks(); const log=jest.spyOn(console,"log").mockImplementation(()=>undefined);
+    const nonce=`v12-${"f".repeat(32)}`; mockParams={runId:nonce,suite};
+    const result={schemaVersion:1,contractVersion:1,status:"passed",total:1,passed:1,failed:0,skipped:0,cases:[{id:"registry-case",status:"passed"}]};
+    const portable=require("../../src/testing/contracts/portableMerge.contract") as typeof import("../../src/testing/contracts/portableMerge.contract");
+    const multi=require("../../src/testing/contracts/multiPlanRunning.contract") as typeof import("../../src/testing/contracts/multiPlanRunning.contract");
+    const progress=require("../../src/testing/contracts/progressParity.contract") as typeof import("../../src/testing/contracts/progressParity.contract");
+    jest.mocked(portable.createExpoPortableMergeContractAdapter).mockResolvedValue({} as never);
+    jest.mocked(portable.runPortableMergeContract).mockResolvedValue(result as never);
+    jest.mocked(multi.runMultiPlanRunningContract).mockResolvedValue(result as never);
+    jest.mocked(progress.runProgressParityContract).mockResolvedValue(result as never);
+    await render(<NativeSqliteContractsScreen/>);
+    await waitFor(()=>expect(machineResult().runId).toBe(nonce));
+    expect(runV12AcceptanceSqliteContracts).not.toHaveBeenCalled();
+    expect(log.mock.calls.some(([line])=>String(line).startsWith("GYM_TRACKER_SQLITE_CONTRACT_CASE:")&&String(line).includes(nonce))).toBe(true);
+    const summary=log.mock.calls.map(([line])=>String(line)).find(line=>line.startsWith(marker));
+    expect(JSON.parse(summary!.slice(marker.length))).toMatchObject({runId:nonce,summary:{total:1,status:"passed"}});
   });
 });

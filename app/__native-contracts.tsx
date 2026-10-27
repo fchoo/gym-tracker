@@ -109,6 +109,15 @@ import {
 } from "../src/testing/v12NativeContractLogTransport";
 
 const v12NativeExecutions = createV12NativeContractExecutionRegistry();
+
+function publishScopedNativeResult(runId: string, result: NativeContractResult) {
+  for (const contractCase of result.cases) {
+    console.log(`${CASE_MARKER}${JSON.stringify({ runId, case: contractCase })}`);
+  }
+  const { cases: _cases, ...summary } = result;
+  console.log(`${RESULT_MARKER}${JSON.stringify({ runId, summary })}`);
+}
+
 const RESULT_MARKER = "GYM_TRACKER_SQLITE_CONTRACT_RESULT:";
 const CASE_MARKER = "GYM_TRACKER_SQLITE_CONTRACT_CASE:";
 const ERROR_MARKER = "GYM_TRACKER_SQLITE_CONTRACT_ERROR:";
@@ -171,6 +180,10 @@ function requestedPackagedSuite(
   value: string | string[] | undefined,
 ): "migrations-effects" | "portable-merge" | "multi-plan-running" | "progress-parity" | "google-drive-backup" | "v1.2-acceptance" | undefined {
   const candidate = Array.isArray(value) ? value[0] : value;
+  if (configuredSuite === "v1.2-acceptance"
+    && (candidate === "portable-merge" || candidate === "multi-plan-running" || candidate === "progress-parity")) {
+    return candidate;
+  }
   if (configuredSuite === "phase19" && candidate === "progress-parity") return "progress-parity";
   if (configuredSuite === "phase11" && candidate === "portable-merge") return "portable-merge";
   if (
@@ -569,19 +582,19 @@ export default function NativeSqliteContractsScreen() {
           const result = await verifyPortableMergeContract(
             await createExpoPortableMergeContractAdapter(runId),
           );
-          console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
+          publishScopedNativeResult(runId, result);
           setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
         if (selectedSuite === "multi-plan-running") {
           const result = await verifyMultiPlanRunningContract(runId);
-          console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
+          publishScopedNativeResult(runId, result);
           setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
         if (selectedSuite === "progress-parity") {
           const result = await verifyProgressParityContract(runId);
-          console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
+          publishScopedNativeResult(runId, result);
           setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
@@ -728,7 +741,7 @@ export default function NativeSqliteContractsScreen() {
             ))}
           </View>
           <Text style={styles.machineResult}>
-            {`${RESULT_MARKER}${encodeURIComponent(JSON.stringify(state.status === "finished" && state.suite === "v1.2-acceptance" ? { runId: state.runId, result } : result))}`}
+            {`${RESULT_MARKER}${encodeURIComponent(JSON.stringify(state.status === "finished" && configuredSuite === "v1.2-acceptance" ? { runId: state.runId, result } : result))}`}
           </Text>
         </>
       )}
