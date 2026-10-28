@@ -65,10 +65,9 @@ function windowsTreePids(processGroupId, windowsTreeProbeImplementation, timeout
   return [...new Set(values)];
 }
 
-function signalProcessGroup(child, signal, { platform, taskkillImplementation,
+function signalProcessGroup(child, signal, { taskkillImplementation,
   windowsTreeProbeImplementation, timeoutMs }) {
   if (!Number.isSafeInteger(child.pid) || child.pid < 1) return true;
-  if (platform !== "win32") return false;
   const observed = windowsTreePids(child.pid, windowsTreeProbeImplementation, timeoutMs);
   if (Array.isArray(observed) && observed.length === 0) return true;
   const targets = observed === null || observed.includes(child.pid) ? [child.pid] : observed;
@@ -86,8 +85,7 @@ function signalProcessGroup(child, signal, { platform, taskkillImplementation,
   return Array.isArray(after) && after.length === 0;
 }
 
-function processGroupIsEmpty(processGroupId, { platform, windowsTreeProbeImplementation, timeoutMs }) {
-  if (platform !== "win32") return false;
+function processGroupIsEmpty(processGroupId, { windowsTreeProbeImplementation, timeoutMs }) {
   const observed = windowsTreePids(processGroupId, windowsTreeProbeImplementation, timeoutMs);
   return Array.isArray(observed) && observed.length === 0;
 }
@@ -194,7 +192,7 @@ function runTestProject(project, {
       if (settled) return;
       settled = true;
       clearTimeout(timeout); clearTimeout(terminateTimer); clearTimeout(killTimer);
-      signal?.removeEventListener("abort", onAbort);
+      signal.removeEventListener("abort", onAbort);
       if (!await verifyTreeEmpty(0)) {
         if (!termSent) notifyAndSignal("SIGTERM");
         if (!await verifyTreeEmpty(terminateGraceMs)) {
@@ -234,8 +232,10 @@ function runTestProject(project, {
     };
     const timeout = setTimeout(() => stop("timeout"), projectTimeoutMs);
     const onAbort = () => stop("abort");
-    signal?.addEventListener("abort", onAbort, { once: true });
-    if (signal?.aborted) onAbort();
+    // The private scheduler supplies its fresh controller synchronously and
+    // stops dequeuing after the first failure. Active peer cancellation still
+    // reaches this listener; an already-aborted startup is never dispatched.
+    signal.addEventListener("abort", onAbort, { once: true });
     child.once("error", (error) => {
       terminalError = error;
       void finish(null, null);
