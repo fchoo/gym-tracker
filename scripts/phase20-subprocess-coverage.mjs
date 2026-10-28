@@ -23,6 +23,7 @@ import { loadGarminCliCoverageEvidence } from "./garmin-cli-coverage-evidence.mj
 const require = createRequire(import.meta.url);
 const v8ToIstanbul = require("v8-to-istanbul");
 const { createCoverageMap } = require("istanbul-lib-coverage");
+const { mergeScriptCovs } = require("@bcoe/v8-coverage");
 
 const PROJECT_TIMEOUT_MS = 30 * 60_000;
 const TERMINATE_GRACE_MS = 2_000;
@@ -299,7 +300,7 @@ async function loadPhase20CoverageMap({
     const absolutePath = realpathSync(path.resolve(projectRoot, relativePath));
     return [pathToFileURL(absolutePath).href, { absolutePath, relativePath }];
   }));
-  const coverageMap = createCoverageMap({});
+  const scriptCovs = [];
   const records = readdirSync(rawDirectory).filter((name) => name.endsWith(".json"))
     .map(file => JSON.parse(readFileSync(path.join(rawDirectory, file), "utf8")));
   if (garminProject !== undefined) records.push({ result: loadGarminCliCoverageEvidence({
@@ -316,14 +317,28 @@ async function loadPhase20CoverageMap({
       } catch { /* non-file runtime scripts are not coverage targets */ }
       const target = absoluteTargets.get(normalizedUrl);
       if (target === undefined) continue;
-      const converter = v8ToIstanbul(target.absolutePath, 0);
-      await converter.load();
-      converter.applyCoverage(script.functions);
-      coverageMap.merge(converter.toIstanbul());
+      scriptCovs.push({ ...script, url: normalizedUrl });
     }
   }
 
-  return { absoluteTargets, coverageMap };
+  return { absoluteTargets, scriptCovs,
+    coverageMap: await convertPhase20ScriptRanges(absoluteTargets, scriptCovs) };
+}
+
+async function convertPhase20ScriptRanges(absoluteTargets, scriptCovs) {
+  const coverageMap = createCoverageMap({});
+  for (const [url, target] of absoluteTargets) {
+    const scripts = scriptCovs.filter(script => script.url === url);
+    if (scripts.length === 0) continue;
+    // Merge V8 ranges before conversion. Istanbul's container-hit inference
+    // must not turn import-only hits into an unexecuted branch hit.
+    const merged = mergeScriptCovs(scripts);
+    const converter = v8ToIstanbul(target.absolutePath, 0);
+    await converter.load();
+    converter.applyCoverage(merged.functions);
+    coverageMap.merge(converter.toIstanbul());
+  }
+  return coverageMap;
 }
 
 function summarizePhase20Coverage({ absoluteTargets, coverageMap }) {
@@ -375,7 +390,7 @@ export async function collectPhase20SubprocessCoverage(options) {
 }
 
 export async function collectPhase20ProjectCoverage({ projectRoot, projects }) {
-  const coverageMap = createCoverageMap({});
+  const scriptCovs = [];
   const targetFiles = new Set();
   for (const project of projects) {
     for (const module of project.modules) targetFiles.add(module);
@@ -384,13 +399,14 @@ export async function collectPhase20ProjectCoverage({ projectRoot, projects }) {
       rawDirectory: project.rawDirectory,
       targetFiles: project.modules,
     });
-    coverageMap.merge(projectCoverage.coverageMap);
+    scriptCovs.push(...projectCoverage.scriptCovs);
   }
   const absoluteTargets = new Map([...targetFiles].map((relativePath) => {
     const absolutePath = realpathSync(path.resolve(projectRoot, relativePath));
     return [pathToFileURL(absolutePath).href, { absolutePath, relativePath }];
   }));
-  return summarizePhase20Coverage({ absoluteTargets, coverageMap });
+  return summarizePhase20Coverage({ absoluteTargets,
+    coverageMap: await convertPhase20ScriptRanges(absoluteTargets, scriptCovs) });
 }
 
 function validateCoverageProjects(projects, projectRoot) {
@@ -495,6 +511,7 @@ export async function runPhase20SubprocessCoverage({
           assertNoSkippedTests(testReportPath, project.name);
           if (project.coverage === false) return {
             coverageMap: createCoverageMap({}),
+            scriptCovs: [],
             files: {},
           };
           const projectCoverage = await loadPhase20CoverageMap({
@@ -510,6 +527,7 @@ export async function runPhase20SubprocessCoverage({
           );
           return {
             coverageMap: projectCoverage.coverageMap,
+            scriptCovs: projectCoverage.scriptCovs,
             files: report.files,
           };
         } finally {
@@ -517,12 +535,12 @@ export async function runPhase20SubprocessCoverage({
         }
       },
     }, maxParallel);
-    const coverageMap = createCoverageMap({});
-    for (const projectReport of projectReports) coverageMap.merge(projectReport.coverageMap);
     const absoluteTargets = new Map(registeredModules.map((relativePath) => {
       const absolutePath = realpathSync(path.resolve(projectRoot, relativePath));
       return [pathToFileURL(absolutePath).href, { absolutePath, relativePath }];
     }));
+    const coverageMap = await convertPhase20ScriptRanges(absoluteTargets,
+      projectReports.flatMap(projectReport => projectReport.scriptCovs));
     const report = summarizePhase20Coverage({ absoluteTargets, coverageMap });
     writeFileSync(
       path.join(outputDirectory, "coverage-summary.json"),
