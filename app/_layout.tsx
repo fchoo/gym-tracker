@@ -62,6 +62,8 @@ import {
   resolveV12NativeAcceptanceProductRequest,
   createV12NativeAcceptanceAppearanceStore,
   V12NativeAcceptanceProductGate,
+  useV12NativeAcceptanceRouteNonce,
+  V12NativeAcceptanceRouteObserver,
   type V12NativeAcceptanceProductPreparer,
 } from "../src/testing/v12NativeAcceptanceFixture";
 
@@ -348,8 +350,10 @@ function V12NativeAcceptanceNavigator() {
 
 function V12NativeAcceptanceProductNavigator({
   request,
+  routeObservation,
 }: Readonly<{
   request: NonNullable<ReturnType<typeof resolveV12NativeAcceptanceProductRequest>>;
+  routeObservation: React.ReactNode;
 }>) {
   const runtime = useWorkoutAppRuntime();
   const prepareProductCase = (runtime as typeof runtime & Readonly<{
@@ -362,6 +366,7 @@ function V12NativeAcceptanceProductNavigator({
       request={request}
     >
       <ProductionToastBoundary>
+        {routeObservation}
         <RootNavigator />
       </ProductionToastBoundary>
     </V12NativeAcceptanceProductGate>
@@ -494,6 +499,18 @@ function RootLayoutAttempt({
       searchParams.shard,
     ],
   );
+  const normalRouteObservationNonce = useV12NativeAcceptanceRouteNonce(
+    nativeIdentity,
+    searchParams,
+    v12NativeAcceptanceProductRequest,
+  );
+  const normalRouteObservationEnabled = nativeIdentity.packageName === "com.fchoo.gymtracker.devtest"
+    && nativeIdentity.buildProfile === "development-test"
+    && nativeIdentity.nativeContractsEnabled === true
+    && nativeIdentity.suite === "v1.2-acceptance";
+  const normalRouteObservation = normalRouteObservationEnabled
+    ? <V12NativeAcceptanceRouteObserver identity={nativeIdentity} binding={normalRouteObservationNonce} />
+    : null;
   const phase20CalendarRuntime = resolvePhase20CalendarIsolatedRuntime(
     nativeIdentity,
     searchParams,
@@ -795,7 +812,7 @@ function RootLayoutAttempt({
               <Redirect href="/" />
             ) : (
               <WorkoutAppRuntimeProvider dependencies={v12NativeAcceptanceDependencies}>
-                <V12NativeAcceptanceProductNavigator request={v12NativeAcceptanceProductRequest} />
+                <V12NativeAcceptanceProductNavigator request={v12NativeAcceptanceProductRequest} routeObservation={normalRouteObservation} />
               </WorkoutAppRuntimeProvider>
             )}
           </AppearanceProvider>
@@ -886,6 +903,7 @@ function RootLayoutAttempt({
             dependencies={productionWorkoutAppRuntimeDependencies}
           >
             <ProductionToastBoundary>
+              {normalRouteObservation}
               <RootNavigator />
             </ProductionToastBoundary>
           </WorkoutAppRuntimeProvider>

@@ -14,6 +14,7 @@ let mockFontError: Error | null = null;
 let mockBuildProfile = "development-test";
 let mockNativeContractsEnabled = true;
 let mockNativeContractSuite: string | null = null;
+let mockPackageName = "com.fchoo.gymtracker.devtest";
 let mockPathname = "/__phase2-attended-preview";
 let mockSearchParams: Record<string, string> = {};
 let mockGlobalSearchParams: Record<string, string> | undefined;
@@ -43,7 +44,7 @@ jest.mock("expo-constants", () => ({
   __esModule: true,
   default: {
     expoConfig: {
-      android: { package: "com.fchoo.gymtracker.devtest" },
+      android: { get package() { return mockPackageName; } },
       extra: {
         get buildProfile() {
           return mockBuildProfile;
@@ -277,6 +278,7 @@ describe("RootLayout attended preview isolation", () => {
     mockBuildProfile = "development-test";
     mockNativeContractsEnabled = true;
     mockNativeContractSuite = null;
+    mockPackageName = "com.fchoo.gymtracker.devtest";
     mockPathname = "/__phase2-attended-preview";
     mockSearchParams = {};
     mockGlobalSearchParams = undefined;
@@ -297,6 +299,50 @@ describe("RootLayout attended preview isolation", () => {
       screen: { fontScale: 1, height: 900, scale: 1, width: 599 },
       window: { fontScale: 1, height: 900, scale: 1, width: 599 },
     });
+  });
+
+  it("observes the real normal provider pathname and keeps its nonce through navigation", async () => {
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockPathname = "/";
+    mockGlobalSearchParams = { closeoutRouteNonce: "a".repeat(32), privateQuery: "not-retained" };
+    const lines: string[] = [];
+    jest.spyOn(console, "info").mockImplementation(line => { lines.push(String(line)); });
+    const view = await render(<RootLayout />);
+    expect(screen.getByTestId("workout-runtime-provider")).toBeOnTheScreen();
+    expect(screen.getByTestId("root-stack")).toBeOnTheScreen();
+    mockPathname = "/more/removed-sessions";
+    mockGlobalSearchParams = {};
+    await view.rerender(<RootLayout />);
+    expect(lines.map(line => JSON.parse(line.slice("GYM_TRACKER_V12_NORMAL_ROUTE_OBSERVATION:".length)).pathname)).toEqual(["/", "/more/removed-sessions"]);
+    expect(lines.join("\n")).not.toMatch(/privateQuery|not-retained|\?/u);
+  });
+
+  it.each(["package", "profile", "flag", "suite"])("does not enable normal observations when the actual %s gate fails", async field => {
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockPathname = "/";
+    mockGlobalSearchParams = { closeoutRouteNonce: "a".repeat(32) };
+    if (field === "package") mockPackageName = "com.fchoo.gymtracker";
+    if (field === "profile") mockBuildProfile = "production";
+    if (field === "flag") mockNativeContractsEnabled = false;
+    if (field === "suite") mockNativeContractSuite = "other-suite";
+    const info = jest.spyOn(console, "info").mockImplementation(() => undefined);
+    await render(<RootLayout />);
+    expect(info).not.toHaveBeenCalled();
+  });
+
+  it("retains a source-validated functional nonce when switching back to the normal navigator", async () => {
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockPathname = "/workout/owned-session";
+    mockGlobalSearchParams = { shard: "workout", case: "workout.complete-commit", fixture: "v12-synthetic-fixtures-r18", nonce: "b".repeat(48), mode: "product" };
+    const lines: string[] = [];
+    jest.spyOn(console, "info").mockImplementation(line => { lines.push(String(line)); });
+    const view = await render(<RootLayout />);
+    mockGlobalSearchParams = {};
+    await view.rerender(<RootLayout />);
+    const observations = lines.filter(line => line.startsWith("GYM_TRACKER_V12_NORMAL_ROUTE_OBSERVATION:"));
+    expect(observations.length).toBeGreaterThan(0);
+    expect(JSON.parse(observations.at(-1)!.slice("GYM_TRACKER_V12_NORMAL_ROUTE_OBSERVATION:".length)))
+      .toMatchObject({ pathname: "/workout/owned-session", nonce: "b".repeat(48), nonce_kind: "functional" });
   });
 
   it("does not initialize the production runtime for the devtest attended preview", async () => {

@@ -32,6 +32,77 @@ type NativeAcceptanceParams = Readonly<{
   mode?: unknown;
 }>;
 
+export type V12NativeAcceptanceRouteNonce = Readonly<{
+  nonce: string;
+  kind: "normal" | "functional";
+}>;
+
+function nativeRouteObservationEnabled(identity: NativeAcceptanceIdentity): boolean {
+  return identity.packageName === "com.fchoo.gymtracker.devtest"
+    && identity.buildProfile === "development-test"
+    && identity.nativeContractsEnabled === true
+    && identity.suite === "v1.2-acceptance";
+}
+
+/** Keep the validated binding in the stable root, including navigation that drops parameters. */
+export function useV12NativeAcceptanceRouteNonce(
+  identity: NativeAcceptanceIdentity,
+  params: Readonly<Record<string, unknown>>,
+  productRequest: V12NativeAcceptanceRequest | null,
+): V12NativeAcceptanceRouteNonce | null {
+  const binding = React.useRef<V12NativeAcceptanceRouteNonce | null>(null);
+  if (!nativeRouteObservationEnabled(identity)) {
+    binding.current = null;
+  } else if (Object.hasOwn(params, "closeoutRouteNonce")) {
+    binding.current = typeof params.closeoutRouteNonce === "string" && /^[a-f0-9]{32}$/u.test(params.closeoutRouteNonce)
+      ? { nonce: params.closeoutRouteNonce, kind: "normal" }
+      : null;
+  } else if (Object.hasOwn(params, "nonce")) {
+    binding.current = productRequest?.shard === "workout" && productRequest.nonce === params.nonce
+      && /^[a-f0-9]{48}$/u.test(productRequest.nonce)
+      ? { nonce: productRequest.nonce, kind: "functional" }
+      : null;
+  }
+  return binding.current;
+}
+
+function observableNormalPath(pathname: string, kind: V12NativeAcceptanceRouteNonce["kind"]): boolean {
+  let decoded: string;
+  try { decoded = decodeURIComponent(pathname); } catch { return false; }
+  if (decoded.includes("__") || /[?#\u0000-\u001f\u007f]/u.test(decoded)) return false;
+  if (kind === "functional") return pathname.startsWith("/workout/") && pathname.length > "/workout/".length;
+  // /index is retained as an actual root diagnostic. The personal consumer still requires /.
+  if (pathname === "/" || pathname === "/index") return true;
+  if (["/more/removed-sessions", "/more/manual-encrypted-backup", "/more/data-and-recovery"].includes(pathname)) return true;
+  return ["/session/", "/completion/"].some(prefix => pathname.startsWith(prefix) && pathname.length > prefix.length);
+}
+
+/** Read-only router observation. No controls, rendered nodes, query strings or private routes. */
+export function V12NativeAcceptanceRouteObserver({ identity, binding }: Readonly<{
+  identity: NativeAcceptanceIdentity;
+  binding: V12NativeAcceptanceRouteNonce | null;
+}>) {
+  const pathname = usePathname();
+  const sequence = React.useRef(0);
+  React.useEffect(() => {
+    if (!nativeRouteObservationEnabled(identity) || binding === null
+      || !observableNormalPath(pathname, binding.kind)) return;
+    try {
+      console.info(`GYM_TRACKER_V12_NORMAL_ROUTE_OBSERVATION:${JSON.stringify({
+        schema_version: 1,
+        producer: "v12-normal-route-observation/v1",
+        package: identity.packageName,
+        nonce: binding.nonce,
+        nonce_kind: binding.kind,
+        pathname,
+        sequence: sequence.current += 1,
+      })}`);
+    } catch { /* Observation must not affect normal navigation or rendering. */ }
+  }, [binding?.kind, binding?.nonce, identity.buildProfile, identity.nativeContractsEnabled,
+    identity.packageName, identity.suite, pathname]);
+  return null;
+}
+
 type NativeAcceptanceCase = Readonly<{
   id: string;
   requirement: string;

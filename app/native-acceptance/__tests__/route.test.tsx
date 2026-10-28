@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
 import { act, render, waitFor } from "@testing-library/react-native";
-import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 import { Text } from "react-native";
 
@@ -14,6 +14,8 @@ import { v12NativeAcceptanceCaseContract } from "../../../src/testing/contracts/
 import {
   resolveV12NativeAcceptanceProductRequest,
   V12NativeAcceptanceProductGate,
+  useV12NativeAcceptanceRouteNonce,
+  V12NativeAcceptanceRouteObserver,
 } from "../../../src/testing/v12NativeAcceptanceFixture";
 
 let mockBuildProfile = "development-test";
@@ -48,6 +50,133 @@ jest.mock("expo-router", () => {
     useLocalSearchParams: () => mockParams,
     usePathname: () => mockPathname,
   };
+});
+
+const routeObservationIdentity = {
+  packageName: "com.fchoo.gymtracker.devtest",
+  buildProfile: "development-test",
+  nativeContractsEnabled: true,
+  suite: "v1.2-acceptance",
+};
+
+function RouteObservationHarness({ identity = routeObservationIdentity, params = {}, request = null }: Readonly<{
+  identity?: typeof routeObservationIdentity;
+  params?: Readonly<Record<string, unknown>>;
+  request?: V12NativeAcceptanceRequest | null;
+}>) {
+  const binding = useV12NativeAcceptanceRouteNonce(identity, params, request);
+  return <>
+    <Text testID="ordinary-product-content">Ordinary product content</Text>
+    <V12NativeAcceptanceRouteObserver identity={identity} binding={binding} />
+  </>;
+}
+
+describe("actual normal route observations", () => {
+  let lines: string[];
+  beforeEach(() => {
+    mockPathname = "/";
+    lines = [];
+    jest.spyOn(console, "info").mockImplementation((line) => { lines.push(String(line)); });
+  });
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  it("retains the validated nonce when normal navigation drops query parameters and adds no UI", async () => {
+    const original = await render(<Text testID="ordinary-product-content">Ordinary product content</Text>);
+    const originalTree = original.toJSON();
+    await original.unmount();
+    const view = await render(<RouteObservationHarness params={{ closeoutRouteNonce: "a".repeat(32), password: "do-not-retain" }} />);
+    expect(view.toJSON()).toEqual(originalTree);
+    mockPathname = "/session/owned-session/correct";
+    await view.rerender(<RouteObservationHarness />);
+    const records = lines.map(line => JSON.parse(line.slice("GYM_TRACKER_V12_NORMAL_ROUTE_OBSERVATION:".length)));
+    expect(records.map(row => ({ nonce: row.nonce, pathname: row.pathname, nonce_kind: row.nonce_kind }))).toEqual([
+      { nonce: "a".repeat(32), pathname: "/", nonce_kind: "normal" },
+      { nonce: "a".repeat(32), pathname: "/session/owned-session/correct", nonce_kind: "normal" },
+    ]);
+    expect(records[1].sequence).toBeGreaterThan(records[0].sequence);
+    expect(lines.join("\n")).not.toMatch(/password|do-not-retain|closeoutRouteNonce|\?/u);
+  });
+
+  it("preserves an actually observed index pathname rather than inventing slash", async () => {
+    mockPathname = "/index";
+    await render(<RouteObservationHarness params={{ closeoutRouteNonce: "a".repeat(32) }} />);
+    expect(JSON.parse(lines[0].slice("GYM_TRACKER_V12_NORMAL_ROUTE_OBSERVATION:".length)).pathname).toBe("/index");
+  });
+
+  it.each(["/more/removed-sessions", "/more/manual-encrypted-backup", "/more/data-and-recovery", "/session/owned-session", "/completion/owned-session"])(
+    "emits the actual allowed normal pathname: %s", async pathname => {
+      mockPathname = pathname;
+      await render(<RouteObservationHarness params={{ closeoutRouteNonce: "a".repeat(32) }} />);
+      expect(JSON.parse(lines[0].slice("GYM_TRACKER_V12_NORMAL_ROUTE_OBSERVATION:".length)))
+        .toMatchObject({ pathname, nonce: "a".repeat(32), nonce_kind: "normal" });
+    },
+  );
+
+  it.each([
+    ["production package", { packageName: "com.fchoo.gymtracker" }],
+    ["production profile", { buildProfile: "production" }],
+    ["disabled native contracts", { nativeContractsEnabled: false }],
+    ["different suite", { suite: "phase14" }],
+  ])("never emits when the actual identity has %s", async (_label, overrides) => {
+    await render(<RouteObservationHarness identity={{ ...routeObservationIdentity, ...overrides }} params={{ closeoutRouteNonce: "a".repeat(32) }} />);
+    expect(lines).toEqual([]);
+  });
+
+  it("clears the retained nonce when native contracts are disabled before re-enabling", async () => {
+    const view = await render(<RouteObservationHarness params={{ closeoutRouteNonce: "a".repeat(32) }} />);
+    lines.length = 0;
+    mockPathname = "/session/owned-session";
+    await view.rerender(<RouteObservationHarness identity={{ ...routeObservationIdentity, nativeContractsEnabled: false }} />);
+    mockPathname = "/completion/owned-session";
+    await view.rerender(<RouteObservationHarness />);
+    expect(lines).toEqual([]);
+  });
+
+  it.each(["A".repeat(32), "a".repeat(31), "a".repeat(48), ["a".repeat(32)], null])(
+    "clears a retained binding when an explicit normal nonce is malformed: %p", async nonce => {
+      const view = await render(<RouteObservationHarness params={{ closeoutRouteNonce: "a".repeat(32) }} />);
+      lines.length = 0;
+      mockPathname = "/more/removed-sessions";
+      await view.rerender(<RouteObservationHarness params={{ closeoutRouteNonce: nonce }} />);
+      mockPathname = "/more/data-and-recovery";
+      await view.rerender(<RouteObservationHarness />);
+      expect(lines).toEqual([]);
+    },
+  );
+
+  it.each(["/__phase20-visual-probe", "/native-acceptance/workout", "/more/garmin", "/garmin/private-account", "/library", "/session/x?token=private", "/session/__private", "/workout/owned-session"])(
+    "does not log a forbidden or unrelated pathname: %s", async pathname => {
+      mockPathname = pathname;
+      await render(<RouteObservationHarness params={{ closeoutRouteNonce: "a".repeat(32) }} />);
+      expect(lines).toEqual([]);
+    },
+  );
+
+  it("uses a real validated functional request's 48-hex nonce only on workout paths", async () => {
+    const params = { shard: "workout", case: "workout.complete-commit", fixture: "v12-synthetic-fixtures-r18", nonce: "b".repeat(48), mode: "product" };
+    const request = resolveV12NativeAcceptanceProductRequest(routeObservationIdentity, params);
+    expect(request).not.toBeNull();
+    mockPathname = "/workout/owned-session";
+    const view = await render(<RouteObservationHarness params={params} request={request} />);
+    const record = JSON.parse(lines[0].slice("GYM_TRACKER_V12_NORMAL_ROUTE_OBSERVATION:".length));
+    expect(record).toMatchObject({ nonce: "b".repeat(48), nonce_kind: "functional", pathname: "/workout/owned-session" });
+    lines.length = 0;
+    mockPathname = "/session/owned-session";
+    await view.rerender(<RouteObservationHarness />);
+    expect(lines).toEqual([]);
+  });
+
+  it("does not accept an arbitrary functional nonce without the validated request", async () => {
+    mockPathname = "/workout/owned-session";
+    await render(<RouteObservationHarness params={{ nonce: "b".repeat(48) }} />);
+    expect(lines).toEqual([]);
+  });
+
+  it("does not change product rendering when observation logging fails", async () => {
+    jest.spyOn(console, "info").mockImplementation(() => { throw new Error("logger unavailable"); });
+    const view = await render(<RouteObservationHarness params={{ closeoutRouteNonce: "a".repeat(32) }} />);
+    expect(view.getByTestId("ordinary-product-content")).toBeOnTheScreen();
+  });
 });
 
 jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
