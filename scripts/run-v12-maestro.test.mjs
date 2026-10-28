@@ -1339,6 +1339,18 @@ for (const shard of ["multi-plan", "workout", "library-running"]) {
     assert.ok(value.calls.every((program) => path.isAbsolute(program)));
     const publication = JSON.parse(readFileSync(path.join(value.root, `artifacts/native/v1.2/${runId}/publication/${shard}.json`), "utf8"));
     const mapping = JSON.parse(readFileSync(path.join(value.root, `artifacts/native/v1.2/${runId}/mapping/${shard}.json`), "utf8"));
+    assert.deepEqual(publication.members.map(({ artifact }) => artifact).sort(), [
+      `maestro/${shard}.xml`, `mapping/${shard}.json`,
+      `tools/direct-${shard}-receipt.json`, `tools/direct-${shard}-runner.jar`,
+    ].sort());
+    for (const [relative, expectedHash] of [
+      [`tools/direct-${shard}-receipt.json`, mapping.tool_attestation.safe_sdk.receipt_sha256],
+      [`tools/direct-${shard}-runner.jar`, mapping.tool_attestation.safe_sdk.jar_sha256],
+    ]) {
+      const member = publication.members.find(({ artifact }) => artifact === relative);
+      assert.equal(member.sha256, expectedHash);
+      assert.equal(hash(readFileSync(path.join(value.root, `artifacts/native/v1.2/${runId}/${relative}`))), expectedHash);
+    }
     assert.match(mapping.git_attestation_sha256, /^[a-f0-9]{64}$/u);
     assert.equal(mapping.schema_version, 2);
     assert.equal(mapping.producer, "v12-maestro-source-map/v2");

@@ -1857,6 +1857,14 @@ export async function runV12MaestroCli(args = process.argv.slice(2), io = proces
           writeReport: (file, value) => writes.push([file.replace(`artifacts/native/v1.2/${runId}/`, ""), value]),
           writeImmutableJson: (file, value) => writes.push([file.replace(`artifacts/native/v1.2/${runId}/`, ""), value]),
         });
+        const root = dependencies.root ?? ROOT;
+        const mapping = writes.find(([file]) => file === `mapping/${shard}.json`)[1];
+        const sdk = mapping.tool_attestation.safe_sdk;
+        for (const relative of [sdk.receipt_path, sdk.jar_path]) {
+          writes.push([relative.replace(`artifacts/native/v1.2/${runId}/`, ""), readFileSync(directSdkFile(root, relative))]);
+        }
+        validateV12DirectSafeSdkAttestation(sdk, { root, runId, shard,
+          testOnly: mapping.execution_origin.test_only, readIdentity: dependencies.readSafeSdkIdentity });
         publishV12AtomicShard({ root: dependencies.root, runId, shard, executionOrigin: result.execution_origin,
           produce: ({ write }) => writes.forEach(([file, value]) => write(file, value)) });
         io.stdout.write(`${JSON.stringify(result)}\n`);
