@@ -4,13 +4,13 @@
 
 - **v1.0 Personal-use Gym Tracker** — Phases 1-7 (shipped 2026-09-14)
 - **v1.1 In-Workout Editing, Advanced Timing & Drive Backup** — Phases 8-12 (shipped 2026-10-01)
-- **v1.2 Prototype Parity, Concurrent Plans & Garmin Import** — Phases 13-20 (implementation in progress; Phase 20 native acceptance remains)
+- **v1.2 Prototype Parity, Concurrent Plans & Garmin Import** — Phases 13-20 (personal delivery accepted; historical full milestone verdict unclaimed)
 
 ## Milestone Outcome
 
 Reproduce the owner-approved Revision 18 prototype in the Android application while preserving SQLite authority, commit-gated workout behavior, immutable history, offline operation, recovery, backup/merge, accessibility, and performance. Strength and Running plans coexist through real domain contracts; Garmin supplies imported Running facts rather than an in-app recorder.
 
-**Execution authority:** The owner authorized direct execution of the converged plans and subsequently authorized focused personal APK fixes, affected checks, signed builds and data-preserving phone updates. The current scope is recorded in [the 2026-10-25 implementation amendment](phases/20-native-acceptance/20-PERSONAL-UX-UPDATE-20261025.md). The exhaustive Phase 20 matrix/coverage/final seal remains deferred and incomplete; a focused personal APK result does not complete v1.2.
+**Execution authority — 2026-10-30:** [Test necessity reassessment](verification/TEST-NECESSITY-REASSESSMENT-20261030.md) supersedes the closeout proposal and personal profiles. The installed APK is accepted and personal delivery is closed. Plans 20-08–20-12 and their exhaustive coverage/recovery/visual/attended/seal obligations are removed from the personal work queue. Remaining required checks: **0**. Historical full milestone verdicts remain unclaimed; future tests require a concrete changed behavior or defect, not a missing formal receipt.
 
 ## Phases
 
@@ -42,16 +42,16 @@ Archived detail: .planning/milestones/v1.1-ROADMAP.md
 
 </details>
 
-### v1.2 Prototype Parity, Concurrent Plans & Garmin Import — IMPLEMENTING
+### v1.2 Prototype Parity, Concurrent Plans & Garmin Import — PERSONAL DELIVERY ACCEPTED
 
 - [x] **Phase 13: One-per-Sport Plan & Running Foundation** - Establish authoritative zero/one-per-sport activation, Running-session, import, matching, portability, and history contracts. (completed 2026-10-08)
-- [x] **Phase 14: Prototype Visual Shell** - Establish the approved four-root visual, navigation, appearance, overlay, startup, and settings system. (host-complete 2026-10-12; exact native acceptance deferred to Phase 20)
-- [x] **Phase 15: Workout Parity** - Deliver the approved Workout and Active Workout experience without weakening offline or commit-gated behavior. (host-complete 2026-10-12; exact native acceptance deferred to Phase 20)
-- [x] **Phase 16: Calendar Parity** - Deliver the full-height interactive Calendar and read-only historical detail flow using the Phase 15 presentation contract. (host-complete 2026-10-14; native acceptance deferred to Phase 20)
-- [x] **Phase 17: Library & Running Plans** - Deliver complete Library parity plus persistent structured Running-plan creation, editing, scheduling, and collision decisions. (host-complete 2026-10-12; exact native acceptance deferred to Phase 20)
+- [x] **Phase 14: Prototype Visual Shell** - Establish the approved four-root visual, navigation, appearance, overlay, startup, and settings system. (host-complete 2026-10-12; historical full native verdict unclaimed; no active personal gate)
+- [x] **Phase 15: Workout Parity** - Deliver the approved Workout and Active Workout experience without weakening offline or commit-gated behavior. (host-complete 2026-10-12; historical full native verdict unclaimed; no active personal gate)
+- [x] **Phase 16: Calendar Parity** - Deliver the full-height interactive Calendar and read-only historical detail flow using the Phase 15 presentation contract. (host-complete 2026-10-14; historical full native verdict unclaimed; no active personal gate)
+- [x] **Phase 17: Library & Running Plans** - Deliver complete Library parity plus persistent structured Running-plan creation, editing, scheduling, and collision decisions. (host-complete 2026-10-12; historical full native verdict unclaimed; no active personal gate)
 - [x] **Phase 18: Garmin Account Sync** - Deliver the selected standalone ARM64 embedded-client sync, factual activity detail, deduplication, recovery, and confirmed matching. (completed 2026-10-12)
-- [x] **Phase 19: Progress Parity** - Deliver factual Strength and Running progress, goals, recommendations, and optional bodyweight views from durable evidence. (host-complete 2026-10-14; native acceptance deferred to Phase 20)
-- [ ] **Phase 20: Native Acceptance** - Demonstrate cross-phase native fidelity, accessibility, recovery, integrity, and performance before later release authorization.
+- [x] **Phase 19: Progress Parity** - Deliver factual Strength and Running progress, goals, recommendations, and optional bodyweight views from durable evidence. (host-complete 2026-10-14; historical full native verdict unclaimed; no active personal gate)
+- **Phase 20: Personal acceptance closed.** Installed APK and focused owner acceptance complete. The original full native contract is retained as history and removed from this release's required work; no full native PASS is claimed.
 
 **Requirement mapping, not native PASS coverage:** 172/172 v1.2 requirements mapped exactly once: DOM 17; SHL 13; WRK 36; CAL 23; LIB 36; GAR 16; PRO 18; VER 13.
 
@@ -310,6 +310,8 @@ Plans:
 
 ### Phase 20: Native Acceptance
 
+**Current personal disposition:** CLOSED under [the necessity reassessment](verification/TEST-NECESSITY-REASSESSMENT-20261030.md). The goals, criteria, plan inventory and flags below preserve the original full-acceptance specification. They do not authorize execution for personal use.
+
 **Goal**: The owner has source-bound native evidence that the complete v1.2 system matches the approved prototype and preserves data, accessibility, recovery, offline, and performance contracts before any release decision.
 **Depends on**: Phase 13, Phase 14, Phase 15, Phase 16, Phase 17, Phase 18, Phase 19
 **Directory**: .planning/phases/20-native-acceptance
@@ -324,7 +326,7 @@ Plans:
   4. Native Calendar drag/threshold/morph behavior and representative launch, root switch, set commit, editor, search, Calendar, Progress, import, backup, and merge workloads meet their reviewed numeric budgets with raw evidence retained.
   5. An attended Samsung review records visual, usability, accessibility, and interaction observations separately from automated proof, and signed personal-use release verification is prepared without treating either as release authorization.
 
-**Plans**: 12 plan files / 8 retained summaries; Plan 20-08 reopened, so 7 plans are currently complete. Plans 20-09–20-12 remain deferred without summaries.
+**Historical inventory**: 12 plan files / 8 retained summaries; Plan 20-08 was reopened and 20-09–20-12 have no summaries. All five are removed from personal execution, not marked passed or deferred. Active required plans: **0**.
 
 - [x] 20-01-PLAN.md
 - [x] 20-02-PLAN.md
@@ -333,11 +335,11 @@ Plans:
 - [x] 20-05-PLAN.md
 - [x] 20-06-PLAN.md
 - [x] 20-07-PLAN.md
-- [ ] 20-08-PLAN.md — reopened for the current source/build corrections; its historical summary and `335e0563` run remain retained. Current source `908098f3` passed its signed build and focused emulator checks; Samsung installation and owner manual verification passed; exhaustive Plan 20-08 closeout remains deferred.
-- [ ] 20-09-PLAN.md — deferred full SQLite/recovery observations; any later execution requires a fresh valid source-bound run, not the obsolete `335e0563` build.
-- [ ] 20-10-PLAN.md
-- [ ] 20-11-PLAN.md
-- [ ] 20-12-PLAN.md
+- 20-08-PLAN.md — historical full-acceptance plan; removed from the personal work queue; original results preserved.
+- 20-09-PLAN.md — historical full-acceptance plan; removed from the personal work queue; original results preserved.
+- 20-10-PLAN.md — historical full-acceptance plan; removed from the personal work queue; original results preserved.
+- 20-11-PLAN.md — historical full-acceptance plan; removed from the personal work queue; original results preserved.
+- 20-12-PLAN.md — historical full-acceptance plan; removed from the personal work queue; original results preserved.
 
 **Current implementation / focused delivery:** Calendar short month headings, phone-current display timezone, compatible Garmin auto dates, single-line actions, exercise disclosure/reorder, prepared rest cues/precise background alarms, scoped saves and stale-render guards are implemented. Earlier `37226a12` was checked and installed with phone data preserved. Intermediate `b73b36d2` failed native reorder overlap; source `908098f3` fixes shared-value/render cleanup timing and passes final-source emulator checks. The signed APK is installed with data preserved; launch and owner manual verification passed. [Current plan and completed personal receipts](phases/20-native-acceptance/20-PERSONAL-UX-UPDATE-20261025.md).
 
@@ -346,7 +348,7 @@ Plans:
 
 ## Progress
 
-**Execution DAG:** 13 → 14 → 15 → 17 → 18 → {16,19} → 20. Upstream implementation summaries are present. Current work is the owner-authorized focused Phase 20 personal APK update; full acceptance remains deferred. GSD identifies Phase 14 as the earliest retained verification gap, and Phases 14/15/17 keep that debt visible. Their historical verdicts are not changed by this update.
+**Execution DAG:** 13 → 14 → 15 → 17 → 18 → {16,19} → 20. Upstream implementation summaries are present. Current personal work is closed; the exhaustive acceptance route is removed under the necessity reassessment. GSD identifies Phase 14 as the earliest retained verification gap, and Phases 14/15/17 keep that debt visible. Their historical verdicts are unchanged and are not current personal-release blockers.
 
 **Actual inventory:** 98 plan files / 94 retained summaries; Plan 20-08 reopened, so 93 plans are currently complete. Four phases pass the GSD verification projection; seven upstream phases have implementation summaries. No percentage represents native acceptance.
 
@@ -355,11 +357,11 @@ Plans:
 | 13. One-per-Sport Plan & Running Foundation | 13-multi-plan-running-foundation | 16/16 | Complete    | 2026-10-08 |
 | 14. Prototype Visual Shell | 14-prototype-visual-shell | 12/12 | Host complete; verification gaps retained | 2026-10-12 |
 | 15. Workout Parity | 15-workout-parity | 13/13 | Host complete; verification gaps retained | 2026-10-12 |
-| 16. Calendar Parity | 16-calendar-parity | 7/7 | Host complete; native deferred | 2026-10-14 |
+| 16. Calendar Parity | 16-calendar-parity | 7/7 | Host complete; full native verdict unclaimed | 2026-10-14 |
 | 17. Library & Running Plans | 17-library-running-plans | 14/14 | Host complete; verification gaps retained | 2026-10-12 |
 | 18. Garmin Account Sync | 18-garmin-import | 14/14 | Complete    | 2026-10-12 |
-| 19. Progress Parity | 19-progress-parity | 10/10 | Host complete; native deferred | 2026-10-14 |
-| 20. Native Acceptance | 20-native-acceptance | 8/12 (20-08 reopened) | Personal APK verified; full acceptance deferred | — |
+| 19. Progress Parity | 19-progress-parity | 10/10 | Host complete; full native verdict unclaimed | 2026-10-14 |
+| 20. Native Acceptance | 20-native-acceptance | 8/12 (20-08 reopened) | Personal delivery closed; exhaustive gates removed | — |
 
 ## Backlog
 

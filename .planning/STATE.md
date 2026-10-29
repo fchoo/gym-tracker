@@ -1,14 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.2
-milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — IMPLEMENTING
+milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PERSONAL DELIVERY ACCEPTED
 current_phase: 20
 current_phase_name: Native Acceptance
-status: executing
-stopped_at: Signed APK 908098f3 installed with data preserved; launch and owner manual verification passed; personal workflow closed; full Phase 20 deferred
-last_updated: "2026-10-25T16:05:06.962296+00:00"
-last_activity: 2026-10-26
-last_activity_desc: Signed APK908098f3 installed on Samsung; digest matches and data identity preserved. Main-screen launch and owner manual verification passed; phone checks closed. Cleanup complete; broader Phase20 acceptance and historical verification remain deferred.
+status: personal_scope_closed
+active_required_checks: 0
+active_personal_plans: 0
+current_acceptance_policy: verification/TEST-NECESSITY-REASSESSMENT-20261030.md
+stopped_at: Personal delivery accepted; unnecessary verification obligations removed; no active required checks
+last_updated: "2026-10-29T16:08:42Z"
+last_activity: 2026-10-30
+last_activity_desc: Test necessity reassessed against normal app use and saved-data risks. Exhaustive coverage, recovery, visual and seal obligations removed from personal acceptance. Existing delivery evidence reused; workers stopped; no tests or phone changes required.
 state_head: 908098f388b14823ab262fbdfd77e0c13468d688
 progress:
   total_phases: 8
@@ -27,9 +30,26 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-06)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** Phase 20 — Native Acceptance
+**Current focus:** Personal delivery closed; test necessity reassessment complete
 
 ## Current Position
+
+Personal delivery is closed. The owner required a necessity reassessment, not another deferred-test list. [Current acceptance policy](verification/TEST-NECESSITY-REASSESSMENT-20261030.md) removes exhaustive coverage, synthetic receipt matrices, blanket recovery/visual configurations and seal ceremonies from personal-release prerequisites. Required remaining checks: **0**. Existing tests and receipts retain their actual source/scope; no full native or milestone PASS is inferred.
+
+The Samsung release remains source `908098f388b14823ab262fbdfd77e0c13468d688`, APK `259a607db376b3bf9eff28b92694e60ea0c28eac8c02285b618e6444cf945669`. Installed-byte equality, preserved data, launch and owner manual acceptance are recorded. No build, reinstall, reset, credential operation or repeated test is needed for this reassessment.
+
+Local unpublished source `912383c18bcde5cdd6ed167925b12d242425ac16` and uncommitted verification work are preserved. Read-only review found acceptance instrumentation and runtime/unused-code simplifications with no identified new normal-use or saved-data failure. This is not acceptance of a new APK. All testing workers have completed or stopped.
+
+Plans 20-08–20-12 are removed from the active personal work queue; their historical incomplete formal status remains. Full v1.2 seal/Nyquist completion is unclaimed. Future verification requires an actual changed behavior or reported defect and runs only the relevant checks.
+
+<details>
+<summary>Historical execution and delivery snapshots — superseded; do not execute</summary>
+
+The following records preserve prior results and instructions. The current policy above controls personal execution.
+
+Current closeout execution (2026-10-28): the owner approved the evidence-first, gap-only proposal. Effective profilev2 retains all172 requirements,208 integrity files and112 recovery transitions; it selects153 visual pairs and explicitly defers6695, correcting two manualFIT prototype pairs against the prior owner exclusion. The original155-pair profile is preserved. Runtime355 and repository808 passing Jest runs retain their complete raw reports and input ledgers; collector-only extra-input changes require typed inheritance binding, not repetition of those suites. The raw V8 collector was corrected to merge ranges before Istanbul conversion: import-only execution could otherwise turn an unexecuted branch into a hit. Affected historical Node17/quality branch summaries have no retained raw streams, so their old100% branch claims are invalidated pending corrected independent proof. Central verifier and runner statements/functions/lines now reach100%, but branches remain89.87% and84.07%; current collector single/cross-project and five existing edge checks pass7/7. These partial results are not acceptance. No new immutable native run has begun. A fresh read-only Samsung availability check reported unavailable; continue host work and reserve the connection request for the prepared final window. Production package/login/imported/workout data remain untouched. The proposal and detailed evidence are in `verification/VERIFICATION-CLOSEOUT-PROPOSAL-20261027.md` and `../artifacts/native/personal-closeout-20261027/`.
+
+The following delivery snapshot is retained as historical context; its deferred-verification wording is superseded by the approved closeout execution above.
 
 Phase: 20 (Native Acceptance) — EXECUTING FOCUSED PERSONAL APK UPDATE
 Plan: 20-08 reopened for current corrective source/build checks; original Plans 20-09–20-12 remain deferred and incomplete.
@@ -47,9 +67,11 @@ Status: The owner replaced exhaustive acceptance with a minimal personal APK che
 
 Preserved aggregate: 2026-10-22 — Unchanged-source Linux task 68798 passed at `898ae5f2`: 649 Phase 20 tests, 172 Phase 18 evidence tests and 10 pidfd tests, zero skips; all 17 Node integrity modules and pidfd exact 100% statements/branches/functions/lines. Current predecessor, typecheck, boundary and pinned-toolchain checks pass. Independent source review is 100/100, zero findings; source security is 49/49 closed, score 100. Final host receipt is `artifacts/native/host/phase20-final-898ae5f2cacc/host-receipt.json`, SHA-256 `cecf2e5caa3153b6352987014eb4847c3fc655824603190a141626a477757181`; it explicitly inherits the prior 347-suite / 5,010-test / 166-module application gate through unchanged production inputs rather than relabelling an old run. Root `.coverage` and invalidated 3550 APK/failure receipt remain intact. Linux evidence is preserved and its VM stopped. ADB has only the emulator and no wireless candidates. Those were the pre-Samsung prerequisites at that historical snapshot; they are not current device-state claims.
 
+</details>
+
 ## Delivery Model and Planning Gate
 
-Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritative offline workouts. The owner authorized direct execution of the existing converged plans. Phase checkpoints remain targeted. The owner subsequently authorized the focused personal APK path, affected checks and data-preserving phone updates recorded in the 2026-10-25 amendment. The exhaustive Phase 20 matrix/coverage/final seal stays deferred and incomplete.
+Gym Tracker is a signed personal-use Android APK with SQLite-authoritative offline workouts. The accepted personal delivery is closed. [The necessity reassessment](verification/TEST-NECESSITY-REASSESSMENT-20261030.md) controls verification: reuse applicable evidence and run only checks justified by actual delivered changes. No exhaustive profile, percentage target or missing historical seal reopens the personal release.
 
 ## Performance Metrics
 
@@ -58,7 +80,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - Milestones shipped: 2 (v1.0 and v1.1)
 - Phases completed: 12
 - Plans completed: 119 (83 in v1.0; 36 in v1.1)
-- v1.2 phases: 7 upstream phases have implementation summaries; 4 pass the current GSD verification projection. Phase 20 remains executing with focused emulator and personal phone verification complete. Actual inventory: 98 plans and 94 retained summaries, with Plan 20-08 reopened (93 currently complete). Native debt in Phases 14/15/17 is retained; summary counts do not prove acceptance.
+- v1.2 phases: 7 upstream phases have implementation summaries; 4 pass the current GSD verification projection. Phase 20 personal delivery is closed; historical full-acceptance status remains unclaimed. Actual inventory: 98 plans and 94 retained summaries, with Plan 20-08 reopened (93 currently complete). Native debt in Phases 14/15/17 is retained; summary counts do not prove acceptance.
 
 **Recent trend:** v1.1 closed with 5/5 phases and 36/36 plans complete, all integrity-critical files at 100% coverage, cross-phase integration passing, and the signed APK installed unchanged on the Samsung SM-S916B.
 **Per-Plan Metrics:**
@@ -278,19 +300,14 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ### Pending Owner Review
 
-- Product decisions pending: **0**. MAP-01, TIM-01, DEV-01, DEV-02 and the Garmin transport selection are closed.
-- Review the complete reconciled planning set after the final fresh convergence run; technical proof gaps remain implementation evidence, not new product questions.
-- Upstream source plans are implemented. Continue the owner-authorized focused Phase 20 personal APK update; keep the full acceptance contract deferred without replanning or re-executing unrelated passing work.
-- The earlier owner-confirmed activity date/time and Asia/Singapore provenance remain preserved. Current Garmin imports automatically accept compatible provider evidence or the owner-registered Asia/Singapore default; incompatible source evidence still requires review. Timestamp displays separately follow the phone current timezone without rewriting source facts.
-- Personal APK installation and focused checks are complete; the owner confirmed the app works and closed phone verification. The exhaustive seven-row attended record remains deferred with the full Phase 20 contract.
+Product decisions pending: **0**. No owner attendance, phone reconnection or new approval is required to finish this reassessment.
 
-### Blockers/Concerns
+### Current Concerns
 
-- **Garmin native proof:** The selected embedded client and Android dependency closure passed emulator diagnostics. Exactly one owner credential submission completed authentication, encrypted session persistence and restoration. Real retrieval and normalization passed. Fresh same-Samsung Garmin acceptance and owner-attended phone authentication/MFA remain pending.
-- **Garmin date policy:** The earlier owner-supplied Asia/Singapore confirmation is historical accepted evidence. Current source preserves provider evidence, uses the registered fallback for compatible missing-zone dates, and retains review for incompatible historical/travel evidence. Phone-current display grouping is independent of that import policy.
-- **Garmin data fidelity:** Reviewed detail columns and timed route tuples retain original values, indexes and provenance within the existing limits. Complete capacity/corruption regression scopes and real normalization passed; final physical-device acceptance is still required. FIT remains deferred.
-- **Plan freshness:** The transport-focused current-file review converged with 0 HIGH and 0 actionable non-HIGH findings. The older FIT/official-provider result remains historical only.
-- **Delivery boundary:** The owner authorized the focused signed personal APK build, data-preserving install and affected checks. The final personal receipt confirms installed bytes, preserved data, launch and owner manual verification. Exhaustive native readiness, final seal, milestone completion and public release remain incomplete/deferred.
+- No new installed-app launch/use or saved-data defect was identified in this source-only assessment.
+- Current Garmin provenance retains the registered Asia/Singapore fallback; timestamp displays follow the phone's current timezone.
+- Historical native, coverage and seal gaps are not active personal-release blockers. Preserve their original verdicts; do not relabel missing evidence PASS or use it to queue tests.
+- Local verification fixes are preserved and unpublished. Selecting a future app artifact for delivery requires checks justified by its actual changed behavior.
 
 ## Deferred Items
 
@@ -302,12 +319,15 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-26
-Stopped at: Personal signed APK installed, data preserved, launch and owner manual verification passed; phone checks closed. Full acceptance remains deferred.
-Resume file: .planning/GSD-REMAINING-20261026.md
-Current application source: `908098f388b14823ab262fbdfd77e0c13468d688`.
-Personal APK workflow: CLOSED. Samsung install, byte matching, data preservation, launch and owner manual verification are complete. No further device action is queued.
-Remaining GSD work: [GSD-REMAINING-20261026.md](GSD-REMAINING-20261026.md). Plans20-08–20-12 and full acceptance remain deferred; the older Phase14/15/17 verification reports require formal reconciliation if comprehensive milestone closure is resumed.
+Last session: 2026-10-30
+Stopped at: Necessity reassessment completed; personal acceptance obligations reduced to justified change-triggered checks; no required work remains.
+Resume file: .planning/verification/TEST-NECESSITY-REASSESSMENT-20261030.md
+Installed application source: `908098f388b14823ab262fbdfd77e0c13468d688`.
+Reviewed local source: `912383c18bcde5cdd6ed167925b12d242425ac16` plus preserved, unpublished verification/tooling changes.
+Personal APK workflow: CLOSED. Preserve Garmin login, imported activities and workout data.
+Active acceptance: minimal, change-triggered policy. Old personal-closeout profiles are historical and superseded, not deferred execution queues.
+Next action: None for this release. Do not resume coverage renewals, native producers or Plans 20-08–20-12 based on historical instructions.
+All testing workers are completed with no active execution. Partial and failed logs remain preserved; central runner completion occurred before its stop signal.
 
 ### Historical continuation instructions — retained; do not execute as the current route
 

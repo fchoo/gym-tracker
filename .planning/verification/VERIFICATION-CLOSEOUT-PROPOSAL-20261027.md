@@ -1,6 +1,6 @@
 # Efficient verification closeout proposal — 2026-10-27
 
-Status: approved by owner on2026-10-27 ("let's proceed"); execution in progress. No result is declared complete until validated.
+Status: superseded for personal execution on 2026-10-30 by [the test necessity reassessment](TEST-NECESSITY-REASSESSMENT-20261030.md). The prior approval and text below are historical. Exhaustive obligations are removed from current personal-release criteria, not deferred; do not resume this sequence or its sealed profiles. No historical result is relabelled complete.
 
 ## Recommendation
 

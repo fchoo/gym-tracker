@@ -17,6 +17,13 @@ Key routing rules:
 - Resume context -> invoke `gstack-context-restore`
 - Author a backlog-ready spec or issue -> invoke `gstack-spec`
 
+## Current personal-release verification scope — 2026-10-30
+
+- Follow [the test necessity reassessment](.planning/verification/TEST-NECESSITY-REASSESSMENT-20261030.md). The owner removed unnecessary acceptance obligations rather than postponing them. The installed personal APK is accepted; no required checks remain.
+- The old all-module coverage, exhaustive recovery/visual/configuration, immutable-native-producer and final-seal obligations do not apply to this personal release. Plans 20-08–20-12 and the old personal-closeout profiles are historical, not a work queue.
+- Require a concrete changed app behavior or saved-data risk before running another check. Reuse applicable passing evidence. Documentation and host verification-tool changes alone do not justify app rebuilds, installation or repeated phone tests.
+- Preserve integrity guards, actual historical verdicts and production Garmin/workout data. This scope change does not manufacture full native/Nyquist/milestone PASS. The orchestration rules below apply only when their work has a separately justified need.
+
 ## Subagent orchestration
 
 - Give every implementation subagent an explicit worktree, branch, file or subsystem ownership boundary, and tell it other agents may be working in parallel.

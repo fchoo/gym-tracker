@@ -9,6 +9,9 @@ full_phase20_complete: false
 nyquist_compliant: false
 ---
 
+> Current verification authority (2026-10-30): [test necessity reassessment](../../verification/TEST-NECESSITY-REASSESSMENT-20261030.md). Personal delivery remains accepted. The implementation and receipts below are retained; their old deferred-verification clauses are superseded. Unnecessary exhaustive obligations are removed from this release's acceptance criteria.
+
+
 # Current implementation and focused personal APK update — 2026-10-25
 
 The owner authorized focused fixes, checks affected by those fixes, a fresh signed personal APK, and a data-preserving phone update. The exhaustive Phase 20 matrix and aggregate coverage closeout remain deferred and incomplete. This amendment updates the current execution route; the original contract in Plans 20-01–20-12 and [validation strategy](20-VALIDATION.md) remains retained for a later full acceptance run.

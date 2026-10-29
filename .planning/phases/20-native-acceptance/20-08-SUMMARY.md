@@ -1,5 +1,8 @@
 ---
 phase: 20-native-acceptance
+personal_release_required: false
+personal_execution_status: removed_from_scope
+current_scope_policy: ../../verification/TEST-NECESSITY-REASSESSMENT-20261030.md
 plan: "08"
 subsystem: native-acceptance
 tags: [android, expo, development-test, immutable-manifest, integrity-coverage, v1.2]
@@ -58,6 +61,9 @@ duration: 4h 19m
 completed: 2026-10-14
 status: complete
 ---
+
+> Current personal scope (2026-10-30): this historical gate/build plan is removed from active acceptance under [the necessity reassessment](../../verification/TEST-NECESSITY-REASSESSMENT-20261030.md). The status, invalidated runs and results below retain their historical meanings; they do not authorize a new build or test.
+
 
 # Phase 20 Plan 08: Frozen development-test APK and immutable V12 build-only identity Summary
 

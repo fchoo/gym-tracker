@@ -1,16 +1,19 @@
 ---
 phase: 20
 slug: native-acceptance
-status: personal_apk_verified_full_acceptance_deferred
-updated: 2026-10-25
-focused_verification_scope: owner_authorized_personal_apk
-full_acceptance_deferred: true
+status: personal_scope_closed
+updated: 2026-10-30
+focused_verification_scope: change_triggered_app_use_and_saved_data
+full_acceptance_required_for_personal_release: false
+active_required_checks: 0
+current_acceptance_policy: ../../verification/TEST-NECESSITY-REASSESSMENT-20261030.md
 nyquist_compliant: false
 wave_0_complete: true
 created: 2026-10-06
 requirements: [VER-01, VER-02, VER-03, VER-04, VER-05, VER-06, VER-07, VER-08, VER-09, VER-10, VER-11, VER-12, VER-13]
 automated_gaps: 0
-manual_only: 1
+manual_only: 0
+historical_full_acceptance_manual_only: 1
 external_conditional: 0
 ---
 
@@ -18,7 +21,13 @@ external_conditional: 0
 
 > Task-mapped execution contract. The original planning activity ran no product test, build, emulator/device action, Garmin account sync, Samsung observation, signing, release, deployment, Terminal Seal or commit.
 
-## Current focused verification override — 2026-10-25
+## Current necessity policy — 2026-10-30
+
+[The reassessment](../../verification/TEST-NECESSITY-REASSESSMENT-20261030.md) is the current personal execution contract. The installed release is accepted. There are no remaining required tests, builds or attended observations. The full-suite/208-file coverage, 112-transition recovery, visual/configuration, immutable-producer, performance and final-seal clauses below are historical and removed from personal-release prerequisites, not deferred. Existing runner guards remain intact; no full acceptance/Nyquist PASS is fabricated.
+
+For a future delivered change, check its actual app-use/data-loss risk and reuse valid evidence. One combined launch/workout/save/reopen flow is sufficient when that loop changes; add only the affected scheduler, timezone, transaction or screen check. Tooling/documentation changes alone do not trigger app testing or installation.
+
+## Historical focused verification override — 2026-10-25; superseded
 
 The owner authorized source-affected checks, a fresh signed personal APK and data-preserving phone updates while deferring the exhaustive Phase 20 matrix and aggregate coverage closeout. [Current implementation and focused plan](20-PERSONAL-UX-UPDATE-20261025.md) records the exact installed source and completed personal delivery receipts. This override is the active execution route; the original execution order, task map, numeric budgets and final sign-off below remain retained for later full acceptance.
 
@@ -40,7 +49,7 @@ The exact-source host receipt is `artifacts/native/host/phase20-final-898ae5f2ca
 
 No current native run is valid. The 3550 build and immutable failure receipt remain invalidated history. ADB exposes only the emulator, with zero wireless discovery candidates; connect/unlock/authorize the actual SM-S916B before the fresh immutable build/run. Automated and seven attended observations must use the same device hash. Plans 20-09–20-12, final Nyquist/goal verification, tracking completion and production delivery remain incomplete; `nyquist_compliant` remains false.
 
-## Original full acceptance execution order — deferred
+## Original full acceptance execution order — historical; not an active queue
 
 1. **Tooling first:** Plans 20-01 through 20-07 implement, self-test and commit every contract, probe, flow, runner, build-manifest extension, shard validator, final validator, attended utility, readiness generator and package entrypoint. No runtime/native command appears in those plans.
 2. **Gate, commit, freeze, build once:** Plan 20-08 gates all terminal Phase 13–19 outputs, selects the exact pinned toolchain, registers every Phase 20 integrity module, runs full `test:all` and coverage, commits the last source change, freezes source, builds one artifact and creates one immutable run/build.json.
