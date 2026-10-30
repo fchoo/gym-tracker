@@ -260,10 +260,12 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
         borderWidth: 0.5,
       });
     }
-    expect(screen.getByLabelText("Plan name"))
-      .not.toHaveStyle({ backgroundColor: themes.light.contentCard });
+    expect(screen.getByLabelText("Plan name")).toHaveStyle({
+      backgroundColor: themes.light.surface,
+      borderColor: themes.light.divider,
+    });
     expect(screen.getByRole("button", { name: "Save Plan Changes" }))
-      .not.toHaveStyle({ backgroundColor: themes.light.contentCard });
+      .toHaveStyle({ backgroundColor: themes.light.action });
   });
 
   it("creates one named inactive Draft and opens its empty first day", async () => {
@@ -433,6 +435,9 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
     expect(onSaved).toHaveBeenCalledWith("plan-owner");
   });
 
+
+
+
   it("uses shared Search busy and many-result states for the exercise picker", async () => {
     const exerciseLoad = deferred<readonly OwnedPlanEditorExerciseOption[]>();
     await renderEditor({
@@ -450,8 +455,9 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
       .toHaveProp("accessibilityState", expect.objectContaining({ busy: true }));
     expect(screen.getByText("Loading plan exercises")).toBeOnTheScreen();
 
-    await act(() => {
+    await act(async () => {
       exerciseLoad.resolve(pickerExercises);
+      await exerciseLoad.promise;
     });
 
     expect(await screen.findByText("3 plan exercises")).toBeOnTheScreen();
@@ -591,6 +597,47 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
     await waitFor(() => expect(savePlan).toHaveBeenCalledTimes(2));
   });
 
+  it("retains a revision-conflicted draft while the owner reviews the latest plan", async () => {
+    const latest = completeSnapshot({
+      name: "Latest owner plan",
+      revision: 2,
+    });
+    const savePlan = jest.fn(async () => {
+      throw Object.assign(new Error("owned_plan_revision_conflict"), {
+        code: "owned_plan_revision_conflict",
+      });
+    });
+    const loadPlan = jest.fn<
+      React.ComponentProps<typeof OwnedPlanEditorScreen>["loadPlan"]
+    >()
+      .mockResolvedValueOnce(completeSnapshot({ name: "Original plan" }))
+      .mockResolvedValueOnce(latest);
+    await renderEditor({ loadPlan, savePlan });
+
+    await fireEvent.changeText(
+      await screen.findByLabelText("Plan name"),
+      "My unsaved local edit",
+    );
+    await fireEvent.press(
+      screen.getByRole("button", { name: "Save Plan Changes" }),
+    );
+
+    expect(await screen.findByText("Plan changed elsewhere"))
+      .toBeOnTheScreen();
+    expect(screen.getByText(
+      "Your draft is still here and was not saved over the latest plan.",
+    )).toBeOnTheScreen();
+    expect(screen.getByDisplayValue("My unsaved local edit")).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Review latest",
+    }));
+
+    await waitFor(() => expect(loadPlan).toHaveBeenCalledTimes(2));
+    expect(screen.getByDisplayValue("My unsaved local edit")).toBeOnTheScreen();
+    expect(screen.queryByText("Plan changed elsewhere")).not.toBeOnTheScreen();
+  });
+
   it("covers loading, load error, empty, partial, populated, and many-day states", async () => {
     const pending = deferred<OwnedPlanSnapshot | null>();
     const { rendered } = await renderEditor({
@@ -599,7 +646,10 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
     expect(screen.getByTestId("owned-plan-editor-loading"))
       .toBeOnTheScreen();
 
-    pending.resolve(null);
+    await act(async () => {
+      pending.resolve(null);
+      await pending.promise;
+    });
     expect(await screen.findByText("Plan could not be loaded"))
       .toBeOnTheScreen();
     await rendered.unmount();
@@ -710,6 +760,58 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
+  it("blocks discard and dismiss paths while dirty-leave save is still in flight", async () => {
+    const pendingSave = deferred<OwnedPlanCommittedResult>();
+    const savePlan = jest.fn(() => pendingSave.promise);
+    const onBack = jest.fn();
+    await renderEditor({
+      loadPlan: jest.fn(async () => completeSnapshot()),
+      onBack,
+      savePlan,
+    });
+
+    await fireEvent.changeText(
+      await screen.findByLabelText("Plan name"),
+      "Pending Save Name",
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
+    await fireEvent.press(
+      await screen.findByRole("button", { name: "Save changes" }),
+    );
+
+    expect(savePlan).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Discard" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Keep editing" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Discard" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Keep editing" }));
+    await fireEvent.press(
+      screen.getByLabelText("Dismiss sheet", { includeHiddenElements: true }),
+    );
+    await fireEvent(
+      screen.getByTestId("bottom-sheet-modal"),
+      "requestClose",
+    );
+    await fireEvent(screen.getByTestId("bottom-sheet-frame"), "keyDown", {
+      nativeEvent: { key: "Escape", preventDefault: jest.fn() },
+    });
+
+    expect(onBack).not.toHaveBeenCalled();
+
+    await act(async () => {
+      pendingSave.resolve(committed(completeSnapshot({
+        name: "Pending Save Name",
+        revision: 2,
+      }), "save"));
+      await pendingSave.promise;
+    });
+
+    await waitFor(() => {
+      expect(onBack).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("reorders only the draft and persists ordinals with Save Plan Changes", async () => {
     const source = completeSnapshot({
       days: [
@@ -739,7 +841,7 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
     expect(await screen.findByTestId("drag-day-Recovery")).toHaveProp(
       "accessibilityActions",
       expect.arrayContaining([
-        expect.objectContaining({ label: "Move up" }),
+        expect.objectContaining({ label: "Move earlier" }),
       ]),
     );
     await fireEvent(
@@ -1414,9 +1516,9 @@ describe("OwnedPlanEditorScreen reorder hierarchy", () => {
     expect(screen.getByTestId("drag-day-Recovery"))
       .toHaveStyle({ minHeight: 48, minWidth: 48 });
     expect(screen.queryByText("Position 2 of 2")).not.toBeOnTheScreen();
-    expect(screen.queryByRole("button", { name: "Move Recovery up" }))
+    expect(screen.queryByRole("button", { name: "Move Recovery earlier" }))
       .not.toBeOnTheScreen();
-    expect(screen.queryByRole("button", { name: "Move Recovery down" }))
+    expect(screen.queryByRole("button", { name: "Move Recovery later" }))
       .not.toBeOnTheScreen();
     await rendered.unmount();
     await act(() => {
@@ -1458,10 +1560,10 @@ describe("OwnedPlanEditorScreen reorder hierarchy", () => {
     )).toHaveStyle({ minHeight: 48, minWidth: 48 });
     expect(screen.queryByText("Position 2 of 2")).not.toBeOnTheScreen();
     expect(screen.queryByRole("button", {
-      name: "Move A very long plan day name that must remain fully reachable up",
+      name: "Move A very long plan day name that must remain fully reachable earlier",
     })).not.toBeOnTheScreen();
     expect(screen.queryByRole("button", {
-      name: "Move A very long plan day name that must remain fully reachable down",
+      name: "Move A very long plan day name that must remain fully reachable later",
     })).not.toBeOnTheScreen();
 
     await rendered.unmount();

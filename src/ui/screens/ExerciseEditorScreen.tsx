@@ -72,6 +72,7 @@ export type ExerciseEditorOrigin =
   | Readonly<{
       kind: "custom_copy";
       sourceExerciseId: string;
+      sourceExerciseRevision: number;
       sourceName: string;
       draft: ExerciseEditorDraft;
     }>;
@@ -423,7 +424,11 @@ export function ExerciseEditorScreen({
               void commit();
             }}
             ref={saveActionRef}
-            testID="exercise-editor-save"
+            testID={mode === "edit"
+              ? "exercise-editor-save-edit"
+              : origin.kind === "custom_copy"
+                ? "exercise-editor-save-copy"
+                : "exercise-editor-save-create"}
           />
         )}
         onRequestBack={onBack}

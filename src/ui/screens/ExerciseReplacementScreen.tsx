@@ -38,6 +38,9 @@ import {
   ImpactPreview,
 } from "../components/ImpactPreview";
 import {
+  ConfirmationDialog,
+} from "../components/ConfirmationDialog";
+import {
   radius,
   sizes,
   space,
@@ -66,7 +69,7 @@ export type ExerciseReplacementScreenProps = Readonly<{
   ): Promise<ExerciseReplacementCommandResult>;
   onBack(): void;
   onSaved(planId: string): void;
-  createRequestId?(): string;
+  createRequestId?(): string | Promise<string>;
   width?: number;
 }>;
 
@@ -80,6 +83,13 @@ const reviewLabels: readonly Readonly<{
   { key: "progression", label: "Progression reviewed" },
   { key: "historyImmutable", label: "History remains unchanged" },
 ];
+const reviewTestIds: Readonly<Record<ReviewKey, string>> = Object.freeze({
+  targets: "exercise-replacement-review-targets",
+  warmups: "exercise-replacement-review-warmups",
+  rest: "exercise-replacement-review-rest",
+  progression: "exercise-replacement-review-progression",
+  historyImmutable: "exercise-replacement-review-historyImmutable",
+});
 
 function targetSummary(target: MetricTarget): string {
   switch (target.profile) {
@@ -135,6 +145,7 @@ function SelectionRow({
   supportingText,
   role,
   onPress,
+  testID,
 }: Readonly<{
   checked: boolean;
   disabled?: boolean;
@@ -142,6 +153,7 @@ function SelectionRow({
   supportingText?: string;
   role: "checkbox" | "radio";
   onPress(): void;
+  testID?: string;
 }>) {
   const { colors } = useAppTheme();
   return (
@@ -164,6 +176,7 @@ function SelectionRow({
           opacity: disabled ? 0.62 : 1,
         },
       ]}
+      testID={testID}
     >
       <Text style={[
         typeScale.bodyStrong as TextStyle,
@@ -216,7 +229,9 @@ export function ExerciseReplacementScreen({
     historyImmutable: false,
   });
   const [saving, setSaving] = useState(false);
+  const [confirmVisible, setConfirmVisible] = useState(false);
   const [saveError, setSaveError] = useState<"failed" | "stale" | null>(null);
+  const saveActionRef = useRef<View>(null);
   const adaptiveWidth = width === undefined ? {} : { width };
 
   useEffect(() => {
@@ -304,7 +319,7 @@ export function ExerciseReplacementScreen({
     const fingerprint = JSON.stringify(inputBase);
     const requestId = requestRef.current?.fingerprint === fingerprint
       ? requestRef.current.requestId
-      : createRequestId?.()
+      : await Promise.resolve(createRequestId?.())
         ?? `plan-impact-replace:${planId}:${occurrenceId}:${preview.previewToken.slice(-12)}`;
     requestRef.current = { fingerprint, requestId };
     try {
@@ -320,9 +335,11 @@ export function ExerciseReplacementScreen({
       if (code === "plan_impact_preview_stale") {
         requestRef.current = null;
         setSaveError("stale");
+        setConfirmVisible(false);
         setRetryGeneration((value) => value + 1);
       } else {
         setSaveError("failed");
+        setConfirmVisible(false);
       }
     } finally {
       setSaving(false);
@@ -403,10 +420,15 @@ export function ExerciseReplacementScreen({
     );
   }
 
+  const replacementName = preview.candidates.find(({ exerciseId }) =>
+    exerciseId === replacementExerciseId
+  )?.name ?? "the selected compatible exercise";
+
   return (
-    <AdaptiveScreen
-      onRequestBack={onBack}
-      primary={(
+    <>
+      <AdaptiveScreen
+        onRequestBack={onBack}
+        primary={(
         <View style={styles.screen}>
           <ScreenHeader
             backAction={onBack}
@@ -465,7 +487,7 @@ export function ExerciseReplacementScreen({
                 accessibilityRole="radiogroup"
                 style={styles.selectionGroup}
               >
-                {compatible.map((candidate) => (
+                {compatible.map((candidate, index) => (
                   <SelectionRow
                     checked={candidate.exerciseId === replacementExerciseId}
                     key={candidate.exerciseId}
@@ -476,6 +498,9 @@ export function ExerciseReplacementScreen({
                     }}
                     role="radio"
                     supportingText={`${candidate.metricIdentity.profile} · contract ${candidate.metricIdentity.contractVersion} · generation ${candidate.metricIdentity.exerciseMetricGeneration}`}
+                    {...(index === 0
+                      ? { testID: "exercise-replacement-first-compatible" }
+                      : {})}
                   />
                 ))}
               </View>
@@ -546,6 +571,7 @@ export function ExerciseReplacementScreen({
                   setSaveError(null);
                 }}
                 role="checkbox"
+                testID={reviewTestIds[key]}
               />
             ))}
           </View>
@@ -568,13 +594,28 @@ export function ExerciseReplacementScreen({
             disabled={replacementExerciseId === null || !reviewComplete}
             label="Save replacement"
             onPress={() => {
-              void save();
+              setConfirmVisible(true);
             }}
+            ref={saveActionRef}
           />
         </View>
       )}
-      {...adaptiveWidth}
-    />
+        {...adaptiveWidth}
+      />
+      <ConfirmationDialog
+        body={`Replace ${selectedOccurrences.length} future ${selectedOccurrences.length === 1 ? "occurrence" : "occurrences"} with ${replacementName}. Current workouts and completed history remain unchanged.`}
+        cancelLabel="Keep reviewing"
+        confirmBusy={saving}
+        confirmLabel="Replace exercises"
+        heading="Replace future plan exercises?"
+        onCancel={() => setConfirmVisible(false)}
+        onConfirm={() => {
+          void save();
+        }}
+        restoreFocusRef={saveActionRef}
+        visible={confirmVisible}
+      />
+    </>
   );
 }
 

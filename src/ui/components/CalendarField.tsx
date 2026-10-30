@@ -1,17 +1,8 @@
-import React, {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
-  AccessibilityInfo,
-  Modal,
-  ScrollView,
   StyleSheet,
   Text,
   View,
-  findNodeHandle,
   useWindowDimensions,
   type TextStyle,
 } from "react-native";
@@ -29,10 +20,12 @@ import {
   type LocalDate,
 } from "../../domains/scheduling/localDate";
 import {
+  ActionRow,
   FocusablePressable,
   PrimaryAction,
   SecondaryAction,
 } from "./index";
+import { BottomSheet, useBottomSheetCancel } from "./BottomSheet";
 import {
   radius,
   sizes,
@@ -74,10 +67,6 @@ const WEEKDAY_SHORT_NAMES = [
 const CALENDAR_COLUMNS = 7;
 const CALENDAR_CELL_COUNT = 42;
 const MONTH_SWIPE_COMPLETE_DISTANCE = 72;
-const COMPACT_DIALOG_INSET = space[1];
-const COMPACT_DIALOG_PADDING = space[2];
-const REGULAR_DIALOG_INSET = space[4];
-const REGULAR_DIALOG_PADDING = space[4];
 const MAX_DIALOG_WIDTH = 720;
 
 function partsOf(value: LocalDate): Readonly<{
@@ -187,8 +176,9 @@ function monthHasSelectableDate(
     && (maximumDate === null || compareLocalDates(first, maximumDate) !== 1);
 }
 
-function labelForMonth(month: Month): string {
-  return `${MONTH_NAMES[month.month - 1]} ${month.year}`;
+function labelForMonth(month: Month, style: "long" | "short" = "long"): string {
+  const monthName = MONTH_NAMES[month.month - 1]!;
+  return `${style === "short" ? monthName.slice(0, 3) : monthName} ${month.year}`;
 }
 
 function longDateLabel(value: LocalDate): string {
@@ -234,6 +224,12 @@ export type CalendarFieldProps = Readonly<{
   help?: string;
 }>;
 
+function CalendarCancelAction() {
+  const cancelSheet = useBottomSheetCancel();
+
+  return <SecondaryAction label="Keep Original Date" onPress={() => cancelSheet?.()} />;
+}
+
 /**
  * A civil-date selector. It never parses a date-only value through JavaScript
  * Date, so callers retain their LocalDate and timezone semantics.
@@ -250,11 +246,8 @@ export function CalendarField({
   help,
 }: CalendarFieldProps) {
   const { colors } = useAppTheme();
-  const { fontScale, height: windowHeight, width: windowWidth } =
-    useWindowDimensions();
+  const { fontScale, width: windowWidth } = useWindowDimensions();
   const triggerRef = useRef<View>(null);
-  const dialogRef = useRef<View>(null);
-  const wasOpenRef = useRef(false);
   const selectedValue = validLocalDate(value);
   const parsedDefault = validLocalDate(defaultDate);
   const defaultValue = parsedDefault ?? selectedValue;
@@ -281,20 +274,6 @@ export function CalendarField({
     initialDisplayValue === null ? null : monthOf(initialDisplayValue),
   );
 
-  useEffect(() => {
-    if (open) {
-      wasOpenRef.current = true;
-      dialogRef.current?.focus();
-      return;
-    }
-    if (wasOpenRef.current) {
-      wasOpenRef.current = false;
-      triggerRef.current?.focus();
-      const triggerHandle = findNodeHandle(triggerRef.current);
-      AccessibilityInfo.setAccessibilityFocus(triggerHandle ?? 0);
-    }
-  }, [open]);
-
   const openCalendar = () => {
     const displayValue = selectedValue ?? (emptyDefaultValid
       ? parsedDefault
@@ -305,10 +284,6 @@ export function CalendarField({
     setDraft(selectedValue);
     setDisplayMonth(monthOf(displayValue));
     setOpen(true);
-  };
-
-  const cancel = () => {
-    setOpen(false);
   };
 
   const confirm = () => {
@@ -359,18 +334,7 @@ export function CalendarField({
         : null)
     : monthOf(selectedValue));
   const compactWidth = windowWidth <= 360;
-  const dialogInset = compactWidth
-    ? COMPACT_DIALOG_INSET
-    : REGULAR_DIALOG_INSET;
-  const dialogPadding = compactWidth
-    ? COMPACT_DIALOG_PADDING
-    : REGULAR_DIALOG_PADDING;
-  const dialogWidth = Math.min(
-    MAX_DIALOG_WIDTH,
-    Math.max(0, windowWidth - (dialogInset * 2)),
-  );
   const gridWidth = sizes.minimumTarget * CALENDAR_COLUMNS;
-  const scrollFirst = windowHeight < 700 || fontScale >= 1.5;
   const moveMonth = (direction: -1 | 1) => {
     if (calendarMonth === null) {
       return;
@@ -448,59 +412,28 @@ export function CalendarField({
           {error}
         </Text>
       )}
-      <Modal
-        animationType="none"
-        onRequestClose={cancel}
-        transparent
+      <BottomSheet
+        contentStyle={{
+          alignItems: "center",
+          padding: compactWidth ? space[2] : space[4],
+        }}
+        heading="Select date"
+        onCancel={() => setOpen(false)}
+        restoreFocusRef={triggerRef}
+        scrollTestID="calendar-modal-scroll"
         visible={open}
       >
         <GestureHandlerRootView
-          style={styles.modalGestureRoot}
+          style={styles.gestureRoot}
           testID="calendar-dialog-gesture-root"
         >
-        <View
-          accessibilityViewIsModal
-          style={styles.modalBackdrop}
-        >
-          <ScrollView
-            contentContainerStyle={[
-              styles.modalScrollContent,
-              scrollFirst && styles.modalScrollContentCompact,
-              { padding: dialogInset },
-            ]}
-            horizontal={false}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator
-            style={styles.modalScroll}
-            testID="calendar-modal-scroll"
+          <View
+            accessibilityLabel="Calendar grid and actions"
+            style={styles.calendarContent}
+            testID="calendar-dialog"
           >
-            <View
-              accessibilityLabel="Calendar dialog"
-              accessibilityViewIsModal
-              focusable
-              ref={dialogRef}
-              style={[
-                styles.dialog,
-                {
-                  backgroundColor: colors.surface,
-                  borderColor: colors.divider,
-                  padding: dialogPadding,
-                  width: dialogWidth,
-                },
-              ]}
-              testID="calendar-dialog"
-            >
-              {calendarMonth === null ? null : (
-                <>
-                <Text
-                  accessibilityRole="header"
-                  style={[
-                    typeScale.sectionTitle as TextStyle,
-                    { color: colors.textPrimary },
-                  ]}
-                >
-                  Select date
-                </Text>
+            {calendarMonth === null ? null : (
+              <>
                 <Text
                   accessibilityLiveRegion="polite"
                   style={[
@@ -521,6 +454,7 @@ export function CalendarField({
                     onPress={() => moveMonth(-1)}
                   />
                   <Text
+                    accessibilityLabel={labelForMonth(calendarMonth)}
                     accessibilityRole="header"
                     style={[
                       typeScale.sectionTitle as TextStyle,
@@ -528,7 +462,7 @@ export function CalendarField({
                       { color: colors.textPrimary },
                     ]}
                   >
-                    {labelForMonth(calendarMonth)}
+                    {labelForMonth(calendarMonth, "short")}
                   </Text>
                   <SecondaryAction
                     disabled={!monthHasSelectableDate(
@@ -638,21 +572,19 @@ export function CalendarField({
                     }}
                   />
                 )}
-                <View style={styles.confirmActions} testID="calendar-confirm-actions">
-                  <SecondaryAction label="Keep Original Date" onPress={cancel} />
+                <ActionRow  testID="calendar-confirm-actions">
+                  <CalendarCancelAction />
                   <PrimaryAction
                     disabled={draft === null || !withinBounds(draft, minimum, maximum)}
                     label="Apply Date"
                     onPress={confirm}
                   />
-                </View>
-                </>
-              )}
-            </View>
-          </ScrollView>
-        </View>
+                </ActionRow>
+              </>
+            )}
+          </View>
         </GestureHandlerRootView>
-      </Modal>
+      </BottomSheet>
     </View>
   );
 }
@@ -674,10 +606,10 @@ const styles = StyleSheet.create({
     minWidth: sizes.minimumTarget,
     width: sizes.minimumTarget,
   },
-  dialog: {
-    borderRadius: radius.emphasized,
-    borderWidth: StyleSheet.hairlineWidth,
+  calendarContent: {
     gap: space[4],
+    maxWidth: MAX_DIALOG_WIDTH,
+    width: "100%",
   },
   field: {
     gap: space[1],
@@ -687,24 +619,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
   },
-  modalBackdrop: {
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
-    flex: 1,
-  },
-  modalGestureRoot: {
-    flex: 1,
-  },
-  modalScroll: {
-    flex: 1,
+  gestureRoot: {
     width: "100%",
-  },
-  modalScrollContent: {
-    alignItems: "center",
-    flexGrow: 1,
-    justifyContent: "center",
-  },
-  modalScrollContentCompact: {
-    justifyContent: "flex-start",
   },
   monthActions: {
     alignItems: "center",

@@ -1,0 +1,5844 @@
+{
+  "schema_version": 4,
+  "producer": "phase14-native-observation/v4",
+  "suite": "phase14",
+  "verdict": "REVIEW_REQUIRED",
+  "build_manifest": "artifacts/native/phase14/build.json",
+  "base_head": "61bb521aa41b3a9ecd78db0651b12a6b82a623cb",
+  "source_tree_sha256": "825275756fbfbf2d77c67fbe88b694a01f1b657d97b67e99737f7d6acb6e11f2",
+  "package": "com.fchoo.gymtracker.devtest",
+  "profile": "development-test",
+  "device_identity_sha256": "96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9",
+  "apk": {
+    "path": "artifacts/native/phase14/gym-tracker-phase14-devtest.apk",
+    "sha256": "90f8477219f52e8fa0b9306afede9fc3eff98120aab7ba86edbfa5fbc43fa05b",
+    "size_bytes": 131770640,
+    "page_alignment_kib": 16,
+    "page_alignment_verified": true,
+    "installed_sha256": "90f8477219f52e8fa0b9306afede9fc3eff98120aab7ba86edbfa5fbc43fa05b",
+    "matches_retained_apk": true
+  },
+  "captured_started_at": "2026-10-10T10:40:13.440Z",
+  "captured_finished_at": "2026-10-10T10:58:23.711Z",
+  "matrix": {
+    "schemaVersion": 5,
+    "suite": "phase14",
+    "package": "com.fchoo.gymtracker.devtest",
+    "profile": "development-test",
+    "themes": [
+      "light",
+      "dark",
+      "system-on-light",
+      "system-on-dark"
+    ],
+    "appearances": [
+      {
+        "id": "light",
+        "selection": "Light",
+        "renderedTheme": "light",
+        "osScheme": "dark"
+      },
+      {
+        "id": "dark",
+        "selection": "Dark",
+        "renderedTheme": "dark",
+        "osScheme": "light"
+      },
+      {
+        "id": "system-on-light",
+        "selection": "System",
+        "renderedTheme": "light",
+        "osScheme": "light"
+      },
+      {
+        "id": "system-on-dark",
+        "selection": "System",
+        "renderedTheme": "dark",
+        "osScheme": "dark"
+      }
+    ],
+    "liveOsSwitch": true,
+    "explicitThemeInvariant": true,
+    "viewports": [
+      {
+        "width": 360,
+        "height": 800
+      },
+      {
+        "width": 390,
+        "height": 844
+      },
+      {
+        "width": 600,
+        "height": 960
+      },
+      {
+        "width": 840,
+        "height": 1080
+      }
+    ],
+    "orientations": [
+      "portrait",
+      "landscape"
+    ],
+    "fontScales": [
+      1,
+      2
+    ],
+    "minTargetDp": 48,
+    "focusRingDp": 3,
+    "capture": {
+      "semanticTree": "pre-and-post-each-action",
+      "focusKeyTrace": "observed-adb",
+      "targetWindowBounds": true,
+      "runtimeStateDigest": "development-test-app-canonical-logical-sqlite-source",
+      "screenshot": true,
+      "visualComparison": "pngjs-7.0.0",
+      "referenceNativeOverlayDifferenceMask": true,
+      "contactSheetsAreIndexOnly": true,
+      "platformChromeSeparate": true,
+      "unexplainedDifferenceFails": true
+    },
+    "input": [
+      "dpad",
+      "enter",
+      "space",
+      "back",
+      "escape",
+      "scrim",
+      "ime-clearance",
+      "launch"
+    ],
+    "motion": [
+      "normal",
+      "reduced-motion-equivalence"
+    ],
+    "startup": [
+      "factual-loading",
+      "notification-permission",
+      "continue-without-alerts"
+    ],
+    "recovery": [
+      "development-test-fixtures",
+      "no-write-navigation"
+    ],
+    "states": [
+      {
+        "caseId": "shell.four-roots",
+        "stage": "phase14-four-roots",
+        "flow": "shell",
+        "state": {
+          "id": "four-roots",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "workout-root",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Workout"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "label": "Workout",
+                "selected": true
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "root-dpad-workout-to-calendar",
+            "input": "DPAD_RIGHT",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 22
+            },
+            "preparation": {
+              "stage": "phase14-four-roots",
+              "action": "root-dpad-workout-to-calendar"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61,
+                61,
+                20,
+                21
+              ],
+              "target": "Workout",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true,
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Workout",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                },
+                {
+                  "label": "Calendar",
+                  "selected": false,
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Calendar",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          },
+          {
+            "id": "root-enter-calendar",
+            "input": "ENTER",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 66
+            },
+            "preparation": {
+              "stage": "phase14-four-roots",
+              "action": "root-enter-calendar"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61,
+                61,
+                20
+              ],
+              "target": "Calendar",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                },
+                {
+                  "label": "Calendar",
+                  "selected": false,
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Calendar",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Calendar",
+                "Calendar month grid"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Calendar",
+                  "selected": true
+                }
+              ],
+              "focus": {
+                "equals": "Calendar",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          },
+          {
+            "id": "root-space-library",
+            "input": "SPACE",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 62
+            },
+            "preparation": {
+              "stage": "phase14-four-roots",
+              "action": "root-space-library"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61,
+                61,
+                20,
+                22
+              ],
+              "target": "Library",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                },
+                {
+                  "label": "Library",
+                  "selected": false,
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Library",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Library",
+                "Library section"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Library",
+                  "selected": true
+                }
+              ],
+              "focus": {
+                "equals": "Library",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "Workout",
+            "expectedVisible": "Workout"
+          },
+          {
+            "id": "Calendar",
+            "expectedVisible": "Calendar"
+          },
+          {
+            "id": "Library",
+            "expectedVisible": "Library"
+          },
+          {
+            "id": "Progress",
+            "expectedVisible": "Progress"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "one-bottom-navigation",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "root-switches-in-place",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "required-actions-reachable",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "app/(tabs)/__tests__/_layout.test.tsx",
+          "app/(tabs)/__tests__/root-shell.integration.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "motionSensitive": false,
+        "referencePolicy": {
+          "kind": "revision18-png",
+          "source": {
+            "revision": 18,
+            "approvedJsonSha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+            "approvedHtmlSha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96"
+          },
+          "referenceId": "revision18-state-clean-workout-root",
+          "captureState": "workout-root",
+          "exactConfiguration": {
+            "width": 390,
+            "height": 844,
+            "orientation": "portrait",
+            "fontScale": 1
+          },
+          "filesByRenderedTheme": {
+            "light": {
+              "file": ".planning/design/v1.2-browser-evidence/light-workout-root.png",
+              "sha256": "513173987c6b29d370f5428e3226608a795d48cdf5a9c258a8624dd2bed0ad2d"
+            },
+            "dark": {
+              "file": ".planning/design/v1.2-browser-evidence/dark-workout-root.png",
+              "sha256": "ffd8cf979d3ba679cc744e58a91d30d7bd34cda055fc0bff5ae8c09d886de301"
+            }
+          }
+        }
+      },
+      {
+        "caseId": "shell.root-state",
+        "stage": "phase14-root-state",
+        "flow": "shell",
+        "state": {
+          "id": "root-state",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "workout-root-after-library-back",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Workout"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "label": "Workout",
+                "selected": true
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "back-from-library",
+            "input": "BACK",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 4
+            },
+            "preparation": {
+              "stage": "phase14-root-state",
+              "action": "back-from-library"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "Library",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Library",
+                "Library section"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Library",
+                  "selected": true
+                }
+              ],
+              "focus": {
+                "equals": "Library",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                }
+              ],
+              "focus": {
+                "equals": "Workout",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "Workout",
+            "expectedVisible": "Workout"
+          },
+          {
+            "id": "Library",
+            "expectedVisible": "Library"
+          },
+          {
+            "id": "Workout",
+            "expectedVisible": "Workout"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "root-state-restored",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "focus-restored",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "src/ui/shell/AppRootShell.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "motionSensitive": false,
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Back-stack and focus restoration are native navigation behavior, not an immutable prototype bitmap."
+        }
+      },
+      {
+        "caseId": "shell.appearance",
+        "stage": "phase14-appearance",
+        "flow": "shell",
+        "state": {
+          "id": "appearance",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "progress-after-all-roots-theme-journey",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Progress"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "label": "Progress",
+                "selected": true
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "appearance-dpad-system-to-light",
+            "input": "DPAD_DOWN",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 20
+            },
+            "preparation": {
+              "stage": "phase14-appearance",
+              "action": "appearance-dpad-system-to-light"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "System",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings",
+                "Appearance"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "System",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "System",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings",
+                "Appearance"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Light",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Light",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "App Settings",
+            "expectedVisible": "App Settings"
+          },
+          {
+            "id": "Appearance",
+            "expectedVisible": "Appearance"
+          },
+          {
+            "id": "selected-theme",
+            "expectedVisible": "selected-theme"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "explicit-selection-observed",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "rendered-theme-matches",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "all-roots-recolor",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "src/ui/__tests__/foundation.test.tsx",
+          "src/ui/__tests__/SettingsScreen.test.tsx"
+        ],
+        "runtimeStatePolicy": "preference-write-reviewed",
+        "motionSensitive": false,
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "The appearance journey ends on non-Workout roots; only state-clean Workout-root captures use the pinned visual references."
+        }
+      },
+      {
+        "caseId": "shell.tokens",
+        "stage": "phase14-tokens",
+        "flow": "shell",
+        "state": {
+          "id": "tokens",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "shared-token-workout-root",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Workout"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "label": "Workout",
+                "selected": true
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [],
+        "checkpoints": [
+          {
+            "id": "Workout",
+            "expectedVisible": "Workout"
+          },
+          {
+            "id": "shared-token-surface",
+            "expectedVisible": "shared-token-surface"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "token-source-bound",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "minimum-targets",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "focus-ring-3dp",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "src/ui/__tests__/foundation.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "motionSensitive": false,
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Token evidence is numeric and semantic; visual comparison is owned by the state-clean Workout-root shell captures."
+        }
+      },
+      {
+        "caseId": "shell.sheets",
+        "stage": "phase14-sheets",
+        "flow": "accessibility",
+        "state": {
+          "id": "sheets",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "app-settings-sheet",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "App Settings",
+              "Appearance"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "resourceIdEndsWith": "bottom-sheet-frame"
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "sheet-dpad-heading-to-system",
+            "input": "DPAD_DOWN",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 20
+            },
+            "preparation": {
+              "stage": "phase14-sheets",
+              "action": "sheet-dpad-heading-to-system"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "App Settings",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings",
+                "Appearance"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "App Settings",
+                  "focused": true
+                },
+                {
+                  "resourceIdEndsWith": "bottom-sheet-frame"
+                }
+              ],
+              "focus": {
+                "equals": "App Settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "System",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "System",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          },
+          {
+            "id": "sheet-escape",
+            "input": "ESCAPE",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 111
+            },
+            "preparation": {
+              "stage": "phase14-sheets",
+              "action": "sheet-escape"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "App Settings",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "resourceIdEndsWith": "bottom-sheet-frame"
+                }
+              ],
+              "focus": {
+                "equals": "App Settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Library"
+              ],
+              "absent": [
+                "App Settings"
+              ],
+              "nodes": [
+                {
+                  "label": "Library",
+                  "selected": true
+                },
+                {
+                  "label": "Open App Settings",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Open App Settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          },
+          {
+            "id": "sheet-back",
+            "input": "BACK",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 4
+            },
+            "preparation": {
+              "stage": "phase14-sheets",
+              "action": "sheet-back"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "App Settings",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "resourceIdEndsWith": "bottom-sheet-frame"
+                }
+              ],
+              "focus": {
+                "equals": "App Settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Library"
+              ],
+              "absent": [
+                "App Settings"
+              ],
+              "nodes": [
+                {
+                  "label": "Library",
+                  "selected": true
+                },
+                {
+                  "label": "Open App Settings",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Open App Settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          },
+          {
+            "id": "sheet-scrim",
+            "input": "SCRIM",
+            "transport": "adb-coordinate",
+            "command": {
+              "target": "outside-sheet"
+            },
+            "preparation": {
+              "stage": "phase14-sheets",
+              "action": "sheet-scrim"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "App Settings",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "resourceIdEndsWith": "bottom-sheet-frame"
+                }
+              ],
+              "focus": {
+                "equals": "App Settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Library"
+              ],
+              "absent": [
+                "App Settings"
+              ],
+              "nodes": [
+                {
+                  "label": "Library",
+                  "selected": true
+                },
+                {
+                  "label": "Open App Settings",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Open App Settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "sheet-heading-focused",
+            "expectedVisible": "sheet-heading-focused"
+          },
+          {
+            "id": "background-inert",
+            "expectedVisible": "background-inert"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "dismissal-observed",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "trigger-focus-restored",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "src/ui/components/BottomSheet.test.tsx",
+          "src/ui/components/ConfirmationDialog.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "motionSensitive": true,
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Sheet semantics, focus, scrim and dismissal have no exact immutable Workout-root reference."
+        }
+      },
+      {
+        "caseId": "shell.toasts",
+        "stage": "phase14-toasts",
+        "flow": "accessibility",
+        "state": {
+          "id": "toasts",
+          "dataPolicy": "development-test-proof-route",
+          "captureState": "toast-background-idle",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Toast host mounted",
+              "Background control idle",
+              "Toast proof active"
+            ],
+            "absent": [
+              "Background control activated"
+            ],
+            "nodes": [],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "toast-background-enter",
+            "input": "ENTER",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 66
+            },
+            "preparation": {
+              "stage": "phase14-toasts",
+              "action": "toast-background-enter"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "Tap background control",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Toast host mounted",
+                "Background control idle",
+                "Toast proof active"
+              ],
+              "absent": [
+                "Background control activated"
+              ],
+              "nodes": [
+                {
+                  "label": "Tap background control",
+                  "focused": true,
+                  "enabled": true
+                }
+              ],
+              "focus": {
+                "equals": "Tap background control",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Toast host mounted",
+                "Background control activated",
+                "Toast proof active"
+              ],
+              "absent": [
+                "Background control idle"
+              ],
+              "nodes": [],
+              "focus": {
+                "equals": "Tap background control",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "semantic-toast",
+            "expectedVisible": "semantic-toast"
+          },
+          {
+            "id": "background-control-idle",
+            "expectedVisible": "background-control-idle"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "toast-below-top-bar",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "background-activation-observed",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "status-semantic",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "src/ui/components/SemanticToast.test.tsx",
+          "app/__tests__/phase14-toast-proof.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "motionSensitive": true,
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "The toast proof route is not the Workout-root reference state."
+        }
+      },
+      {
+        "caseId": "shell.launch",
+        "stage": "phase14-launch",
+        "flow": "accessibility",
+        "state": {
+          "id": "launch",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "workout-root-after-launch",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Workout"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "label": "Workout",
+                "selected": true
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "cold-launch-to-workout",
+            "input": "LAUNCH",
+            "transport": "adb-launch",
+            "command": {
+              "intent": "launcher"
+            },
+            "preparation": {
+              "stage": "phase14-launch",
+              "action": "cold-launch-to-workout"
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": false,
+              "semanticRequired": false,
+              "visible": [],
+              "absent": [],
+              "nodes": [],
+              "focus": {
+                "allowNull": true
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                }
+              ],
+              "focus": {
+                "allowNull": true
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "package-stopped",
+            "expectedVisible": "package-stopped"
+          },
+          {
+            "id": "factual-loading",
+            "expectedVisible": "factual-loading"
+          },
+          {
+            "id": "Workout",
+            "expectedVisible": "Workout"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "real-launch-transition",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "no-fabricated-content",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "root-ready",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "app/__tests__/root-layout.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "motionSensitive": true,
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Startup and permission recovery are lifecycle states, not a static visual reference."
+        }
+      },
+      {
+        "caseId": "shell.rest-alerts",
+        "stage": "phase14-rest-alerts",
+        "flow": "settings-recovery",
+        "state": {
+          "id": "rest-alerts",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "app-settings-rest-alerts",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "App Settings",
+              "Rest alerts"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "resourceIdEndsWith": "bottom-sheet-frame"
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "back-from-rest-alerts-sheet",
+            "input": "BACK",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 4
+            },
+            "preparation": {
+              "stage": "phase14-rest-alerts",
+              "action": "back-from-rest-alerts-sheet"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "App Settings",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings",
+                "Rest alerts"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "resourceIdEndsWith": "bottom-sheet-frame"
+                }
+              ],
+              "focus": {
+                "equals": "App Settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [
+                "App Settings"
+              ],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                },
+                {
+                  "label": "Open App Settings",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Open App Settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "Rest alerts",
+            "expectedVisible": "Rest alerts"
+          },
+          {
+            "id": "App Settings",
+            "expectedVisible": "App Settings"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "device-cue-settings-reachable",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "focus-restored",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "src/ui/__tests__/RestAlertSettingsSheet.test.tsx",
+          "src/ui/__tests__/SettingsScreen.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "motionSensitive": false,
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Rest-alert settings are native device capabilities outside the Workout-root reference."
+        }
+      },
+      {
+        "caseId": "shell.settings-deep-links",
+        "stage": "phase14-settings-deep-links",
+        "flow": "settings-recovery",
+        "state": {
+          "id": "settings-deep-links",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "workout-after-data-recovery-back",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Workout"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "label": "Workout",
+                "selected": true
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "back-from-data-recovery",
+            "input": "BACK",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 4
+            },
+            "preparation": {
+              "stage": "phase14-settings-deep-links",
+              "action": "back-from-data-recovery"
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Manual encrypted backup"
+              ],
+              "absent": [],
+              "nodes": [],
+              "focus": {
+                "allowNull": true
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                }
+              ],
+              "focus": {
+                "equals": "Workout",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "Data and recovery",
+            "expectedVisible": "Data and recovery"
+          },
+          {
+            "id": "Workout",
+            "expectedVisible": "Workout"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "no-write-navigation",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "origin-restored",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "app/more/__tests__/index.test.tsx",
+          "app/more/__tests__/data-and-recovery.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "motionSensitive": false,
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Deep-link Back recovery is native navigation without a matching prototype bitmap."
+        }
+      },
+      {
+        "caseId": "shell.removed-sessions",
+        "stage": "phase14-removed-sessions",
+        "flow": "settings-recovery",
+        "state": {
+          "id": "removed-sessions",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "removed-sessions-route",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Removed sessions"
+            ],
+            "absent": [],
+            "nodes": [],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "back-from-removed-sessions",
+            "input": "BACK",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 4
+            },
+            "preparation": {
+              "stage": "phase14-removed-sessions",
+              "action": "back-from-removed-sessions"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "Removed sessions",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Removed sessions"
+              ],
+              "absent": [],
+              "nodes": [],
+              "focus": {
+                "equals": "Removed sessions",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                }
+              ],
+              "focus": {
+                "equals": "Workout",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "Removed sessions",
+            "expectedVisible": "Removed sessions"
+          },
+          {
+            "id": "Workout",
+            "expectedVisible": "Workout"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "read-only-navigation",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "no-source-write",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "app/more/__tests__/removed-sessions.test.tsx",
+          "src/ui/__tests__/RemovedSessionsScreen.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "motionSensitive": false,
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Removed-session recovery is not depicted by the Workout-root reference."
+        }
+      },
+      {
+        "caseId": "shell.data-recovery",
+        "stage": "phase14-data-recovery",
+        "flow": "settings-recovery",
+        "state": {
+          "id": "data-recovery",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "manual-backup-no-selection",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Restore clean",
+              "No backup was selected"
+            ],
+            "absent": [],
+            "nodes": [],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "ime-clearance-restore-field",
+            "input": "IME_CLEARANCE",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 4
+            },
+            "preparation": {
+              "stage": "phase14-data-recovery",
+              "action": "ime-clearance-restore-field"
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Restore clean",
+                "Restore password"
+              ],
+              "absent": [],
+              "nodes": [],
+              "focus": {
+                "equals": "Restore password",
+                "allowNull": false
+              },
+              "imeVisible": true,
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Restore clean",
+                "Restore password"
+              ],
+              "absent": [],
+              "nodes": [],
+              "focus": {
+                "equals": "Restore password",
+                "allowNull": false
+              },
+              "imeVisible": false,
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "Manual encrypted backup",
+            "expectedVisible": "Manual encrypted backup"
+          },
+          {
+            "id": "Restore password",
+            "expectedVisible": "Restore password"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "ime-cleared",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "cancel-does-not-write",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "app/more/__tests__/data-and-recovery.test.tsx",
+          "app/more/__tests__/manual-encrypted-backup.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "motionSensitive": false,
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Backup and IME recovery are native-only source-integrity states."
+        }
+      },
+      {
+        "caseId": "shell.automatic-backup",
+        "stage": "phase14-automatic-backup",
+        "flow": "settings-recovery",
+        "state": {
+          "id": "automatic-backup",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "automatic-backup-route",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Automatic backup settings"
+            ],
+            "absent": [],
+            "nodes": [],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "back-from-automatic-backup",
+            "input": "BACK",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 4
+            },
+            "preparation": {
+              "stage": "phase14-automatic-backup",
+              "action": "back-from-automatic-backup"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "Automatic backup settings",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Automatic backup settings"
+              ],
+              "absent": [],
+              "nodes": [],
+              "focus": {
+                "equals": "Automatic backup settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Automatic backup settings"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Automatic backup settings",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Automatic backup settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "Automatic backup settings",
+            "expectedVisible": "Automatic backup settings"
+          },
+          {
+            "id": "Data and recovery",
+            "expectedVisible": "Data and recovery"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "no-cloud-write",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "origin-restored",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "app/more/__tests__/automatic-backup-settings.test.tsx",
+          "app/more/__tests__/drive-backup-privacy.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "motionSensitive": false,
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Automatic-backup navigation has no matching Workout-root reference."
+        }
+      },
+      {
+        "caseId": "shell.manual-backup",
+        "stage": "phase14-manual-backup",
+        "flow": "settings-recovery",
+        "state": {
+          "id": "manual-backup",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "manual-backup-route",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Manual encrypted backup"
+            ],
+            "absent": [],
+            "nodes": [],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "back-from-manual-backup",
+            "input": "BACK",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 4
+            },
+            "preparation": {
+              "stage": "phase14-manual-backup",
+              "action": "back-from-manual-backup"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "Manual encrypted backup",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Manual encrypted backup"
+              ],
+              "absent": [],
+              "nodes": [],
+              "focus": {
+                "equals": "Manual encrypted backup",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Manual encrypted backup"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Manual encrypted backup",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Manual encrypted backup",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "Manual encrypted backup",
+            "expectedVisible": "Manual encrypted backup"
+          },
+          {
+            "id": "Data and recovery",
+            "expectedVisible": "Data and recovery"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "cancel-does-not-write",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "origin-restored",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "app/more/__tests__/manual-encrypted-backup.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "motionSensitive": false,
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Manual-backup recovery has no matching Workout-root reference."
+        }
+      }
+    ],
+    "stages": [
+      {
+        "stage": "phase14-four-roots",
+        "flow": "shell"
+      },
+      {
+        "stage": "phase14-root-state",
+        "flow": "shell"
+      },
+      {
+        "stage": "phase14-appearance",
+        "flow": "shell"
+      },
+      {
+        "stage": "phase14-tokens",
+        "flow": "shell"
+      },
+      {
+        "stage": "phase14-sheets",
+        "flow": "accessibility"
+      },
+      {
+        "stage": "phase14-toasts",
+        "flow": "accessibility"
+      },
+      {
+        "stage": "phase14-launch",
+        "flow": "accessibility"
+      },
+      {
+        "stage": "phase14-rest-alerts",
+        "flow": "settings-recovery"
+      },
+      {
+        "stage": "phase14-settings-deep-links",
+        "flow": "settings-recovery"
+      },
+      {
+        "stage": "phase14-removed-sessions",
+        "flow": "settings-recovery"
+      },
+      {
+        "stage": "phase14-data-recovery",
+        "flow": "settings-recovery"
+      },
+      {
+        "stage": "phase14-automatic-backup",
+        "flow": "settings-recovery"
+      },
+      {
+        "stage": "phase14-manual-backup",
+        "flow": "settings-recovery"
+      }
+    ],
+    "representativeCellCount": 17,
+    "behaviorProfiles": {
+      "required": [
+        "normal",
+        "accessibility-200",
+        "landscape-geometry",
+        "reduced-motion"
+      ],
+      "geometry": {
+        "shell.sheets": "landscape-geometry",
+        "shell.data-recovery": "landscape-geometry"
+      },
+      "motion": "reduced-motion"
+    },
+    "cells": [
+      {
+        "id": "four-roots-dark-360x800-portrait-font-2",
+        "configurationId": "dark-360x800-portrait-font-2",
+        "variant": "base",
+        "caseId": "shell.four-roots",
+        "stage": "phase14-four-roots",
+        "flow": "shell",
+        "state": {
+          "id": "four-roots",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "workout-root",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Workout"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "label": "Workout",
+                "selected": true
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "root-dpad-workout-to-calendar",
+            "input": "DPAD_RIGHT",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 22
+            },
+            "preparation": {
+              "stage": "phase14-four-roots",
+              "action": "root-dpad-workout-to-calendar"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61,
+                61,
+                20,
+                21
+              ],
+              "target": "Workout",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true,
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Workout",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                },
+                {
+                  "label": "Calendar",
+                  "selected": false,
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Calendar",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          },
+          {
+            "id": "root-enter-calendar",
+            "input": "ENTER",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 66
+            },
+            "preparation": {
+              "stage": "phase14-four-roots",
+              "action": "root-enter-calendar"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61,
+                61,
+                20
+              ],
+              "target": "Calendar",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                },
+                {
+                  "label": "Calendar",
+                  "selected": false,
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Calendar",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Calendar",
+                "Calendar month grid"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Calendar",
+                  "selected": true
+                }
+              ],
+              "focus": {
+                "equals": "Calendar",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          },
+          {
+            "id": "root-space-library",
+            "input": "SPACE",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 62
+            },
+            "preparation": {
+              "stage": "phase14-four-roots",
+              "action": "root-space-library"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61,
+                61,
+                20,
+                22
+              ],
+              "target": "Library",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                },
+                {
+                  "label": "Library",
+                  "selected": false,
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Library",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Library",
+                "Library section"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Library",
+                  "selected": true
+                }
+              ],
+              "focus": {
+                "equals": "Library",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "Workout",
+            "expectedVisible": "Workout"
+          },
+          {
+            "id": "Calendar",
+            "expectedVisible": "Calendar"
+          },
+          {
+            "id": "Library",
+            "expectedVisible": "Library"
+          },
+          {
+            "id": "Progress",
+            "expectedVisible": "Progress"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "one-bottom-navigation",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "root-switches-in-place",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "required-actions-reachable",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "app/(tabs)/__tests__/_layout.test.tsx",
+          "app/(tabs)/__tests__/root-shell.integration.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "referencePolicy": {
+          "kind": "revision18-png",
+          "source": {
+            "revision": 18,
+            "approvedJsonSha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+            "approvedHtmlSha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96"
+          },
+          "referenceId": "revision18-state-clean-workout-root",
+          "captureState": "workout-root",
+          "exactConfiguration": {
+            "width": 390,
+            "height": 844,
+            "orientation": "portrait",
+            "fontScale": 1
+          },
+          "filesByRenderedTheme": {
+            "light": {
+              "file": ".planning/design/v1.2-browser-evidence/light-workout-root.png",
+              "sha256": "513173987c6b29d370f5428e3226608a795d48cdf5a9c258a8624dd2bed0ad2d"
+            },
+            "dark": {
+              "file": ".planning/design/v1.2-browser-evidence/dark-workout-root.png",
+              "sha256": "ffd8cf979d3ba679cc744e58a91d30d7bd34cda055fc0bff5ae8c09d886de301"
+            }
+          }
+        },
+        "appearance": "dark",
+        "appearanceSelection": "Dark",
+        "renderedTheme": "dark",
+        "osScheme": "light",
+        "theme": "dark",
+        "viewport": {
+          "width": 360,
+          "height": 800
+        },
+        "orientation": "portrait",
+        "fontScale": 2,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "root-dpad-workout-to-calendar",
+          "root-enter-calendar",
+          "root-space-library"
+        ],
+        "behavior": {
+          "representative": true,
+          "profile": "accessibility-200",
+          "actionIds": [
+            "root-dpad-workout-to-calendar",
+            "root-enter-calendar",
+            "root-space-library"
+          ],
+          "logicalStateProbe": true
+        },
+        "captureRequirements": {
+          "geometry": true,
+          "layout": true,
+          "screenshot": true,
+          "semantic": true,
+          "theme": true
+        }
+      },
+      {
+        "id": "four-roots-system-on-light-390x844-portrait-font-1-system-live-switch",
+        "configurationId": "system-on-light-390x844-portrait-font-1",
+        "variant": "system-live-switch",
+        "caseId": "shell.four-roots",
+        "stage": "phase14-four-roots",
+        "flow": "shell",
+        "state": {
+          "id": "four-roots",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "workout-root",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Workout"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "label": "Workout",
+                "selected": true
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "root-dpad-workout-to-calendar",
+            "input": "DPAD_RIGHT",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 22
+            },
+            "preparation": {
+              "stage": "phase14-four-roots",
+              "action": "root-dpad-workout-to-calendar"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61,
+                61,
+                20,
+                21
+              ],
+              "target": "Workout",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true,
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Workout",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                },
+                {
+                  "label": "Calendar",
+                  "selected": false,
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Calendar",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          },
+          {
+            "id": "root-enter-calendar",
+            "input": "ENTER",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 66
+            },
+            "preparation": {
+              "stage": "phase14-four-roots",
+              "action": "root-enter-calendar"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61,
+                61,
+                20
+              ],
+              "target": "Calendar",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                },
+                {
+                  "label": "Calendar",
+                  "selected": false,
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Calendar",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Calendar",
+                "Calendar month grid"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Calendar",
+                  "selected": true
+                }
+              ],
+              "focus": {
+                "equals": "Calendar",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          },
+          {
+            "id": "root-space-library",
+            "input": "SPACE",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 62
+            },
+            "preparation": {
+              "stage": "phase14-four-roots",
+              "action": "root-space-library"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61,
+                61,
+                20,
+                22
+              ],
+              "target": "Library",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                },
+                {
+                  "label": "Library",
+                  "selected": false,
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Library",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Library",
+                "Library section"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Library",
+                  "selected": true
+                }
+              ],
+              "focus": {
+                "equals": "Library",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "Workout",
+            "expectedVisible": "Workout"
+          },
+          {
+            "id": "Calendar",
+            "expectedVisible": "Calendar"
+          },
+          {
+            "id": "Library",
+            "expectedVisible": "Library"
+          },
+          {
+            "id": "Progress",
+            "expectedVisible": "Progress"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "one-bottom-navigation",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "root-switches-in-place",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "required-actions-reachable",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "app/(tabs)/__tests__/_layout.test.tsx",
+          "app/(tabs)/__tests__/root-shell.integration.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "referencePolicy": {
+          "kind": "revision18-png",
+          "source": {
+            "revision": 18,
+            "approvedJsonSha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+            "approvedHtmlSha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96"
+          },
+          "referenceId": "revision18-state-clean-workout-root",
+          "captureState": "workout-root",
+          "exactConfiguration": {
+            "width": 390,
+            "height": 844,
+            "orientation": "portrait",
+            "fontScale": 1
+          },
+          "filesByRenderedTheme": {
+            "light": {
+              "file": ".planning/design/v1.2-browser-evidence/light-workout-root.png",
+              "sha256": "513173987c6b29d370f5428e3226608a795d48cdf5a9c258a8624dd2bed0ad2d"
+            },
+            "dark": {
+              "file": ".planning/design/v1.2-browser-evidence/dark-workout-root.png",
+              "sha256": "ffd8cf979d3ba679cc744e58a91d30d7bd34cda055fc0bff5ae8c09d886de301"
+            }
+          }
+        },
+        "appearance": "system-on-light",
+        "appearanceSelection": "System",
+        "renderedTheme": "light",
+        "osScheme": "light",
+        "theme": "system-on-light",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": true,
+        "expectedInputs": [
+          "root-dpad-workout-to-calendar",
+          "root-enter-calendar",
+          "root-space-library"
+        ],
+        "behavior": {
+          "representative": false,
+          "profile": null,
+          "actionIds": [],
+          "logicalStateProbe": false
+        },
+        "captureRequirements": {
+          "geometry": true,
+          "layout": true,
+          "screenshot": true,
+          "semantic": true,
+          "theme": true
+        },
+        "systemNightAfter": true,
+        "expectedRenderedThemeAfterSwitch": "dark"
+      },
+      {
+        "id": "root-state-dark-390x844-portrait-font-1",
+        "configurationId": "dark-390x844-portrait-font-1",
+        "variant": "base",
+        "caseId": "shell.root-state",
+        "stage": "phase14-root-state",
+        "flow": "shell",
+        "state": {
+          "id": "root-state",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "workout-root-after-library-back",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Workout"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "label": "Workout",
+                "selected": true
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "back-from-library",
+            "input": "BACK",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 4
+            },
+            "preparation": {
+              "stage": "phase14-root-state",
+              "action": "back-from-library"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "Library",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Library",
+                "Library section"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Library",
+                  "selected": true
+                }
+              ],
+              "focus": {
+                "equals": "Library",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                }
+              ],
+              "focus": {
+                "equals": "Workout",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "Workout",
+            "expectedVisible": "Workout"
+          },
+          {
+            "id": "Library",
+            "expectedVisible": "Library"
+          },
+          {
+            "id": "Workout",
+            "expectedVisible": "Workout"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "root-state-restored",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "focus-restored",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "src/ui/shell/AppRootShell.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Back-stack and focus restoration are native navigation behavior, not an immutable prototype bitmap."
+        },
+        "appearance": "dark",
+        "appearanceSelection": "Dark",
+        "renderedTheme": "dark",
+        "osScheme": "light",
+        "theme": "dark",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "back-from-library"
+        ],
+        "behavior": {
+          "representative": true,
+          "profile": "normal",
+          "actionIds": [
+            "back-from-library"
+          ],
+          "logicalStateProbe": true
+        },
+        "captureRequirements": {
+          "geometry": true,
+          "layout": true,
+          "screenshot": true,
+          "semantic": true,
+          "theme": true
+        }
+      },
+      {
+        "id": "appearance-light-390x844-portrait-font-1-explicit-theme-invariance",
+        "configurationId": "light-390x844-portrait-font-1",
+        "variant": "explicit-theme-invariance",
+        "caseId": "shell.appearance",
+        "stage": "phase14-appearance",
+        "flow": "shell",
+        "state": {
+          "id": "appearance",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "progress-after-all-roots-theme-journey",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Progress"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "label": "Progress",
+                "selected": true
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "appearance-dpad-system-to-light",
+            "input": "DPAD_DOWN",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 20
+            },
+            "preparation": {
+              "stage": "phase14-appearance",
+              "action": "appearance-dpad-system-to-light"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "System",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings",
+                "Appearance"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "System",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "System",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings",
+                "Appearance"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Light",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Light",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "App Settings",
+            "expectedVisible": "App Settings"
+          },
+          {
+            "id": "Appearance",
+            "expectedVisible": "Appearance"
+          },
+          {
+            "id": "selected-theme",
+            "expectedVisible": "selected-theme"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "explicit-selection-observed",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "rendered-theme-matches",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "all-roots-recolor",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "src/ui/__tests__/foundation.test.tsx",
+          "src/ui/__tests__/SettingsScreen.test.tsx"
+        ],
+        "runtimeStatePolicy": "preference-write-reviewed",
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "The appearance journey ends on non-Workout roots; only state-clean Workout-root captures use the pinned visual references."
+        },
+        "appearance": "light",
+        "appearanceSelection": "Light",
+        "renderedTheme": "light",
+        "osScheme": "dark",
+        "theme": "light",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": true,
+        "expectedInputs": [
+          "appearance-dpad-system-to-light"
+        ],
+        "behavior": {
+          "representative": true,
+          "profile": "normal",
+          "actionIds": [
+            "appearance-dpad-system-to-light"
+          ],
+          "logicalStateProbe": false
+        },
+        "captureRequirements": {
+          "geometry": true,
+          "layout": true,
+          "screenshot": true,
+          "semantic": true,
+          "theme": true
+        },
+        "systemNightAfter": false,
+        "expectedRenderedThemeAfterSwitch": "light"
+      },
+      {
+        "id": "appearance-dark-390x844-portrait-font-1-explicit-theme-invariance",
+        "configurationId": "dark-390x844-portrait-font-1",
+        "variant": "explicit-theme-invariance",
+        "caseId": "shell.appearance",
+        "stage": "phase14-appearance",
+        "flow": "shell",
+        "state": {
+          "id": "appearance",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "progress-after-all-roots-theme-journey",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Progress"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "label": "Progress",
+                "selected": true
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "appearance-dpad-system-to-light",
+            "input": "DPAD_DOWN",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 20
+            },
+            "preparation": {
+              "stage": "phase14-appearance",
+              "action": "appearance-dpad-system-to-light"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "System",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings",
+                "Appearance"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "System",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "System",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings",
+                "Appearance"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Light",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Light",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "App Settings",
+            "expectedVisible": "App Settings"
+          },
+          {
+            "id": "Appearance",
+            "expectedVisible": "Appearance"
+          },
+          {
+            "id": "selected-theme",
+            "expectedVisible": "selected-theme"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "explicit-selection-observed",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "rendered-theme-matches",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "all-roots-recolor",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "src/ui/__tests__/foundation.test.tsx",
+          "src/ui/__tests__/SettingsScreen.test.tsx"
+        ],
+        "runtimeStatePolicy": "preference-write-reviewed",
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "The appearance journey ends on non-Workout roots; only state-clean Workout-root captures use the pinned visual references."
+        },
+        "appearance": "dark",
+        "appearanceSelection": "Dark",
+        "renderedTheme": "dark",
+        "osScheme": "light",
+        "theme": "dark",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": true,
+        "expectedInputs": [
+          "appearance-dpad-system-to-light"
+        ],
+        "behavior": {
+          "representative": false,
+          "profile": null,
+          "actionIds": [],
+          "logicalStateProbe": false
+        },
+        "captureRequirements": {
+          "geometry": true,
+          "layout": true,
+          "screenshot": true,
+          "semantic": true,
+          "theme": true
+        },
+        "systemNightAfter": true,
+        "expectedRenderedThemeAfterSwitch": "dark"
+      },
+      {
+        "id": "appearance-system-on-light-390x844-portrait-font-1",
+        "configurationId": "system-on-light-390x844-portrait-font-1",
+        "variant": "base",
+        "caseId": "shell.appearance",
+        "stage": "phase14-appearance",
+        "flow": "shell",
+        "state": {
+          "id": "appearance",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "progress-after-all-roots-theme-journey",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Progress"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "label": "Progress",
+                "selected": true
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "appearance-dpad-system-to-light",
+            "input": "DPAD_DOWN",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 20
+            },
+            "preparation": {
+              "stage": "phase14-appearance",
+              "action": "appearance-dpad-system-to-light"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "System",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings",
+                "Appearance"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "System",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "System",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings",
+                "Appearance"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Light",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Light",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "App Settings",
+            "expectedVisible": "App Settings"
+          },
+          {
+            "id": "Appearance",
+            "expectedVisible": "Appearance"
+          },
+          {
+            "id": "selected-theme",
+            "expectedVisible": "selected-theme"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "explicit-selection-observed",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "rendered-theme-matches",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "all-roots-recolor",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "src/ui/__tests__/foundation.test.tsx",
+          "src/ui/__tests__/SettingsScreen.test.tsx"
+        ],
+        "runtimeStatePolicy": "preference-write-reviewed",
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "The appearance journey ends on non-Workout roots; only state-clean Workout-root captures use the pinned visual references."
+        },
+        "appearance": "system-on-light",
+        "appearanceSelection": "System",
+        "renderedTheme": "light",
+        "osScheme": "light",
+        "theme": "system-on-light",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "appearance-dpad-system-to-light"
+        ],
+        "behavior": {
+          "representative": false,
+          "profile": null,
+          "actionIds": [],
+          "logicalStateProbe": false
+        },
+        "captureRequirements": {
+          "geometry": true,
+          "layout": true,
+          "screenshot": true,
+          "semantic": true,
+          "theme": true
+        }
+      },
+      {
+        "id": "appearance-system-on-dark-390x844-portrait-font-1",
+        "configurationId": "system-on-dark-390x844-portrait-font-1",
+        "variant": "base",
+        "caseId": "shell.appearance",
+        "stage": "phase14-appearance",
+        "flow": "shell",
+        "state": {
+          "id": "appearance",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "progress-after-all-roots-theme-journey",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Progress"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "label": "Progress",
+                "selected": true
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "appearance-dpad-system-to-light",
+            "input": "DPAD_DOWN",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 20
+            },
+            "preparation": {
+              "stage": "phase14-appearance",
+              "action": "appearance-dpad-system-to-light"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "System",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings",
+                "Appearance"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "System",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "System",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings",
+                "Appearance"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Light",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Light",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "App Settings",
+            "expectedVisible": "App Settings"
+          },
+          {
+            "id": "Appearance",
+            "expectedVisible": "Appearance"
+          },
+          {
+            "id": "selected-theme",
+            "expectedVisible": "selected-theme"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "explicit-selection-observed",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "rendered-theme-matches",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "all-roots-recolor",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "src/ui/__tests__/foundation.test.tsx",
+          "src/ui/__tests__/SettingsScreen.test.tsx"
+        ],
+        "runtimeStatePolicy": "preference-write-reviewed",
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "The appearance journey ends on non-Workout roots; only state-clean Workout-root captures use the pinned visual references."
+        },
+        "appearance": "system-on-dark",
+        "appearanceSelection": "System",
+        "renderedTheme": "dark",
+        "osScheme": "dark",
+        "theme": "system-on-dark",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "appearance-dpad-system-to-light"
+        ],
+        "behavior": {
+          "representative": false,
+          "profile": null,
+          "actionIds": [],
+          "logicalStateProbe": false
+        },
+        "captureRequirements": {
+          "geometry": true,
+          "layout": true,
+          "screenshot": true,
+          "semantic": true,
+          "theme": true
+        }
+      },
+      {
+        "id": "tokens-system-on-dark-600x960-portrait-font-1",
+        "configurationId": "system-on-dark-600x960-portrait-font-1",
+        "variant": "base",
+        "caseId": "shell.tokens",
+        "stage": "phase14-tokens",
+        "flow": "shell",
+        "state": {
+          "id": "tokens",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "shared-token-workout-root",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Workout"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "label": "Workout",
+                "selected": true
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [],
+        "checkpoints": [
+          {
+            "id": "Workout",
+            "expectedVisible": "Workout"
+          },
+          {
+            "id": "shared-token-surface",
+            "expectedVisible": "shared-token-surface"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "token-source-bound",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "minimum-targets",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "focus-ring-3dp",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "src/ui/__tests__/foundation.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Token evidence is numeric and semantic; visual comparison is owned by the state-clean Workout-root shell captures."
+        },
+        "appearance": "system-on-dark",
+        "appearanceSelection": "System",
+        "renderedTheme": "dark",
+        "osScheme": "dark",
+        "theme": "system-on-dark",
+        "viewport": {
+          "width": 600,
+          "height": 960
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [],
+        "behavior": {
+          "representative": true,
+          "profile": "normal",
+          "actionIds": [],
+          "logicalStateProbe": false
+        },
+        "captureRequirements": {
+          "geometry": true,
+          "layout": true,
+          "screenshot": true,
+          "semantic": true,
+          "theme": true
+        }
+      },
+      {
+        "id": "sheets-system-on-light-390x844-landscape-font-1",
+        "configurationId": "system-on-light-390x844-landscape-font-1",
+        "variant": "base",
+        "caseId": "shell.sheets",
+        "stage": "phase14-sheets",
+        "flow": "accessibility",
+        "state": {
+          "id": "sheets",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "app-settings-sheet",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "App Settings",
+              "Appearance"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "resourceIdEndsWith": "bottom-sheet-frame"
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "sheet-dpad-heading-to-system",
+            "input": "DPAD_DOWN",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 20
+            },
+            "preparation": {
+              "stage": "phase14-sheets",
+              "action": "sheet-dpad-heading-to-system"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "App Settings",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings",
+                "Appearance"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "App Settings",
+                  "focused": true
+                },
+                {
+                  "resourceIdEndsWith": "bottom-sheet-frame"
+                }
+              ],
+              "focus": {
+                "equals": "App Settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "System",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "System",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          },
+          {
+            "id": "sheet-escape",
+            "input": "ESCAPE",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 111
+            },
+            "preparation": {
+              "stage": "phase14-sheets",
+              "action": "sheet-escape"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "App Settings",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "resourceIdEndsWith": "bottom-sheet-frame"
+                }
+              ],
+              "focus": {
+                "equals": "App Settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Library"
+              ],
+              "absent": [
+                "App Settings"
+              ],
+              "nodes": [
+                {
+                  "label": "Library",
+                  "selected": true
+                },
+                {
+                  "label": "Open App Settings",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Open App Settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          },
+          {
+            "id": "sheet-back",
+            "input": "BACK",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 4
+            },
+            "preparation": {
+              "stage": "phase14-sheets",
+              "action": "sheet-back"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "App Settings",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "resourceIdEndsWith": "bottom-sheet-frame"
+                }
+              ],
+              "focus": {
+                "equals": "App Settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Library"
+              ],
+              "absent": [
+                "App Settings"
+              ],
+              "nodes": [
+                {
+                  "label": "Library",
+                  "selected": true
+                },
+                {
+                  "label": "Open App Settings",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Open App Settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          },
+          {
+            "id": "sheet-scrim",
+            "input": "SCRIM",
+            "transport": "adb-coordinate",
+            "command": {
+              "target": "outside-sheet"
+            },
+            "preparation": {
+              "stage": "phase14-sheets",
+              "action": "sheet-scrim"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "App Settings",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "resourceIdEndsWith": "bottom-sheet-frame"
+                }
+              ],
+              "focus": {
+                "equals": "App Settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Library"
+              ],
+              "absent": [
+                "App Settings"
+              ],
+              "nodes": [
+                {
+                  "label": "Library",
+                  "selected": true
+                },
+                {
+                  "label": "Open App Settings",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Open App Settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "sheet-heading-focused",
+            "expectedVisible": "sheet-heading-focused"
+          },
+          {
+            "id": "background-inert",
+            "expectedVisible": "background-inert"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "dismissal-observed",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "trigger-focus-restored",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "src/ui/components/BottomSheet.test.tsx",
+          "src/ui/components/ConfirmationDialog.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Sheet semantics, focus, scrim and dismissal have no exact immutable Workout-root reference."
+        },
+        "appearance": "system-on-light",
+        "appearanceSelection": "System",
+        "renderedTheme": "light",
+        "osScheme": "light",
+        "theme": "system-on-light",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "landscape",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "sheet-dpad-heading-to-system",
+          "sheet-escape",
+          "sheet-back",
+          "sheet-scrim"
+        ],
+        "behavior": {
+          "representative": true,
+          "profile": "landscape-geometry",
+          "actionIds": [
+            "sheet-dpad-heading-to-system",
+            "sheet-escape",
+            "sheet-back",
+            "sheet-scrim"
+          ],
+          "logicalStateProbe": true
+        },
+        "captureRequirements": {
+          "geometry": true,
+          "layout": true,
+          "screenshot": true,
+          "semantic": true,
+          "theme": true
+        }
+      },
+      {
+        "id": "toasts-dark-390x844-portrait-font-1-reduced-motion",
+        "configurationId": "dark-390x844-portrait-font-1",
+        "variant": "reduced-motion",
+        "caseId": "shell.toasts",
+        "stage": "phase14-toasts",
+        "flow": "accessibility",
+        "state": {
+          "id": "toasts",
+          "dataPolicy": "development-test-proof-route",
+          "captureState": "toast-background-idle",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Toast host mounted",
+              "Background control idle",
+              "Toast proof active"
+            ],
+            "absent": [
+              "Background control activated"
+            ],
+            "nodes": [],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "toast-background-enter",
+            "input": "ENTER",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 66
+            },
+            "preparation": {
+              "stage": "phase14-toasts",
+              "action": "toast-background-enter"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "Tap background control",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Toast host mounted",
+                "Background control idle",
+                "Toast proof active"
+              ],
+              "absent": [
+                "Background control activated"
+              ],
+              "nodes": [
+                {
+                  "label": "Tap background control",
+                  "focused": true,
+                  "enabled": true
+                }
+              ],
+              "focus": {
+                "equals": "Tap background control",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Toast host mounted",
+                "Background control activated",
+                "Toast proof active"
+              ],
+              "absent": [
+                "Background control idle"
+              ],
+              "nodes": [],
+              "focus": {
+                "equals": "Tap background control",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "semantic-toast",
+            "expectedVisible": "semantic-toast"
+          },
+          {
+            "id": "background-control-idle",
+            "expectedVisible": "background-control-idle"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "toast-below-top-bar",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "background-activation-observed",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "status-semantic",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "src/ui/components/SemanticToast.test.tsx",
+          "app/__tests__/phase14-toast-proof.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "The toast proof route is not the Workout-root reference state."
+        },
+        "appearance": "dark",
+        "appearanceSelection": "Dark",
+        "renderedTheme": "dark",
+        "osScheme": "light",
+        "theme": "dark",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": true,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "toast-background-enter"
+        ],
+        "behavior": {
+          "representative": true,
+          "profile": "reduced-motion",
+          "actionIds": [
+            "toast-background-enter"
+          ],
+          "logicalStateProbe": true
+        },
+        "captureRequirements": {
+          "geometry": true,
+          "layout": true,
+          "screenshot": true,
+          "semantic": true,
+          "theme": true
+        }
+      },
+      {
+        "id": "launch-system-on-light-360x800-portrait-font-2",
+        "configurationId": "system-on-light-360x800-portrait-font-2",
+        "variant": "base",
+        "caseId": "shell.launch",
+        "stage": "phase14-launch",
+        "flow": "accessibility",
+        "state": {
+          "id": "launch",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "workout-root-after-launch",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Workout"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "label": "Workout",
+                "selected": true
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "cold-launch-to-workout",
+            "input": "LAUNCH",
+            "transport": "adb-launch",
+            "command": {
+              "intent": "launcher"
+            },
+            "preparation": {
+              "stage": "phase14-launch",
+              "action": "cold-launch-to-workout"
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": false,
+              "semanticRequired": false,
+              "visible": [],
+              "absent": [],
+              "nodes": [],
+              "focus": {
+                "allowNull": true
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                }
+              ],
+              "focus": {
+                "allowNull": true
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "package-stopped",
+            "expectedVisible": "package-stopped"
+          },
+          {
+            "id": "factual-loading",
+            "expectedVisible": "factual-loading"
+          },
+          {
+            "id": "Workout",
+            "expectedVisible": "Workout"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "real-launch-transition",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "no-fabricated-content",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "root-ready",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "app/__tests__/root-layout.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Startup and permission recovery are lifecycle states, not a static visual reference."
+        },
+        "appearance": "system-on-light",
+        "appearanceSelection": "System",
+        "renderedTheme": "light",
+        "osScheme": "light",
+        "theme": "system-on-light",
+        "viewport": {
+          "width": 360,
+          "height": 800
+        },
+        "orientation": "portrait",
+        "fontScale": 2,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "cold-launch-to-workout"
+        ],
+        "behavior": {
+          "representative": true,
+          "profile": "accessibility-200",
+          "actionIds": [
+            "cold-launch-to-workout"
+          ],
+          "logicalStateProbe": true
+        },
+        "captureRequirements": {
+          "geometry": true,
+          "layout": true,
+          "screenshot": true,
+          "semantic": true,
+          "theme": true
+        }
+      },
+      {
+        "id": "rest-alerts-dark-390x844-portrait-font-1",
+        "configurationId": "dark-390x844-portrait-font-1",
+        "variant": "base",
+        "caseId": "shell.rest-alerts",
+        "stage": "phase14-rest-alerts",
+        "flow": "settings-recovery",
+        "state": {
+          "id": "rest-alerts",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "app-settings-rest-alerts",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "App Settings",
+              "Rest alerts"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "resourceIdEndsWith": "bottom-sheet-frame"
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "back-from-rest-alerts-sheet",
+            "input": "BACK",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 4
+            },
+            "preparation": {
+              "stage": "phase14-rest-alerts",
+              "action": "back-from-rest-alerts-sheet"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "App Settings",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "App Settings",
+                "Rest alerts"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "resourceIdEndsWith": "bottom-sheet-frame"
+                }
+              ],
+              "focus": {
+                "equals": "App Settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [
+                "App Settings"
+              ],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                },
+                {
+                  "label": "Open App Settings",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Open App Settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "Rest alerts",
+            "expectedVisible": "Rest alerts"
+          },
+          {
+            "id": "App Settings",
+            "expectedVisible": "App Settings"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "device-cue-settings-reachable",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "focus-restored",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "src/ui/__tests__/RestAlertSettingsSheet.test.tsx",
+          "src/ui/__tests__/SettingsScreen.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Rest-alert settings are native device capabilities outside the Workout-root reference."
+        },
+        "appearance": "dark",
+        "appearanceSelection": "Dark",
+        "renderedTheme": "dark",
+        "osScheme": "light",
+        "theme": "dark",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "back-from-rest-alerts-sheet"
+        ],
+        "behavior": {
+          "representative": true,
+          "profile": "normal",
+          "actionIds": [
+            "back-from-rest-alerts-sheet"
+          ],
+          "logicalStateProbe": true
+        },
+        "captureRequirements": {
+          "geometry": true,
+          "layout": true,
+          "screenshot": true,
+          "semantic": true,
+          "theme": true
+        }
+      },
+      {
+        "id": "settings-deep-links-light-600x960-portrait-font-2",
+        "configurationId": "light-600x960-portrait-font-2",
+        "variant": "base",
+        "caseId": "shell.settings-deep-links",
+        "stage": "phase14-settings-deep-links",
+        "flow": "settings-recovery",
+        "state": {
+          "id": "settings-deep-links",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "workout-after-data-recovery-back",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Workout"
+            ],
+            "absent": [],
+            "nodes": [
+              {
+                "label": "Workout",
+                "selected": true
+              }
+            ],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "back-from-data-recovery",
+            "input": "BACK",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 4
+            },
+            "preparation": {
+              "stage": "phase14-settings-deep-links",
+              "action": "back-from-data-recovery"
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Manual encrypted backup"
+              ],
+              "absent": [],
+              "nodes": [],
+              "focus": {
+                "allowNull": true
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                }
+              ],
+              "focus": {
+                "equals": "Workout",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "Data and recovery",
+            "expectedVisible": "Data and recovery"
+          },
+          {
+            "id": "Workout",
+            "expectedVisible": "Workout"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "no-write-navigation",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "origin-restored",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "app/more/__tests__/index.test.tsx",
+          "app/more/__tests__/data-and-recovery.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Deep-link Back recovery is native navigation without a matching prototype bitmap."
+        },
+        "appearance": "light",
+        "appearanceSelection": "Light",
+        "renderedTheme": "light",
+        "osScheme": "dark",
+        "theme": "light",
+        "viewport": {
+          "width": 600,
+          "height": 960
+        },
+        "orientation": "portrait",
+        "fontScale": 2,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "back-from-data-recovery"
+        ],
+        "behavior": {
+          "representative": true,
+          "profile": "accessibility-200",
+          "actionIds": [
+            "back-from-data-recovery"
+          ],
+          "logicalStateProbe": true
+        },
+        "captureRequirements": {
+          "geometry": true,
+          "layout": true,
+          "screenshot": true,
+          "semantic": true,
+          "theme": true
+        }
+      },
+      {
+        "id": "removed-sessions-dark-390x844-portrait-font-2",
+        "configurationId": "dark-390x844-portrait-font-2",
+        "variant": "base",
+        "caseId": "shell.removed-sessions",
+        "stage": "phase14-removed-sessions",
+        "flow": "settings-recovery",
+        "state": {
+          "id": "removed-sessions",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "removed-sessions-route",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Removed sessions"
+            ],
+            "absent": [],
+            "nodes": [],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "back-from-removed-sessions",
+            "input": "BACK",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 4
+            },
+            "preparation": {
+              "stage": "phase14-removed-sessions",
+              "action": "back-from-removed-sessions"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "Removed sessions",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Removed sessions"
+              ],
+              "absent": [],
+              "nodes": [],
+              "focus": {
+                "equals": "Removed sessions",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Workout"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Workout",
+                  "selected": true
+                }
+              ],
+              "focus": {
+                "equals": "Workout",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "Removed sessions",
+            "expectedVisible": "Removed sessions"
+          },
+          {
+            "id": "Workout",
+            "expectedVisible": "Workout"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "read-only-navigation",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "no-source-write",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "app/more/__tests__/removed-sessions.test.tsx",
+          "src/ui/__tests__/RemovedSessionsScreen.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Removed-session recovery is not depicted by the Workout-root reference."
+        },
+        "appearance": "dark",
+        "appearanceSelection": "Dark",
+        "renderedTheme": "dark",
+        "osScheme": "light",
+        "theme": "dark",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "fontScale": 2,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "back-from-removed-sessions"
+        ],
+        "behavior": {
+          "representative": true,
+          "profile": "accessibility-200",
+          "actionIds": [
+            "back-from-removed-sessions"
+          ],
+          "logicalStateProbe": true
+        },
+        "captureRequirements": {
+          "geometry": true,
+          "layout": true,
+          "screenshot": true,
+          "semantic": true,
+          "theme": true
+        }
+      },
+      {
+        "id": "data-recovery-light-840x1080-landscape-font-1",
+        "configurationId": "light-840x1080-landscape-font-1",
+        "variant": "base",
+        "caseId": "shell.data-recovery",
+        "stage": "phase14-data-recovery",
+        "flow": "settings-recovery",
+        "state": {
+          "id": "data-recovery",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "manual-backup-no-selection",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Restore clean",
+              "No backup was selected"
+            ],
+            "absent": [],
+            "nodes": [],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "ime-clearance-restore-field",
+            "input": "IME_CLEARANCE",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 4
+            },
+            "preparation": {
+              "stage": "phase14-data-recovery",
+              "action": "ime-clearance-restore-field"
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Restore clean",
+                "Restore password"
+              ],
+              "absent": [],
+              "nodes": [],
+              "focus": {
+                "equals": "Restore password",
+                "allowNull": false
+              },
+              "imeVisible": true,
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Restore clean",
+                "Restore password"
+              ],
+              "absent": [],
+              "nodes": [],
+              "focus": {
+                "equals": "Restore password",
+                "allowNull": false
+              },
+              "imeVisible": false,
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "Manual encrypted backup",
+            "expectedVisible": "Manual encrypted backup"
+          },
+          {
+            "id": "Restore password",
+            "expectedVisible": "Restore password"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "ime-cleared",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "cancel-does-not-write",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "app/more/__tests__/data-and-recovery.test.tsx",
+          "app/more/__tests__/manual-encrypted-backup.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Backup and IME recovery are native-only source-integrity states."
+        },
+        "appearance": "light",
+        "appearanceSelection": "Light",
+        "renderedTheme": "light",
+        "osScheme": "dark",
+        "theme": "light",
+        "viewport": {
+          "width": 840,
+          "height": 1080
+        },
+        "orientation": "landscape",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "ime-clearance-restore-field"
+        ],
+        "behavior": {
+          "representative": true,
+          "profile": "landscape-geometry",
+          "actionIds": [
+            "ime-clearance-restore-field"
+          ],
+          "logicalStateProbe": true
+        },
+        "captureRequirements": {
+          "geometry": true,
+          "layout": true,
+          "screenshot": true,
+          "semantic": true,
+          "theme": true
+        }
+      },
+      {
+        "id": "automatic-backup-system-on-light-600x960-portrait-font-1",
+        "configurationId": "system-on-light-600x960-portrait-font-1",
+        "variant": "base",
+        "caseId": "shell.automatic-backup",
+        "stage": "phase14-automatic-backup",
+        "flow": "settings-recovery",
+        "state": {
+          "id": "automatic-backup",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "automatic-backup-route",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Automatic backup settings"
+            ],
+            "absent": [],
+            "nodes": [],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "back-from-automatic-backup",
+            "input": "BACK",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 4
+            },
+            "preparation": {
+              "stage": "phase14-automatic-backup",
+              "action": "back-from-automatic-backup"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "Automatic backup settings",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Automatic backup settings"
+              ],
+              "absent": [],
+              "nodes": [],
+              "focus": {
+                "equals": "Automatic backup settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Automatic backup settings"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Automatic backup settings",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Automatic backup settings",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "Automatic backup settings",
+            "expectedVisible": "Automatic backup settings"
+          },
+          {
+            "id": "Data and recovery",
+            "expectedVisible": "Data and recovery"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "no-cloud-write",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "origin-restored",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "app/more/__tests__/automatic-backup-settings.test.tsx",
+          "app/more/__tests__/drive-backup-privacy.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Automatic-backup navigation has no matching Workout-root reference."
+        },
+        "appearance": "system-on-light",
+        "appearanceSelection": "System",
+        "renderedTheme": "light",
+        "osScheme": "light",
+        "theme": "system-on-light",
+        "viewport": {
+          "width": 600,
+          "height": 960
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "back-from-automatic-backup"
+        ],
+        "behavior": {
+          "representative": true,
+          "profile": "normal",
+          "actionIds": [
+            "back-from-automatic-backup"
+          ],
+          "logicalStateProbe": true
+        },
+        "captureRequirements": {
+          "geometry": true,
+          "layout": true,
+          "screenshot": true,
+          "semantic": true,
+          "theme": true
+        }
+      },
+      {
+        "id": "manual-backup-system-on-dark-840x1080-portrait-font-2",
+        "configurationId": "system-on-dark-840x1080-portrait-font-2",
+        "variant": "base",
+        "caseId": "shell.manual-backup",
+        "stage": "phase14-manual-backup",
+        "flow": "settings-recovery",
+        "state": {
+          "id": "manual-backup",
+          "dataPolicy": "installed-user-data-preserved",
+          "captureState": "manual-backup-route",
+          "capture": {
+            "package": "com.fchoo.gymtracker.devtest",
+            "packageForeground": true,
+            "semanticRequired": true,
+            "visible": [
+              "Manual encrypted backup"
+            ],
+            "absent": [],
+            "nodes": [],
+            "focus": {
+              "allowNull": true
+            },
+            "rejectLauncher": true
+          }
+        },
+        "actions": [
+          {
+            "id": "back-from-manual-backup",
+            "input": "BACK",
+            "transport": "adb-keyevent",
+            "command": {
+              "keyCode": 4
+            },
+            "preparation": {
+              "stage": "phase14-manual-backup",
+              "action": "back-from-manual-backup"
+            },
+            "focusAcquisition": {
+              "strategy": "key-sequence-until",
+              "keyCodes": [
+                61
+              ],
+              "target": "Manual encrypted backup",
+              "maxAttempts": 24
+            },
+            "pre": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Manual encrypted backup"
+              ],
+              "absent": [],
+              "nodes": [],
+              "focus": {
+                "equals": "Manual encrypted backup",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "post": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Manual encrypted backup"
+              ],
+              "absent": [],
+              "nodes": [
+                {
+                  "label": "Manual encrypted backup",
+                  "focused": true
+                }
+              ],
+              "focus": {
+                "equals": "Manual encrypted backup",
+                "allowNull": false
+              },
+              "rejectLauncher": true
+            },
+            "poll": {
+              "timeoutMs": 6000,
+              "intervalMs": 200
+            }
+          }
+        ],
+        "checkpoints": [
+          {
+            "id": "Manual encrypted backup",
+            "expectedVisible": "Manual encrypted backup"
+          },
+          {
+            "id": "Data and recovery",
+            "expectedVisible": "Data and recovery"
+          }
+        ],
+        "postconditions": [
+          {
+            "id": "cancel-does-not-write",
+            "kind": "semantic-contract"
+          },
+          {
+            "id": "origin-restored",
+            "kind": "semantic-contract"
+          }
+        ],
+        "componentTests": [
+          "app/more/__tests__/manual-encrypted-backup.test.tsx"
+        ],
+        "runtimeStatePolicy": "no-write",
+        "referencePolicy": {
+          "kind": "native-only",
+          "verdict": "N_A_REVIEWED",
+          "rationale": "Manual-backup recovery has no matching Workout-root reference."
+        },
+        "appearance": "system-on-dark",
+        "appearanceSelection": "System",
+        "renderedTheme": "dark",
+        "osScheme": "dark",
+        "theme": "system-on-dark",
+        "viewport": {
+          "width": 840,
+          "height": 1080
+        },
+        "orientation": "portrait",
+        "fontScale": 2,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "back-from-manual-backup"
+        ],
+        "behavior": {
+          "representative": true,
+          "profile": "accessibility-200",
+          "actionIds": [
+            "back-from-manual-backup"
+          ],
+          "logicalStateProbe": true
+        },
+        "captureRequirements": {
+          "geometry": true,
+          "layout": true,
+          "screenshot": true,
+          "semantic": true,
+          "theme": true
+        }
+      }
+    ]
+  },
+  "coverage": {
+    "mode": "ids",
+    "complete": true,
+    "requested_ids": [
+      "shell.automatic-backup"
+    ],
+    "requested_cell": null,
+    "expected_cell_count": 1,
+    "observed_cell_count": 1
+  },
+  "behavior_coverage": {
+    "representative_cell_ids": [
+      "four-roots-dark-360x800-portrait-font-2",
+      "root-state-dark-390x844-portrait-font-1",
+      "appearance-light-390x844-portrait-font-1-explicit-theme-invariance",
+      "tokens-system-on-dark-600x960-portrait-font-1",
+      "sheets-system-on-light-390x844-landscape-font-1",
+      "toasts-dark-390x844-portrait-font-1-reduced-motion",
+      "launch-system-on-light-360x800-portrait-font-2",
+      "rest-alerts-dark-390x844-portrait-font-1",
+      "settings-deep-links-light-600x960-portrait-font-2",
+      "removed-sessions-dark-390x844-portrait-font-2",
+      "data-recovery-light-840x1080-landscape-font-1",
+      "automatic-backup-system-on-light-600x960-portrait-font-1",
+      "manual-backup-system-on-dark-840x1080-portrait-font-2"
+    ],
+    "logical_probe_cell_ids": [
+      "four-roots-dark-360x800-portrait-font-2",
+      "root-state-dark-390x844-portrait-font-1",
+      "sheets-system-on-light-390x844-landscape-font-1",
+      "toasts-dark-390x844-portrait-font-1-reduced-motion",
+      "launch-system-on-light-360x800-portrait-font-2",
+      "rest-alerts-dark-390x844-portrait-font-1",
+      "settings-deep-links-light-600x960-portrait-font-2",
+      "removed-sessions-dark-390x844-portrait-font-2",
+      "data-recovery-light-840x1080-landscape-font-1",
+      "automatic-backup-system-on-light-600x960-portrait-font-1",
+      "manual-backup-system-on-dark-840x1080-portrait-font-2"
+    ],
+    "profiles_by_case": {
+      "shell.four-roots": [
+        "accessibility-200"
+      ],
+      "shell.root-state": [
+        "normal"
+      ],
+      "shell.appearance": [
+        "normal"
+      ],
+      "shell.tokens": [
+        "normal"
+      ],
+      "shell.sheets": [
+        "landscape-geometry"
+      ],
+      "shell.toasts": [
+        "reduced-motion"
+      ],
+      "shell.launch": [
+        "accessibility-200"
+      ],
+      "shell.rest-alerts": [
+        "normal"
+      ],
+      "shell.settings-deep-links": [
+        "accessibility-200"
+      ],
+      "shell.removed-sessions": [
+        "accessibility-200"
+      ],
+      "shell.data-recovery": [
+        "landscape-geometry"
+      ],
+      "shell.automatic-backup": [
+        "normal"
+      ],
+      "shell.manual-backup": [
+        "accessibility-200"
+      ]
+    }
+  },
+  "evidence": [
+    {
+      "id": "shell.automatic-backup",
+      "requirement": "SHL-12",
+      "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.automatic-backup.json",
+      "component_evidence": {
+        "id": "shell.automatic-backup",
+        "files": [
+          "app/more/__tests__/automatic-backup-settings.test.tsx",
+          "app/more/__tests__/drive-backup-privacy.test.tsx"
+        ],
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "verdict": "PASS"
+      },
+      "component_verdict": "PASS",
+      "native_verdict": "PASS",
+      "visual_verdict": "N_A_REVIEWED",
+      "verdict": "PASS",
+      "matrix_cells": [
+        {
+          "id": "automatic-backup-system-on-light-600x960-portrait-font-1",
+          "configuration_id": "system-on-light-600x960-portrait-font-1",
+          "variant": "base",
+          "case_id": "shell.automatic-backup",
+          "stage": "phase14-automatic-backup",
+          "state": {
+            "id": "automatic-backup",
+            "dataPolicy": "installed-user-data-preserved",
+            "captureState": "automatic-backup-route",
+            "capture": {
+              "package": "com.fchoo.gymtracker.devtest",
+              "packageForeground": true,
+              "semanticRequired": true,
+              "visible": [
+                "Automatic backup settings"
+              ],
+              "absent": [],
+              "nodes": [],
+              "focus": {
+                "allowNull": true
+              },
+              "rejectLauncher": true
+            }
+          },
+          "appearance": "system-on-light",
+          "appearance_selection": "System",
+          "rendered_theme": "light",
+          "os_scheme": "light",
+          "viewport": {
+            "width": 600,
+            "height": 960
+          },
+          "orientation": "portrait",
+          "font_scale": 1,
+          "reduced_motion": false,
+          "live_os_switch": false,
+          "behavior": {
+            "representative": true,
+            "profile": "normal",
+            "actionIds": [
+              "back-from-automatic-backup"
+            ],
+            "logicalStateProbe": true
+          },
+          "capture_requirements": {
+            "geometry": true,
+            "layout": true,
+            "screenshot": true,
+            "semantic": true,
+            "theme": true
+          },
+          "report": "artifacts/native/phase14/maestro/automatic-backup-system-on-light-600x960-portrait-font-1.xml",
+          "report_sha256": "309fd947c0575e0bf993a8426ca5172cdbcd34976284f885865f3e37b34ea239",
+          "maestro": {
+            "tests": 1,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0,
+            "verdict": "PASS"
+          },
+          "screenshot": "artifacts/native/phase14/screenshots/automatic-backup-system-on-light-600x960-portrait-font-1.png",
+          "screenshot_sha256": "cfe2fc8e359fa879ec9b01c85c7bdc3a098459f770a85ac75131183469a9cdd4",
+          "semantic_tree": "artifacts/native/phase14/semantic/automatic-backup-system-on-light-600x960-portrait-font-1.xml",
+          "semantic_tree_sha256": "3d1b5aad53e737b9485bfc6226efa4cef3835301a99b0c5f7fb9e4108ef183be",
+          "semantic_observation": {
+            "capture_state": "automatic-backup-route",
+            "package": "com.fchoo.gymtracker.devtest",
+            "focused_node": null,
+            "verdict": "PASS"
+          },
+          "focus_key_trace": "artifacts/native/phase14/traces/automatic-backup-system-on-light-600x960-portrait-font-1.json",
+          "focus_key_trace_sha256": "e2cd20fe795757e5b2e862d67f9aaab70c465e9053d15903f1636db7bd16daea",
+          "actions": [
+            {
+              "schema_version": 3,
+              "order": 0,
+              "action_id": "back-from-automatic-backup",
+              "input": "BACK",
+              "transport": "adb-keyevent",
+              "command": {
+                "key_code": 4
+              },
+              "preparation": {
+                "kind": "maestro",
+                "report": "artifacts/native/phase14/maestro/automatic-backup-system-on-light-600x960-portrait-font-1-action-0-back-from-automatic-backup.xml",
+                "report_sha256": "e32b7e1ffd8da50abb36b34bcfacf0cf0c948dbe722119f62581d265e73af26d"
+              },
+              "started_at": "2026-10-10T10:57:05.189Z",
+              "finished_at": "2026-10-10T10:57:07.404Z",
+              "poll_attempts": 1,
+              "pre": {
+                "package_foreground": true,
+                "ime_visible": false,
+                "semantic_tree": "artifacts/native/phase14/traces/automatic-backup-system-on-light-600x960-portrait-font-1-0-pre.xml",
+                "semantic_tree_sha256": "4d50cb214c5bc3031f5321b430c81b53481ca8de7a2cc73dbd58ee82d671e657",
+                "focused_node": "Automatic backup settings",
+                "predicate": {
+                  "verdict": "PASS",
+                  "failures": []
+                }
+              },
+              "post": {
+                "package_foreground": true,
+                "ime_visible": false,
+                "semantic_tree": "artifacts/native/phase14/traces/automatic-backup-system-on-light-600x960-portrait-font-1-0-post.xml",
+                "semantic_tree_sha256": "e96a4b7f98b4dab5a60cc6bcc751a8a124ad16010d1aa538887be2daa6c327ca",
+                "focused_node": "Automatic backup settings",
+                "predicate": {
+                  "verdict": "PASS",
+                  "failures": []
+                }
+              },
+              "verdict": "PASS"
+            }
+          ],
+          "checkpoints": [
+            {
+              "id": "Automatic backup settings",
+              "observed_via": "passing-maestro-assertion",
+              "report_sha256": "309fd947c0575e0bf993a8426ca5172cdbcd34976284f885865f3e37b34ea239",
+              "verdict": "PASS"
+            },
+            {
+              "id": "Data and recovery",
+              "observed_via": "passing-maestro-assertion",
+              "report_sha256": "309fd947c0575e0bf993a8426ca5172cdbcd34976284f885865f3e37b34ea239",
+              "verdict": "PASS"
+            }
+          ],
+          "target_window_bounds": {
+            "requested_viewport": {
+              "width": 600,
+              "height": 960
+            },
+            "requested_orientation": "portrait",
+            "requested_font_scale": 1,
+            "requested_appearance": "system-on-light",
+            "wm_size": "Physical size: 1080x2400\nOverride size: 600x960",
+            "wm_density": "Physical density: 420\nOverride density: 160",
+            "font_scale": "1",
+            "os_scheme": "light"
+          },
+          "runtime_state": {
+            "verdict": "PASS",
+            "path": "artifacts/native/phase14/runtime-state/automatic-backup-system-on-light-600x960-portrait-font-1.json",
+            "sha256": "a6147a9fb58f4b80c84f5e5de3a5a20ccd5ccf1a6e80ee07eb49ae2555bda71f",
+            "pre": {
+              "proof_schema_version": 1,
+              "producer": "phase14-app-canonical-logical-source-digest/v1",
+              "authority": "development-test-app-canonical-logical-sqlite-source",
+              "digest_sha256": "acaa1ee2777e09be034988e929128ab6e5e758c2319a01dd05c29d0e7de5a626",
+              "table_count": 80,
+              "row_count": 108,
+              "schema_version": 35,
+              "contains_raw_rows": false
+            },
+            "post": {
+              "proof_schema_version": 1,
+              "producer": "phase14-app-canonical-logical-source-digest/v1",
+              "authority": "development-test-app-canonical-logical-sqlite-source",
+              "digest_sha256": "acaa1ee2777e09be034988e929128ab6e5e758c2319a01dd05c29d0e7de5a626",
+              "table_count": 80,
+              "row_count": 108,
+              "schema_version": 35,
+              "contains_raw_rows": false
+            }
+          },
+          "theme_observation": {
+            "selected_option": "System",
+            "selection_observed_via": "maestro-tap-and-assert",
+            "selection_report": "artifacts/native/phase14/maestro/automatic-backup-system-on-light-600x960-portrait-font-1.xml",
+            "selection_report_sha256": "309fd947c0575e0bf993a8426ca5172cdbcd34976284f885865f3e37b34ea239",
+            "os_scheme": "light",
+            "rendered_theme": "light",
+            "expected_rendered_theme": "light",
+            "verdict": "PASS"
+          },
+          "visual_comparison": {
+            "kind": "native-only",
+            "verdict": "N_A_REVIEWED",
+            "rationale": "Automatic-backup navigation has no matching Workout-root reference."
+          },
+          "native_verdict": "PASS"
+        }
+      ]
+    }
+  ],
+  "matrix_cells": [
+    {
+      "id": "automatic-backup-system-on-light-600x960-portrait-font-1",
+      "configuration_id": "system-on-light-600x960-portrait-font-1",
+      "variant": "base",
+      "case_id": "shell.automatic-backup",
+      "stage": "phase14-automatic-backup",
+      "state": {
+        "id": "automatic-backup",
+        "dataPolicy": "installed-user-data-preserved",
+        "captureState": "automatic-backup-route",
+        "capture": {
+          "package": "com.fchoo.gymtracker.devtest",
+          "packageForeground": true,
+          "semanticRequired": true,
+          "visible": [
+            "Automatic backup settings"
+          ],
+          "absent": [],
+          "nodes": [],
+          "focus": {
+            "allowNull": true
+          },
+          "rejectLauncher": true
+        }
+      },
+      "appearance": "system-on-light",
+      "appearance_selection": "System",
+      "rendered_theme": "light",
+      "os_scheme": "light",
+      "viewport": {
+        "width": 600,
+        "height": 960
+      },
+      "orientation": "portrait",
+      "font_scale": 1,
+      "reduced_motion": false,
+      "live_os_switch": false,
+      "behavior": {
+        "representative": true,
+        "profile": "normal",
+        "actionIds": [
+          "back-from-automatic-backup"
+        ],
+        "logicalStateProbe": true
+      },
+      "capture_requirements": {
+        "geometry": true,
+        "layout": true,
+        "screenshot": true,
+        "semantic": true,
+        "theme": true
+      },
+      "report": "artifacts/native/phase14/maestro/automatic-backup-system-on-light-600x960-portrait-font-1.xml",
+      "report_sha256": "309fd947c0575e0bf993a8426ca5172cdbcd34976284f885865f3e37b34ea239",
+      "maestro": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "verdict": "PASS"
+      },
+      "screenshot": "artifacts/native/phase14/screenshots/automatic-backup-system-on-light-600x960-portrait-font-1.png",
+      "screenshot_sha256": "cfe2fc8e359fa879ec9b01c85c7bdc3a098459f770a85ac75131183469a9cdd4",
+      "semantic_tree": "artifacts/native/phase14/semantic/automatic-backup-system-on-light-600x960-portrait-font-1.xml",
+      "semantic_tree_sha256": "3d1b5aad53e737b9485bfc6226efa4cef3835301a99b0c5f7fb9e4108ef183be",
+      "semantic_observation": {
+        "capture_state": "automatic-backup-route",
+        "package": "com.fchoo.gymtracker.devtest",
+        "focused_node": null,
+        "verdict": "PASS"
+      },
+      "focus_key_trace": "artifacts/native/phase14/traces/automatic-backup-system-on-light-600x960-portrait-font-1.json",
+      "focus_key_trace_sha256": "e2cd20fe795757e5b2e862d67f9aaab70c465e9053d15903f1636db7bd16daea",
+      "actions": [
+        {
+          "schema_version": 3,
+          "order": 0,
+          "action_id": "back-from-automatic-backup",
+          "input": "BACK",
+          "transport": "adb-keyevent",
+          "command": {
+            "key_code": 4
+          },
+          "preparation": {
+            "kind": "maestro",
+            "report": "artifacts/native/phase14/maestro/automatic-backup-system-on-light-600x960-portrait-font-1-action-0-back-from-automatic-backup.xml",
+            "report_sha256": "e32b7e1ffd8da50abb36b34bcfacf0cf0c948dbe722119f62581d265e73af26d"
+          },
+          "started_at": "2026-10-10T10:57:05.189Z",
+          "finished_at": "2026-10-10T10:57:07.404Z",
+          "poll_attempts": 1,
+          "pre": {
+            "package_foreground": true,
+            "ime_visible": false,
+            "semantic_tree": "artifacts/native/phase14/traces/automatic-backup-system-on-light-600x960-portrait-font-1-0-pre.xml",
+            "semantic_tree_sha256": "4d50cb214c5bc3031f5321b430c81b53481ca8de7a2cc73dbd58ee82d671e657",
+            "focused_node": "Automatic backup settings",
+            "predicate": {
+              "verdict": "PASS",
+              "failures": []
+            }
+          },
+          "post": {
+            "package_foreground": true,
+            "ime_visible": false,
+            "semantic_tree": "artifacts/native/phase14/traces/automatic-backup-system-on-light-600x960-portrait-font-1-0-post.xml",
+            "semantic_tree_sha256": "e96a4b7f98b4dab5a60cc6bcc751a8a124ad16010d1aa538887be2daa6c327ca",
+            "focused_node": "Automatic backup settings",
+            "predicate": {
+              "verdict": "PASS",
+              "failures": []
+            }
+          },
+          "verdict": "PASS"
+        }
+      ],
+      "checkpoints": [
+        {
+          "id": "Automatic backup settings",
+          "observed_via": "passing-maestro-assertion",
+          "report_sha256": "309fd947c0575e0bf993a8426ca5172cdbcd34976284f885865f3e37b34ea239",
+          "verdict": "PASS"
+        },
+        {
+          "id": "Data and recovery",
+          "observed_via": "passing-maestro-assertion",
+          "report_sha256": "309fd947c0575e0bf993a8426ca5172cdbcd34976284f885865f3e37b34ea239",
+          "verdict": "PASS"
+        }
+      ],
+      "target_window_bounds": {
+        "requested_viewport": {
+          "width": 600,
+          "height": 960
+        },
+        "requested_orientation": "portrait",
+        "requested_font_scale": 1,
+        "requested_appearance": "system-on-light",
+        "wm_size": "Physical size: 1080x2400\nOverride size: 600x960",
+        "wm_density": "Physical density: 420\nOverride density: 160",
+        "font_scale": "1",
+        "os_scheme": "light"
+      },
+      "runtime_state": {
+        "verdict": "PASS",
+        "path": "artifacts/native/phase14/runtime-state/automatic-backup-system-on-light-600x960-portrait-font-1.json",
+        "sha256": "a6147a9fb58f4b80c84f5e5de3a5a20ccd5ccf1a6e80ee07eb49ae2555bda71f",
+        "pre": {
+          "proof_schema_version": 1,
+          "producer": "phase14-app-canonical-logical-source-digest/v1",
+          "authority": "development-test-app-canonical-logical-sqlite-source",
+          "digest_sha256": "acaa1ee2777e09be034988e929128ab6e5e758c2319a01dd05c29d0e7de5a626",
+          "table_count": 80,
+          "row_count": 108,
+          "schema_version": 35,
+          "contains_raw_rows": false
+        },
+        "post": {
+          "proof_schema_version": 1,
+          "producer": "phase14-app-canonical-logical-source-digest/v1",
+          "authority": "development-test-app-canonical-logical-sqlite-source",
+          "digest_sha256": "acaa1ee2777e09be034988e929128ab6e5e758c2319a01dd05c29d0e7de5a626",
+          "table_count": 80,
+          "row_count": 108,
+          "schema_version": 35,
+          "contains_raw_rows": false
+        }
+      },
+      "theme_observation": {
+        "selected_option": "System",
+        "selection_observed_via": "maestro-tap-and-assert",
+        "selection_report": "artifacts/native/phase14/maestro/automatic-backup-system-on-light-600x960-portrait-font-1.xml",
+        "selection_report_sha256": "309fd947c0575e0bf993a8426ca5172cdbcd34976284f885865f3e37b34ea239",
+        "os_scheme": "light",
+        "rendered_theme": "light",
+        "expected_rendered_theme": "light",
+        "verdict": "PASS"
+      },
+      "visual_comparison": {
+        "kind": "native-only",
+        "verdict": "N_A_REVIEWED",
+        "rationale": "Automatic-backup navigation has no matching Workout-root reference."
+      },
+      "native_verdict": "PASS"
+    }
+  ],
+  "dev02": {
+    "schema_version": 1,
+    "producer": "phase14-dev02-numeric/v1",
+    "owner_record": "accessible-9b470b",
+    "title_hex": "#9B470B",
+    "sport_hex": "#D97820",
+    "surface_hex": "#FFFAF0",
+    "blend_space": "srgb",
+    "blend_alpha": 0.14,
+    "blended_fill_hex": "#F1E1D0",
+    "contrast_ratio": 4.976317758929604,
+    "required_ratio": 4.5,
+    "source_hashes": {
+      "theme_sha256": "a12e55ba899f6f915c7892e5ddc8ea57fd48f4306bfaa32da34566980c0f3d07",
+      "prototype_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "owner_record_sha256": "4f5cca653df946f9d43f7cefe96bcbe4d1c04adfabb3c3952bd76cf6c032ef53"
+    },
+    "token_measurement_verdict": "PASS",
+    "calendar_adoption": {
+      "verdict": "NOT_RUN",
+      "required_producer": "phase16-calendar-native-contrast/v1",
+      "rationale": "Phase 14 proves exact tokens and blend math; Calendar adoption is owned by Phase 16 native evidence."
+    },
+    "verdict": "REVIEW_REQUIRED"
+  },
+  "capture_index": {
+    "path": "artifacts/native/phase14/capture-index.json",
+    "sha256": "62a287a1b1217c5a4bedea3a23d63a7999b846aa05cea73af94a2115c28a3ead",
+    "capture_set_sha256": "ab52a82c8c481c0702af8f9893674855e3d617ad0557d80a9139f5e33cfb80a3"
+  }
+}

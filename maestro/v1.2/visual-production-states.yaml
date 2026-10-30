@@ -1,0 +1,319 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 20 production visual registry probe
+tags: [v1.2, phase-20, visual, synthetic-fixture]
+---
+- assertTrue: ${VISUAL_LINK != null && VISUAL_STATE != null && VISUAL_SCREEN_ID != null && VISUAL_READY_ID != null && (VISUAL_MODE == 'capture' || VISUAL_MODE == 'reset')}
+- openLink: "${VISUAL_LINK}"
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture'}
+    commands:
+      - extendedWaitUntil:
+          visible: { id: "${VISUAL_SCREEN_ID}" }
+          timeout: 15000
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-001'}
+    commands:
+      - tapOn: { id: "root-settings-trigger-index" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-009'}
+    commands:
+      - tapOn: { text: "Current" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-010'}
+    commands:
+      - tapOn: { text: "More workout actions" }
+      - tapOn: { text: "Plan settings" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-011'}
+    commands:
+      - tapOn: { text: "View Back Squat trend" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-012'}
+    commands:
+      - tapOn: { text: "Open Back Squat menu" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-013'}
+    commands:
+      - tapOn: { text: "Add exercise" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-014'}
+    commands:
+      - tapOn: { text: "Add set" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-023'}
+    commands:
+      - tapOn: { id: "calendar-info-action" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-024'}
+    commands:
+      - tapOn: { text: "Show November 2026" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-025'}
+    commands:
+      - tapOn: { text: "Show September 2026" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-026'}
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-07" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-028'}
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-04" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-029'}
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-09" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-030'}
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-10" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-031'}
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-05" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-032'}
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-12" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-033'}
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-01" }
+      - tapOn: { text: "Collapse day and return to month" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-035'}
+    commands:
+      - tapOn: { id: "library-filters-chip" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-036'}
+    commands:
+      - tapOn: { text: "Actions" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-040'}
+    commands:
+      - tapOn: { text: "Archive plan" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-057'}
+    commands:
+      - tapOn: { text: "Exercises" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-063'}
+    commands:
+      - tapOn: { text: "12 weeks" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-064'}
+    commands:
+      - tapOn: { text: "All time" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-065'}
+    commands:
+      - tapOn: { text: "Strength" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-066'}
+    commands:
+      - tapOn: { text: "Strength" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-067'}
+    commands:
+      - tapOn: { text: "Strength" }
+      - tapOn: { text: "12 weeks" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-068'}
+    commands:
+      - tapOn: { text: "Strength" }
+      - tapOn: { text: "All time" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-069'}
+    commands:
+      - tapOn: { text: "Running" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-070'}
+    commands:
+      - tapOn: { text: "Running" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-071'}
+    commands:
+      - tapOn: { text: "Running" }
+      - tapOn: { text: "12 weeks" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-072'}
+    commands:
+      - tapOn: { text: "Running" }
+      - tapOn: { text: "All time" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-076'}
+    commands:
+      - tapOn: { text: "Strength" }
+      - tapOn: { text: "Review target for Back Squat" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-077'}
+    commands:
+      - tapOn: { text: "Running" }
+      - tapOn: { text: "Open best efforts for 2.4 km" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-078'}
+    commands:
+      - tapOn: { text: "Running" }
+      - tapOn: { text: "Edit target for 2.4 km" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-079'}
+    commands:
+      - tapOn: { text: "Running" }
+      - tapOn: { text: "Open best efforts for 10 km" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-080'}
+    commands:
+      - tapOn: { text: "Running" }
+      - tapOn: { text: "Edit target for 10 km" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-081'}
+    commands:
+      - tapOn: { text: "Running" }
+      - tapOn: { text: "Open best efforts for Half Marathon" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-082'}
+    commands:
+      - tapOn: { text: "Running" }
+      - tapOn: { text: "Edit target for Half Marathon" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-083'}
+    commands:
+      - tapOn: { text: "Body metrics" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-084'}
+    commands:
+      - tapOn: { text: "Settings" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-085'}
+    commands:
+      - tapOn: { text: "Running" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-086'}
+    commands:
+      - tapOn: { text: "Settings" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-087'}
+    commands:
+      - tapOn: { text: "Running" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-088'}
+    commands:
+      - tapOn: { text: "Settings" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-089'}
+    commands:
+      - tapOn: { text: "Running" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-090'}
+    commands:
+      - tapOn: { text: "Settings" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-091'}
+    commands:
+      - tapOn: { text: "Running" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-093'}
+    commands:
+      - tapOn: { text: "Connect Garmin" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-095'}
+    commands:
+      - tapOn: { text: "Sync now" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-096'}
+    commands:
+      - tapOn: { text: "Sync now" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-097'}
+    commands:
+      - tapOn: { text: "Sync now" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-098'}
+    commands:
+      - tapOn: { text: "Sync now" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-102'}
+    commands:
+      - tapOn: { text: "Confirm match" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-106'}
+    commands:
+      - tapOn: { text: "Confirm match" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-107'}
+    commands:
+      - tapOn: { text: "Disconnect Garmin" }
+      - tapOn: { text: "Disconnect Garmin" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture'}
+    commands:
+      - extendedWaitUntil:
+          visible: { id: "${VISUAL_READY_ID}" }
+          timeout: 15000
+      - extendedWaitUntil:
+          visible: { id: "phase20-visual-capture" }
+          timeout: 15000
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'reset'}
+    commands:
+      - extendedWaitUntil:
+          visible: { id: "phase20-visual-reset" }
+          timeout: 15000

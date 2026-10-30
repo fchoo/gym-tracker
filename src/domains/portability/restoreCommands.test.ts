@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import {
   BACKUP_LIMITS,
   LOGICAL_BACKUP_TABLES,
+  logicalBackupTablesForVersion,
   type LogicalBackupSnapshot,
 } from "./backupContracts";
 import * as backupFormat from "./backupFormat";
@@ -17,24 +18,34 @@ import {
   createRestorePreflightStore,
   RestoreCommandError,
   RestoreCandidateProbeError,
+  validateLogicalRestoreSnapshot,
 } from "./restoreCommands";
 import type { PasswordKdfPort } from "../../platform/crypto/passwordKdf";
 import { RestoreFilePortError } from "../../platform/files/expoBackupFilePort";
+import prePhase10Schema20V1 from "./fixtures/pre-phase10-schema20-v1.json";
 
 const text = new TextEncoder();
 
 function snapshot(override: Partial<LogicalBackupSnapshot> = {}): LogicalBackupSnapshot {
-  const emptyTables = Object.fromEntries(LOGICAL_BACKUP_TABLES.map((table) => [table, []])) as LogicalBackupSnapshot["tables"];
+  const version = override.version ?? 1;
+  const schemaVersion = override.schemaVersion ?? (version === 1 ? 16 : 22);
+  const sourceTables = logicalBackupTablesForVersion(version, schemaVersion);
+  const emptyTables = Object.fromEntries(sourceTables.map((table) => [table, []])) as LogicalBackupSnapshot["tables"];
   const appSettings = [{ key: "theme", revision: 1, updated_at_ms: 100, value_json: "{\"mode\":\"dark\"}", value_version: 1 }];
   const tables: LogicalBackupSnapshot["tables"] = { ...emptyTables, app_settings: appSettings, ...(override.tables ?? {}) };
   const catalogReferences = override.catalogReferences ?? [{ kind: "exercise" as const, sourceNamespace: "gym-tracker.catalog", sourceRevision: "7", upstreamId: "row" }];
-  const rowCounts = Object.fromEntries(LOGICAL_BACKUP_TABLES.map((table) => [table, tables[table]!.length]));
+  const rowCounts = Object.fromEntries(sourceTables.map((table) => [table, tables[table]!.length]));
+  const manifest = override.manifest ?? {
+    catalogReferenceCount: catalogReferences.length,
+    rowCounts,
+    totalRows: Object.values(rowCounts).reduce((total, count) => total + count, 0),
+  };
   return {
-    version: 1,
+    version,
     snapshotId: "backup_01J5AV2QAXM8QQYWD0S8Y4A001",
     createdAtMs: 1_786_853_900_000,
-    schemaVersion: 16,
-    manifest: { catalogReferenceCount: catalogReferences.length, rowCounts, totalRows: Object.values(rowCounts).reduce((total, count) => total + count, 0) },
+    schemaVersion,
+    manifest,
     ...override,
     tables,
     catalogReferences,
@@ -66,6 +77,10 @@ const schema = {
         { name: "updated_at_ms", sqliteType: "INTEGER" as const, notNull: true },
       ];
     }
+    if (table === "portable_owner_identity") return [
+      { name: "id", sqliteType: "INTEGER" as const, notNull: true },
+      { name: "owner_namespace", sqliteType: "TEXT" as const, notNull: true },
+    ];
     if (table === "exercise_owner_preferences") return [
       { name: "exercise_id", sqliteType: "TEXT" as const, notNull: true },
       { name: "favorite", sqliteType: "INTEGER" as const, notNull: true },
@@ -187,17 +202,347 @@ describe("restore preflight", () => {
       .rejects.toEqual(new RestoreCommandError("restore_archive_invalid"));
   }
 
-  it.each([15, 16, 17, 18])("accepts logical producer schema version %i", async (schemaVersion) => {
+  it.each([15, 16, 17, 18, 19, 20, 21])("accepts logical v1 producer schema version %i for restore-clean", async (schemaVersion) => {
     const commands = createRestoreCommands({
-      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ schemaVersion })) },
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ version: 1, schemaVersion })) },
       kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-" + schemaVersion }),
     });
     await expect(commands.preflightSecureRestore({ password: "owner-password" })).resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
   });
 
-  it.each([14, 19])("rejects unsupported logical producer schema version %i", async (schemaVersion) => {
+  it("accepts a frozen pre-Phase-10 v1 archive without the timing table", async () => {
+    const fixture = prePhase10Schema20V1 as LogicalBackupSnapshot;
+    const additiveDefaults: Readonly<Record<string, Readonly<Record<string, string | null>>>> = {
+      exercises: { portable_id: null },
+      plans: { portable_id: null },
+      plan_day_exercises: { advanced_timing_default_json: '{"version":1,"mode":"off"}' },
+      plan_warmup_sets: { advanced_timing_override_json: null },
+      plan_working_set_targets: { advanced_timing_override_json: null },
+      session_exercises: { advanced_timing_default_json: '{"version":1,"mode":"off"}' },
+      session_sets: {
+        advanced_timing_override_json: null,
+        advanced_timing_resolved_json: '{"version":1,"mode":"off"}',
+      },
+      workout_sessions: { portable_id: null, merge_modified_at_ms: null },
+    };
+    const frozenSchema = {
+      async columnsFor(table: string) {
+        const first = fixture.tables[table]?.[0];
+        if (first === undefined) return schema.columnsFor(table);
+        const current = { ...first, ...(additiveDefaults[table] ?? {}) };
+        return Object.entries(current).map(([name, value]) => ({
+          name,
+          sqliteType: typeof value === "number" ? "INTEGER" as const : "TEXT" as const,
+          notNull: value !== null,
+        }));
+      },
+    };
+    const validateCandidate = jest.fn(async (snapshot: LogicalBackupSnapshot) => {
+      expect(snapshot.tables.plan_day_exercises![0])
+        .toHaveProperty("advanced_timing_default_json", '{"version":1,"mode":"off"}');
+      expect(snapshot.tables.session_sets).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          advanced_timing_override_json: null,
+          advanced_timing_resolved_json: '{"version":1,"mode":"off"}',
+        }),
+      ]));
+      expect(snapshot.tables.workout_sessions![0]).toEqual(expect.objectContaining({
+        portable_id: null,
+        merge_modified_at_ms: null,
+      }));
+    });
+    const restore = jest.fn(async () => ({ state: "rebuild_pending" as const }));
     const commands = createRestoreCommands({
-      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ schemaVersion })) },
+      crypto: cryptoPort(),
+      files: {
+        readSelectedArchiveAtMost: () => archiveFor(fixture),
+      },
+      kdf,
+      schema: frozenSchema,
+      candidateProbe: { validateCandidate },
+      restorer: { restore },
+      store: createRestorePreflightStore({ tokenFactory: () => "schema-20-frozen" }),
+    });
+
+    const ready = await commands.preflightSecureRestore({ password: "owner-password" });
+    expect(ready).toEqual(expect.objectContaining({ outcome: "ready" }));
+    if (ready.outcome !== "ready") throw new Error("frozen_preflight_not_ready");
+    await expect(commands.commitSecureRestore({
+      token: ready.token,
+      confirmation: "REPLACE",
+    })).resolves.toEqual({ state: "rebuild_pending" });
+    expect(validateCandidate).toHaveBeenCalledTimes(1);
+    expect(restore).toHaveBeenCalledWith(validateCandidate.mock.calls[0]![0]);
+  });
+
+  it("accepts a schema-22 v2 archive as an explicit portable-identity compatibility case", async () => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 2,
+        schemaVersion: 22,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-22" }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it("accepts schema 23 with the unchanged canonical graph", async () => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ version: 1, schemaVersion: 23 })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-23" }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" })).resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it("accepts schema 24 as an explicit archived backup-bookkeeping compatibility case", async () => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 2, schemaVersion: 24,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-24" }),
+    });
+    expect(LOGICAL_BACKUP_TABLES).not.toContain("automatic_backup_state");
+    expect(LOGICAL_BACKUP_TABLES).not.toContain("automatic_backup_receipt_state");
+    await expect(commands.preflightSecureRestore({ password: "owner-password" })).resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it.each([25, 26])("accepts additive automatic-backup schema version %i while bookkeeping remains outside the archive tables", async (schemaVersion) => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 2, schemaVersion,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-" + schemaVersion }),
+    });
+    expect(LOGICAL_BACKUP_TABLES).not.toContain("automatic_backup_state");
+    expect(LOGICAL_BACKUP_TABLES).not.toContain("automatic_backup_receipt_state");
+    await expect(commands.preflightSecureRestore({ password: "owner-password" })).resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it("accepts the v3 successor graph only at schema 28", async () => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 3,
+        schemaVersion: 28,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-28-v3" }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it("rejects a v3 graph claiming a pre-successor schema", async () => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 3,
+        schemaVersion: 27,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-27-v3" }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .rejects.toEqual(expect.objectContaining({ code: "restore_archive_unsupported_version" }));
+  });
+
+  it.each([29, 30])("accepts the frozen v4 graph at schema %i", async (schemaVersion) => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 4,
+        schemaVersion,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => `schema-${schemaVersion}-v4` }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it("accepts the v5 bodyweight graph only at schema 31", async () => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 5,
+        schemaVersion: 31,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-31-v5" }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it("accepts only the schema-36 successor archive after all portable source facts exist", async () => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 6,
+        schemaVersion: 36,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-36-v6" }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it.each([37, 38, 39])("accepts the frozen v6 graph through additive schema %i", async (schemaVersion) => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 6,
+        schemaVersion,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => `schema-${schemaVersion}-v6` }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it.each([
+    [7, 40],
+    [7, 41],
+    [8, 42],
+    [9, 43],
+    [9, 44],
+    [10, 45],
+    [10, 46],
+    [11, 47],
+  ])("accepts logical format v%i at its explicit schema-%i compatibility boundary", async (version, schemaVersion) => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: version as LogicalBackupSnapshot["version"],
+        schemaVersion,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => `schema-${schemaVersion}-v${version}` }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it.each([
+    [7, 42],
+    [8, 41],
+    [8, 43],
+    [9, 42],
+    [9, 45],
+    [11, 46],
+  ])("rejects logical format v%i outside its explicit schema-%i compatibility boundary", async (version, schemaVersion) => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: version as LogicalBackupSnapshot["version"],
+        schemaVersion,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "unsupported-mapping" }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .rejects.toEqual(expect.objectContaining({ code: "restore_archive_unsupported_version" }));
+  });
+
+  describe("v6 active plan and schedule topology", () => {
+    const plan = (id: string, kind: "strength" | "running", isActive = 1) => ({
+      id,
+      content_pack_id: null,
+      is_active: isActive,
+      plan_kind: kind,
+    });
+    const scheduleRow = (id: string, planId: string, kind: string) => ({
+      id,
+      plan_id: planId,
+      lifecycle: "active",
+      plan_kind: kind,
+    });
+    const topologySchema = {
+      async columnsFor(table: string) {
+        if (table === "plans") return [
+          { name: "id", sqliteType: "TEXT" as const, notNull: true },
+          { name: "content_pack_id", sqliteType: "TEXT" as const, notNull: false },
+          { name: "is_active", sqliteType: "INTEGER" as const, notNull: true },
+          { name: "plan_kind", sqliteType: "TEXT" as const, notNull: true },
+        ];
+        if (table === "owned_plan_schedules") return [
+          { name: "id", sqliteType: "TEXT" as const, notNull: true },
+          { name: "plan_id", sqliteType: "TEXT" as const, notNull: true },
+          { name: "lifecycle", sqliteType: "TEXT" as const, notNull: true },
+          { name: "plan_kind", sqliteType: "TEXT" as const, notNull: true },
+        ];
+        return schema.columnsFor(table);
+      },
+    };
+    const successor = (tables: LogicalBackupSnapshot["tables"]) => snapshot({
+      version: 6,
+      schemaVersion: 36,
+      tables,
+    });
+
+    it("accepts one matched active plan and schedule per sport through the shared validator", async () => {
+      await expect(validateLogicalRestoreSnapshot(successor({
+        plans: [plan("strength-plan", "strength"), plan("running-plan", "running")],
+        owned_plan_schedules: [
+          scheduleRow("strength-schedule", "strength-plan", "strength"),
+          scheduleRow("running-schedule", "running-plan", "running"),
+        ],
+      }), topologySchema, undefined)).resolves.toBeUndefined();
+    });
+
+    it.each([
+      ["invalid plan kind", {
+        plans: [{ ...plan("strength-plan", "strength"), plan_kind: "cycling" }],
+        owned_plan_schedules: [],
+      }],
+      ["duplicate active plan kind", {
+        plans: [plan("strength-a", "strength"), plan("strength-b", "strength")],
+        owned_plan_schedules: [],
+      }],
+      ["missing schedule plan", {
+        plans: [plan("strength-plan", "strength")],
+        owned_plan_schedules: [scheduleRow("strength-schedule", "missing", "strength")],
+      }],
+      ["inactive schedule plan", {
+        plans: [plan("strength-plan", "strength"), plan("inactive-plan", "running", 0)],
+        owned_plan_schedules: [scheduleRow("running-schedule", "inactive-plan", "running")],
+      }],
+      ["mismatched schedule kind", {
+        plans: [plan("strength-plan", "strength")],
+        owned_plan_schedules: [scheduleRow("strength-schedule", "strength-plan", "running")],
+      }],
+      ["duplicate schedule kind", {
+        plans: [plan("strength-plan", "strength")],
+        owned_plan_schedules: [
+          scheduleRow("strength-a", "strength-plan", "strength"),
+          scheduleRow("strength-b", "strength-plan", "strength"),
+        ],
+      }],
+      ["missing active schedule kind", {
+        plans: [plan("strength-plan", "strength")],
+        owned_plan_schedules: [],
+      }],
+    ])("rejects %s", async (_label, tables) => {
+      await expect(validateLogicalRestoreSnapshot(
+        successor(tables), topologySchema, undefined,
+      )).rejects.toEqual(expect.objectContaining({ code: "restore_archive_invalid" }));
+    });
+  });
+
+  it("rejects a v5 graph claiming a pre-bodyweight schema", async () => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 5,
+        schemaVersion: 30,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-30-v5" }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .rejects.toEqual(expect.objectContaining({ code: "restore_archive_unsupported_version" }));
+  });
+
+  it.each([14, 28])("rejects unsupported logical producer schema version %i", async (schemaVersion) => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ version: 1, schemaVersion })) },
       kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "unsupported" }),
     });
     await expect(commands.preflightSecureRestore({ password: "owner-password" })).rejects.toEqual(expect.objectContaining({ code: "restore_archive_unsupported_version" }));
@@ -207,7 +552,7 @@ describe("restore preflight", () => {
     expect(LOGICAL_BACKUP_TABLES).not.toContain("workout_remove_receipts");
   });
 
-  it("returns a bounded preview only after authenticating, validating all 43 tables, and checking local references", async () => {
+  it("returns a bounded preview only after authenticating, validating all 44 tables, and checking local references", async () => {
     const store = createRestorePreflightStore({ tokenFactory: () => "opaque-token" });
     const archive = await archiveFor();
     const readSelectedArchiveAtMost = jest.fn(async (limit: number) => {
@@ -674,7 +1019,9 @@ describe("restore preflight", () => {
       source_plan_id: "bundled-plan", result_plan_id: "copied-plan", expected_revision: 1,
       result_revision: 1, result_json: "{}", committed_at_ms: 1,
     }];
-    const rowCounts = Object.fromEntries(LOGICAL_BACKUP_TABLES.map((table) => [table, tables[table]!.length]));
+    const rowCounts = Object.fromEntries(
+      Object.keys(tables).map((table) => [table, tables[table]!.length]),
+    );
     const value = snapshot({ tables });
     const manifest = { catalogReferenceCount: 1, rowCounts, totalRows: Object.values(rowCounts).reduce((sum, count) => sum + count, 0) };
     const valid = { ...value, manifest } as LogicalBackupSnapshot;

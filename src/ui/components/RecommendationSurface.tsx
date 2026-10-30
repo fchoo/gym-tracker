@@ -19,12 +19,16 @@ import {
   formatLoadGrams,
 } from "./SetRow";
 import {
+  ActionRow,
   FocusablePressable,
+  InlineNotice,
   PrimaryAction,
   SecondaryAction,
 } from "./index";
+import { BottomSheet } from "./BottomSheet";
 import {
   radius,
+  sizes,
   space,
   typeScale,
   useAppTheme,
@@ -44,7 +48,7 @@ function reps(values: readonly number[]): string {
   return values.length === 0 ? "current range" : values.join(" / ");
 }
 
-function targetText(target: MetricTarget): string {
+export function recommendationTargetText(target: MetricTarget): string {
   switch (target.profile) {
     case "load_reps":
       return `${formatLoadGrams(target.loadGrams)} kg × ${
@@ -113,24 +117,201 @@ function lifecycleSummary(
   }
 }
 
+type ReviewDecision = "use" | "keep";
+/**
+ * Route owners may own command reconciliation and intentionally return void.
+ * Only a returned promise is observed for the local busy/failure presentation.
+ */
+type DecisionCallback = () => unknown;
+
+function isPromiseLike(value: unknown): value is Promise<unknown> {
+  return value !== null
+    && typeof value === "object"
+    && "then" in value
+    && typeof (value as Readonly<{ then?: unknown }>).then === "function";
+}
+
 function ReviewSurface({
   recommendation,
   busy,
   onAccept,
   onKeepCurrent,
   onOpenSource,
+  sourceActionRef,
 }: Readonly<{
   recommendation: ProgressRecommendationReview;
   busy: boolean;
-  onAccept(): void;
-  onKeepCurrent(): void;
+  onAccept: DecisionCallback;
+  onKeepCurrent: DecisionCallback;
   onOpenSource?(sessionId: string): void;
+  sourceActionRef?: React.Ref<View>;
 }>) {
   const { colors } = useAppTheme();
+  const reviewTriggerRef = React.useRef<View>(null);
+  const submittingRef = React.useRef(false);
+  const [sheetVisible, setSheetVisible] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [selectedDecision, setSelectedDecision] = React.useState<ReviewDecision | null>(null);
+  const [decisionFailed, setDecisionFailed] = React.useState(false);
   const pending = recommendation.lifecycle === "pending";
   const noLongerApplies = recommendation.lifecycle === "invalidated"
     || recommendation.lifecycle === "superseded";
   const historical = !pending;
+  const commandBusy = busy || submitting;
+
+  const openReview = () => {
+    setDecisionFailed(false);
+    setSelectedDecision(null);
+    setSheetVisible(true);
+  };
+  const dismissReview = () => {
+    if (!commandBusy) {
+      setSheetVisible(false);
+    }
+  };
+  const submit = (decision: ReviewDecision, command: DecisionCallback) => {
+    if (commandBusy || submittingRef.current) {
+      return;
+    }
+    setDecisionFailed(false);
+    setSelectedDecision(decision);
+    let result: unknown;
+    try {
+      result = command();
+    } catch {
+      setDecisionFailed(true);
+      return;
+    }
+    // Existing route owners may initiate a command and reconcile a fresh
+    // projection separately. A void callback is never treated as a commit.
+    if (!isPromiseLike(result)) {
+      return;
+    }
+    submittingRef.current = true;
+    setSubmitting(true);
+    void result.catch(() => {
+      setDecisionFailed(true);
+    }).finally(() => {
+      submittingRef.current = false;
+      setSubmitting(false);
+    });
+  };
+  const selectedLabel = (decision: ReviewDecision, normal: string, saving: string) => (
+    selectedDecision === decision && commandBusy ? saving : normal
+  );
+
+  if (pending) {
+    return (
+      <>
+        <View
+          accessibilityLabel={`Recommendation review for ${recommendation.exerciseName}`}
+          style={[styles.surface, { backgroundColor: colors.surface, borderColor: colors.divider }]}
+        >
+          <Text style={[typeScale.label as TextStyle, { color: colors.action }]}>NEXT TARGET REVIEW</Text>
+          <Text
+            accessibilityRole="header"
+            style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}
+          >
+            {recommendation.exerciseName}
+          </Text>
+          <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
+            {`Current · ${recommendationTargetText(recommendation.currentTarget)}`}
+          </Text>
+          <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
+            {`Proposed · ${recommendationTargetText(recommendation.proposedTarget)}`}
+          </Text>
+          <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+            {recommendation.reason}
+          </Text>
+          <PrimaryAction
+            label={`Review target for ${recommendation.exerciseName}`}
+            onPress={openReview}
+            ref={reviewTriggerRef}
+          />
+        </View>
+        <BottomSheet
+          cancelDisabled={commandBusy}
+          cancelLabel="Close review target"
+          heading="Review target"
+          onCancel={dismissReview}
+          restoreFocusRef={reviewTriggerRef}
+          scrollTestID="recommendation-review-sheet-content"
+          testID="recommendation-review-sheet"
+          visible={sheetVisible}
+        >
+          <View
+            accessibilityLabel={`Recommendation review for ${recommendation.exerciseName}`}
+            style={styles.sheetContent}
+          >
+            <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>
+              {`${recommendation.exerciseName} · personal completed history only`}
+            </Text>
+            <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
+              {`Current target · ${recommendationTargetText(recommendation.currentTarget)}`}
+            </Text>
+            <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
+              {`Proposed target · ${recommendationTargetText(recommendation.proposedTarget)}`}
+            </Text>
+            <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+              {`Rule · ${recommendation.rule.id} v${recommendation.rule.version}`}
+            </Text>
+            <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+              {`Confidence · ${recommendation.confidence}`}
+            </Text>
+            <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
+              {recommendation.reason}
+            </Text>
+            {recommendation.sourceSessionId === null || onOpenSource === undefined ? null : (
+              <FocusablePressable
+                accessibilityLabel={`Open source workout for ${recommendation.exerciseName}`}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: false }}
+                focusable
+                onPress={() => onOpenSource(recommendation.sourceSessionId!)}
+                ref={sourceActionRef}
+                style={({ pressed }) => [
+                  styles.sourceAction,
+                  { borderColor: colors.divider, opacity: pressed ? 0.76 : 1 },
+                ]}
+              >
+                <Text style={[typeScale.secondary as TextStyle, { color: colors.textPrimary }]}>
+                  Open source workout
+                </Text>
+              </FocusablePressable>
+            )}
+            <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+              No automatic change without confirmation.
+            </Text>
+            {decisionFailed ? (
+              <InlineNotice
+                action={<SecondaryAction label="Retry target decision" onPress={() => {
+                  if (selectedDecision === "use") submit("use", onAccept);
+                  if (selectedDecision === "keep") submit("keep", onKeepCurrent);
+                }} />}
+                body="Your current target is unchanged. Review the evidence and try again."
+                heading="Target decision was not saved"
+                tone="error"
+              />
+            ) : null}
+            <ActionRow>
+              <SecondaryAction
+                busy={selectedDecision === "keep" && commandBusy}
+                disabled={commandBusy}
+                label={selectedLabel("keep", "Keep target unchanged", "Saving keep target")}
+                onPress={() => submit("keep", onKeepCurrent)}
+              />
+              <PrimaryAction
+                busy={selectedDecision === "use" && commandBusy}
+                disabled={commandBusy}
+                label={selectedLabel("use", "Use target", "Saving use target")}
+                onPress={() => submit("use", onAccept)}
+              />
+            </ActionRow>
+          </View>
+        </BottomSheet>
+      </>
+    );
+  }
 
   return (
     <View
@@ -150,10 +331,10 @@ function ReviewSurface({
         {lifecycleLabel(recommendation.lifecycle)}
       </Text>
       <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
-        {`${historical ? "Current target at review time" : "Current target"} · ${targetText(recommendation.currentTarget)}`}
+        {`${historical ? "Current target at review time" : "Current target"} · ${recommendationTargetText(recommendation.currentTarget)}`}
       </Text>
       <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
-        {`${historical ? "Proposed target at review time" : "Proposed target"} · ${targetText(recommendation.proposedTarget)}`}
+        {`${historical ? "Proposed target at review time" : "Proposed target"} · ${recommendationTargetText(recommendation.proposedTarget)}`}
       </Text>
       <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
         {`Rule · ${recommendation.rule.id} v${recommendation.rule.version}`}
@@ -184,20 +365,6 @@ function ReviewSurface({
           </Text>
         </FocusablePressable>
       )}
-      {pending ? (
-        <View style={styles.actions}>
-          <PrimaryAction
-            busy={busy}
-            label={`Use proposed target for ${recommendation.exerciseName}`}
-            onPress={onAccept}
-          />
-          <SecondaryAction
-            disabled={busy}
-            label={`Keep current target for ${recommendation.exerciseName}`}
-            onPress={onKeepCurrent}
-          />
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -238,10 +405,10 @@ function LegacySurface({
         {proposedLoad} · aim for {reps(recommendation.proposedTargetReps)}
       </Text>
       {recommendation.status === "pending" ? (
-        <View style={styles.actions}>
+        <ActionRow>
           <PrimaryAction busy={busy} label="Use this target next time" onPress={onAccept} />
           <SecondaryAction disabled={busy} label="Keep current target" onPress={onKeepCurrent} />
-        </View>
+        </ActionRow>
       ) : (
         <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.completed }]}>
           {recommendation.status === "accepted"
@@ -261,12 +428,14 @@ export function RecommendationSurface({
   onAccept,
   onKeepCurrent,
   onOpenSource,
+  sourceActionRef,
 }: Readonly<{
   recommendation: RecommendationSurfaceRecommendation;
   busy?: boolean;
-  onAccept: () => void;
-  onKeepCurrent: () => void;
+  onAccept: DecisionCallback;
+  onKeepCurrent: DecisionCallback;
   onOpenSource?: (sessionId: string) => void;
+  sourceActionRef?: React.Ref<View>;
 }>) {
   return isReview(recommendation)
     ? (
@@ -276,6 +445,7 @@ export function RecommendationSurface({
           onKeepCurrent={onKeepCurrent}
           recommendation={recommendation}
           {...(onOpenSource === undefined ? {} : { onOpenSource })}
+          {...(sourceActionRef === undefined ? {} : { sourceActionRef })}
         />
       )
     : (
@@ -298,10 +468,15 @@ const styles = StyleSheet.create({
   actions: {
     gap: space[2],
   },
+  sheetContent: {
+    gap: space[4],
+  },
   sourceAction: {
     alignSelf: "flex-start",
     borderRadius: radius.standard,
     borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: "center",
+    minHeight: sizes.minimumTarget,
     paddingHorizontal: space[2],
     paddingVertical: space[1],
   },

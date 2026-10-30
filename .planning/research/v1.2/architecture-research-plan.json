@@ -1,0 +1,8 @@
+{
+  "ecosystem": "npm",
+  "config": {"exa_search": false, "brave_search": false, "firecrawl": false, "tavily_search": false},
+  "questions": [
+    {"text": "SQLite partial unique indexes restrictions on other tables and migration transaction ALTER TABLE ADD COLUMN CHECK constraints", "kind": "web"},
+    {"text": "Expo SQLite withExclusiveTransactionAsync transaction isolation backupDatabaseAsync official documentation", "kind": "web"}
+  ]
+}

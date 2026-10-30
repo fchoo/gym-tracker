@@ -1,0 +1,77 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { afterEach, describe, expect, it, jest } from "@jest/globals";
+import React from "react";
+import { displayLocalDateTime } from "../../domains/shared/displayTimeZone";
+import { Animated, StyleSheet } from "react-native";
+
+import type { SessionDetail } from "../../domains/workout";
+import { CalendarReadOnlyWorkout } from "../calendar/CalendarReadOnlyWorkout";
+import { AppearanceProvider } from "../theme";
+
+const detail = {
+  id: "completed-session", status: "completed", statusLabel: "Complete", sourceLabel: "Manual visit", planName: "Foundation", dayName: "Day A", localDate: "2026-10-13", timezone: "Asia/Singapore", startedAtMs: 0, endedAtMs: 1, durationMs: 60_000, revision: 1, modifiedFromPlan: false,
+  exerciseProgress: { completed: 1, planned: 1, percent: 100 }, workingSetProgress: { completed: 1, planned: 2, percent: 50 },
+  exercises: [{ id: "exercise-1", exerciseId: "bench", name: "Bench press", metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 }, metricProfile: "load_reps", ordinal: 0, status: "completed", revision: 1, effort: null, topWorkingSet: "50 kg × 5", totalWorkingReps: 5, warmups: [], workingSets: [{ id: "set-1", kind: "working", ordinal: 0, status: "completed", metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 }, target: { profile: "load_reps", version: 1, loadGrams: 50000, minReps: 5, maxReps: 5, incrementGrams: 2500, perSide: false }, observation: { profile: "load_reps", version: 1, loadGrams: 50000, reps: 5, source: "manual" }, value: "50 kg × 5" }, { id: "set-2", kind: "working", ordinal: 1, status: "planned", metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 }, target: { profile: "load_reps", version: 1, loadGrams: 50000, minReps: 5, maxReps: 5, incrementGrams: 2500, perSide: false }, observation: null, value: "50 kg × 5" }] }],
+  nonLoadOutcomes: [], recommendations: [], recommendationStatus: "none", resumable: false, readOnly: true,
+} as unknown as SessionDetail;
+
+describe("CalendarReadOnlyWorkout", () => {
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  it("renders immutable completed facts and disclosure without management actions", async () => {
+    const timing = jest.spyOn(Animated, "timing");
+    const onGoBack = jest.fn();
+    await render(<AppearanceProvider><CalendarReadOnlyWorkout detail={detail} onGoBack={onGoBack} /></AppearanceProvider>);
+    expect(screen.getByText("Complete · read only")).toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "Day A" })).toBeOnTheScreen();
+    expect(await screen.findByRole("button", { name: "Back to Calendar agenda" })).toHaveProp("hasTVPreferredFocus", true);
+    expect(screen.getByText(/Not completed/u)).toBeOnTheScreen();
+    expect(StyleSheet.flatten(screen.getByText("Complete · read only").props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 22, fontWeight: "800" });
+    expect(StyleSheet.flatten(screen.getByText(displayLocalDateTime(detail.startedAtMs)).props.style)).toMatchObject({ fontFamily: "IBMPlexMono_400Regular", fontSize: 16, fontWeight: "400" });
+    expect(StyleSheet.flatten(screen.getByRole("header", { name: "Bench press" }).props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 22, fontWeight: "800" });
+    expect(StyleSheet.flatten(screen.getByTestId("calendar-read-only-set-set-1").props.style).flexDirection).toBe("row");
+    const completedState = screen.getByTestId("calendar-read-only-set-set-1-state");
+    expect(completedState).toHaveTextContent("Complete");
+    expect(completedState.children[0]).toHaveProp("accessible", false);
+    expect(completedState.children[0]).toHaveProp("height", 24);
+    expect(completedState.children[0]).toHaveProp("strokeWidth", 2);
+    expect(completedState.children[0]).toHaveProp("width", 24);
+    const incompleteState = screen.getByTestId("calendar-read-only-set-set-2-state");
+    expect(incompleteState).toHaveTextContent("Not completed");
+    expect(incompleteState.children[0]).toHaveProp("accessible", false);
+    expect(incompleteState.children[0]).toHaveProp("height", 24);
+    expect(incompleteState.children[0]).toHaveProp("strokeWidth", 2);
+    expect(incompleteState.children[0]).toHaveProp("width", 24);
+    expect(screen.queryByText("✓ Complete")).toBeNull();
+    expect(screen.queryByText("— Not completed")).toBeNull();
+    expect(screen.queryByText("Correct workout")).toBeNull();
+    expect(screen.queryByText("Resume workout")).toBeNull();
+    timing.mockClear();
+    await fireEvent.press(screen.getByRole("button", { name: /Bench press.*Collapse exercise/u }));
+    await waitFor(() => expect(timing).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+        duration: 160,
+        toValue: 0,
+        useNativeDriver: true,
+      })));
+    fireEvent.press(screen.getByRole("button", { name: "Back to Calendar agenda" }));
+    expect(onGoBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps partial facts read-only and changes only local disclosure visibility", async () => {
+    const partial = { ...detail, status: "partial" as const, statusLabel: "Partial", resumable: true };
+    const timing = jest.spyOn(Animated, "timing");
+    await render(<AppearanceProvider reduceMotion><CalendarReadOnlyWorkout detail={partial} onGoBack={jest.fn()} /></AppearanceProvider>);
+
+    expect(screen.getByText("Partial · read only")).toBeOnTheScreen();
+    expect(screen.getByText(/Not completed/u)).toBeOnTheScreen();
+    const disclosure = screen.getByRole("button", { name: /Bench press/u });
+    timing.mockClear();
+    await fireEvent.press(disclosure);
+    expect(timing).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Not completed/u)).toBeNull();
+    expect(disclosure).toHaveProp("accessibilityState", expect.objectContaining({ expanded: false }));
+    expect(screen.queryByText("Resume workout")).toBeNull();
+    expect(screen.queryByText("Correct workout")).toBeNull();
+    expect(screen.queryByText("Remove from history")).toBeNull();
+  });
+});

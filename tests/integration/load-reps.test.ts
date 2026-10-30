@@ -425,6 +425,78 @@ async function setupCompletedWorkout() {
   };
 }
 
+async function setupCompletedTimedHoldWorkout() {
+  const kernel = await createKernel();
+  const plans = createPlansWorkoutRepository(kernel);
+  const activation = await activateStarterPlan({
+    fixture: parseFullBodyFoundation(fullBodyFoundationAsset),
+    repository: plans,
+    activatedAtMs: 1_786_853_600_000,
+    startLocalDate: "2026-08-17",
+    timezone: "Asia/Singapore",
+  });
+  const session = await startWorkout({
+    repository: plans,
+    request: {
+      mode: "scheduled",
+      planId: activation.plan.id,
+      planDayId: activation.days[0]!.id,
+      localDate: "2026-08-17",
+      timezone: "Asia/Singapore",
+      startedAtMs: 1_786_853_600_000,
+    },
+  });
+  const [plank] = await kernel.queryAll<{ id: string }>(
+    `SELECT id FROM session_exercises
+     WHERE session_id = ? AND metric_profile = 'timed_hold'`,
+    [session.id],
+  );
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      `UPDATE session_sets
+       SET status = CASE
+             WHEN session_exercise_id = ? AND set_kind = 'working'
+               THEN 'completed'
+             ELSE 'skipped'
+           END,
+           observed_json = CASE
+             WHEN session_exercise_id = ? AND set_kind = 'working'
+               THEN '{"version":1,"profile":"timed_hold","durationSeconds":45,"source":"manual"}'
+             ELSE NULL
+           END,
+           completed_at_ms = CASE
+             WHEN session_exercise_id = ? AND set_kind = 'working'
+               THEN 1786853700000 + ordinal
+             ELSE NULL
+           END,
+           revision = revision + 1
+       WHERE session_exercise_id IN (
+         SELECT id FROM session_exercises WHERE session_id = ?
+       )`,
+      [plank!.id, plank!.id, plank!.id, session.id],
+    );
+    await transaction.execute(
+      `UPDATE session_exercises
+       SET status = CASE WHEN id = ? THEN 'completed' ELSE 'skipped' END,
+           revision = revision + 1
+       WHERE session_id = ?`,
+      [plank!.id, session.id],
+    );
+    await transaction.execute(
+      `UPDATE workout_sessions
+       SET status = 'partial', completed_at_ms = 1786853800000, revision = 2
+       WHERE id = ?`,
+      [session.id],
+    );
+  });
+  return {
+    kernel,
+    repository: createWorkoutOutcomeRepository(kernel),
+    sessionId: session.id,
+    plankId: plank!.id,
+  };
+}
+
 describe("Plan 01-10 recommendation lifecycle", () => {
   it("activates the legacy starter with complete identity on the latest schema", async () => {
     const kernel = await createLatestKernel();
@@ -775,6 +847,220 @@ describe("Plan 01-10 recommendation lifecycle", () => {
     )).resolves.toBe(0);
   });
 
+  it("ignores a completed null-lineage added working set when planned working sets are absent", async () => {
+    const { kernel, repository, sessionId, squatId } =
+      await setupCompletedWorkout();
+    const targetsBefore = await kernel.queryAll(
+      "SELECT * FROM plan_working_set_targets ORDER BY id",
+    );
+
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE session_sets
+         SET status = 'skipped',
+             observed_load_grams = NULL,
+             observed_reps = NULL,
+             observed_json = NULL,
+             completed_at_ms = NULL
+         WHERE session_exercise_id = ?
+           AND set_kind = 'working'`,
+        [squatId],
+      );
+      await transaction.execute(
+        `INSERT INTO session_sets
+          (id, session_exercise_id, set_kind, ordinal,
+           source_plan_working_set_target_id,
+           source_owned_plan_working_set_target_id,
+           target_load_grams, target_min_reps, target_max_reps, target_json,
+           unit_json, rule_type, rule_version, metric_profile,
+           metric_contract_version, exercise_metric_generation,
+           observed_load_grams, observed_reps, observed_json, status,
+           draft_updated_at_ms, completed_at_ms, completion_idempotency_key,
+           revision)
+         SELECT 'added-null-lineage-working-set', session_exercise_id,
+                'working', 3, NULL, NULL, target_load_grams,
+                target_min_reps, target_max_reps, target_json, unit_json,
+                rule_type, rule_version, metric_profile,
+                metric_contract_version, exercise_metric_generation,
+                60000, 8,
+                '{"version":1,"profile":"load_reps","loadGrams":60000,"reps":8,"source":"manual"}',
+                'completed', NULL, 1786853800004,
+                'added-null-lineage-completion', 1
+         FROM session_sets
+         WHERE session_exercise_id = ?
+           AND set_kind = 'working'
+           AND ordinal = 0`,
+        [squatId],
+      );
+    });
+
+    await expect(repository.generateRecommendationsForSession(
+      sessionId,
+      2,
+      1_786_854_000_000,
+    )).resolves.toBe(0);
+    await expect(kernel.queryAll(
+      "SELECT * FROM progression_recommendations ORDER BY id",
+    )).resolves.toEqual([]);
+    await expect(kernel.queryAll(
+      "SELECT * FROM plan_working_set_targets ORDER BY id",
+    )).resolves.toEqual(targetsBefore);
+  });
+
+  it("uses only completed planned lineage when added work is also completed", async () => {
+    const { kernel, repository, sessionId, squatId } =
+      await setupCompletedWorkout();
+    const targetsBefore = await kernel.queryAll(
+      "SELECT * FROM plan_working_set_targets ORDER BY id",
+    );
+
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE session_sets
+         SET observed_reps = 8,
+             observed_json = json_set(observed_json, '$.reps', 8)
+         WHERE session_exercise_id = ?
+           AND set_kind = 'working'`,
+        [squatId],
+      );
+      await transaction.execute(
+        `UPDATE session_exercises
+         SET effort = 'easy'
+         WHERE id = ?`,
+        [squatId],
+      );
+      await transaction.execute(
+        `INSERT INTO session_sets
+          (id, session_exercise_id, set_kind, ordinal,
+           source_plan_working_set_target_id,
+           source_owned_plan_working_set_target_id,
+           target_load_grams, target_min_reps, target_max_reps, target_json,
+           unit_json, rule_type, rule_version, metric_profile,
+           metric_contract_version, exercise_metric_generation,
+           observed_load_grams, observed_reps, observed_json, status,
+           draft_updated_at_ms, completed_at_ms, completion_idempotency_key,
+           revision)
+         SELECT 'added-completed-working-set', session_exercise_id,
+                'working', 3, NULL, NULL, target_load_grams,
+                target_min_reps, target_max_reps, target_json, unit_json,
+                rule_type, rule_version, metric_profile,
+                metric_contract_version, exercise_metric_generation,
+                60000, 1,
+                '{"version":1,"profile":"load_reps","loadGrams":60000,"reps":1,"source":"manual"}',
+                'completed', NULL, 1786853800004,
+                'added-completed-working-set-key', 1
+         FROM session_sets
+         WHERE session_exercise_id = ?
+           AND set_kind = 'working'
+           AND ordinal = 0`,
+        [squatId],
+      );
+    });
+
+    await expect(repository.generateRecommendationsForSession(
+      sessionId,
+      2,
+      1_786_854_000_000,
+    )).resolves.toBe(1);
+    const [recommendation] = await kernel.queryAll<{
+      evidence_json: string;
+      proposed_target_json: string;
+    }>(
+      "SELECT evidence_json, proposed_target_json FROM progression_recommendations",
+    );
+    expect(JSON.parse(recommendation!.evidence_json)).toMatchObject({
+      source: {
+        setIds: expect.not.arrayContaining(["added-completed-working-set"]),
+      },
+      evaluator: {
+        comparableReps: [8, 8, 8],
+      },
+    });
+    expect(recommendation!.proposed_target_json).toContain('"loadGrams":62500');
+    await expect(kernel.queryAll(
+      "SELECT * FROM plan_working_set_targets ORDER BY id",
+    )).resolves.toEqual(targetsBefore);
+  });
+
+  it("keeps non-load outcomes bound to completed planned lineage", async () => {
+    const { kernel, repository, sessionId, plankId } =
+      await setupCompletedTimedHoldWorkout();
+
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE progression_policies
+         SET rule_json = '{"kind":"manual_hold","id":"timed_hold.v1","version":1}'
+         WHERE plan_day_exercise_id = (
+           SELECT target.plan_day_exercise_id
+           FROM plan_working_set_targets target
+           JOIN session_sets set_row
+             ON set_row.source_plan_working_set_target_id = target.id
+           WHERE set_row.session_exercise_id = ?
+             AND set_row.set_kind = 'working'
+           ORDER BY set_row.ordinal
+           LIMIT 1
+         )`,
+        [plankId],
+      );
+      await transaction.execute(
+        `INSERT INTO session_sets
+        (id, session_exercise_id, set_kind, ordinal,
+         source_plan_working_set_target_id,
+         source_owned_plan_working_set_target_id,
+         target_load_grams, target_min_reps, target_max_reps, target_json,
+         unit_json, rule_type, rule_version, metric_profile,
+         metric_contract_version, exercise_metric_generation,
+         observed_load_grams, observed_reps, observed_json, status,
+         draft_updated_at_ms, completed_at_ms, completion_idempotency_key,
+         revision)
+       SELECT 'added-null-lineage-timed-hold', session_exercise_id,
+              'working', 3, NULL, NULL, target_load_grams,
+              target_min_reps, target_max_reps, target_json, unit_json,
+              rule_type, rule_version, metric_profile,
+              metric_contract_version, exercise_metric_generation,
+              NULL, NULL,
+              '{"version":1,"profile":"timed_hold","durationSeconds":45,"source":"manual"}',
+              'completed', NULL, 1786853800004,
+              'added-null-lineage-timed-hold-key', 1
+       FROM session_sets
+       WHERE session_exercise_id = ?
+         AND set_kind = 'working'
+         AND ordinal = 0`,
+        [plankId],
+      );
+    });
+    expect(await kernel.queryAll(
+      `SELECT ss.id, ss.status, ss.rule_type,
+              ss.source_plan_working_set_target_id,
+              ss.source_owned_plan_working_set_target_id,
+              se.metric_profile
+       FROM session_sets ss
+       JOIN session_exercises se ON se.id = ss.session_exercise_id
+       WHERE se.id = ? AND ss.set_kind = 'working'
+       ORDER BY ss.ordinal`,
+      [plankId],
+    )).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'added-null-lineage-timed-hold',
+        source_plan_working_set_target_id: null,
+        status: 'completed',
+      }),
+    ]));
+
+    await expect(repository.getSessionDetail(sessionId)).resolves
+      .toMatchObject({
+        nonLoadOutcomes: [expect.objectContaining({
+          profile: 'timed_hold',
+          source: expect.objectContaining({
+            setIds: expect.not.arrayContaining([
+              'added-null-lineage-timed-hold',
+            ]),
+          }),
+          evidence: expect.objectContaining({ sourceFactCount: 3 }),
+        })],
+      });
+  });
+
   it("skips a sourced target when no working set completed", async () => {
     const { kernel, repository, sessionId, squatId } =
       await setupCompletedWorkout();
@@ -935,6 +1221,106 @@ describe("Plan 01-10 recommendation lifecycle", () => {
     );
   });
 
+  it("commits a named use-target decision once and replays the durable receipt after acknowledgement loss", async () => {
+    const { kernel, repository, targetId } = await setupRecommendation();
+    const input = {
+      recommendationId: "recommendation-1",
+      requestId: "recommendation-review-use-1",
+      decision: "use_target" as const,
+      expectedEvidenceVersion: 2,
+      expectedSourceRevision: 1,
+      expectedTargetRevision: 1,
+      decidedAtMs: 1_786_854_000_000,
+    };
+
+    await expect(acceptRecommendation({ repository, input })).resolves.toEqual({
+      recommendationId: "recommendation-1",
+      status: "accepted",
+    });
+    await expect(acceptRecommendation({ repository, input })).resolves.toEqual({
+      recommendationId: "recommendation-1",
+      status: "already_committed",
+    });
+    await expect(acceptRecommendation({
+      repository,
+      input: {
+        ...input,
+        requestId: "recommendation-review-use-after-restart",
+        expectedTargetRevision: 2,
+        decidedAtMs: input.decidedAtMs + 1,
+      },
+    })).resolves.toEqual({
+      recommendationId: "recommendation-1",
+      status: "already_committed",
+    });
+    await expect(kernel.queryAll<{ revision: number }>(
+      "SELECT revision FROM plan_working_set_targets WHERE id = ?",
+      [targetId],
+    )).resolves.toEqual([{ revision: 2 }]);
+    await expect(kernel.queryAll<{
+      request_id: string;
+      request_sha256: string;
+      result_json: string;
+    }>(
+      `SELECT request_id, request_sha256, result_json
+       FROM progression_recommendation_decision_receipts
+       WHERE request_id = ?`,
+      [input.requestId],
+    )).resolves.toEqual([expect.objectContaining({
+      request_id: input.requestId,
+      request_sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      result_json: expect.stringContaining('"accepted"'),
+    })]);
+  });
+
+  it("rejects changed use-target bytes under a committed request identity", async () => {
+    const { repository } = await setupRecommendation();
+    const input = {
+      recommendationId: "recommendation-1",
+      requestId: "recommendation-review-use-conflict",
+      decision: "use_target" as const,
+      expectedEvidenceVersion: 2,
+      expectedSourceRevision: 1,
+      expectedTargetRevision: 1,
+      decidedAtMs: 1_786_854_000_000,
+    };
+    await acceptRecommendation({ repository, input });
+    await expect(acceptRecommendation({
+      repository,
+      input: { ...input, decidedAtMs: input.decidedAtMs + 1 },
+    })).rejects.toMatchObject({
+      cause: expect.objectContaining({
+        message: "recommendation_request_identity_conflict",
+      }),
+    });
+  });
+
+  it("rejects a changed decision under an already committed request identity", async () => {
+    const { repository } = await setupRecommendation();
+    const input = {
+      recommendationId: "recommendation-1",
+      requestId: "recommendation-review-conflict-1",
+      decision: "use_target" as const,
+      expectedEvidenceVersion: 2,
+      expectedSourceRevision: 1,
+      expectedTargetRevision: 1,
+      decidedAtMs: 1_786_854_000_000,
+    };
+
+    await acceptRecommendation({ repository, input });
+    await expect(keepCurrentTarget({
+      repository,
+      input: {
+        ...input,
+        decision: "keep_current_target",
+      },
+    })).rejects.toMatchObject({
+      cause: expect.objectContaining({
+        message: "recommendation_request_identity_conflict",
+      }),
+    });
+  });
+
   it("keeps historical empty target payloads readable while retaining source observations", async () => {
     const { kernel, repository } = await setupRecommendation();
     await kernel.write((transaction) => transaction.execute(
@@ -1071,6 +1457,20 @@ describe("Plan 01-10 recommendation lifecycle", () => {
       `SELECT load_grams, revision FROM plan_working_set_targets WHERE id = ?`,
       [targetId],
     )).toEqual([{ load_grams: 65_000, revision: 2 }]);
+    await expect(kernel.queryAll<{
+      request_sha256: string;
+      decision: string;
+      result_json: string;
+    }>(
+      `SELECT request_sha256, decision, result_json
+         FROM progression_recommendation_decision_receipts
+        WHERE recommendation_id = ?`,
+      ["recommendation-1"],
+    )).resolves.toEqual([expect.objectContaining({
+      request_sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      decision: "use_target",
+      result_json: expect.stringContaining('"superseded"'),
+    })]);
   });
 
   it("supersedes a legacy pending row instead of applying unverifiable evidence", async () => {
@@ -1265,6 +1665,71 @@ describe("Plan 01-10 recommendation lifecycle", () => {
     )).toEqual([{ load_grams: 60_000, revision: 1 }]);
   });
 
+  it("replays keep-current and stale keep-current receipts after acknowledgement loss", async () => {
+    const first = await setupRecommendation();
+    const keep = {
+      recommendationId: "recommendation-1",
+      requestId: "recommendation-review-keep-replay",
+      decision: "keep_current_target" as const,
+      expectedEvidenceVersion: 2,
+      expectedSourceRevision: 1,
+      expectedTargetRevision: 1,
+      decidedAtMs: 1_786_854_000_000,
+    };
+    await expect(keepCurrentTarget({ repository: first.repository, input: keep }))
+      .resolves.toMatchObject({ status: "rejected" });
+    await expect(keepCurrentTarget({ repository: first.repository, input: keep }))
+      .resolves.toMatchObject({ status: "already_committed" });
+
+    const second = await setupRecommendation();
+    const stale = {
+      ...keep,
+      requestId: "recommendation-review-keep-stale",
+      expectedTargetRevision: 99,
+    };
+    await expect(keepCurrentTarget({ repository: second.repository, input: stale }))
+      .resolves.toMatchObject({ status: "superseded" });
+    await expect(keepCurrentTarget({ repository: second.repository, input: stale }))
+      .resolves.toMatchObject({ status: "already_committed" });
+  });
+
+  it("rolls back when recommendation lifecycle compare-and-swap updates are ignored", async () => {
+    const accepted = await setupRecommendation();
+    await accepted.kernel.write((transaction) => transaction.execute(
+      `CREATE TRIGGER ignore_phase19_accept
+       BEFORE UPDATE OF status ON progression_recommendations
+       WHEN NEW.status = 'accepted'
+       BEGIN SELECT RAISE(IGNORE); END`,
+    ));
+    await expect(acceptRecommendation({
+      repository: accepted.repository,
+      input: {
+        recommendationId: "recommendation-1",
+        decidedAtMs: 1_786_854_000_000,
+      },
+    })).rejects.toThrow("sqlite_transaction_failed");
+
+    const superseded = await setupRecommendation();
+    await superseded.kernel.write((transaction) => transaction.execute(
+      `CREATE TRIGGER ignore_phase19_supersede
+       BEFORE UPDATE OF status ON progression_recommendations
+       WHEN NEW.status = 'superseded'
+       BEGIN SELECT RAISE(IGNORE); END`,
+    ));
+    await expect(keepCurrentTarget({
+      repository: superseded.repository,
+      input: {
+        recommendationId: "recommendation-1",
+        requestId: "recommendation-review-stale-cas",
+        decision: "keep_current_target",
+        expectedEvidenceVersion: 2,
+        expectedSourceRevision: 1,
+        expectedTargetRevision: 99,
+        decidedAtMs: 1_786_854_000_000,
+      },
+    })).rejects.toThrow("sqlite_transaction_failed");
+  });
+
   it("rejects a keep-current decision for an unknown recommendation", async () => {
     const { repository } = await setupRecommendation();
 
@@ -1300,6 +1765,9 @@ describe("Plan 01-10 recommendation lifecycle", () => {
         recommendationId: "recommendation-1",
         decidedAtMs: 1_786_854_001_000,
       },
-    })).rejects.toThrow("sqlite_transaction_failed");
+    })).resolves.toEqual({
+      recommendationId: "recommendation-1",
+      status: "already_committed",
+    });
   });
 });

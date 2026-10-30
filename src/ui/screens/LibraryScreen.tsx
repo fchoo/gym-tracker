@@ -8,8 +8,6 @@ import {
   Star,
 } from "lucide-react-native";
 import {
-  Modal,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -24,13 +22,22 @@ import type {
 import type {
   SearchFilters,
 } from "../../domains/library/search";
+import type { LibraryPlanDeletionResult } from "../../domains/library/planDeletion";
+import type {
+  V12AcceptanceBenchmarkPort,
+} from "../../bootstrap/v12AcceptanceBenchmark";
+import {
+  LIBRARY_ACTION_SHEET_CONFIGURATION,
+} from "../../bootstrap/libraryRuntimeReadPort";
 import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
 import {
+  ActionRow,
   ActionCluster,
   ContentCard,
   FocusablePressable,
+  IconAction,
   InlineNotice,
   M3FilterChip,
   M3SearchField,
@@ -41,6 +48,7 @@ import {
   SecondaryAction,
   SkeletonBlock,
 } from "../components";
+import { BottomSheet } from "../components/BottomSheet";
 import {
   radius,
   sizes,
@@ -48,6 +56,7 @@ import {
   typeScale,
   useAppTheme,
 } from "../theme";
+import type { RootFocusTarget } from "../shell/rootFocus";
 
 export type LibrarySection = "plans" | "exercises";
 
@@ -59,11 +68,13 @@ export type LibrarySectionPreference = Readonly<{
 export type LibraryPlanSummary = Readonly<{
   id: string;
   name: string;
+  sport?: "Running" | "Strength";
   daysPerWeek: number;
   status?: "Active" | "Draft" | "Archived" | "Inactive";
   scheduleSummary?: string;
   missingRequirement?: string | null;
   templateUpdateTemplateId?: string;
+  deletionEligible?: boolean;
 }>;
 
 export type LibraryStarterPlanSummary = Readonly<{
@@ -118,6 +129,7 @@ export type LibraryBrowseSnapshot = Readonly<{
   sectionPreference: LibrarySectionPreference;
   plans: Readonly<{
     active: LibraryPlanSummary | null;
+    activePlans?: readonly LibraryPlanSummary[];
     owned: readonly LibraryPlanSummary[];
     starters: readonly LibraryStarterPlanSummary[];
   }>;
@@ -141,12 +153,15 @@ export type LibrarySectionState = Readonly<Record<
 
 type LibraryScreenProps = Readonly<{
   loadLibrary(): Promise<LibraryBrowseSnapshot>;
+  retryInitialLibraryLoad?(): Promise<LibraryBrowseSnapshot>;
   refreshLibrary?(): Promise<LibraryBrowseSnapshot>;
   refreshGeneration?: number;
   onCreateExercise(): void;
   onCreatePlan(): void;
   onOpenExercise(exerciseId: string): void;
   onOpenPlan(planId: string): void;
+  deletePlan?(input: Readonly<{ planId: string }>): Promise<LibraryPlanDeletionResult>;
+  onOpenSettings?(): void;
   onOpenStarter?(templateId: string): void;
   onOpenTemplateUpdate?(input: Readonly<{
     ownedPlanId: string;
@@ -173,7 +188,15 @@ type LibraryScreenProps = Readonly<{
     section: LibrarySection,
     expectedRevision: number,
   ): Promise<LibrarySectionPreference>;
+  acceptanceBenchmark?: Pick<
+    V12AcceptanceBenchmarkPort,
+    "markSearchDebounceEnded" | "markSearchResultsVisible"
+  >;
+  onUsefulContent?: () => void;
   width?: number;
+  headingRef?: React.RefObject<RootFocusTarget | null>;
+  settingsActionRef?: React.RefObject<RootFocusTarget | null>;
+  settingsActionNativeID?: string;
 }>;
 
 type ExerciseBrowseState = Readonly<{
@@ -217,6 +240,8 @@ const initialProcessState = (): LibrarySectionState => ({
     selectedId: null,
   },
 });
+
+const noOp = () => undefined;
 
 function filterCount(filters: SearchFilters): number {
   return Object.values(filters).reduce(
@@ -472,6 +497,8 @@ function whyStarterFits(
 }
 
 function PlansContent({
+  onClearSearchAndFilters,
+  onCreatePlan,
   snapshot,
   query,
   onOpenPlan,
@@ -479,7 +506,10 @@ function PlansContent({
   onOpenTemplateUpdate,
   selectedId,
   starterFilters,
+  onRequestDelete,
 }: Readonly<{
+  onClearSearchAndFilters(): void;
+  onCreatePlan(): void;
   snapshot: LibraryBrowseSnapshot;
   query: string;
   onOpenPlan(planId: string): void;
@@ -490,14 +520,19 @@ function PlansContent({
   }>): void;
   selectedId: string | null;
   starterFilters: StarterFilters;
+  onRequestDelete?(plan: LibraryPlanSummary, trigger: React.RefObject<View | null>): void;
 }>) {
   const { colors } = useAppTheme();
-  const active = snapshot.plans.active !== null
-      && sectionMatchesQuery(snapshot.plans.active, query)
-    ? snapshot.plans.active
-    : null;
+  const sourceActive = snapshot.plans.activePlans
+    ?? (snapshot.plans.active === null ? [] : [snapshot.plans.active]);
+  const active = sourceActive.filter((item) => sectionMatchesQuery(item, query));
+  const activeIds = new Set(sourceActive.map(({ id }) => id));
+  const persistedPlanIds = new Set([
+    ...sourceActive.map(({ id }) => id),
+    ...snapshot.plans.owned.map(({ id }) => id),
+  ]);
   const owned = snapshot.plans.owned.filter((item) =>
-    sectionMatchesQuery(item, query)
+    !activeIds.has(item.id) && sectionMatchesQuery(item, query)
   );
   const starters = snapshot.plans.starters
     .filter((item) =>
@@ -509,23 +544,38 @@ function PlansContent({
       - (right.ordinal ?? Number.MAX_SAFE_INTEGER)
       || left.id.localeCompare(right.id, "en")
     );
-  const hasMatches = active !== null
+  const hasMatches = active.length > 0
     || owned.length > 0
     || starters.length > 0;
 
-  if (query.trim().length > 0 && !hasMatches) {
+  if (
+    snapshot.plans.activePlans !== undefined
+    && persistedPlanIds.size === 0
+    && query.trim().length === 0
+  ) {
     return (
       <InlineNotice
-        body="Try another plan name or clear filters."
-        heading="No plans match"
+        action={<PrimaryAction label="Create plan" onPress={onCreatePlan} testID="library-create-plan" />}
+        body="Create a strength or running plan to get started."
+        heading="No plans yet"
+      />
+    );
+  }
+
+  if ((query.trim().length > 0 || filterCount(starterFilters as SearchFilters) > 0) && !hasMatches) {
+    return (
+      <InlineNotice
+        action={<SecondaryAction label="Clear search and filters" onPress={onClearSearchAndFilters} />}
+        body="No plan matches your search and current filters."
+        heading="No matches"
       />
     );
   }
 
   return (
     <>
-      <SectionHeader title="Active Plan" />
-      {active === null ? (
+      <SectionHeader title={`Active Plans (${active.length})`} />
+      {active.length === 0 ? (
         <>
           <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
             No active plan
@@ -537,30 +587,33 @@ function PlansContent({
             Review a starter plan or create your own. Nothing is scheduled until you confirm it.
           </Text>
         </>
-      ) : (
-        <PlanRow
-          item={active}
-          {...(active.templateUpdateTemplateId === undefined
+      ) : active.map((item) => (
+        <LibraryOwnedPlanRow
+          item={item}
+          {...(onRequestDelete === undefined ? {} : { onRequestDelete })}
+          {...(item.templateUpdateTemplateId === undefined
               || onOpenTemplateUpdate === undefined
             ? {}
             : {
                 onOpenTemplateUpdate: () => onOpenTemplateUpdate({
-                  ownedPlanId: active.id,
-                  templateId: active.templateUpdateTemplateId!,
+                  ownedPlanId: item.id,
+                  templateId: item.templateUpdateTemplateId!,
                 }),
               })}
-          onPress={() => onOpenPlan(active.id)}
-          selected={selectedId === active.id}
+          key={item.id}
+          onPress={() => onOpenPlan(item.id)}
+          selected={selectedId === item.id}
         />
-      )}
-      <SectionHeader title="My Plans" />
+      ))}
+      <SectionHeader title="My Plans" action={<SecondaryAction label="Create plan" onPress={onCreatePlan} testID="library-create-plan" />} />
       {owned.length === 0 ? (
         <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
           No personal plans yet
         </Text>
       ) : owned.map((item) => (
-        <PlanRow
+        <LibraryOwnedPlanRow
           item={item}
+          {...(onRequestDelete === undefined ? {} : { onRequestDelete })}
           key={item.id}
           {...(item.templateUpdateTemplateId === undefined
               || onOpenTemplateUpdate === undefined
@@ -595,16 +648,37 @@ function PlansContent({
   );
 }
 
+function LibraryOwnedPlanRow({ item, onRequestDelete, ...props }: Readonly<{
+  item: LibraryPlanSummary;
+  onPress(): void;
+  onOpenTemplateUpdate?(): void;
+  selected: boolean;
+  onRequestDelete?(plan: LibraryPlanSummary, trigger: React.RefObject<View | null>): void;
+}>) {
+  const trigger = useRef<View>(null);
+  return (
+    <View style={styles.planWithActions}>
+      <PlanRow item={item} {...props} />
+      {item.deletionEligible === true && onRequestDelete !== undefined ? (
+        <SecondaryAction
+          label={`Delete ${item.name}`}
+          onPress={() => onRequestDelete(item, trigger)}
+          ref={trigger}
+        />
+      ) : null}
+    </View>
+  );
+}
+
 function planResultCount(
   snapshot: LibraryBrowseSnapshot,
   query: string,
   starterFilters: StarterFilters,
 ): number {
   return [
-    snapshot.plans.active === null
-      || !sectionMatchesQuery(snapshot.plans.active, query)
-      ? null
-      : snapshot.plans.active,
+    ...(snapshot.plans.activePlans
+      ?? (snapshot.plans.active === null ? [] : [snapshot.plans.active]))
+      .filter((item) => sectionMatchesQuery(item, query)),
     ...snapshot.plans.owned.filter((item) =>
       sectionMatchesQuery(item, query)
     ),
@@ -826,7 +900,7 @@ function ExercisesContent({
       <InlineNotice
         action={
           <SecondaryAction
-            label="Retry exercise search"
+            label="Retry loading Library"
             onPress={onRetry}
           />
         }
@@ -844,8 +918,8 @@ function ExercisesContent({
         <SectionHeader title="Results" />
         {browse.items.length === 0 ? (
           <InlineNotice
-            body="Try another name or alias, or clear filters to see all available exercises."
-            heading="No exercises match"
+            body="No exercise matches your search and current filters."
+            heading="No matches"
           />
         ) : (
           <ExerciseRows
@@ -942,6 +1016,7 @@ function FilterSheet({
   selectedFilters,
   onApply,
   onClose,
+  restoreFocusRef,
 }: Readonly<{
   options: Readonly<{
     exerciseTypes: readonly string[];
@@ -952,15 +1027,13 @@ function FilterSheet({
   selectedFilters: SearchFilters;
   onApply(filters: SearchFilters): void;
   onClose(): void;
+  restoreFocusRef: React.RefObject<View | null>;
 }>) {
   const { colors } = useAppTheme();
   const [draft, setDraft] = useState<SearchFilters>(selectedFilters);
-  const headingRef = useRef<View>(null);
-
   useEffect(() => {
     if (visible) {
       setDraft(selectedFilters);
-      headingRef.current?.focus();
     }
   }, [selectedFilters, visible]);
 
@@ -1032,35 +1105,14 @@ function FilterSheet({
     },
   ];
   return (
-    <Modal
-      animationType="none"
-      onRequestClose={onClose}
-      transparent
+    <BottomSheet
+      heading="Exercise filters"
+      onCancel={onClose}
+      restoreFocusRef={restoreFocusRef}
+      scrollTestID="library-filter-sheet"
+      testID="library-filter-sheet-frame"
       visible={visible}
     >
-      <View style={styles.modalBackdrop}>
-        <ScrollView
-          accessibilityViewIsModal
-          contentContainerStyle={styles.filterSheetContent}
-          keyboardShouldPersistTaps="handled"
-          style={[styles.filterSheet, { backgroundColor: colors.surface }]}
-          testID="library-filter-sheet"
-        >
-          <View
-            accessibilityRole="header"
-            accessible
-            focusable
-            ref={headingRef}
-          >
-            <Text
-              style={[
-                typeScale.screenTitle as TextStyle,
-                { color: colors.textPrimary },
-              ]}
-            >
-              Exercise filters
-            </Text>
-          </View>
           <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
             Select any value within a category. Categories combine together.
           </Text>
@@ -1083,14 +1135,12 @@ function FilterSheet({
               />
             </React.Fragment>
           ))}
-          <PrimaryAction
+          <ActionRow><PrimaryAction
             label="Show results"
             onPress={() => onApply(draft)}
           />
-          <SecondaryAction label="Keep Current Filters" onPress={onClose} />
-        </ScrollView>
-      </View>
-    </Modal>
+          <SecondaryAction label="Keep Current Filters" onPress={onClose} /></ActionRow>
+    </BottomSheet>
   );
 }
 
@@ -1100,21 +1150,21 @@ function StarterFilterSheet({
   selectedFilters,
   onApply,
   onClose,
+  restoreFocusRef,
 }: Readonly<{
   starters: readonly LibraryStarterPlanSummary[];
   visible: boolean;
   selectedFilters: StarterFilters;
   onApply(filters: StarterFilters): void;
   onClose(): void;
+  restoreFocusRef: React.RefObject<View | null>;
 }>) {
   const { colors } = useAppTheme();
   const [draft, setDraft] = useState<StarterFilters>(selectedFilters);
-  const headingRef = useRef<View>(null);
 
   useEffect(() => {
     if (visible) {
       setDraft(selectedFilters);
-      headingRef.current?.focus();
     }
   }, [selectedFilters, visible]);
 
@@ -1164,33 +1214,14 @@ function StarterFilterSheet({
   ];
 
   return (
-    <Modal
-      animationType="none"
-      onRequestClose={onClose}
-      transparent
+    <BottomSheet
+      heading="Starter filters"
+      onCancel={onClose}
+      restoreFocusRef={restoreFocusRef}
+      scrollTestID="starter-filter-sheet"
+      testID="starter-filter-sheet-frame"
       visible={visible}
     >
-      <View style={styles.modalBackdrop}>
-        <ScrollView
-          accessibilityViewIsModal
-          contentContainerStyle={styles.filterSheetContent}
-          keyboardShouldPersistTaps="handled"
-          style={[styles.filterSheet, { backgroundColor: colors.surface }]}
-          testID="starter-filter-sheet"
-        >
-          <View
-            accessibilityRole="header"
-            accessible
-            focusable
-            ref={headingRef}
-          >
-            <Text style={[
-              typeScale.screenTitle as TextStyle,
-              { color: colors.textPrimary },
-            ]}>
-              Starter filters
-            </Text>
-          </View>
           <Text style={[
             typeScale.body as TextStyle,
             { color: colors.textSecondary },
@@ -1214,21 +1245,21 @@ function StarterFilterSheet({
               />
             </React.Fragment>
           ))}
-          <PrimaryAction
+          <ActionRow><PrimaryAction
             label="Show results"
             onPress={() => onApply(draft)}
           />
-          <SecondaryAction label="Keep Current Filters" onPress={onClose} />
-        </ScrollView>
-      </View>
-    </Modal>
+          <SecondaryAction label="Keep Current Filters" onPress={onClose} /></ActionRow>
+    </BottomSheet>
   );
 }
 
 export function LibraryScreen({
+  acceptanceBenchmark,
   contentUpdateFailed,
   contentUpdateResult,
   loadLibrary,
+  retryInitialLibraryLoad = loadLibrary,
   refreshLibrary = loadLibrary,
   refreshGeneration = 0,
   listRecentExercises,
@@ -1236,6 +1267,8 @@ export function LibraryScreen({
   onCreatePlan,
   onOpenExercise,
   onOpenPlan,
+  deletePlan,
+  onOpenSettings = noOp,
   onOpenStarter = onOpenPlan,
   onOpenTemplateUpdate,
   onReviewChanges,
@@ -1243,6 +1276,10 @@ export function LibraryScreen({
   setExerciseFavorite,
   setSection,
   width,
+  headingRef,
+  settingsActionRef,
+  settingsActionNativeID,
+  onUsefulContent,
 }: LibraryScreenProps) {
   const [snapshot, setSnapshot] = useState<LibraryBrowseSnapshot | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -1263,11 +1300,19 @@ export function LibraryScreen({
   const [reviewedUpdate, setReviewedUpdate] =
     useState<ContentUpdateResult | null>(null);
   const [busySection, setBusySection] = useState<LibrarySection | null>(null);
+  const [actionsVisible, setActionsVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [starterFilters, setStarterFilters] = useState<StarterFilters>({});
+  const [deleteSelection, setDeleteSelection] = useState<Readonly<{
+    plan: LibraryPlanSummary;
+    trigger: React.RefObject<View | null>;
+  }> | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const deleteInFlightRef = useRef(false);
   const filterActionRef = useRef<View>(null);
+  const actionsActionRef = useRef<View>(null);
   const reviewActionRef = useRef<View>(null);
-  const reviewHeadingRef = useRef<View>(null);
   const scrollOffsetsRef = useRef<Record<LibrarySection, number>>({
     plans: 0,
     exercises: 0,
@@ -1287,10 +1332,10 @@ export function LibraryScreen({
   const exercisesResultCount = exerciseBrowse.items.length;
 
   useEffect(() => {
-    if (reviewedUpdate !== null) {
-      reviewHeadingRef.current?.focus();
-    }
-  }, [reviewedUpdate]);
+    if (snapshot === null) return;
+    const frame = requestAnimationFrame(() => onUsefulContent?.());
+    return () => cancelAnimationFrame(frame);
+  }, [onUsefulContent, snapshot]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -1326,6 +1371,9 @@ export function LibraryScreen({
       pageError: false,
     }));
     const timer = setTimeout(() => {
+      const measuredSearch = acceptanceBenchmark !== undefined
+        && processState.exercises.query.trim().length > 0;
+      if (measuredSearch) acceptanceBenchmark.markSearchDebounceEnded();
       void Promise.all([
         searchExercises({
           query: processState.exercises.query,
@@ -1365,6 +1413,9 @@ export function LibraryScreen({
           initialError: false,
           pageError: false,
         });
+        if (measuredSearch) {
+          requestAnimationFrame(() => acceptanceBenchmark.markSearchResultsVisible());
+        }
       }).catch(() => {
         if (
           mountedRef.current
@@ -1382,6 +1433,7 @@ export function LibraryScreen({
     return () => clearTimeout(timer);
   }, [
     listRecentExercises,
+    acceptanceBenchmark,
     processState.exercises.filters,
     processState.exercises.query,
     searchExercises,
@@ -1555,7 +1607,7 @@ export function LibraryScreen({
     loadGenerationRef.current = generation;
     loadRetryInFlightRef.current = true;
     setLoadRetrying(true);
-    void loadLibrary().then((value) => {
+    void retryInitialLibraryLoad().then((value) => {
       if (mountedRef.current && generation === loadGenerationRef.current) {
         setSnapshot(value);
         setLoadFailed(false);
@@ -1624,26 +1676,80 @@ export function LibraryScreen({
     )
     && updateKey !== null
     && !dismissedUpdateKeys.has(updateKey);
-  const headerAction = section === "plans"
-    ? (
-        <PrimaryAction
-          label="Create my own"
-          onPress={onCreatePlan}
-        />
-      )
-    : (
-        <PrimaryAction
-          label="Create custom exercise"
-          onPress={onCreateExercise}
-        />
-      );
+
+  async function confirmDeletePlan() {
+    if (deleteSelection === null || deletePlan === undefined || deleteInFlightRef.current) return;
+    const { plan } = deleteSelection;
+    deleteInFlightRef.current = true;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      const result = await deletePlan({ planId: plan.id });
+      if (!mountedRef.current) return;
+      if (result.outcome === "deleted" && result.planId === plan.id) {
+        setSnapshot((current) => current === null ? null : {
+          ...current,
+          plans: {
+            ...current.plans,
+            active: current.plans.active?.id === plan.id ? null : current.plans.active,
+            ...(current.plans.activePlans === undefined ? {} : {
+              activePlans: current.plans.activePlans.filter(({ id }) => id !== plan.id),
+            }),
+            owned: current.plans.owned.filter(({ id }) => id !== plan.id),
+          },
+        });
+        setDeleteSelection(null);
+      } else {
+        setDeleteSelection(null);
+        setDeleteError(result.outcome === "ineligible" && result.reason === "workout_linked"
+          ? "This plan is linked to a workout and cannot be deleted."
+          : "This plan changed. Refresh Library before deleting it.");
+        const fresh = await refreshLibrary();
+        if (mountedRef.current) setSnapshot(fresh);
+      }
+    } catch {
+      if (mountedRef.current) setDeleteError("The plan could not be deleted. Try again.");
+    } finally {
+      deleteInFlightRef.current = false;
+      if (mountedRef.current) setDeleteBusy(false);
+    }
+  }
 
   return (
     <>
       <AdaptiveScreen
+        contentPaddingTop={0}
         primary={
           <>
-            <ScreenHeader action={headerAction} title="Library" />
+            <ScreenHeader
+              {...(headingRef === undefined
+                ? {}
+                : { ref: headingRef as React.Ref<View> })}
+              actions={[
+                ...(section === "exercises" ? [<PrimaryAction key="create-exercise" label="Create custom exercise" onPress={onCreateExercise} />] : []),
+                (
+                  <SecondaryAction
+                    label={LIBRARY_ACTION_SHEET_CONFIGURATION.triggerLabel}
+                    nativeID="library-actions-trigger"
+                    onPress={() => setActionsVisible(true)}
+                    ref={actionsActionRef}
+                  />
+                ),
+                (
+                  <IconAction
+                    accessibilityHint="Opens App Settings"
+                    accessibilityLabel="Open App Settings"
+                    icon="settings"
+                    key="settings"
+                    nativeID={settingsActionNativeID}
+                    onPress={onOpenSettings}
+                    ref={settingsActionRef as React.Ref<View>}
+                  />
+                ),
+              ]}
+              title="Library"
+              density="deep"
+            />
             <SegmentedControl
               busySection={busySection}
               onSelect={selectSection}
@@ -1682,7 +1788,7 @@ export function LibraryScreen({
             {showContentUpdate ? (
               <InlineNotice
                 action={
-                  <View style={styles.noticeActions}>
+                  <ActionRow>
                     <SecondaryAction
                       label="Review changes"
                       onPress={() => {
@@ -1699,7 +1805,7 @@ export function LibraryScreen({
                         );
                       }}
                     />
-                  </View>
+                  </ActionRow>
                 }
                 body={`${contentUpdateResult.added} added · ${contentUpdateResult.updated} updated · ${contentUpdateResult.newlyUnavailable} unavailable`}
                 heading="Exercise library updated"
@@ -1773,21 +1879,24 @@ export function LibraryScreen({
               <InlineNotice
                 action={
                   <SecondaryAction
-                    label="Retry Library refresh"
+                    label="Retry refreshing Library"
                     onPress={requestLibraryRefresh}
                   />
                 }
-                body="Library could not be refreshed. Your current content, selection, search, and filters are unchanged."
-                heading="Library refresh failed"
+                body="Library could not refresh. Your current results are still shown."
+                heading="Library could not refresh"
                 tone="error"
               />
             )}
+            {deleteError !== null && deleteSelection === null ? (
+              <InlineNotice heading="Plan could not be deleted" body={deleteError} tone="error" />
+            ) : null}
             {loadFailed ? (
               <InlineNotice
                 action={
                   <SecondaryAction
                     busy={loadRetrying}
-                    label="Retry Library"
+                    label="Retry loading Library"
                     onPress={retryInitialLoad}
                   />
                 }
@@ -1807,6 +1916,17 @@ export function LibraryScreen({
               </>
             ) : section === "plans" ? (
               <PlansContent
+                {...(deletePlan === undefined ? {} : {
+                  onRequestDelete: (plan: LibraryPlanSummary, trigger: React.RefObject<View | null>) => {
+                    setDeleteError(null);
+                    setDeleteSelection({ plan, trigger });
+                  },
+                })}
+                onClearSearchAndFilters={() => {
+                  updateSectionState("plans", { query: "", filters: {} });
+                  setStarterFilters({});
+                }}
+                onCreatePlan={onCreatePlan}
                 onOpenPlan={(planId) => {
                   updateSectionState("plans", { selectedId: planId });
                   onOpenPlan(planId);
@@ -1866,12 +1986,11 @@ export function LibraryScreen({
           onApply={(filters) => {
             setStarterFilters(filters);
             setFilterVisible(false);
-            filterActionRef.current?.focus();
           }}
           onClose={() => {
             setFilterVisible(false);
-            filterActionRef.current?.focus();
           }}
+          restoreFocusRef={filterActionRef}
           selectedFilters={starterFilters}
           starters={snapshot?.plans.starters ?? []}
           visible={filterVisible}
@@ -1888,41 +2007,57 @@ export function LibraryScreen({
               filters: equipment,
             });
             setFilterVisible(false);
-            filterActionRef.current?.focus();
           }}
           onClose={() => {
             setFilterVisible(false);
-            filterActionRef.current?.focus();
           }}
+          restoreFocusRef={filterActionRef}
           selectedFilters={activeState.filters}
           visible={filterVisible}
         />
       )}
-      <Modal
-        animationType="none"
-        onRequestClose={() => {
-          setReviewedUpdate(null);
-          reviewActionRef.current?.focus();
-        }}
-        transparent
+      <BottomSheet
+        heading={deleteSelection === null ? "Delete plan" : `Delete ${deleteSelection.plan.name}?`}
+        onCancel={() => { if (!deleteInFlightRef.current) setDeleteSelection(null); }}
+        {...(deleteSelection === null ? {} : { restoreFocusRef: deleteSelection.trigger })}
+        testID="library-delete-plan-sheet"
+        visible={deleteSelection !== null}
+      >
+        <Text>This unused plan will be removed from your Library.</Text>
+        {deleteError === null ? null : <InlineNotice heading="Plan could not be deleted" body={deleteError} tone="error" />}
+        <ActionRow><PrimaryAction label="Delete plan" busy={deleteBusy} onPress={() => { void confirmDeletePlan(); }} />
+        <SecondaryAction label="Keep plan" disabled={deleteBusy} onPress={() => setDeleteSelection(null)} /></ActionRow>
+      </BottomSheet>
+      <BottomSheet
+        heading={LIBRARY_ACTION_SHEET_CONFIGURATION.heading}
+        onCancel={() => setActionsVisible(false)}
+        restoreFocusRef={actionsActionRef}
+        testID="library-actions-sheet-frame"
+        visible={actionsVisible}
+      >
+        {LIBRARY_ACTION_SHEET_CONFIGURATION.actions.map((action) => {
+          const onPress = action.id === "create-plan"
+            ? () => { setActionsVisible(false); onCreatePlan(); }
+            : action.id === "create-exercise"
+              ? () => { setActionsVisible(false); onCreateExercise(); }
+              : noOp;
+          const Action = action.tone === "primary" ? PrimaryAction : SecondaryAction;
+          return <Action
+            disabled={!action.enabled}
+            key={action.id}
+            label={action.label}
+            onPress={onPress}
+          />;
+        })}
+      </BottomSheet>
+      <BottomSheet
+        heading="Exercise library changes"
+        onCancel={() => setReviewedUpdate(null)}
+        restoreFocusRef={reviewActionRef}
+        scrollTestID="library-update-sheet"
+        testID="library-update-sheet-frame"
         visible={reviewedUpdate !== null}
       >
-        <View style={styles.modalBackdrop}>
-          <ScrollView
-            accessibilityViewIsModal
-            contentContainerStyle={styles.filterSheetContent}
-            keyboardShouldPersistTaps="handled"
-            style={[styles.filterSheet, { backgroundColor: colors.surface }]}
-            testID="library-update-sheet"
-          >
-            <View
-              accessibilityRole="header"
-              accessible
-              focusable
-              ref={reviewHeadingRef}
-            >
-              <Text>Exercise library changes</Text>
-            </View>
             <Text>
               {reviewedUpdate === null
                 ? ""
@@ -1933,14 +2068,9 @@ export function LibraryScreen({
             </Text>
             <SecondaryAction
               label="Close changes"
-              onPress={() => {
-                setReviewedUpdate(null);
-                reviewActionRef.current?.focus();
-              }}
+              onPress={() => setReviewedUpdate(null)}
             />
-          </ScrollView>
-        </View>
-      </Modal>
+      </BottomSheet>
     </>
   );
 }
@@ -1952,6 +2082,9 @@ export function libraryScrollOffset(
 }
 
 const styles = StyleSheet.create({
+  planWithActions: {
+    gap: space[1],
+  },
   segmentedControl: {
     borderRadius: radius.standard,
     borderWidth: StyleSheet.hairlineWidth,
@@ -2004,17 +2137,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     minHeight: sizes.minimumTarget,
     minWidth: sizes.minimumTarget,
-  },
-  modalBackdrop: {
-    backgroundColor: "rgba(0, 0, 0, 0.48)",
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  filterSheet: {
-    maxHeight: "90%",
-  },
-  filterSheetContent: {
-    gap: space[4],
-    padding: space[6],
   },
 });

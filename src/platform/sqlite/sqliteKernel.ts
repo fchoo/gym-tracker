@@ -30,6 +30,11 @@ export interface SqliteTransactionExecutor {
   ): Promise<readonly Row[]>;
 }
 
+export type SqliteReadTransactionExecutor = Pick<
+  SqliteTransactionExecutor,
+  "queryAll"
+>;
+
 export interface SqliteKernel {
   write<Result>(
     command: (transaction: SqliteTransactionExecutor) => Promise<Result>,
@@ -38,6 +43,9 @@ export interface SqliteKernel {
     sql: string,
     parameters?: readonly SqliteParameter[],
   ): Promise<readonly Row[]>;
+  readSnapshot?<Result>(
+    query: (transaction: SqliteReadTransactionExecutor) => Promise<Result>,
+  ): Promise<Result>;
   connectionConfiguration(): Promise<Readonly<{
     reader: SqliteConnectionConfiguration;
     writer: SqliteConnectionConfiguration;
@@ -45,9 +53,16 @@ export interface SqliteKernel {
   close(): Promise<void>;
 }
 
+export type SqliteSnapshotKernel = SqliteKernel & Readonly<{
+  readSnapshot<Result>(
+    query: (transaction: SqliteReadTransactionExecutor) => Promise<Result>,
+  ): Promise<Result>;
+}>;
+
 export type SqliteStorageErrorCode =
   | "sqlite_begin_failed"
   | "sqlite_commit_failed"
+  | "sqlite_acknowledgment_failed"
   | "sqlite_query_failed"
   | "sqlite_rollback_failed"
   | "sqlite_statement_finalize_failed"
@@ -63,7 +78,8 @@ export class SqliteStorageError extends Error {
   ) {
     super(code);
     this.name = "SqliteStorageError";
-    this.retryable = code === "sqlite_begin_failed";
+    this.retryable = code === "sqlite_begin_failed"
+      || code === "sqlite_acknowledgment_failed";
   }
 }
 
@@ -74,6 +90,7 @@ type SqliteKernelConnections = Readonly<{
 
 export type SqliteKernelTestObserver = Readonly<{
   beforeCommit?(): Promise<void>;
+  afterCommit?(): Promise<void>;
 }>;
 
 export type SqliteKernelTestRuntime = Readonly<{
@@ -97,6 +114,7 @@ function storageError(error: unknown): SqliteStorageError {
   const codeByStage = {
     begin: "sqlite_begin_failed",
     commit: "sqlite_commit_failed",
+    acknowledgment: "sqlite_acknowledgment_failed",
     rollback: "sqlite_rollback_failed",
     statement: "sqlite_statement_finalize_failed",
     transaction: "sqlite_transaction_failed",
@@ -129,8 +147,16 @@ export function createSqliteKernel(
   const serializedWriter = new SerializedWriteExecutor(
     connections.writer,
     observer.beforeCommit,
+    observer.afterCommit,
   );
   const transactionExecutor = createBoundExecutor(connections.writer);
+  const readTransactionExecutor = createBoundExecutor(connections.reader);
+  let readerTail: Promise<void> = Promise.resolve();
+  const withReader = <Result>(query: () => Promise<Result>): Promise<Result> => {
+    const pending = readerTail.then(query);
+    readerTail = pending.then(() => undefined, () => undefined);
+    return pending;
+  };
 
   return Object.freeze({
     async write<Result>(
@@ -147,13 +173,40 @@ export function createSqliteKernel(
       parameters: readonly SqliteParameter[] = [],
     ): Promise<readonly Row[]> {
       try {
-        return await queryPrepared<Row>(connections.reader, sql, parameters);
+        return await withReader(() => queryPrepared<Row>(connections.reader, sql, parameters));
       } catch (error) {
         if (error instanceof SqliteStatementFinalizeError) {
           throw storageError(error);
         }
         throw new SqliteStorageError("sqlite_query_failed", error);
       }
+    },
+    async readSnapshot<Result>(
+      query: (transaction: SqliteReadTransactionExecutor) => Promise<Result>,
+    ): Promise<Result> {
+      return withReader(async () => {
+        let began = false;
+        try {
+          await connections.reader.execAsync("BEGIN");
+          began = true;
+          const result = await query(readTransactionExecutor);
+          await connections.reader.execAsync("COMMIT");
+          return result;
+        } catch (error) {
+          if (began) {
+            try {
+              await connections.reader.execAsync("ROLLBACK");
+            } catch (rollbackError) {
+              throw new SqliteStorageError("sqlite_rollback_failed", {
+                originalError: error,
+                rollbackError,
+              });
+            }
+          }
+          if (error instanceof SqliteStatementFinalizeError) throw storageError(error);
+          throw new SqliteStorageError("sqlite_query_failed", error);
+        }
+      });
     },
     async connectionConfiguration() {
       try {
@@ -207,7 +260,10 @@ export async function openSqliteKernelTestRuntime(
       const { openDatabaseAsync } = require("expo-sqlite") as typeof import("expo-sqlite");
       const competingDatabase = await openDatabaseAsync(
         databaseName,
-        { useNewConnection: true },
+        {
+          useNewConnection: true,
+          finalizeUnusedStatementsBeforeClosing: false,
+        },
       );
       const startedAt = Date.now();
       try {

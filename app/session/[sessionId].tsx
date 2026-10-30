@@ -7,6 +7,7 @@ import React, {
   useEffect,
   useState,
 } from "react";
+import Constants from "expo-constants";
 
 import {
   useWorkoutAppRuntime,
@@ -15,8 +16,10 @@ import type {
   SessionDetail,
 } from "../../src/domains/workout";
 import {
-  AdaptiveScreen,
-} from "../../src/ui/layout/AdaptiveScreen";
+  parseCalendarRouteOrigin,
+  parseScalarRouteParam,
+  type RouteParam,
+} from "../../src/navigation/routeOrigin";
 import {
   EmptyState,
   PrimaryAction,
@@ -24,38 +27,89 @@ import {
   SkeletonBlock,
 } from "../../src/ui/components";
 import {
+  CalendarSessionDetailRouteAdapter,
+} from "../../src/ui/calendar/CalendarRouteAdapters";
+import { CalendarReadOnlyWorkout } from "../../src/ui/calendar/CalendarReadOnlyWorkout";
+import {
+  AdaptiveScreen,
+} from "../../src/ui/layout/AdaptiveScreen";
+import {
   SessionDetailScreen,
 } from "../../src/ui/screens/SessionDetailScreen";
+import { phase20CalendarFixtureRequestFromNativeContract, phase20CalendarSessionDetail } from "../../src/testing/phase20CalendarFixture";
 
-export default function SessionDetailRoute() {
-  const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
-  const resolvedSessionId = sessionId ?? "unknown";
+function exactRouteParam(value: RouteParam): string | null {
+  const parsed = parseScalarRouteParam(value);
+  return parsed.kind === "value" ? parsed.value : null;
+}
+
+function SessionRouteUnavailable() {
+  return (
+    <AdaptiveScreen
+      primary={<><ScreenHeader backAction={() => router.back()} title="Workout details" /><EmptyState body="This workout route is invalid or no longer available." heading="Workout details unavailable" primaryAction={<PrimaryAction label="Go back" onPress={() => router.back()} />} /></>}
+    />
+  );
+}
+
+function ManagementSessionDetailRoute({ expectedSourceRevision, sessionId }: Readonly<{
+  expectedSourceRevision?: number;
+  sessionId: string;
+}>) {
   const runtime = useWorkoutAppRuntime();
   const [detail, setDetail] = useState<SessionDetail | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [loadedSessionId, setLoadedSessionId] = useState<string | null>(null);
+  const [failedSessionId, setFailedSessionId] = useState<string | null>(null);
+  const [sourceUnavailableSessionId, setSourceUnavailableSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    setFailed(false);
-    void runtime.getSessionDetail(resolvedSessionId).then((next) => {
+    setLoadedSessionId(null);
+    setDetail(null);
+    setFailedSessionId(null);
+    setSourceUnavailableSessionId(null);
+    const read = expectedSourceRevision === undefined
+      ? runtime.getSessionDetail(sessionId)
+      : runtime.getSessionDetailAtRevision(sessionId, expectedSourceRevision);
+    void read.then((next) => {
       if (active) {
         setDetail(next);
+        setLoadedSessionId(sessionId);
       }
     }).catch(() => {
       if (active) {
-        setFailed(true);
+        if (expectedSourceRevision === undefined) setFailedSessionId(sessionId);
+        else setSourceUnavailableSessionId(sessionId);
       }
     });
     return () => {
       active = false;
     };
   }, [
-    resolvedSessionId,
-    runtime,
+    sessionId,
+    expectedSourceRevision,
+    runtime.getSessionDetail,
+    runtime.getSessionDetailAtRevision,
     runtime.workoutRefreshGeneration,
   ]);
 
-  if (failed) {
+  if (sourceUnavailableSessionId === sessionId) {
+    return (
+      <AdaptiveScreen
+        primary={
+          <>
+            <ScreenHeader backAction={() => router.back()} title="Workout details" />
+            <EmptyState
+              body="The exact workout revision used by Progress was corrected or removed. Return to Progress to load current saved facts."
+              heading="Workout source unavailable"
+              primaryAction={<PrimaryAction label="Go back" onPress={() => router.back()} />}
+            />
+          </>
+        }
+      />
+    );
+  }
+
+  if (failedSessionId === sessionId) {
     return (
       <AdaptiveScreen
         primary={
@@ -74,7 +128,9 @@ export default function SessionDetailRoute() {
     );
   }
 
-  if (detail === null) {
+  const visibleDetail = loadedSessionId === sessionId ? detail : null;
+
+  if (visibleDetail === null) {
     return (
       <AdaptiveScreen
         primary={
@@ -91,16 +147,16 @@ export default function SessionDetailRoute() {
 
   return (
     <SessionDetailScreen
-      detail={detail}
+      detail={visibleDetail}
       onGoBack={() => router.back()}
       onCorrectWorkout={() => {
-        if (detail.status === "completed" || detail.status === "partial") {
-          router.push((`/session/${detail.id}/correct`) as Href);
+        if (visibleDetail.status === "completed" || visibleDetail.status === "partial") {
+          router.push((`/session/${visibleDetail.id}/correct`) as Href);
         }
       }}
       onRemoveFromHistory={() => runtime.removeHistorySession({
-        sessionId: detail.id,
-        expectedEffectiveRevision: detail.revision,
+        sessionId: visibleDetail.id,
+        expectedEffectiveRevision: visibleDetail.revision,
         confirmation: "remove_from_history",
       }).then(() => {
         router.back();
@@ -110,18 +166,95 @@ export default function SessionDetailRoute() {
           (`/exercise-history/${exercise.exerciseId}?exerciseName=${encodeURIComponent(exercise.name)}`) as Href,
         )}
       onResume={() => {
-        if (detail.status === "partial") {
+        if (visibleDetail.status === "partial") {
           void runtime.resumePartialWorkout({
-            sessionId: detail.id,
-            expectedSessionRevision: detail.revision,
+            sessionId: visibleDetail.id,
+            expectedSessionRevision: visibleDetail.revision,
             resumedAtMs: Date.now(),
           }).then(() => {
-            router.replace(`/workout/${detail.id}`);
+              router.replace(`/workout/${visibleDetail.id}`);
           }).catch(() => undefined);
           return;
         }
-        router.replace(`/workout/${detail.id}`);
+        router.replace(`/workout/${visibleDetail.id}`);
       }}
     />
   );
+}
+
+export default function SessionDetailRoute() {
+  const { sessionId, origin: rawOrigin, sourceRevision: rawSourceRevision, phase20CalendarFixture, phase20CalendarEvidenceNonce, phase20CalendarRequirementsSha256, phase20CalendarFixtureSourceSha256, phase20CalendarRequirement, phase20CalendarEvidenceId, phase20CalendarProbe, phase20CalendarProbeReceipt } = useLocalSearchParams() as Readonly<{
+    sessionId?: RouteParam;
+    origin?: RouteParam;
+    sourceRevision?: RouteParam;
+    phase20CalendarFixture?: RouteParam;
+    phase20CalendarEvidenceNonce?: RouteParam;
+    phase20CalendarRequirementsSha256?: RouteParam;
+    phase20CalendarFixtureSourceSha256?: RouteParam;
+    phase20CalendarRequirement?: RouteParam;
+    phase20CalendarEvidenceId?: RouteParam;
+    phase20CalendarProbe?: RouteParam;
+    phase20CalendarProbeReceipt?: RouteParam;
+  }>;
+  const resolvedSessionId = exactRouteParam(sessionId);
+  const origin = parseCalendarRouteOrigin(rawOrigin, {
+    absentManagementOrigin: "direct",
+    managementOrigins: ["progress"] as const,
+  });
+  const parsedSourceRevision = parseScalarRouteParam(rawSourceRevision);
+  const sourceRevision = parsedSourceRevision.kind === "value" && /^\d+$/u.test(parsedSourceRevision.value)
+    ? Number(parsedSourceRevision.value)
+    : undefined;
+  const progressSourceValid = origin.kind !== "management" || origin.origin !== "progress"
+    || (parsedSourceRevision.kind === "value"
+      && Number.isSafeInteger(sourceRevision)
+      && sourceRevision! > 0);
+  const extra = Constants.expoConfig?.extra;
+  const fixtureEnabled = phase20CalendarFixtureRequestFromNativeContract({
+    packageName: Constants.expoConfig?.android?.package,
+    buildProfile: extra?.buildProfile,
+    nativeContractsEnabled: extra?.nativeContractsEnabled,
+    suite: extra?.nativeContractSuite,
+    fixtureId: exactRouteParam(phase20CalendarFixture),
+    nonce: exactRouteParam(phase20CalendarEvidenceNonce),
+    requirementsSha256: exactRouteParam(phase20CalendarRequirementsSha256),
+  });
+  const fixtureDetail = fixtureEnabled && resolvedSessionId !== null ? phase20CalendarSessionDetail(resolvedSessionId) : null;
+
+  if (origin.kind === "invalid" || !progressSourceValid) return <SessionRouteUnavailable />;
+  if (origin.kind === "calendar") {
+    if (fixtureDetail !== null) return <CalendarReadOnlyWorkout detail={fixtureDetail} onGoBack={() => router.back()} />;
+    return (
+      <CalendarSessionDetailRouteAdapter
+        onBack={() => router.back()}
+        sessionId={resolvedSessionId}
+      />
+    );
+  }
+  if (fixtureDetail !== null) {
+    const fixtureQuery = new URLSearchParams({
+      phase20CalendarFixture: exactRouteParam(phase20CalendarFixture)!,
+      phase20CalendarEvidenceNonce: exactRouteParam(phase20CalendarEvidenceNonce)!,
+      phase20CalendarRequirementsSha256: exactRouteParam(phase20CalendarRequirementsSha256)!,
+      ...(exactRouteParam(phase20CalendarFixtureSourceSha256) === null ? {} : { phase20CalendarFixtureSourceSha256: exactRouteParam(phase20CalendarFixtureSourceSha256)! }),
+      ...(exactRouteParam(phase20CalendarRequirement) === null ? {} : { phase20CalendarRequirement: exactRouteParam(phase20CalendarRequirement)! }),
+      ...(exactRouteParam(phase20CalendarEvidenceId) === null ? {} : { phase20CalendarEvidenceId: exactRouteParam(phase20CalendarEvidenceId)! }),
+      ...(exactRouteParam(phase20CalendarProbe) === null ? {} : { phase20CalendarProbe: exactRouteParam(phase20CalendarProbe)! }),
+      ...(exactRouteParam(phase20CalendarProbeReceipt) === null ? {} : { phase20CalendarProbeReceipt: exactRouteParam(phase20CalendarProbeReceipt)! }),
+    }).toString();
+    return <SessionDetailScreen
+      detail={fixtureDetail}
+      onGoBack={() => router.back()}
+      onCorrectWorkout={() => router.push(`/session/${fixtureDetail.id}/correct?${fixtureQuery}` as Href)}
+      {...(fixtureDetail.status === "completed" ? { onRemoveFromHistory: () => Promise.resolve() } : {})}
+      onOpenExerciseHistory={() => undefined}
+      {...(fixtureDetail.resumable ? { onResume: () => router.replace(`/workout/${fixtureDetail.id}?${fixtureQuery}` as Href) } : {})}
+    />;
+  }
+  return resolvedSessionId === null
+    ? <SessionRouteUnavailable />
+    : <ManagementSessionDetailRoute
+        {...(sourceRevision === undefined ? {} : { expectedSourceRevision: sourceRevision })}
+        sessionId={resolvedSessionId}
+      />;
 }

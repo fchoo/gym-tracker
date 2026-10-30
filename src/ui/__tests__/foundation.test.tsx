@@ -3,7 +3,9 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react-native";
+import { readFileSync } from "node:fs";
 import {
   describe,
   expect,
@@ -12,6 +14,7 @@ import {
 } from "@jest/globals";
 import React from "react";
 import {
+  AccessibilityInfo,
   Appearance,
   BackHandler,
   RefreshControl,
@@ -20,6 +23,8 @@ import {
   Text,
   View,
 } from "react-native";
+
+import { SafeAreaInsetsContext } from "react-native-safe-area-context";
 
 import {
   AdaptiveScreen,
@@ -33,6 +38,7 @@ import {
   ContentCard,
   EmptyState,
   ExerciseRow,
+  FocusablePressable,
   IconAction,
   InlineNotice,
   MetricSummary,
@@ -43,6 +49,7 @@ import {
   SecondaryAction,
   SectionHeader,
   SkeletonBlock,
+  WorkoutPrimaryAction,
 } from "../components";
 import {
   WorkoutStartSheet,
@@ -54,9 +61,12 @@ import {
   motion,
   radius,
   resolveColorScheme,
+  sizes,
   space,
   themes,
   typeScale,
+  workoutTypeScale,
+  type ThemeColors,
   useAppTheme,
 } from "../theme";
 import {
@@ -69,6 +79,16 @@ import {
   rootBackBehavior,
   useLaunchState,
 } from "../screens/RootScreens";
+import { PHASE14_FONT_PROOF } from "../../testing/phase14FontProof";
+import { Phase20VisualContextProvider } from "../../testing/phase20VisualContext";
+
+const phase20VisualRequest = {
+  appearance: "Light",
+  configuration: "AP-L-C390-P-F100",
+  mode: "capture",
+  nonce: "a".repeat(32),
+  state: "BW-001",
+} as const;
 
 function ThemeProbe() {
   const theme = useAppTheme();
@@ -121,7 +141,7 @@ function contrastRatio(foreground: string, background: string): number {
 }
 
 describe("Plan 01-02 UI foundation", () => {
-  it("encodes the approved spacing, radius, type, color, and motion tokens", () => {
+  it("encodes the proven Archivo visual system and semantic token contract", () => {
     expect(space).toEqual({
       1: 4,
       2: 8,
@@ -136,60 +156,124 @@ describe("Plan 01-02 UI foundation", () => {
       emphasized: 12,
       full: 999,
     });
+    expect(fontFamilies).toEqual({
+      interfaceRegular: "ArchivoVariable",
+      interfaceEmphasis: "ArchivoVariable",
+      numericRegular: "IBMPlexMono_400Regular",
+    });
     expect(typeScale).toEqual(
       expect.objectContaining({
-        displayTimer: expect.objectContaining({
-          fontFamily: fontFamilies.numericSemiBold,
-          fontSize: 52,
-          lineHeight: 56,
-        }),
-        targetValue: expect.objectContaining({
-          fontFamily: fontFamilies.numericSemiBold,
-          fontSize: 28,
-          lineHeight: 34,
-        }),
-        screenTitle: expect.objectContaining({
-          fontFamily: fontFamilies.interfaceSemiBold,
-          fontSize: 28,
-          lineHeight: 34,
-        }),
-        body: expect.objectContaining({
+        displayTimer: {
+          fontFamily: fontFamilies.numericRegular,
+          fontSize: 30,
+          lineHeight: 41,
+          fontWeight: "400",
+          fontVariant: ["tabular-nums"],
+        },
+        targetValue: {
+          fontFamily: fontFamilies.numericRegular,
+          fontSize: 20,
+          lineHeight: 24,
+          fontWeight: "400",
+          fontVariant: ["tabular-nums"],
+        },
+        screenTitle: {
+          fontFamily: fontFamilies.interfaceEmphasis,
+          fontSize: 20,
+          lineHeight: 24,
+          fontWeight: "800",
+        },
+        sectionTitle: {
+          fontFamily: fontFamilies.interfaceEmphasis,
+          fontSize: 20,
+          lineHeight: 24,
+          fontWeight: "800",
+        },
+        body: {
           fontFamily: fontFamilies.interfaceRegular,
           fontSize: 16,
           lineHeight: 22,
-        }),
+          fontWeight: "400",
+        },
+        bodyStrong: {
+          fontFamily: fontFamilies.interfaceEmphasis,
+          fontSize: 16,
+          lineHeight: 22,
+          fontWeight: "800",
+        },
+        secondary: {
+          fontFamily: fontFamilies.interfaceRegular,
+          fontSize: 14,
+          lineHeight: 20,
+          fontWeight: "400",
+        },
+        label: {
+          fontFamily: fontFamilies.interfaceRegular,
+          fontSize: 14,
+          lineHeight: 20,
+          fontWeight: "400",
+        },
       }),
     );
+    for (const scale of Object.values(typeScale)) {
+      if (scale.fontFamily === fontFamilies.numericRegular) {
+        expect(scale.fontWeight).toBe("400");
+      }
+    }
     expect(themes.light).toEqual(
       expect.objectContaining({
-        canvas: "#F1F3F4",
-        contentCard: "#FFFFFF",
-        contentCardText: "#202124",
-        contentCardTextSecondary: "#5F6368",
-        action: "#155EEF",
-        completed: "#1F7A4D",
-        timerAttention: "#B54708",
+        paper: "#FFFAF0",
+        bone: "#F4F0E6",
+        ink: "#0D0C0A",
+        orange: "#D97820",
+        blue: "#195FAE",
+        calendarStrengthTextLight: "#9B470B",
+        canvas: "#FFFAF0",
+        action: "#195FAE",
+        completed: "#166B4C",
+        timerAttention: "#8D5D00",
         destructive: "#B42318",
       }),
     );
     expect(themes.dark).toEqual(
       expect.objectContaining({
-        canvas: "#202124",
-        contentCard: "#121212",
-        contentCardText: "#E8EAED",
-        contentCardTextSecondary: "#BDC1C6",
-        action: "#70A0FF",
-        completed: "#56C88A",
-        timerAttention: "#FFB45C",
-        destructive: "#FF746A",
+        paper: "#080808",
+        bone: "#151515",
+        ink: "#F7F7F2",
+        orange: "#D97820",
+        blue: "#71AAFF",
+        canvas: "#080808",
+        action: "#71AAFF",
+        completed: "#72DF92",
+        timerAttention: "#F0C84B",
+        destructive: "#FF8279",
       }),
     );
+    expect(typeScale.editorialWorkoutTitle).toEqual({
+      fontFamily: "ArchivoVariable",
+      fontSize: 57,
+      lineHeight: 49,
+      fontWeight: "890",
+      fontStretch: "condensed",
+      letterSpacing:
+        PHASE14_FONT_PROOF.oracle.fontSizePx
+        * PHASE14_FONT_PROOF.oracle.letterSpacingEm,
+    });
+    expect(workoutTypeScale).toEqual(expect.objectContaining({
+      body: expect.objectContaining({ fontSize: 16, fontWeight: "400" }),
+      emphasis: expect.objectContaining({ fontSize: 18, fontWeight: "700" }),
+      numericEmphasis: expect.objectContaining({ fontSize: 30, fontWeight: "700" }),
+      editorialWorkoutTitle: expect.objectContaining({ fontSize: 57, fontWeight: "700" }),
+    }));
+    expect(themes.light.workoutPrimaryAction).toBe("#D97820");
+    expect(themes.dark.workoutPrimaryAction).toBe("#D97820");
+    expect(sizes.focusRing).toBe(3);
     expect(motion.standard.positionTransitions).toBe(true);
     expect(motion.reduced.positionTransitions).toBe(false);
     expect(motion.reduced.scaleTransitions).toBe(false);
   });
 
-  it("inverts content cards across Gmail-like neutral light and dark canvases", () => {
+  it("keeps semantic cards readable on the warm Light and precision Dark canvases", () => {
     for (const colors of [themes.light, themes.dark]) {
       expect(colors).toEqual(
         expect.objectContaining({
@@ -207,10 +291,10 @@ describe("Plan 01-02 UI foundation", () => {
       expect(colors.canvas).not.toBe(colors.contentCard);
     }
 
-    expect(themes.light.contentCard).toBe("#FFFFFF");
-    expect(themes.light.contentCardText).toBe("#202124");
-    expect(themes.dark.contentCard).toBe("#121212");
-    expect(themes.dark.contentCardText).toBe("#E8EAED");
+    expect(themes.light.contentCard).toBe("#F0EADF");
+    expect(themes.light.contentCardText).toBe("#0D0C0A");
+    expect(themes.dark.contentCard).toBe("#151515");
+    expect(themes.dark.contentCardText).toBe("#F7F7F2");
   });
 
   it("renders a flat ContentCard and right-edge ActionCluster without allowing card nesting", async () => {
@@ -233,7 +317,7 @@ describe("Plan 01-02 UI foundation", () => {
       backgroundColor: themes.light.contentCardSelected,
       borderColor: themes.light.contentCardStatusCompleted,
       outlineColor: themes.light.focusRing,
-      outlineWidth: 2,
+      outlineWidth: 3,
     });
     expect(screen.getByTestId("disabled-content-card")).toHaveStyle({
       backgroundColor: themes.light.contentCardDisabled,
@@ -292,6 +376,39 @@ describe("Plan 01-02 UI foundation", () => {
 
     await fireEvent.press(screen.getByRole("radio", { name: "System" }));
     expect(store.read()).toBeNull();
+  });
+
+  it("keeps the last authoritative preference when a durable write fails", async () => {
+    jest.spyOn(Appearance, "getColorScheme").mockReturnValue("dark");
+    const store = {
+      read: () => ({ status: "ready" as const, value: null }),
+      write: jest.fn(() => ({ status: "failed" as const })),
+    };
+
+    await render(
+      <AppearanceProvider store={store}>
+        <ThemeProbe />
+        <AppearanceSheet visible onClose={jest.fn()} />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("radio", { name: "Light" }));
+
+    expect(store.write).toHaveBeenCalledWith("Light");
+    expect(screen.getByTestId("appearance-mode")).toHaveTextContent("System");
+    expect(screen.getByTestId("resolved-scheme")).toHaveTextContent("dark");
+  });
+
+  it("keeps DESIGN.md aligned with the proven typography, focus, and bottom-navigation contracts", () => {
+    const design = readFileSync("DESIGN.md", "utf8");
+
+    expect(design).toContain("Archivo variable");
+    expect(design).toContain("57px");
+    expect(design).toContain("890");
+    expect(design).toContain("-0.07em");
+    expect(design).toContain("3dp");
+    expect(design).toContain("Bottom navigation at every width");
+    expect(design).not.toContain("Rail permitted");
   });
 
   it("treats a malformed injected appearance preference as selected System", async () => {
@@ -486,6 +603,106 @@ describe("Plan 01-02 UI foundation", () => {
     scrollTo.mockRestore();
   });
 
+  it("never resets ordinary production scroll during layout", async () => {
+    const scrollTo = jest.spyOn(
+      ScrollView.prototype,
+      "scrollTo",
+    ).mockImplementation(() => undefined);
+    await render(
+      <AppearanceProvider>
+        <AdaptiveScreen primary={<Text>Production content</Text>} />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent(screen.getByTestId("adaptive-screen-scroll"), "layout");
+    await fireEvent(screen.getByTestId("adaptive-screen-scroll"), "layout");
+
+    expect(scrollTo).not.toHaveBeenCalled();
+    scrollTo.mockRestore();
+  });
+
+  it("forces the initial visual evidence scroll exactly once", async () => {
+    const scrollTo = jest.spyOn(
+      ScrollView.prototype,
+      "scrollTo",
+    ).mockImplementation(() => undefined);
+    await render(
+      <AppearanceProvider>
+        <Phase20VisualContextProvider
+          onScrollOffset={() => undefined}
+          request={phase20VisualRequest}
+        >
+          <AdaptiveScreen primary={<Text>Evidence content</Text>} scrollOffset={24} />
+        </Phase20VisualContextProvider>
+      </AppearanceProvider>,
+    );
+
+    await fireEvent(screen.getByTestId("adaptive-screen-scroll"), "layout");
+    await fireEvent(screen.getByTestId("adaptive-screen-scroll"), "layout");
+
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenCalledWith({ animated: false, x: 0, y: 24 });
+    scrollTo.mockRestore();
+  });
+
+  it("anchors a measured scroll request once without changing restoration behavior", async () => {
+    const scrollTo = jest.spyOn(
+      ScrollView.prototype,
+      "scrollTo",
+    ).mockImplementation(() => undefined);
+    const rendered = await render(
+      <AppearanceProvider>
+        <AdaptiveScreen
+          primary={<Text>Workout overview</Text>}
+          measuredScrollRequest={{
+            animated: true,
+            targetKey: "working-2",
+            y: 384,
+          }}
+        />
+      </AppearanceProvider>,
+    );
+
+    expect(scrollTo).toHaveBeenCalledWith({
+      animated: true,
+      x: 0,
+      y: 384,
+    });
+    await rendered.rerender(
+      <AppearanceProvider>
+        <AdaptiveScreen
+          primary={<Text>Workout overview updated</Text>}
+          measuredScrollRequest={{
+            animated: false,
+            targetKey: "working-2",
+            y: 96,
+          }}
+        />
+      </AppearanceProvider>,
+    );
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+
+    await rendered.rerender(
+      <AppearanceProvider>
+        <AdaptiveScreen
+          primary={<Text>Workout overview with next set</Text>}
+          measuredScrollRequest={{
+            animated: false,
+            targetKey: "working-3",
+            y: -10,
+          }}
+        />
+      </AppearanceProvider>,
+    );
+    expect(scrollTo).toHaveBeenCalledTimes(2);
+    expect(scrollTo).toHaveBeenLastCalledWith({
+      animated: false,
+      x: 0,
+      y: 0,
+    });
+    scrollTo.mockRestore();
+  });
+
   it.each(adaptiveCases)(
     "attaches one controlled refresh seam to the owning ScrollView in the %s layout",
     async (widthClass, width) => {
@@ -650,7 +867,7 @@ describe("Plan 01-02 route shell", () => {
     { key: "progress-key", name: "progress" },
   ] as const;
 
-  it("renders Today, Calendar, Library, and Progress as visible tabs in locked order", async () => {
+  it("renders Workout, Calendar, Library, and Progress as visible tabs in locked order", async () => {
     await render(
       <AppearanceProvider>
         <AppTabs
@@ -665,40 +882,405 @@ describe("Plan 01-02 route shell", () => {
 
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map((tab) => tab.props.accessibilityLabel)).toEqual([
-      "Today",
+      "Workout",
       "Calendar",
       "Library",
       "Progress",
     ]);
-    const today = screen.getByRole("tab", { name: "Today" });
+    const today = screen.getByRole("tab", { name: "Workout" });
     expect(today).toBeSelected();
-    for (const label of ["Today", "Calendar", "Library", "Progress"]) {
+    expect(today.props.nativeID).toBe("root-tab-index");
+    expect(screen.getByRole("tab", { name: "Calendar" }).props.nativeID)
+      .toBe("root-tab-calendar");
+    expect(screen.getByRole("tab", { name: "Library" }).props.nativeID)
+      .toBe("root-tab-library");
+    expect(screen.getByRole("tab", { name: "Progress" }).props.nativeID)
+      .toBe("root-tab-progress");
+    for (const label of ["Workout", "Calendar", "Library", "Progress"]) {
       expect(screen.getByText(label)).toBeOnTheScreen();
     }
-    expect(screen.getByText("Library")).toHaveStyle({
-      lineHeight: 22,
-      paddingBottom: 2,
+    expect(screen.getByText("Library")).toHaveStyle({ lineHeight: 22 });
+    expect(screen.getByTestId("root-tab-label-container-library")).toHaveStyle({
+      gap: 2,
       paddingHorizontal: 4,
     });
-    // The active tab is indicated by icon/label colour only; no box outline.
-    expect(screen.getByText("Today")).toHaveStyle({
-      color: themes.light.action,
+    expect(screen.getByTestId("root-navigation-bottom")).toHaveStyle({
+      backgroundColor: themes.light.paper,
+      borderColor: themes.light.line,
     });
-    expect(today)
-      .toHaveStyle({ borderWidth: undefined });
-    expect(today)
-      .not.toHaveStyle({ borderWidth: 2 });
+    expect(screen.getByTestId("root-tab-label-underline-index", { includeHiddenElements: true })).toHaveStyle({
+      backgroundColor: themes.light.orange,
+      height: 3,
+    });
+    expect(screen.getByText("Workout")).toHaveStyle({
+      color: themes.light.ink,
+      fontSize: 16,
+      fontWeight: "400",
+      lineHeight: 22,
+    });
+    expect(
+      today.queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
+    ).toBe(themes.light.ink);
+    expect(screen.getByTestId("root-tab-label-underline-calendar", { includeHiddenElements: true })).toHaveStyle({
+      backgroundColor: "transparent",
+      height: 3,
+    });
+    expect(screen.getByText("Calendar")).toHaveStyle({ color: themes.light.quiet });
+    for (const destination of ["index", "calendar", "library", "progress"]) {
+      const text = screen.getByTestId(`root-tab-label-${destination}`);
+      const textStyle = StyleSheet.flatten(text.props.style);
+      for (const property of ["padding", "paddingHorizontal", "paddingVertical", "paddingBottom", "borderBottomWidth", "height", "maxHeight"]) {
+        expect(textStyle[property]).toBeUndefined();
+      }
+      expect(text).toHaveProp("numberOfLines", 1);
+      expect(text).toHaveProp("adjustsFontSizeToFit", false);
+      expect(text.props.minimumFontScale).toBeUndefined();
+      expect(text).toHaveProp("allowFontScaling", true);
+      expect(text.props.maxFontSizeMultiplier).toBeUndefined();
+      const container = screen.getByTestId(`root-tab-label-container-${destination}`);
+      expect(container).toHaveStyle({ maxWidth: "100%", alignSelf: "stretch", width: "100%" });
+      expect(StyleSheet.flatten(container.props.style).borderBottomWidth).toBeUndefined();
+      expect(text).toHaveStyle({ width: "100%", flexShrink: 1, textAlign: "center" });
+    }
+    expect(
+      screen.getByRole("tab", { name: "Calendar" })
+        .queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
+    ).toBe(themes.light.quiet);
 
     await fireEvent(today, "focus");
-    expect(today).toHaveStyle({ outlineWidth: 2 });
+    expect(today).toHaveStyle({
+      outlineColor: themes.light.blue,
+      outlineWidth: 3,
+    });
   });
 
-  it("reflows four complete root destinations into two accessible rows for 200% text", async () => {
+  it.each([
+    ["Light", themes.light],
+    ["Dark", themes.dark],
+  ] as Array<["Light" | "Dark", ThemeColors]>)(
+    "keeps %s root selection on ink and orange while focus stays blue",
+    async (appearance, colors) => {
+      await render(
+        <AppearanceProvider store={createMemoryAppearanceStore(appearance)}>
+          <AppTabs
+            navigation={{
+              emit: () => ({ defaultPrevented: false }),
+              navigate: jest.fn(),
+            }}
+            state={{ index: 2, routes }}
+          />
+        </AppearanceProvider>,
+      );
+
+      const navigation = screen.getByTestId("root-navigation-bottom");
+      const selected = screen.getByRole("tab", { name: "Library" });
+      const unselected = screen.getByRole("tab", { name: "Workout" });
+
+      expect(navigation).toHaveStyle({
+        backgroundColor: colors.paper,
+        borderColor: colors.line,
+      });
+      expect(selected).toBeSelected();
+      expect(unselected).not.toBeSelected();
+      expect(screen.getByTestId("root-tab-label-underline-library", { includeHiddenElements: true })).toHaveStyle({
+        backgroundColor: colors.orange,
+        height: 3,
+      });
+      expect(screen.getByTestId("root-tab-label-library")).toHaveStyle({ color: colors.ink });
+      expect(
+        selected.queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
+      ).toBe(colors.ink);
+      expect(screen.getByTestId("root-tab-label-underline-index", { includeHiddenElements: true })).toHaveStyle({
+        backgroundColor: "transparent",
+        height: 3,
+      });
+      expect(screen.getByTestId("root-tab-label-index")).toHaveStyle({ color: colors.quiet });
+      expect(
+        unselected.queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
+      ).toBe(colors.quiet);
+
+      await fireEvent(selected, "focus");
+      expect(selected).toHaveStyle({
+        outlineColor: colors.blue,
+        outlineWidth: 3,
+      });
+      expect(screen.getByTestId("root-tab-label-underline-library", { includeHiddenElements: true }))
+        .toHaveStyle({ backgroundColor: colors.orange });
+    },
+  );
+
+  it.each([
+    [24.5, 40, 24.5],
+    [0, 40, 0],
+    [-1, 40, 0],
+    [Number.NaN, 40, 0],
+    [Number.POSITIVE_INFINITY, 40, 0],
+    [undefined, 24.5, 24.5],
+    [undefined, 0, 0],
+    [undefined, -1, 0],
+    [undefined, Number.NaN, 0],
+    [undefined, Number.POSITIVE_INFINITY, 0],
+  ])("reserves bottom inset %s over context %s as %s on the paper nav only", async (bottom, contextBottom, expected) => {
+    await render(
+      <SafeAreaInsetsContext.Provider value={{ top: 11, right: 0, bottom: contextBottom, left: 0 }}>
+        <AppearanceProvider>
+          <AppTabs
+            {...(bottom === undefined ? {} : { insets: { bottom } })}
+            navigation={{ emit: () => ({ defaultPrevented: false }), navigate: jest.fn() }}
+            state={{ index: 0, routes }}
+          />
+        </AppearanceProvider>
+      </SafeAreaInsetsContext.Provider>,
+    );
+    const nav = screen.getByTestId("root-navigation-bottom");
+    expect(nav).toHaveStyle({ paddingBottom: expected, backgroundColor: themes.light.paper, flexDirection: "row" });
+    // Intrinsic content height can grow with system text scaling. No fixed track.
+    expect(StyleSheet.flatten(nav.props.style).height).toBeUndefined();
+    for (const tab of screen.getAllByRole("tab")) {
+      expect(tab).toHaveStyle({ minHeight: 64, minWidth: 48, paddingVertical: 8 });
+      expect(StyleSheet.flatten(tab.props.style).paddingBottom).toBeUndefined();
+    }
+  });
+
+  it.each([
+    ["Light", themes.light],
+    ["Dark", themes.dark],
+  ] as Array<["Light" | "Dark", ThemeColors]>)("updates %s insets without resetting fitted glyphs, targets, IDs, or D-pad focus", async (appearance, colors) => {
+    const navigate = jest.fn();
+    const store = createMemoryAppearanceStore(appearance);
+    const nav = (bottom: number) => (
+      <AppearanceProvider store={store}>
+        <AppTabs insets={{ bottom }} navigation={{ emit: () => ({ defaultPrevented: false }), navigate }} state={{ index: 0, routes }} />
+      </AppearanceProvider>
+    );
+    const rendered = await render(nav(0));
+    let text = screen.getByTestId("root-tab-label-index");
+    await fireEvent(text, "layout", { nativeEvent: { layout: { width: 76 } } });
+    text = screen.getByTestId("root-tab-label-index");
+    const probe = () => screen.getByTestId("root-tab-label-probe-index", { includeHiddenElements: true });
+    const metrics = (width: number) => ({ nativeEvent: { lines: [{ text: "Workout", width, height: 44 }] } });
+    await fireEvent(probe(), "textLayout", metrics(120));
+    await fireEvent(probe(), "textLayout", metrics(72));
+    await fireEvent(text, "textLayout", metrics(72));
+    const library = screen.getByRole("tab", { name: "Library" });
+    await fireEvent(library, "focus");
+    const targetStyle = StyleSheet.flatten(library.props.style);
+
+    for (const bottom of [24.5, 48, 0]) {
+      await rendered.rerender(nav(bottom));
+      expect(screen.getByTestId("root-navigation-bottom")).toHaveStyle({ paddingBottom: bottom, backgroundColor: colors.paper });
+      expect(screen.getByTestId("root-tab-label-index")).toBe(text);
+      expect(text).toHaveTextContent("Workout", { exact: true });
+      expect(text).toHaveStyle({ fontFamily: "ArchivoVariable", fontSize: 9.75, lineHeight: 22, color: colors.ink });
+      expect(text).toHaveProp("numberOfLines", 1);
+      expect(text).toHaveProp("allowFontScaling", true);
+      expect(text).toHaveProp("adjustsFontSizeToFit", false);
+      expect(screen.getByTestId("root-tab-label-underline-index", { includeHiddenElements: true }))
+        .toHaveStyle({ width: 72, height: 3, backgroundColor: colors.orange });
+      expect(StyleSheet.flatten(library.props.style)).toEqual(targetStyle);
+      expect(library).toHaveStyle({ minHeight: 64, minWidth: 48, outlineColor: colors.blue, outlineWidth: 3 });
+      expect(screen.getAllByRole("tab").map((tab) => [tab.props.accessibilityLabel, tab.props.nativeID]))
+        .toEqual([["Workout", "root-tab-index"], ["Calendar", "root-tab-calendar"], ["Library", "root-tab-library"], ["Progress", "root-tab-progress"]]);
+    }
+    await fireEvent(library, "keyDown", { nativeEvent: { key: "Enter" } });
+    expect(navigate).toHaveBeenCalledWith("library");
+  });
+
+  it("updates context safe-area padding for disabled loading tabs without a navigator", async () => {
+    const loading = (bottom: number) => (
+      <SafeAreaInsetsContext.Provider value={{ top: 11, right: 0, bottom, left: 0 }}>
+        <AppearanceProvider><AppLoadingShell /></AppearanceProvider>
+      </SafeAreaInsetsContext.Provider>
+    );
+    const rendered = await render(loading(24));
+    for (const bottom of [24, 0, 36]) {
+      await rendered.rerender(loading(bottom));
+      expect(screen.getByTestId("root-navigation-bottom")).toHaveStyle({ paddingBottom: bottom, backgroundColor: themes.light.paper });
+      for (const tab of screen.getAllByRole("tab")) {
+        expect(tab).toBeDisabled();
+        expect(tab).toHaveProp("focusable", false);
+      }
+    }
+  });
+
+  it("keeps selection underlines at verified plain-native glyph width, not autofit event width", async () => {
+    const navigation = {
+      emit: () => ({ defaultPrevented: false }),
+      navigate: jest.fn(),
+    };
+    const rendered = await render(
+      <AppearanceProvider>
+        <AppTabs navigation={navigation} state={{ index: 0, routes }} />
+      </AppearanceProvider>,
+    );
+
+    for (const [destination, width] of [
+      ["index", 55.25],
+      ["calendar", 59.5],
+      ["library", 45.75],
+      ["progress", 60],
+    ] as const) {
+      let text = screen.getByTestId(`root-tab-label-${destination}`);
+      const underline = screen.getByTestId(`root-tab-label-underline-${destination}`, { includeHiddenElements: true });
+      expect(underline).toHaveStyle({ width: 0, height: 3, maxWidth: "100%" });
+      expect(underline).toHaveProp("accessible", false);
+      expect(underline).toHaveProp("importantForAccessibility", "no-hide-descendants");
+      expect(underline).toHaveProp("pointerEvents", "none");
+
+      // A column is not a glyph measurement. Wait for both plain-native Texts.
+      await fireEvent(text, "layout", { nativeEvent: { layout: { width: 80 } } });
+      text = screen.getByTestId(`root-tab-label-${destination}`);
+      const label = text.props.children;
+      await fireEvent(text, "textLayout", { nativeEvent: { lines: [{ text: label, width: width / 4 }] } });
+      expect(underline).toHaveStyle({ width: 0 });
+      const probe = screen.getByTestId(`root-tab-label-probe-${destination}`, { includeHiddenElements: true });
+      await fireEvent(probe, "textLayout", { nativeEvent: { lines: [{ text: label, width }] } });
+      // Reject the old quarter-width event even if it races the real measurement.
+      expect(underline).toHaveStyle({ width: 0 });
+      await fireEvent(text, "textLayout", { nativeEvent: { lines: [{ text: label, width }] } });
+      expect(underline).toHaveStyle({ width });
+      expect(text).toHaveStyle({ width: "100%", fontSize: 16 });
+      expect(text).toHaveProp("adjustsFontSizeToFit", false);
+    }
+
+    const libraryText = screen.getByTestId("root-tab-label-library");
+    const libraryUnderline = screen.getByTestId("root-tab-label-underline-library", { includeHiddenElements: true });
+    await fireEvent(screen.getByTestId("root-tab-label-probe-library", { includeHiddenElements: true }), "textLayout", { nativeEvent: { lines: [{ text: "Library", width: 63.5 }] } });
+    await fireEvent(libraryText, "textLayout", { nativeEvent: { lines: [{ text: "Library", width: 63.5 }] } });
+    await rendered.rerender(
+      <AppearanceProvider>
+        <AppTabs navigation={navigation} state={{ index: 2, routes }} />
+      </AppearanceProvider>,
+    );
+    expect(libraryUnderline).toHaveStyle({ backgroundColor: themes.light.orange, width: 63.5 });
+    expect(screen.getByTestId("root-tab-label-underline-index", { includeHiddenElements: true }))
+      .toHaveStyle({ backgroundColor: "transparent", width: 55.25 });
+
+    for (const lines of [[], [{ text: "Library", width: Number.NaN }], [{ text: "Library", width: -1 }], [{ text: "Lib…", width: 63.5 }], [{ text: "Lib", width: 30 }, { text: "rary", width: 30 }]]) {
+      await fireEvent(libraryText, "textLayout", { nativeEvent: { lines } });
+      expect(libraryUnderline).toHaveStyle({ width: 0 });
+    }
+  });
+
+  it("remeasures nonlinear native font fitting and rejects stale or unverified widths", async () => {
+    await render(
+      <AppearanceProvider>
+        <AppTabs navigation={{ emit: () => ({ defaultPrevented: false }), navigate: jest.fn() }} state={{ index: 0, routes }} />
+      </AppearanceProvider>,
+    );
+    let text = screen.getByTestId("root-tab-label-index");
+    const underline = screen.getByTestId("root-tab-label-underline-index", { includeHiddenElements: true });
+    const probe = () => screen.getByTestId("root-tab-label-probe-index", { includeHiddenElements: true });
+    const metrics = (width: number) => ({ nativeEvent: { lines: [{ text: "Workout", width, height: 44.1, ascender: 32, descender: 12.1 }] } });
+    await fireEvent(probe(), "textLayout", metrics(120));
+    expect(text).toHaveStyle({ fontSize: 16, lineHeight: 22 });
+    expect(underline).toHaveStyle({ width: 0 });
+    for (const width of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await fireEvent(text, "layout", { nativeEvent: { layout: { width } } });
+      expect(text).toHaveStyle({ fontSize: 16 });
+    }
+    await fireEvent(text, "layout", { nativeEvent: { layout: { width: 76 } } });
+    text = screen.getByTestId("root-tab-label-index");
+    const staleProbe = probe().props.onTextLayout;
+    const staleVisible = text.props.onTextLayout;
+    await fireEvent(probe(), "textLayout", metrics(120));
+    expect(text).toHaveStyle({ fontSize: 9.75, lineHeight: 22 });
+    expect(underline).toHaveStyle({ width: 0 });
+    // Android 14 SP conversion need not follow the first width ratio.
+    await fireEvent(probe(), "textLayout", metrics(78));
+    expect(text).toHaveStyle({ fontSize: 9.25, lineHeight: 22 });
+    await act(async () => {
+      staleProbe(metrics(20));
+      staleVisible(metrics(20));
+    });
+    expect(underline).toHaveStyle({ width: 0 });
+    await fireEvent(probe(), "textLayout", metrics(72));
+    expect(underline).toHaveStyle({ width: 0 });
+    await fireEvent(text, "textLayout", metrics(72));
+    expect(underline).toHaveStyle({ width: 72 });
+    expect(text).toHaveTextContent("Workout", { exact: true });
+    expect(text).toHaveProp("allowFontScaling", true);
+    // A wider column restarts at the approved base rather than retaining shrink.
+    await fireEvent(text, "layout", { nativeEvent: { layout: { width: 150 } } });
+    text = screen.getByTestId("root-tab-label-index");
+    expect(text).toHaveStyle({ fontSize: 16 });
+    expect(underline).toHaveStyle({ width: 0 });
+    await fireEvent(text, "textLayout", metrics(120));
+    await fireEvent(probe(), "textLayout", metrics(120));
+    expect(underline).toHaveStyle({ width: 120 });
+  });
+
+  it("requests fresh visible metrics after first-layout ordering and does not repeat same-column fitting", async () => {
+    await render(
+      <AppearanceProvider>
+        <AppTabs navigation={{ emit: () => ({ defaultPrevented: false }), navigate: jest.fn() }} state={{ index: 0, routes }} />
+      </AppearanceProvider>,
+    );
+    const initialText = screen.getByTestId("root-tab-label-index");
+    const underline = screen.getByTestId("root-tab-label-underline-index", { includeHiddenElements: true });
+    const metrics = { nativeEvent: { lines: [{ text: "Workout", width: 64, height: 22.044 }] } };
+    const staleLayout = initialText.props.onLayout;
+    await fireEvent(initialText, "textLayout", metrics);
+    expect(underline).toHaveStyle({ width: 0 });
+    await fireEvent(initialText, "layout", { nativeEvent: { layout: { width: 80 } } });
+    const text = screen.getByTestId("root-tab-label-index");
+    expect(text).not.toBe(initialText);
+    const probe = screen.getByTestId("root-tab-label-probe-index", { includeHiddenElements: true });
+    await fireEvent(probe, "textLayout", metrics);
+    expect(underline).toHaveStyle({ width: 0 });
+    await fireEvent(text, "textLayout", metrics);
+    expect(underline).toHaveStyle({ width: 64 });
+    await act(async () => {
+      staleLayout({ nativeEvent: { layout: { width: 90 } } });
+    });
+    expect(underline).toHaveStyle({ width: 64 });
+    await fireEvent(text, "layout", { nativeEvent: { layout: { width: 80 } } });
+    expect(screen.getByTestId("root-tab-label-index")).toBe(text);
+    expect(underline).toHaveStyle({ width: 64 });
+    for (const lines of [[], [{ text: "Workout", width: Number.POSITIVE_INFINITY }], [{ text: "Work…", width: 64 }]]) {
+      await fireEvent(probe, "textLayout", { nativeEvent: { lines } });
+      expect(underline).toHaveStyle({ width: 0 });
+    }
+    await fireEvent(probe, "textLayout", metrics);
+    expect(underline).toHaveStyle({ width: 64 });
+  });
+
+  it("isolates unbounded native probes from accessibility, focus, and layout", async () => {
+    await render(
+      <AppearanceProvider>
+        <AppTabs navigation={{ emit: () => ({ defaultPrevented: false }), navigate: jest.fn() }} state={{ index: 0, routes }} />
+      </AppearanceProvider>,
+    );
+    for (const destination of ["index", "calendar", "library", "progress"]) {
+      const probe = screen.getByTestId(`root-tab-label-probe-${destination}`, { includeHiddenElements: true });
+      const container = screen.getByTestId(`root-tab-label-probe-container-${destination}`, { includeHiddenElements: true });
+      expect(screen.queryByTestId(`root-tab-label-probe-${destination}`)).toBeNull();
+      expect(container).toHaveProp("accessible", false);
+      expect(container).toHaveProp("accessibilityElementsHidden", true);
+      expect(container).toHaveProp("importantForAccessibility", "no-hide-descendants");
+      expect(container).toHaveProp("focusable", false);
+      expect(container).toHaveProp("pointerEvents", "none");
+      expect(container).toHaveProp("horizontal", true);
+      expect(container).toHaveProp("scrollEnabled", false);
+      expect(container).toHaveStyle({ position: "absolute", opacity: 0 });
+      expect(probe).toHaveProp("accessible", false);
+      expect(probe).toHaveProp("accessibilityElementsHidden", true);
+      expect(probe).toHaveProp("importantForAccessibility", "no-hide-descendants");
+      expect(probe.props.onPress).toBeUndefined();
+      expect(probe).toHaveProp("allowFontScaling", true);
+      expect(probe).toHaveProp("adjustsFontSizeToFit", false);
+      expect(probe).toHaveStyle({ fontFamily: "ArchivoVariable", fontSize: 16, lineHeight: 22 });
+      expect(StyleSheet.flatten(probe.props.style).width).toBeUndefined();
+    }
+    expect(screen.getAllByRole("tab")).toHaveLength(4);
+    expect(screen.getAllByText("Workout")).toHaveLength(1);
+  });
+
+  it("keeps four complete root destinations in one single-line fitted bottom composition", async () => {
     const navigate = jest.fn();
     await render(
       <AppearanceProvider>
         <AppTabs
-          compactLayout="two-row"
           navigation={{
             emit: () => ({ defaultPrevented: false }),
             navigate,
@@ -709,28 +1291,32 @@ describe("Plan 01-02 route shell", () => {
     );
 
     const rootNavigation = screen.getByLabelText(
-      "Root navigation bottom two rows",
+      "Root navigation bottom",
     );
     expect(rootNavigation).toHaveStyle({
-      flexWrap: "wrap",
+      flexWrap: undefined,
     });
     expect(screen.getAllByRole("tab").map((tab) => tab.props.accessibilityLabel))
-      .toEqual(["Today", "Calendar", "Library", "Progress"]);
+      .toEqual(["Workout", "Calendar", "Library", "Progress"]);
     expect(screen.getByRole("tab", { name: "Library" })).toBeSelected();
 
-    for (const label of ["Today", "Calendar", "Library", "Progress"]) {
+    for (const label of ["Workout", "Calendar", "Library", "Progress"]) {
       const tab = screen.getByRole("tab", { name: label });
       expect(tab).toHaveStyle({
         minHeight: 64,
         minWidth: 48,
-        width: "50%",
       });
-      expect(screen.getByText(label).props.numberOfLines).toBeUndefined();
+      const text = screen.getByText(label);
+      expect(text).toHaveProp("numberOfLines", 1);
+      expect(text).toHaveProp("adjustsFontSizeToFit", false);
+      expect(text.props.minimumFontScale).toBeUndefined();
+      expect(text).toHaveProp("allowFontScaling", true);
+      expect(text).toHaveTextContent(label, { exact: true });
     }
 
     const progress = screen.getByRole("tab", { name: "Progress" });
     await fireEvent(progress, "focus");
-    expect(progress).toHaveStyle({ outlineWidth: 2 });
+    expect(progress).toHaveStyle({ outlineWidth: 3 });
     await fireEvent(progress, "keyDown", {
       nativeEvent: { key: "Enter" },
     });
@@ -824,7 +1410,7 @@ describe("Plan 01-02 route shell", () => {
       </AppearanceProvider>,
     );
 
-    expect(screen.getByRole("header", { name: "Today" })).toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "Workout" })).toBeOnTheScreen();
     expect(
       screen.getAllByTestId(/today-skeleton/, { includeHiddenElements: true }),
     ).toHaveLength(6);
@@ -834,16 +1420,15 @@ describe("Plan 01-02 route shell", () => {
     }
   });
 
-  it("uses the expanded loading-shell rail contract", async () => {
+  it("keeps the expanded loading shell on the all-width bottom-navigation contract", async () => {
     await render(
       <AppearanceProvider>
         <AppLoadingShell width={840} />
       </AppearanceProvider>,
     );
 
-    expect(screen.getByLabelText("Root navigation rail")).toHaveStyle({
-      width: 112,
-    });
+    expect(screen.getByLabelText("Root navigation bottom")).toBeOnTheScreen();
+    expect(screen.queryByLabelText("Root navigation rail")).not.toBeOnTheScreen();
   });
 
   it("announces all root destinations as unavailable while launch is untrusted", async () => {
@@ -868,15 +1453,15 @@ describe("Plan 01-02 route shell", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it("renders structured Today shell placeholders without stale workout facts", async () => {
+  it("renders structured Workout shell placeholders without stale workout facts", async () => {
     await render(
       <AppearanceProvider>
         <TodayScreen launchState="booting" />
       </AppearanceProvider>,
     );
 
-    expect(screen.getByRole("header", { name: "Today" })).toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Settings" }))
+    expect(screen.getByRole("header", { name: "Workout" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Open App Settings" }))
       .toBeDisabled();
     expect(
       screen.getAllByTestId(/today-skeleton/, { includeHiddenElements: true }),
@@ -884,7 +1469,7 @@ describe("Plan 01-02 route shell", () => {
     expect(screen.queryByText(/kg|reps|workout in progress/i)).not.toBeOnTheScreen();
   });
 
-  it("keeps trusted Today structural without unapproved future-phase copy", async () => {
+  it("keeps trusted Workout structural without unapproved future-phase copy", async () => {
     await render(
       <AppearanceProvider>
         <TodayScreen launchState="trusted" />
@@ -943,7 +1528,7 @@ describe("Plan 01-02 route shell", () => {
   const emptyRootCases: ReadonlyArray<
     readonly [
       string,
-      React.ComponentType<{ onGoToday: () => void }>,
+      React.ComponentType<{ onGoWorkout: () => void }>,
       string,
       string,
     ]
@@ -952,17 +1537,17 @@ describe("Plan 01-02 route shell", () => {
       "Library",
       LibraryScreen,
       "Library is not available yet",
-      "Full plan and exercise management will arrive in a later phase. Full Body Foundation is available from Today.",
+      "Full plan and exercise management will arrive in a later phase. Full Body Foundation is available from Workout.",
     ],
   ];
 
   it.each(emptyRootCases)(
     "renders only the exact intentional %s empty destination",
     async (destination, ScreenComponent, heading, body) => {
-      const goToday = jest.fn();
+      const goWorkout = jest.fn();
       await render(
         <AppearanceProvider>
-          <ScreenComponent onGoToday={goToday} />
+          <ScreenComponent onGoWorkout={goWorkout} />
         </AppearanceProvider>,
       );
 
@@ -972,14 +1557,14 @@ describe("Plan 01-02 route shell", () => {
       expect(screen.getByRole("header", { name: heading })).toBeOnTheScreen();
       expect(screen.getByText(body)).toBeOnTheScreen();
       await fireEvent.press(
-        screen.getByRole("button", { name: "Go to Today" }),
+        screen.getByRole("button", { name: "Go to Workout" }),
       );
-      expect(goToday).toHaveBeenCalledTimes(1);
+      expect(goWorkout).toHaveBeenCalledTimes(1);
       expect(screen.queryByText(/search|filter|chart|create/i)).not.toBeOnTheScreen();
     },
   );
 
-  it("keeps the focused workout outside root navigation at every width", async () => {
+  it("keeps the workout overview outside root navigation at every width", async () => {
     for (const width of [599, 600, 840]) {
       const { unmount } = await render(
         <AppearanceProvider>
@@ -992,8 +1577,9 @@ describe("Plan 01-02 route shell", () => {
       );
 
       expect(
-        screen.getByRole("header", { name: "Active Workout" }),
+        screen.getByRole("header", { name: "Workout" }),
       ).toBeOnTheScreen();
+      expect(screen.getByText("WORKOUT OVERVIEW")).toBeOnTheScreen();
       expect(screen.queryByRole("tablist")).not.toBeOnTheScreen();
       expect(
         screen.queryByText(/working-set interface arrives/i),
@@ -1008,6 +1594,27 @@ describe("Plan 01-02 route shell", () => {
 });
 
 describe("Plan 01-02 shared component vocabulary", () => {
+  it("supports a scoped Back label without changing the shared default", async () => {
+    const defaultBack = jest.fn();
+    const calendarBack = jest.fn();
+
+    await render(
+      <AppearanceProvider>
+        <ScreenHeader backAction={defaultBack} title="Default detail" />
+        <ScreenHeader
+          backAction={calendarBack}
+          backActionLabel="Back to Calendar agenda"
+          title="Calendar detail"
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Back to Calendar agenda" }));
+    expect(defaultBack).toHaveBeenCalledTimes(1);
+    expect(calendarBack).toHaveBeenCalledTimes(1);
+  });
+
   it("covers actions, headers, empty states, notices, and root failure recovery", async () => {
     const retry = jest.fn();
     const secondary = jest.fn();
@@ -1018,7 +1625,7 @@ describe("Plan 01-02 shared component vocabulary", () => {
           action={<Text>Header action</Text>}
           backAction={secondary}
           eyebrow="PLANNED WORKOUT"
-          title="Today"
+          title="Workout"
         />
         <SectionHeader
           action={<Text>Section action</Text>}
@@ -1120,7 +1727,6 @@ describe("Plan 01-02 shared component vocabulary", () => {
         />
         <AppTabs
           navigation={{ emit, navigate }}
-          position="rail"
           state={{ index: 0, routes }}
         />
       </AppearanceProvider>,
@@ -1138,7 +1744,7 @@ describe("Plan 01-02 shared component vocabulary", () => {
         name: /Bench Press\. Next target 42\.5 kg × 8/,
       }),
     );
-    await fireEvent.press(screen.getByRole("tab", { name: "Today" }));
+    await fireEvent.press(screen.getByRole("tab", { name: "Workout" }));
     await fireEvent.press(screen.getByRole("tab", { name: "Calendar" }));
 
     expect(cancel).toHaveBeenCalledTimes(1);
@@ -1220,7 +1826,7 @@ describe("Plan 01-02 shared component vocabulary", () => {
     await fireEvent(primary, "focus");
     expect(primary).toHaveStyle({
       outlineColor: themes.light.focusRing,
-      outlineWidth: 2,
+      outlineWidth: 3,
     });
     await fireEvent(primary, "blur");
     expect(primary).toHaveStyle({ outlineWidth: 0 });
@@ -1235,6 +1841,22 @@ describe("Plan 01-02 shared component vocabulary", () => {
       nativeEvent: { key: " " },
     });
     expect(activate).toHaveBeenCalledTimes(2);
+  });
+
+  it("turns an imperative focus request into a native Android focus request", async () => {
+    const ref = React.createRef<View>();
+    await render(
+      <AppearanceProvider>
+        <PrimaryAction ref={ref} label="Restore focus target" onPress={jest.fn()} />
+      </AppearanceProvider>,
+    );
+
+    await act(() => ref.current?.focus());
+    const target = screen.getByRole("button", { name: "Restore focus target" });
+    expect(target).toHaveProp("hasTVPreferredFocus", true);
+
+    await fireEvent(target, "focus");
+    expect(target).toHaveProp("hasTVPreferredFocus", false);
   });
 
   it("restores invoking focus when modal sheets are cancelled", async () => {
@@ -1259,13 +1881,16 @@ describe("Plan 01-02 shared component vocabulary", () => {
     );
 
     expect(screen.getByTestId("confirmation-sheet-content")).toHaveStyle({
-      maxHeight: "90%",
+      flexShrink: 1,
+      minHeight: 0,
     });
+    expect(StyleSheet.flatten(screen.getByTestId("confirmation-sheet-content").props.style).maxHeight)
+      .toBeUndefined();
     await fireEvent.press(
       screen.getByRole("button", { name: "Keep training" }),
     );
     expect(cancel).toHaveBeenCalledTimes(1);
-    expect(focus).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(focus).toHaveBeenCalledTimes(1));
     await confirmation.unmount();
 
     const close = jest.fn();
@@ -1281,9 +1906,108 @@ describe("Plan 01-02 shared component vocabulary", () => {
         />
       </AppearanceProvider>,
     );
-    await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByTestId("bottom-sheet-frame")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Return to Workout" }));
     expect(close).toHaveBeenCalledTimes(1);
-    expect(focus).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(focus).toHaveBeenCalledTimes(2));
+  });
+
+  it("retains primitive card, target, header, and pressed-color states alongside inset padding", async () => {
+    await render(
+      <AppearanceProvider>
+        <ContentCard pressed status="attention" testID="pressed-card"><Text>Pressed card</Text></ContentCard>
+        <ContentCard status="error" testID="error-card"><Text>Error card</Text></ContentCard>
+        <PrimaryAction label="Pressed primary" onPress={jest.fn()} />
+        <SecondaryAction label="Pressed secondary" onPress={jest.fn()} />
+        <WorkoutPrimaryAction label="Pressed workout" onPress={jest.fn()} />
+        <WorkoutPrimaryAction disabled label="Disabled workout" onPress={jest.fn()} />
+        <IconAction icon="info" accessibilityLabel="Selected icon" onPress={jest.fn()} selected />
+        <IconAction icon="info" accessibilityLabel="Card icon" onPress={jest.fn()} tone="card" />
+        <ScreenHeader title="Custom back" density="deep" backAction={jest.fn()} backActionTestID="custom-back" />
+        <InlineNotice card focusable heading="Card notice" body="Card detail" />
+        <MetricSummary label="Default metric" value="1" />
+        <MetricSummary label="Card metric" value="2" tone="card" />
+        <PlanActivationRow tone="card" onPress={jest.fn()} />
+        <AppTabs insets={{ bottom: 24 }} navigation={{ emit: () => ({ defaultPrevented: false }), navigate: jest.fn() }} state={{ index: 0, routes: [{ name: "index", key: "index" }] }} />
+      </AppearanceProvider>,
+    );
+    expect(screen.getByTestId("pressed-card")).toHaveStyle({ backgroundColor: themes.light.contentCardPressed, borderColor: themes.light.timerAttention });
+    expect(screen.getByTestId("error-card")).toHaveStyle({ borderColor: themes.light.destructive });
+    expect(screen.getByTestId("custom-back")).toHaveProp("accessibilityLabel", "Go back");
+    const notice = screen.getByText("Card notice").parent?.parent;
+    expect(notice).toHaveProp("accessibilityRole", "header");
+    expect(notice).toHaveProp("focusable", true);
+    expect(screen.getByText("Card detail")).toHaveStyle({ color: themes.light.contentCardTextSecondary });
+    expect(screen.getByText("2")).toHaveStyle({ color: themes.light.contentCardText });
+    expect(screen.getByRole("button", { name: "Card icon" }).queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke).toBe(themes.light.contentCardText);
+    const expectedPressed = new Map([
+      ["Pressed primary", themes.light.actionPressed],
+      ["Pressed secondary", themes.light.surfaceSubtle],
+      ["Pressed workout", themes.light.workoutPrimaryActionPressed],
+      ["Selected icon", themes.light.surfaceSubtle],
+      ["Card icon", themes.light.contentCardPressed],
+      ["Workout", themes.light.surfaceSubtle],
+    ]);
+    // Exercise real native responder state, rather than fireEvent.press's callback-only path.
+    for (const [name, expected] of expectedPressed) {
+      const action = screen.getByRole(name === "Workout" ? "tab" : "button", { name });
+      const event = { currentTarget: 1, target: 1, persist: jest.fn(), nativeEvent: { pageX: 0, pageY: 0, timestamp: 0, touches: [], changedTouches: [] } };
+      await fireEvent(action, "responderGrant", event);
+      expect(action).toHaveStyle({ backgroundColor: expected });
+      await act(async () => {
+        await fireEvent(action, "responderRelease", event);
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      });
+    }
+    expect(screen.getByRole("button", { name: "Disabled workout" })).toBeDisabled();
+    expect(screen.getByTestId("root-navigation-bottom")).toHaveStyle({ paddingBottom: 24 });
+  });
+
+  it("keeps passive pressables and valid native focus handles safe", async () => {
+    const native = require("react-native") as typeof import("react-native");
+    const findHandle = jest.spyOn(native, "findNodeHandle");
+    const accessibleFocus = jest.spyOn(AccessibilityInfo, "setAccessibilityFocus").mockImplementation(() => undefined);
+    const ref = React.createRef<View>();
+    try {
+      await render(
+        <AppearanceProvider>
+          <FocusablePressable onPress={null} testID="passive-action" />
+          <PrimaryAction ref={ref} label="Native focus target" onPress={jest.fn()} />
+        </AppearanceProvider>,
+      );
+      expect(screen.getByTestId("passive-action").props.onKeyDown).toBeUndefined();
+      findHandle.mockReturnValue(27);
+      await act(() => ref.current?.focus());
+      expect(accessibleFocus).toHaveBeenCalledWith(27);
+      accessibleFocus.mockClear();
+      for (const handle of [0, -1]) {
+        findHandle.mockReturnValue(handle);
+        await act(() => ref.current?.focus());
+      }
+      expect(accessibleFocus).not.toHaveBeenCalled();
+    } finally {
+      findHandle.mockRestore();
+      accessibleFocus.mockRestore();
+    }
+  });
+
+  it("changes appearance and closes with or without an invoking focus ref", async () => {
+    const focus = jest.fn();
+    for (const restoreFocusRef of [undefined, { current: null }, { current: { focus } as unknown as View }]) {
+      const close = jest.fn();
+      const rendered = await render(
+        <AppearanceProvider>
+          <AppearanceSheet visible onClose={close} {...(restoreFocusRef === undefined ? {} : { restoreFocusRef })} />
+        </AppearanceProvider>,
+      );
+      await fireEvent.press(screen.getByRole("radio", { name: "Dark" }));
+      await fireEvent(screen.getByRole("radio", { name: "Dark" }), "keyDown", { nativeEvent: { key: "Enter" } });
+      expect(screen.getByRole("radio", { name: "Dark" })).toBeSelected();
+      await fireEvent.press(screen.getAllByRole("button", { name: "Close appearance" })[0]!);
+      expect(close).toHaveBeenCalledTimes(1);
+      await rendered.unmount();
+    }
+    expect(focus).toHaveBeenCalled();
   });
 
   it("keeps later workout controls out of the Phase 1 foundation vocabulary", () => {

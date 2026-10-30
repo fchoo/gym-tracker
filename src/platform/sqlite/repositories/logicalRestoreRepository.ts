@@ -1,20 +1,15 @@
 import {
   LOGICAL_BACKUP_TABLE_DEFINITIONS,
   LOGICAL_BACKUP_TABLES,
+  type LogicalBackupTableName,
   type LogicalBackupSnapshot,
 } from "../../../domains/portability/backupContracts";
 import {
   LOGICAL_BACKUP_REFERENCE_DEFINITIONS,
 } from "../../../domains/portability/restoreCommands";
 import {
-  HISTORY_INTEGRITY_SCHEMA_STATEMENTS,
-} from "../migrations/0013_history_integrity";
-import {
-  OWNED_PLAN_SCHEMA_STATEMENTS,
-} from "../migrations/0009_owned_plans";
-import {
-  SCHEDULE_ACTIVATION_SCHEMA_STATEMENTS,
-} from "../migrations/0008_schedule_activation";
+  AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS,
+} from "../migrations/0023_automatic_drive_backup";
 import {
   LOGICAL_BACKUP_TABLE_FILTERS,
 } from "./logicalBackupRepository";
@@ -23,7 +18,11 @@ import type {
   SqliteTransactionExecutor,
 } from "../sqliteKernel";
 
-type LogicalTableName = keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS;
+type LogicalTableName = LogicalBackupTableName;
+
+function isLogicalTableName(value: string): value is LogicalTableName {
+  return (LOGICAL_BACKUP_TABLES as readonly string[]).includes(value);
+}
 
 export type LogicalRestoreRepository = Readonly<{
   /** Accepts only a snapshot already authenticated and validated by restoreCommands. */
@@ -33,6 +32,12 @@ export type LogicalRestoreRepository = Readonly<{
 }>;
 
 export const LOGICAL_RESTORE_DELETE_TRIGGER_NAMES = Object.freeze([
+  // v23 replaces the older immutable trigger with the one-time adoption guard.
+  "portable_owner_identity_adoption_only",
+  "portable_owner_identity_no_delete",
+  "exercises_portable_id_immutable",
+  "plans_portable_id_immutable",
+  "workout_sessions_portable_id_immutable",
   "owned_starter_sources_immutable_delete",
   "owned_day_sources_immutable_delete",
   "owned_occurrence_sources_immutable_delete",
@@ -50,14 +55,80 @@ export const LOGICAL_RESTORE_DELETE_TRIGGER_NAMES = Object.freeze([
   "owned_plan_targets_no_permanent_delete",
   "owned_plan_policies_no_permanent_delete",
   "history_audit_events_immutable_delete",
+  "running_session_revisions_immutable_delete",
+  "running_session_slots_immutable_delete",
+  "running_opportunities_immutable_delete",
+  "imported_activities_immutable_delete",
+  "imported_activity_payloads_immutable_delete",
+  "imported_activity_references_immutable_delete",
+  "imported_activity_laps_immutable_delete",
+  "imported_activity_chunks_immutable_delete",
+  "imported_activity_receipts_immutable_delete",
+  "imported_activity_removal_events_immutable_delete",
+  "running_match_events_immutable_delete",
+  "bodyweight_revisions_immutable_delete",
+  "bodyweight_tombstones_immutable_delete",
+  "running_session_slot_roots_immutable_delete",
+  "running_session_slot_revisions_immutable_delete",
+  "running_plan_events_immutable_delete",
+  "imported_activity_identities_immutable_delete",
+  "imported_activity_events_immutable_delete",
+  "imported_activity_match_invalidations_immutable_delete",
+  "bodyweight_entry_events_immutable_delete",
+  "bodyweight_command_receipts_immutable_delete",
+  "progression_recommendation_decision_receipts_immutable_delete",
+  "owned_progression_recommendation_decision_receipts_immutable_delete",
+  "workout_session_schedule_links_immutable_delete",
+  "workout_schedule_reconciliation_receipts_immutable_delete",
+  "workout_completed_set_correction_receipts_immutable_delete",
+  "workout_session_exercise_rest_default_receipts_immutable_delete",
+  "running_activity_match_events_immutable_delete",
+  "running_activity_match_receipts_immutable_delete",
+  "schedule_collision_outcomes_immutable_delete",
+  "schedule_collision_receipts_immutable_delete",
+  "plan_exercise_replacement_receipts_immutable_delete",
+] as const);
+
+/**
+ * v23 generation triggers are intentionally outside the portable graph. A
+ * restore replaces that graph atomically, so they must be suspended with the
+ * existing delete guards or the restore would manufacture dirty generations.
+ */
+export const LOGICAL_RESTORE_BACKUP_TRIGGER_NAMES = Object.freeze(
+  [
+    ...AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS.map(triggerName),
+    ...[
+      "running_plans", "running_session_revisions", "running_goals", "running_session_slots",
+      "running_opportunities", "workout_provenance", "workout_receipts", "imported_activities",
+      "imported_activity_payloads", "imported_activity_references", "imported_activity_laps",
+      "imported_activity_chunks", "imported_activity_receipts", "imported_activity_removal_events",
+      "running_match_events", "running_current_matches", "bodyweight_revisions", "bodyweight_tombstones",
+      "running_session_roots", "running_session_slot_roots", "running_session_slot_revisions",
+      "running_plan_receipts", "running_plan_events", "imported_activity_identities",
+      "imported_activity_events", "imported_activity_match_invalidations", "bodyweight_entries",
+      "bodyweight_entry_events", "bodyweight_command_receipts", "workout_session_schedule_links",
+      "progression_recommendation_decision_receipts", "owned_progression_recommendation_decision_receipts",
+      "workout_schedule_reconciliation_receipts", "running_activity_match_events",
+      "running_activity_match_receipts",
+      "schedule_collision_outcomes", "schedule_collision_receipts", "schedule_collision_projections",
+    ].flatMap((table) => ["insert", "update", "delete"].map(
+      (operation) => `automatic_backup_generation_${table}_${operation}`,
+    )),
+    "automatic_backup_generation_imported_activity_current_lifecycle_insert",
+    "automatic_backup_generation_imported_activity_current_lifecycle_update",
+  ],
+);
+export const LOGICAL_RESTORE_TRIGGER_NAMES = Object.freeze([
+  ...LOGICAL_RESTORE_DELETE_TRIGGER_NAMES,
+  ...LOGICAL_RESTORE_BACKUP_TRIGGER_NAMES,
 ] as const);
 
 export type LogicalRestoreFaultStage =
   | "captured_current_ownership"
   | "verified"
   | "state_updated"
-  | `trigger_drop:${typeof LOGICAL_RESTORE_DELETE_TRIGGER_NAMES[number]}`
-  | `trigger_recreate:${typeof LOGICAL_RESTORE_DELETE_TRIGGER_NAMES[number]}`
+  | `trigger_drop:${typeof LOGICAL_RESTORE_TRIGGER_NAMES[number]}`
+  | `trigger_recreate:${typeof LOGICAL_RESTORE_TRIGGER_NAMES[number]}`
   | `delete:${LogicalTableName}`
   | `insert:${LogicalTableName}`;
 
@@ -83,19 +154,8 @@ function triggerName(statement: string): string {
   return /^CREATE TRIGGER\s+([a-z0-9_]+)/u.exec(statement.trim())![1]!;
 }
 
-const TRIGGER_SOURCE_STATEMENTS = Object.freeze([
-  ...SCHEDULE_ACTIVATION_SCHEMA_STATEMENTS,
-  ...OWNED_PLAN_SCHEMA_STATEMENTS,
-  ...HISTORY_INTEGRITY_SCHEMA_STATEMENTS,
-].filter((statement) => /^CREATE TRIGGER /u.test(statement)));
-
 /** Only delete blockers for facts replaced by this transaction. Insert validators stay active. */
-const RESTORE_TRIGGER_SQL = Object.freeze(new Map(
-  LOGICAL_RESTORE_DELETE_TRIGGER_NAMES.map((name) => [
-    name,
-    TRIGGER_SOURCE_STATEMENTS.find((statement) => triggerName(statement) === name)!,
-  ] as const),
-));
+const RESTORE_TRIGGER_NAMES = new Set(LOGICAL_RESTORE_TRIGGER_NAMES);
 
 function sourceDependencies(): ReadonlyMap<string, ReadonlySet<string>> {
   const tables = new Set(LOGICAL_BACKUP_TABLES);
@@ -115,7 +175,8 @@ function sourceDependencies(): ReadonlyMap<string, ReadonlySet<string>> {
       && reference.childColumns[0] === "next_set_id"
     );
     if (nullableBackReference) continue;
-    if (tables.has(reference.childTable) && tables.has(reference.parentTable)) {
+    if (isLogicalTableName(reference.childTable)
+      && isLogicalTableName(reference.parentTable)) {
       parents.get(reference.childTable)?.add(reference.parentTable);
     }
   }
@@ -164,7 +225,7 @@ function sameValues(
 async function capturedRestoreTriggers(
   transaction: SqliteTransactionExecutor,
 ): Promise<ReadonlyMap<string, string>> {
-  const names = [...RESTORE_TRIGGER_SQL.keys()];
+  const names = [...RESTORE_TRIGGER_NAMES];
   const placeholders = names.map(() => "?").join(", ");
   const rows = await transaction.queryAll<{ name: string; sql: string }>(
     `SELECT name, sql FROM sqlite_master
@@ -213,13 +274,14 @@ function primaryKeyJson(table: LogicalTableName, alias = ""): string {
 
 async function captureCurrentSourceOwnership(
   transaction: SqliteTransactionExecutor,
+  tables: readonly LogicalTableName[],
 ): Promise<void> {
   await transaction.execute(`CREATE TEMP TABLE IF NOT EXISTS logical_restore_current_rows (
     table_name TEXT NOT NULL, identity_json TEXT NOT NULL,
     PRIMARY KEY(table_name, identity_json)
   ) WITHOUT ROWID`);
   await transaction.execute("DELETE FROM logical_restore_current_rows");
-  for (const table of LOGICAL_BACKUP_TABLES as readonly LogicalTableName[]) {
+  for (const table of tables) {
     await transaction.execute(`INSERT INTO logical_restore_current_rows(table_name, identity_json)
       SELECT ?, ${primaryKeyJson(table)} FROM ${identifier(table)}
       WHERE ${LOGICAL_BACKUP_TABLE_FILTERS[table]}`, [table]);
@@ -234,22 +296,34 @@ function capturedWhere(table: LogicalTableName): string {
 
 async function deleteCurrentSources(
   transaction: SqliteTransactionExecutor,
+  tables: readonly LogicalTableName[],
   fault?: (stage: LogicalRestoreFaultStage) => Promise<void>,
 ): Promise<void> {
+  const snapshotTables = new Set(tables);
   for (const table of DELETE_ORDER) {
-    if (table === "taxonomy_terms") continue;
+    if (!snapshotTables.has(table) || table === "taxonomy_terms") continue;
     await transaction.execute(`DELETE FROM ${identifier(table)} WHERE ${capturedWhere(table)}`);
     await fault?.(`delete:${table}`);
   }
   // Only terms captured from the old owned graph may be removed. A term shared
   // with retained taxonomy stays even if its snapshot counterpart differs.
-  await transaction.execute(`DELETE FROM taxonomy_terms
-    WHERE ${capturedWhere("taxonomy_terms")} AND NOT EXISTS (
-      SELECT 1 FROM exercise_taxonomy taxonomy
-      WHERE taxonomy.kind = taxonomy_terms.kind
-        AND taxonomy.slug = taxonomy_terms.slug
-    )`);
-  await fault?.("delete:taxonomy_terms");
+  if (snapshotTables.has("taxonomy_terms")) {
+    await transaction.execute(`DELETE FROM taxonomy_terms
+      WHERE ${capturedWhere("taxonomy_terms")} AND NOT EXISTS (
+        SELECT 1 FROM exercise_taxonomy taxonomy
+        WHERE taxonomy.kind = taxonomy_terms.kind
+          AND taxonomy.slug = taxonomy_terms.slug
+      )`);
+    await fault?.("delete:taxonomy_terms");
+  }
+}
+
+/** These tables are derived from immutable event ledgers and must never survive a clean source replacement. */
+async function clearRebuildablePhase13Projections(
+  transaction: SqliteTransactionExecutor,
+): Promise<void> {
+  await transaction.execute("DELETE FROM running_activity_current_matches");
+  await transaction.execute("DELETE FROM imported_activity_current_lifecycle");
 }
 
 async function insertTaxonomyTerms(
@@ -294,7 +368,9 @@ async function insertSnapshot(
   snapshot: LogicalBackupSnapshot,
   fault?: (stage: LogicalRestoreFaultStage) => Promise<void>,
 ): Promise<void> {
+  const snapshotTables = new Set(Object.keys(snapshot.tables));
   for (const table of INSERT_ORDER) {
+    if (!snapshotTables.has(table)) continue;
     const rows = snapshot.tables[table] as readonly Record<string, unknown>[];
     if (table === "taxonomy_terms") {
       await insertTaxonomyTerms(transaction, rows);
@@ -310,7 +386,7 @@ async function verifySourceTables(
   transaction: SqliteTransactionExecutor,
   snapshot: LogicalBackupSnapshot,
 ): Promise<void> {
-  for (const table of LOGICAL_BACKUP_TABLES as readonly LogicalTableName[]) {
+  for (const table of Object.keys(snapshot.tables) as LogicalTableName[]) {
     const expected = snapshot.tables[table] as readonly Record<string, unknown>[];
     const actual = table === "taxonomy_terms"
       ? await transaction.queryAll<Record<string, unknown>>(
@@ -349,11 +425,13 @@ export function createLogicalRestoreRepository(
             throw new LogicalRestoreRepositoryError("logical_restore_failed");
           }
           await transaction.execute("PRAGMA defer_foreign_keys = ON");
-          await captureCurrentSourceOwnership(transaction);
+          const snapshotTables = Object.keys(snapshot.tables) as LogicalTableName[];
+          await captureCurrentSourceOwnership(transaction, snapshotTables);
           await input.faultAfter?.("captured_current_ownership");
           const triggers = await capturedRestoreTriggers(transaction);
           await dropRestoreTriggers(transaction, triggers, input.faultAfter);
-          await deleteCurrentSources(transaction, input.faultAfter);
+          await clearRebuildablePhase13Projections(transaction);
+          await deleteCurrentSources(transaction, snapshotTables, input.faultAfter);
           await insertSnapshot(transaction, snapshot, input.faultAfter);
           await recreateRestoreTriggers(transaction, triggers, input.faultAfter);
           await verifySourceTables(transaction, snapshot);

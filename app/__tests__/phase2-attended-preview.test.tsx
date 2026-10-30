@@ -27,6 +27,7 @@ import {
   workoutView,
 } from "../../src/testing/phase2AttendedPreviewFixtures";
 import { AppearanceProvider } from "../../src/ui/theme";
+import { PHASE14_FONT_PROOF } from "../../src/testing/phase14FontProof";
 
 let mockNativeContractsEnabled = true;
 let mockParameters: {
@@ -108,6 +109,37 @@ describe("Phase2AttendedPreviewRoute", () => {
       .toHaveProp("accessibilityLabel", "Redirect to /");
     expect(screen.queryByText("root-nav-loading"))
       .not.toBeOnTheScreen();
+  });
+
+  it("exposes the Phase 14 font oracle only in a native-contract build", async () => {
+    mockParameters = { scenario: "phase14-font-axis" };
+
+    await renderRoute();
+
+    expect(screen.getByTestId("phase14-font-proof-root")).toBeOnTheScreen();
+    expect(screen.getByTestId("phase14-font-proof-title")).toHaveTextContent(
+      PHASE14_FONT_PROOF.oracle.sourceText,
+    );
+    expect(screen.queryByText("Today’s workout")).not.toBeOnTheScreen();
+    expect(screen.getByTestId("phase14-font-proof-family"))
+      .toHaveTextContent(/ArchivoVariable/u);
+    expect(screen.getByTestId("phase14-font-proof-measurement-light-390-scale-1", {
+      includeHiddenElements: true,
+    }))
+      .toBeOnTheScreen();
+    expect(screen.getByTestId("phase14-font-proof-observation"))
+      .toHaveTextContent(/"lineAdvancesPx"/u);
+    expect(screen.getByTestId("phase14-font-proof-observation"))
+      .toHaveTextContent(/"displayDensity"/u);
+    expect(screen.getByTestId("phase14-font-proof-title-container"))
+      .toBeOnTheScreen();
+    expect(screen.getByTestId("phase14-font-proof-overlay-inputs"))
+      .toHaveTextContent(/wght 890/u);
+
+    mockNativeContractsEnabled = false;
+    await renderRoute();
+    expect(screen.getByTestId("phase2-attended-preview-redirect"))
+      .toHaveProp("accessibilityLabel", "Redirect to /");
   });
 
   it.each<[string, { scenario?: string | string[]; variant?: string | string[] }]>([
@@ -232,9 +264,10 @@ describe("Phase2AttendedPreviewRoute", () => {
     );
     expect(screen.queryByRole("header", { name: "Rest alerts" }))
       .not.toBeOnTheScreen();
-    expect(screen.getByTestId("alert-settings-focus-restored-2", {
-      includeHiddenElements: true,
-    })).toBeOnTheScreen();
+    await waitFor(() => expect(screen.getByTestId(
+      "alert-settings-focus-restored-2",
+      { includeHiddenElements: true },
+    )).toBeOnTheScreen());
 
     await fireEvent.press(launcher);
     await fireEvent.press(screen.getByRole("button", { name: "Appearance" }));
@@ -295,9 +328,9 @@ describe("Phase2AttendedPreviewRoute", () => {
 
   it.each<[number, number, number, string]>([
     [839, 420, 1, "root-navigation-bottom"],
-    [840, 420, 1, "root-navigation-rail"],
+    [840, 420, 1, "root-navigation-bottom"],
     [839, 420, 2, "root-navigation-bottom"],
-    [840, 420, 2, "root-navigation-rail"],
+    [840, 420, 2, "root-navigation-bottom"],
   ])(
     "selects %sdp structure at %sdp landscape height and fontScale %s",
     async (width, height, fontScale, navigationTestId) => {
@@ -315,7 +348,7 @@ describe("Phase2AttendedPreviewRoute", () => {
           ? "root-navigation-rail"
           : "root-navigation-bottom",
       )).not.toBeOnTheScreen();
-      expect(screen.getByRole("tab", { name: "Today" }))
+      expect(screen.getByRole("tab", { name: "Workout" }))
         .toHaveProp("accessibilityState", expect.objectContaining({
           disabled: true,
         }));
@@ -344,7 +377,7 @@ describe("Phase2AttendedPreviewRoute", () => {
         .props.refreshControl.props.onRefresh();
     });
     expect(await screen.findByRole("button", {
-      name: "Retry Library refresh",
+      name: "Retry refreshing Library",
     })).toBeOnTheScreen();
     expect(screen.getByDisplayValue("travel")).toBeOnTheScreen();
     expect(screen.getByTestId("library-plan-card-preview-draft-plan"))
@@ -352,7 +385,7 @@ describe("Phase2AttendedPreviewRoute", () => {
         selected: true,
       }));
     await fireEvent.press(screen.getByRole("button", {
-      name: "Retry Library refresh",
+      name: "Retry refreshing Library",
     }));
     expect(await screen.findByTestId("library-plan-card-preview-draft-plan"))
       .toBeOnTheScreen();
@@ -484,9 +517,9 @@ describe("Phase2AttendedPreviewRoute", () => {
   it.each<[
     "add-warmup" | "add-working",
     "addWarmup" | "addWorkingSet",
-    "Add warm-up" | "Add working set",
+    "Add warm-up set" | "Add working set",
   ]>([
-    ["add-warmup", "addWarmup", "Add warm-up"],
+    ["add-warmup", "addWarmup", "Add warm-up set"],
     ["add-working", "addWorkingSet", "Add working set"],
   ])(
     "keeps %s pending, busy, and duplicate-safe without changing cardinality",
@@ -495,20 +528,21 @@ describe("Phase2AttendedPreviewRoute", () => {
       const command = jest.spyOn(phase2SetMutationPreviewCommands, commandName);
 
       await renderRoute();
-      const beforeRows = screen.getAllByTestId(/(?:warmup-W|working-set-).*?-row/u)
+      const beforeRows = screen.getAllByTestId(/overview-.*preview-(?:warmup|working)-/u)
         .length;
-      expect(screen.getByRole("header", { name: "Back Squat" }))
+      expect(screen.getByRole("header", { name: "Workout" }))
         .toBeOnTheScreen();
-      const action = screen.getByRole("button", { name: actionName });
-      await fireEvent.press(action);
-      await fireEvent.press(action);
+      const addSet = screen.getByRole("button", { name: "Add set" });
+      await fireEvent.press(addSet);
+      await fireEvent.press(screen.getByRole("button", { name: actionName }));
+      await fireEvent.press(addSet);
 
       expect(command).toHaveBeenCalledTimes(1);
-      expect(action).toHaveProp("accessibilityState", expect.objectContaining({
+      expect(addSet).toHaveProp("accessibilityState", expect.objectContaining({
         busy: true,
         disabled: true,
       }));
-      expect(screen.getAllByTestId(/(?:warmup-W|working-set-).*?-row/u))
+      expect(screen.getAllByTestId(/overview-.*preview-(?:warmup|working)-/u))
         .toHaveLength(beforeRows);
       command.mockRestore();
     },
@@ -524,15 +558,15 @@ describe("Phase2AttendedPreviewRoute", () => {
     await renderRoute();
     expect(phase2SetCorrectionPreviewView.progress.completedWorkingSets)
       .toBeGreaterThan(0);
-    const beforeRows = screen.getAllByTestId(/(?:warmup-W|working-set-).*?-row/u)
+    const beforeRows = screen.getAllByTestId(/overview-.*preview-(?:warmup|working)-/u)
       .length;
-    expect(screen.getByRole("header", { name: "Back Squat" }))
+    expect(screen.getByRole("header", { name: "Workout" }))
       .toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", {
-      name: "Edit completed set 1",
+      name: "Set 1. 60 kg × 8. Completed. Edit set values",
     }));
     const save = screen.getByRole("button", {
-      name: "Save correction for completed set 1",
+      name: "Save committed set edit",
     });
     await fireEvent.press(save);
     await fireEvent.press(save);
@@ -542,39 +576,9 @@ describe("Phase2AttendedPreviewRoute", () => {
       busy: true,
       disabled: true,
     }));
-    expect(screen.getAllByTestId(/(?:warmup-W|working-set-).*?-row/u))
+    expect(screen.getAllByTestId(/overview-.*preview-(?:warmup|working)-/u))
       .toHaveLength(beforeRows);
     correction.mockRestore();
-  });
-
-  it("keeps warm-up removal pending, busy, and cardinality-safe", async () => {
-    mockParameters = {
-      scenario: "set-mutations-loading",
-      variant: "remove-warmup",
-    };
-    const removeWarmup = jest.spyOn(
-      phase2SetMutationPreviewCommands,
-      "removeWarmup",
-    );
-
-    await renderRoute();
-    const beforeRows = screen.getAllByTestId(/(?:warmup-W|working-set-).*?-row/u)
-      .length;
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Remove warm-up W1",
-    }));
-    const remove = screen.getByRole("button", { name: "Remove warm-up" });
-    await fireEvent.press(remove);
-    await fireEvent.press(remove);
-
-    expect(removeWarmup).toHaveBeenCalledTimes(1);
-    expect(remove).toHaveProp("accessibilityState", expect.objectContaining({
-      busy: true,
-      disabled: true,
-    }));
-    expect(screen.getAllByTestId(/(?:warmup-W|working-set-).*?-row/u))
-      .toHaveLength(beforeRows);
-    removeWarmup.mockRestore();
   });
 
   it.each<["zero" | "one" | "many", number]>([
@@ -589,14 +593,21 @@ describe("Phase2AttendedPreviewRoute", () => {
       await renderRoute();
 
       if (count === 0) {
-        expect(screen.getByText("No exercises in today's plan"))
+        expect(screen.getByText("Empty workout in progress"))
           .toBeOnTheScreen();
+        expect(screen.getByLabelText("Add exercise"))
+          .toHaveProp("accessibilityState", expect.objectContaining({ disabled: false }));
       } else {
-        expect(screen.getAllByTestId(/today-plan-exercise-preview-exercise-/u))
+        expect(screen.getAllByTestId(/overview-exercise-preview-exercise-/u))
           .toHaveLength(count);
         if (variant === "many") {
-          for (const state of ["Current", "Completed", "Planned", "Skipped"]) {
-            expect(screen.getByText(state)).toBeOnTheScreen();
+          for (const label of [
+            /Back Squat\..*(?:Expand|Collapse) exercise/u,
+            /Bench Press\..*(?:Expand|Collapse) exercise/u,
+            /Barbell Row\..*(?:Expand|Collapse) exercise/u,
+            /Pull-up\..*(?:Expand|Collapse) exercise/u,
+          ]) {
+            expect(screen.getByRole("button", { name: label })).toBeOnTheScreen();
           }
         }
       }
@@ -628,68 +639,47 @@ describe("Phase2AttendedPreviewRoute", () => {
     ]);
   });
 
-  it("makes Today's-plan Return and Review actions navigate in memory", async () => {
+  it("keeps Today's-plan previews on the overview without review navigation", async () => {
     mockParameters = { scenario: "todays-plan-zero-one-many", variant: "many" };
     const manyRendered = await renderRoute();
     const beforeProgress = phase2TodayPlanManyView.progress;
 
-    await fireEvent.press(screen.getByRole("button", {
-      name: /2\. Bench Press\. Completed\. Open for review/u,
-    }));
-    expect(screen.getByText("Reviewing another exercise"))
-      .toBeOnTheScreen();
-    expect(screen.getByRole("header", { name: "Bench Press" }))
-      .toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Return to current exercise",
-    }));
-    expect(screen.getByRole("header", { name: "Back Squat" }))
-      .toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
-    expect(screen.getAllByTestId(/today-plan-exercise-preview-exercise-/u))
-      .toHaveLength(4);
+    expect(screen.getAllByTestId(/overview-exercise-preview-exercise-/u)).toHaveLength(4);
+    expect(screen.queryByText("Reviewing another exercise")).not.toBeOnTheScreen();
     await manyRendered.unmount();
 
     mockParameters = { scenario: "todays-plan-zero-one-many", variant: "zero" };
     const rendered = await renderRoute();
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Return to active workout",
-    }));
-    expect(screen.getByRole("header", { name: "Empty workout" }))
+    expect(screen.getByRole("header", { name: "Workout" }))
       .toBeOnTheScreen();
     expect(screen.getByText("Empty workout in progress")).toBeOnTheScreen();
     expect(screen.queryByRole("header", { name: "Back Squat" }))
       .not.toBeOnTheScreen();
-    expect(screen.queryByTestId(/(?:warmup-W|working-set-).*?-row/u))
+    expect(screen.queryByTestId(/overview-.*preview-(?:warmup|working)-/u))
       .not.toBeOnTheScreen();
     expect(phase2TodayPlanManyView.progress).toBe(beforeProgress);
     await rendered.unmount();
 
     mockParameters = { scenario: "todays-plan-zero-one-many", variant: "one" };
     const oneRendered = await renderRoute();
-    await fireEvent.press(screen.getByRole("button", {
-      name: /1\. Back Squat\. Current\. Open for review/u,
-    }));
-    expect(screen.getByRole("header", { name: "Back Squat" }))
+    expect(screen.getByRole("header", { name: "Workout" }))
       .toBeOnTheScreen();
-    expect(screen.getAllByTestId(/working-set-.*-row/u)).toHaveLength(2);
+    expect(screen.getAllByTestId(/overview-preview-exercise-1-preview-working-1-/u))
+      .toHaveLength(1);
+    expect(screen.getByTestId("workout-active-set-row")).toBeOnTheScreen();
     await oneRendered.unmount();
   });
 
-  it("makes the dedicated empty-plan Return action navigate in memory", async () => {
+  it("renders the dedicated empty-plan preview in the overview", async () => {
     mockParameters = { scenario: "todays-plan-empty" };
     await renderRoute();
 
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Return to active workout",
-    }));
-
-    expect(screen.getByRole("header", { name: "Empty workout" }))
+    expect(screen.getByRole("header", { name: "Workout" }))
       .toBeOnTheScreen();
     expect(screen.getByText("Empty workout in progress")).toBeOnTheScreen();
     expect(screen.queryByRole("header", { name: "Back Squat" }))
       .not.toBeOnTheScreen();
-    expect(screen.queryByTestId(/(?:warmup-W|working-set-).*?-row/u))
+    expect(screen.queryByTestId(/overview-.*preview-(?:warmup|working)-/u))
       .not.toBeOnTheScreen();
   });
 
@@ -706,7 +696,7 @@ describe("Phase2AttendedPreviewRoute", () => {
   it("remounts scenario-owned state when navigation changes", async () => {
     mockParameters = { scenario: "todays-plan-zero-one-many", variant: "many" };
     const rendered = await renderRoute();
-    expect(screen.getAllByTestId(/today-plan-exercise-preview-exercise-/u))
+    expect(screen.getAllByTestId(/overview-exercise-preview-exercise-/u))
       .toHaveLength(4);
 
     mockParameters = { scenario: "global-card-loading" };
@@ -723,7 +713,7 @@ describe("Phase2AttendedPreviewRoute", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("today-plan-exercise-preview-exercise-1"))
+      expect(screen.getByTestId("overview-exercise-preview-exercise-1"))
         .toBeOnTheScreen();
     });
   });

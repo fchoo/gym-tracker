@@ -1,5 +1,8 @@
 import React from "react";
 import {
+  Pencil,
+} from "lucide-react-native";
+import {
   StyleSheet,
   Text,
   View,
@@ -9,10 +12,14 @@ import {
 import type {
   ExerciseEffort,
 } from "../../domains/progression";
+import type { MetricTarget } from "../../domains/metrics";
 import type {
+  CompletedWorkoutPlanWriteBackChoiceState,
+  CompletedWorkoutPlanWriteBackState,
   SessionDetail,
 } from "../../domains/workout";
 import {
+  ActionRow,
   InlineNotice,
   ContentCard,
   MetricSummary,
@@ -21,6 +28,8 @@ import {
   SecondaryAction,
   SectionHeader,
 } from "../components";
+import { ConfirmationDialog } from "../components/ConfirmationDialog";
+import { BottomSheet } from "../components/BottomSheet";
 import {
   RecommendationSurface,
 } from "../components/RecommendationSurface";
@@ -29,7 +38,7 @@ import {
 } from "../layout/AdaptiveScreen";
 import {
   space,
-  typeScale,
+  workoutTypeScale,
   useAppTheme,
 } from "../theme";
 
@@ -54,6 +63,53 @@ function progressText(progress: SessionDetail["exerciseProgress"]): string {
     : `${progress.completed}/${progress.planned} (${progress.percent}%)`;
 }
 
+function kilograms(grams: number): string {
+  const value = grams / 1_000;
+  return `${Number.isInteger(value) ? value : value.toFixed(1)} kg`;
+}
+
+function targetText(target: MetricTarget): string {
+  const repetitions = (min: number, max: number) => min === max
+    ? String(min)
+    : `${min}–${max}`;
+  switch (target.profile) {
+    case "load_reps":
+      return `${kilograms(target.loadGrams)} × ${repetitions(target.minReps, target.maxReps)}`;
+    case "bodyweight_reps":
+      return `${repetitions(target.minReps, target.maxReps)} reps`;
+    case "added_load_reps":
+      return `${kilograms(target.addedLoadGrams)} added × ${repetitions(target.minReps, target.maxReps)}`;
+    case "assisted_reps":
+      return `${kilograms(target.assistanceGrams)} assist × ${repetitions(target.minReps, target.maxReps)}`;
+    case "timed_hold":
+      return target.version === 1
+        ? `${target.durationSeconds} sec`
+        : `${target.durationMs / 1_000} sec`;
+    case "fixed_distance":
+      return `${target.plannedDistanceMeters} m`;
+    case "fixed_time":
+      return `${target.plannedDurationMs / 1_000} sec`;
+    case "intervals":
+      return `${target.plannedRounds} rounds · ${target.workIntervalMs / 1_000} sec work`;
+    case "unscored":
+      return "Completion only";
+  }
+}
+
+function targetUnit(profile: MetricTarget["profile"]): string {
+  switch (profile) {
+    case "load_reps": return "load kg × reps";
+    case "bodyweight_reps": return "reps";
+    case "added_load_reps": return "added load kg × reps";
+    case "assisted_reps": return "assistance kg × reps";
+    case "timed_hold": return "sec";
+    case "fixed_distance": return "m";
+    case "fixed_time": return "sec";
+    case "intervals": return "rounds · sec work · sec rest";
+    case "unscored": return "completion only";
+  }
+}
+
 export function WorkoutCompletionScreen({
   detail,
   summaryError = false,
@@ -63,6 +119,9 @@ export function WorkoutCompletionScreen({
   onRecordEffort,
   onAcceptRecommendation,
   onKeepCurrentTarget,
+  onApplyPlanWriteBack = () => undefined,
+  onKeepPlanAsIs = () => undefined,
+  planWriteBack = { state: "completed", disposition: "not_eligible" },
   onRetrySummary,
   onViewDetails,
   onReturnToday,
@@ -78,6 +137,13 @@ export function WorkoutCompletionScreen({
   ) => void;
   onAcceptRecommendation: (recommendationId: string) => void;
   onKeepCurrentTarget: (recommendationId: string) => void;
+  onApplyPlanWriteBack?: (
+    state: CompletedWorkoutPlanWriteBackChoiceState,
+  ) => void;
+  onKeepPlanAsIs?: (
+    state: CompletedWorkoutPlanWriteBackChoiceState,
+  ) => void;
+  planWriteBack?: CompletedWorkoutPlanWriteBackState;
   onRetrySummary: () => void;
   onViewDetails: () => void;
   onReturnToday: () => void;
@@ -85,12 +151,27 @@ export function WorkoutCompletionScreen({
   const { colors } = useAppTheme();
   const adaptiveWidth = width === undefined ? {} : { width };
   const savedPartial = detail.status === "partial";
+  const keepPlanAsIsRef = React.useRef<View>(null);
   const completedExercises = detail.exercises.filter(
     ({ status }) => status === "completed",
   );
+  const writeBackChoice = planWriteBack.state === "awaiting_choice"
+    || planWriteBack.state === "save_failed"
+    ? planWriteBack
+    : null;
+  const writeBackVisible = writeBackChoice !== null
+    || planWriteBack.state === "applying";
+  const writeBackBusy = planWriteBack.state === "applying";
+  const writeBackFailed = planWriteBack.state === "save_failed";
+  const writeBackPreview = planWriteBack.state === "applying"
+    ? planWriteBack.preview
+    : writeBackChoice?.preview ?? null;
+  const writeBackHasChanges = (writeBackPreview?.changes.length ?? 0) > 0;
+  const noDifference = writeBackChoice !== null && !writeBackHasChanges;
 
   return (
-    <AdaptiveScreen
+    <>
+      <AdaptiveScreen
       {...adaptiveWidth}
       primary={
         <>
@@ -104,7 +185,7 @@ export function WorkoutCompletionScreen({
           >
             <Text
               style={[
-                typeScale.bodyStrong as TextStyle,
+                workoutTypeScale.bodyStrong as TextStyle,
                 { color: colors.contentCardText },
               ]}
             >
@@ -113,7 +194,7 @@ export function WorkoutCompletionScreen({
             </Text>
             <Text
               style={[
-                typeScale.body as TextStyle,
+                workoutTypeScale.body as TextStyle,
                 { color: colors.contentCardTextSecondary },
               ]}
             >
@@ -121,6 +202,27 @@ export function WorkoutCompletionScreen({
                 ? `Partial · ${detail.exerciseProgress.completed} of ${detail.exerciseProgress.planned} exercises`
                 : detail.statusLabel}
             </Text>
+            {detail.modifiedFromPlan !== true ? null : (
+              <View
+                accessibilityLabel="Modified from plan"
+                style={styles.modified}
+              >
+                <Pencil
+                  accessibilityElementsHidden
+                  color={colors.contentCardTextSecondary}
+                  importantForAccessibility="no-hide-descendants"
+                  size={20}
+                />
+                <Text
+                  style={[
+                    workoutTypeScale.bodyStrong as TextStyle,
+                    { color: colors.contentCardText },
+                  ]}
+                >
+                  Modified from plan
+                </Text>
+              </View>
+            )}
           </ContentCard>
           {summaryError ? (
             <InlineNotice
@@ -179,7 +281,7 @@ export function WorkoutCompletionScreen({
                   <Text
                     accessibilityRole="header"
                     style={[
-                      typeScale.sectionTitle as TextStyle,
+                      workoutTypeScale.sectionTitle as TextStyle,
                       { color: colors.contentCardText },
                     ]}
                   >
@@ -187,7 +289,7 @@ export function WorkoutCompletionScreen({
                   </Text>
                   <Text
                     style={[
-                      typeScale.body as TextStyle,
+                      workoutTypeScale.body as TextStyle,
                       { color: colors.contentCardTextSecondary },
                     ]}
                   >
@@ -196,7 +298,7 @@ export function WorkoutCompletionScreen({
                   {exercise.totalWorkingReps === null ? null : (
                     <Text
                       style={[
-                        typeScale.body as TextStyle,
+                        workoutTypeScale.body as TextStyle,
                         { color: colors.contentCardTextSecondary },
                       ]}
                     >
@@ -205,7 +307,7 @@ export function WorkoutCompletionScreen({
                   )}
                   <Text
                     style={[
-                      typeScale.secondary as TextStyle,
+                      workoutTypeScale.secondary as TextStyle,
                       { color: colors.contentCardTextSecondary },
                     ]}
                   >
@@ -244,7 +346,7 @@ export function WorkoutCompletionScreen({
               recommendation={recommendation}
             />
           ))}
-          <View style={styles.actions}>
+          <ActionRow>
             <SecondaryAction
               label="View workout details"
               onPress={onViewDetails}
@@ -253,10 +355,78 @@ export function WorkoutCompletionScreen({
               label="Return to Today"
               onPress={onReturnToday}
             />
-          </View>
+          </ActionRow>
         </>
       }
-    />
+      />
+      {noDifference ? (
+        <BottomSheet
+          heading="No plan changes to review"
+          initialFocusRef={keepPlanAsIsRef}
+          onCancel={() => onKeepPlanAsIs(writeBackChoice)}
+          scrollTestID="workout-plan-write-back-sheet"
+          visible
+        >
+          <Text style={[workoutTypeScale.body as TextStyle, { color: colors.textSecondary }]}>
+            This workout does not change future targets. Keep the plan as-is.
+          </Text>
+          <SecondaryAction
+            label="Keep plan as-is"
+            onPress={() => onKeepPlanAsIs(writeBackChoice)}
+            ref={keepPlanAsIsRef}
+          />
+        </BottomSheet>
+      ) : (
+      <ConfirmationDialog
+        body={writeBackFailed
+          ? "Your completed workout is safe. Try again or keep the plan as-is."
+          : writeBackPreview === null
+            ? "Saving these changes to the plan."
+            : `You changed this workout from its plan. Save these changes to ${writeBackPreview.planName} · ${writeBackPreview.dayName}?`}
+        cancelLabel="Keep plan as-is"
+        confirmBusy={writeBackBusy}
+        confirmLabel={writeBackFailed
+          ? "Retry saving changes"
+          : "Save changes to plan"}
+        heading={writeBackFailed
+          ? "Changes were not saved to the plan"
+          : "Save these changes to the plan?"}
+        initialFocusRef={keepPlanAsIsRef}
+        onCancel={() => {
+          if (writeBackChoice !== null) {
+            onKeepPlanAsIs(writeBackChoice);
+          }
+        }}
+        onConfirm={() => {
+          if (writeBackChoice !== null) {
+            onApplyPlanWriteBack(writeBackChoice);
+          }
+        }}
+        scrollTestID="workout-plan-write-back-sheet"
+        visible={writeBackVisible && writeBackHasChanges}
+      >
+        {writeBackPreview?.changes.map((change) => (
+          <ContentCard
+            key={`${change.exerciseId}:${change.targetOrdinal}`}
+            style={styles.planChange}
+          >
+            <Text style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>
+              Exercise · {change.exerciseId}
+            </Text>
+            <Text style={[workoutTypeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
+              Current plan · {targetText(change.current.target)}
+            </Text>
+            <Text style={[workoutTypeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
+              Proposed · {targetText(change.proposed.target)}
+            </Text>
+            <Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
+              {targetUnit(change.metricIdentity.profile)}
+            </Text>
+          </ContentCard>
+        ))}
+      </ConfirmationDialog>
+      )}
+    </>
   );
 }
 
@@ -277,6 +447,15 @@ const styles = StyleSheet.create({
   },
   metrics: {
     gap: space[4],
+  },
+  modified: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: space[1],
+  },
+  planChange: {
+    gap: space[1],
+    padding: space[2],
   },
   result: {
     gap: space[2],

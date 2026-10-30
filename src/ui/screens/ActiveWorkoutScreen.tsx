@@ -3,17 +3,29 @@ import React, {
   useRef,
   useState,
 } from "react";
+import * as Crypto from "expo-crypto";
 import {
+  ChevronDown,
+  ChevronRight,
+  CircleCheck,
+  GripVertical,
   Plus,
   type LucideIcon,
 } from "lucide-react-native";
+import {
+  PlanEditorReorderableRow,
+  type PlanEditorReorderMethod,
+  type PlanEditorReorderPreview,
+} from "../components/PlanEditorFields";
 
 import {
-  Modal,
+  Keyboard,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
+  type LayoutChangeEvent,
   type TextStyle,
 } from "react-native";
 
@@ -25,9 +37,12 @@ import type {
 } from "../../domains/rest";
 import type {
   ActiveWorkoutSet,
+  ActiveWorkoutExercise,
   ActiveWorkoutView,
+  EmptyWorkoutView,
   AddWorkingSetInput,
   AddWarmupInput,
+  AddExerciseInput,
   CompleteSetInput,
   CompleteSetResult,
   CompleteWarmupInput,
@@ -39,34 +54,60 @@ import type {
   RemoveWorkingSetInput,
   ReviseCompletedSetInput,
   SaveZeroSetInput,
+  SessionDetail,
   SetObservation,
   SkipExerciseInput,
+  UndoCompletedSetInput,
+  UndoCompletedSetResult,
   UpdateActiveSetDraftInput,
+  UpdateSessionExerciseDefaultRestInput,
   UpdateWarmupDraftInput,
 } from "../../domains/workout";
+import type {
+  RemoveExerciseInput,
+  ReorderExercisesInput,
+  ReplaceExerciseInput,
+} from "../../domains/workout/activeWorkout";
 import {
+  ActionRow,
   ConfirmationSheet,
   ContentCard,
   ActionCluster,
   FocusablePressable,
   IconAction,
   InlineNotice,
+  M3SearchField,
+  type M3SearchFieldHandle,
   PrimaryAction,
   ScreenHeader,
   SecondaryAction,
   SectionHeader,
 } from "../components";
+import { BottomSheet } from "../components/BottomSheet";
 import {
   RestDock,
 } from "../components/RestDock";
+import { useOptionalSemanticToast } from "../components/SemanticToast";
 import type {
   RestCountdownCuePort,
 } from "../../domains/rest/restCountdownCuePort";
+import type {
+  ExerciseMetricHistory,
+} from "../../domains/history";
+import { ExerciseTrendSheet } from "../components/ExerciseTrendSheet";
 import {
   formatObservation,
   observationForSet,
   SetRow,
 } from "../components/SetRow";
+import { WorkoutSetEditorSheet } from "../components/WorkoutSetEditorSheet";
+import { WorkoutActionDock } from "../components/WorkoutActionDock";
+import {
+  presentWorkoutSession,
+} from "../../domains/workout/workoutPresentation";
+import {
+  WorkoutSessionPresentation,
+} from "../components/WorkoutSessionPresentation";
 import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
@@ -74,11 +115,18 @@ import {
   radius,
   sizes,
   space,
-  typeScale,
+  workoutTypeScale,
   useAppTheme,
 } from "../theme";
+import type {
+  V12AcceptanceBenchmarkPort,
+} from "../../bootstrap/v12AcceptanceBenchmark";
 
 export interface ActiveWorkoutCommands {
+  addExercise?(input: AddExerciseInput): Promise<import("../../domains/workout").AddExerciseResult>;
+  replaceExercise?(input: ReplaceExerciseInput): Promise<ExerciseEditCommandResult>;
+  removeExercise?(input: RemoveExerciseInput): Promise<ExerciseEditCommandResult>;
+  reorderExercises?(input: ReorderExercisesInput): Promise<ExerciseReorderCommandResult>;
   updateActiveSetDraft(
     input: UpdateActiveSetDraftInput,
   ): Promise<ActiveWorkoutView>;
@@ -95,6 +143,7 @@ export interface ActiveWorkoutCommands {
   /** @deprecated The screen never invokes legacy skip commands. */
   skipWorkingSet?(input: import("../../domains/workout").SkipWorkingSetInput): Promise<ActiveWorkoutView>;
   completeSet(input: CompleteSetInput): Promise<CompleteSetResult>;
+  undoCompletedSet?(input: UndoCompletedSetInput): Promise<UndoCompletedSetResult>;
   reviseCompletedSet(
     input: ReviseCompletedSetInput,
   ): Promise<CommittedSetMutationResult>;
@@ -103,7 +152,10 @@ export interface ActiveWorkoutCommands {
   resumeRest(input: RestRevisionInput): Promise<RestCommandResult>;
   adjustRest(input: AdjustRestInput): Promise<RestCommandResult>;
   skipRest(input: RestRevisionInput): Promise<RestCommandResult>;
-  expireRest(input: RestRevisionInput): Promise<RestCommandResult>;
+  expireRest(input: RestRevisionInput & Readonly<{ foregroundCountdownTone?: true }>): Promise<RestCommandResult>;
+  updateSessionExerciseDefaultRest?(
+    input: UpdateSessionExerciseDefaultRestInput,
+  ): Promise<ActiveWorkoutView>;
   finishCompleted(input: FinishCompletedInput): Promise<FinishOutcomeResult>;
   finishPartial(input: FinishPartialInput): Promise<FinishOutcomeResult>;
   saveZeroSetWorkout(input: SaveZeroSetInput): Promise<FinishOutcomeResult>;
@@ -128,6 +180,55 @@ type CommittedRemovalRefreshFailure = Readonly<{
 
 type RemovalCommandResult = ActiveWorkoutView | CommittedRemovalRefreshFailure;
 
+type CommittedExerciseEditRefreshFailure = Readonly<{
+  outcome: "committed_refresh_failed";
+  sessionId: string;
+  sessionExerciseId: string;
+  sessionRevision: number;
+}>;
+
+type ExerciseEditCommandResult = ActiveWorkoutView | CommittedExerciseEditRefreshFailure;
+
+type ExerciseReorderCommandResult = ActiveWorkoutView
+  | CommittedExerciseReorderRefreshFailure;
+
+type CommittedExerciseReorderRefreshFailure = Readonly<{
+  outcome: "committed_refresh_failed";
+  sessionId: string;
+  sessionRevision: number;
+}>;
+
+type ExerciseReorderFailure = Readonly<{
+  sourcePosition: number;
+  targetPosition: number;
+  request: ReorderExercisesInput;
+  retry: () => void;
+}>;
+
+type ExerciseReorderAnnouncement = Readonly<{
+  sessionExerciseId: string;
+  text: string;
+}>;
+
+function isCommittedExerciseReorderRefreshFailure(
+  result: ExerciseReorderCommandResult,
+): result is CommittedExerciseReorderRefreshFailure {
+  return "outcome" in result && result.outcome === "committed_refresh_failed";
+}
+
+type ExerciseAction = "replace" | "remove";
+
+type ExerciseEditCandidate = Readonly<{
+  action: ExerciseAction;
+  exerciseId: string;
+}>;
+
+type ExerciseEditFailure = Readonly<{
+  action: ExerciseAction;
+  exerciseId: string;
+  retry: () => void;
+}>;
+
 type WarmupCommandState = Readonly<{
   setId: string;
   action: "complete" | "skip" | "update" | "add";
@@ -140,10 +241,21 @@ type OutcomeConfirmation =
   | "discard"
   | null;
 
+type TerminalWorkoutOperation =
+  | "finish_completed"
+  | "partial"
+  | "zero_sets"
+  | "discard";
+
+type OutcomeFailure = Readonly<{
+  operation: TerminalWorkoutOperation;
+}>;
+
 type SectionMutation = "add_warmup" | "add_working";
 
 type SectionMutationFailure = Readonly<{
   operation: SectionMutation;
+  sessionExerciseId: string;
   retry: () => void;
 }>;
 
@@ -151,7 +263,33 @@ type RemovalCandidate = Readonly<{
   kind: "warmup" | "working";
   setId: string;
   index: number;
+  sessionExerciseId: string;
 }>;
+
+function exercisesFor(view: ActiveWorkoutView): readonly ActiveWorkoutExercise[] {
+  return view.exercises.length > 0 ? view.exercises : [view.currentExercise];
+}
+
+function isCommittedExerciseEditRefreshFailure(
+  result: ExerciseEditCommandResult,
+): result is CommittedExerciseEditRefreshFailure {
+  return "outcome" in result && result.outcome === "committed_refresh_failed";
+}
+
+function resolveSetOwner(
+  view: ActiveWorkoutView,
+  setId: string,
+): Readonly<{ exercise: ActiveWorkoutExercise; set: ActiveWorkoutSet }> | undefined {
+  for (const exercise of exercisesFor(view)) {
+    const set = [...exercise.warmups, ...exercise.workingSets].find(
+      (candidate) => candidate.id === setId,
+    );
+    if (set !== undefined) {
+      return { exercise, set };
+    }
+  }
+  return undefined;
+}
 
 type RemovalFailure = RemovalCandidate;
 
@@ -196,6 +334,64 @@ function workingIndex(
   return index < 0 ? 0 : index;
 }
 
+function exerciseStatusText(exercise: ActiveWorkoutExercise): string {
+  if (exercise.status === "skipped") {
+    return "Skipped";
+  }
+  if (exercise.origin === "added") {
+    return "Added";
+  }
+  switch (exercise.status) {
+    case "completed":
+      return "Completed";
+    case "active":
+      return "Active";
+    case "planned":
+      return "Upcoming";
+  }
+}
+
+function workingSetSummary(exercise: ActiveWorkoutExercise): Readonly<{
+  completed: number;
+  total: number;
+  observation: string;
+}> {
+  const completed = exercise.workingSets.filter(
+    ({ status }) => status === "completed",
+  ).length;
+  const topWorkingSet = exercise.workingSets.find(
+    ({ observation }) => observation !== null,
+  );
+  return {
+    completed,
+    total: exercise.workingSets.length,
+    observation: topWorkingSet === undefined
+      ? "Done"
+      : formatObservation(observationForSet(topWorkingSet)),
+  };
+}
+
+function exerciseHeaderMetadata(
+  exercise: ActiveWorkoutExercise,
+  activeSetId: string | null,
+): string {
+  const currentSet = [...exercise.warmups, ...exercise.workingSets].find(
+    ({ id }) => id === activeSetId,
+  );
+  const referenceSet = currentSet ?? exercise.workingSets[0];
+  const target = referenceSet === undefined
+    ? "No target"
+    : formatObservation(observationForSet(referenceSet));
+  if (currentSet?.kind === "warmup") {
+    return `${target} · warm-up W${currentSet.ordinal + 1}`;
+  }
+  if (currentSet?.kind === "working") {
+    return `${target} · set ${currentSet.ordinal + 1}/${exercise.workingSets.length}`;
+  }
+  const summary = workingSetSummary(exercise);
+  return `${target} · ${summary.completed}/${summary.total} complete`;
+}
+
 function TargetContext({
   set,
 }: Readonly<{ set: ActiveWorkoutSet }>) {
@@ -214,7 +410,7 @@ function TargetContext({
     <ContentCard style={styles.targetSection} testID="active-workout-target-card">
       <Text
         style={[
-          typeScale.label as TextStyle,
+          workoutTypeScale.label as TextStyle,
           { color: colors.contentCardTextSecondary },
         ]}
       >
@@ -222,7 +418,7 @@ function TargetContext({
       </Text>
       <Text
         style={[
-          typeScale.targetValue as TextStyle,
+          workoutTypeScale.targetValue as TextStyle,
           { color: colors.contentCardText },
         ]}
       >
@@ -230,7 +426,7 @@ function TargetContext({
       </Text>
       <Text
         style={[
-          typeScale.body as TextStyle,
+          workoutTypeScale.body as TextStyle,
           { color: colors.contentCardTextSecondary },
         ]}
       >
@@ -242,61 +438,20 @@ function TargetContext({
   );
 }
 
-function ReviewSetSummary({
-  set,
-  kind,
-  index,
-}: Readonly<{
-  set: ActiveWorkoutSet;
-  kind: "warmup" | "working";
-  index: number;
-}>) {
-  const { colors } = useAppTheme();
-  const label = kind === "warmup" ? `Warm-up W${index}` : `Working set ${index}`;
-  const status = set.status === "completed"
-    ? "Completed"
-    : set.status === "skipped"
-      ? "Skipped"
-      : "Planned";
-  return (
-    <View
-      accessibilityLabel={`${label}. ${status}. ${formatObservation(observationForSet(set))}. Review only.`}
-      accessibilityRole="summary"
-      style={styles.reviewSet}
-    >
-      <Text
-        style={[
-          typeScale.bodyStrong as TextStyle,
-          { color: colors.contentCardText },
-        ]}
-      >
-        {label}
-      </Text>
-      <Text
-        style={[
-          typeScale.body as TextStyle,
-          { color: colors.contentCardTextSecondary },
-        ]}
-      >
-        {`${status} · ${formatObservation(observationForSet(set))}`}
-      </Text>
-    </View>
-  );
-}
-
 type SectionGlyphActionProps = Readonly<{
   accessibilityLabel: string;
   busy?: boolean;
   disabled?: boolean;
   icon: LucideIcon;
   onPress: () => void;
+  testID?: string;
 }>;
 
 const SectionGlyphAction = React.forwardRef<View, SectionGlyphActionProps>(function SectionGlyphAction(
-  { accessibilityLabel, busy = false, disabled = false, icon: Icon, onPress },
+  { accessibilityLabel, busy = false, disabled = false, icon: Icon, onPress, testID },
   ref,
 ) {
-  const { colors } = useAppTheme();
+  const { colors, reduceMotion } = useAppTheme();
   const unavailable = busy || disabled;
   return (
     <FocusablePressable
@@ -307,6 +462,7 @@ const SectionGlyphAction = React.forwardRef<View, SectionGlyphActionProps>(funct
       focusable={!unavailable}
       onPress={onPress}
       ref={ref}
+      testID={testID}
       style={({ pressed }) => [
         styles.sectionGlyphAction,
         {
@@ -331,8 +487,11 @@ const SectionGlyphAction = React.forwardRef<View, SectionGlyphActionProps>(funct
 
 export type ActiveWorkoutScreenProps = Readonly<{
   sessionId: string;
-  view: ActiveWorkoutView;
+  view: ActiveWorkoutView | EmptyWorkoutView;
   commands: ActiveWorkoutCommands;
+  availableExercises?: readonly Readonly<{ id: string; name: string }>[];
+  availableExercisesState?: "loading" | "ready" | "error";
+  onRetryAvailableExercises?: (() => void) | undefined;
   nowMs: () => number;
   notificationPermission?: RestNotificationPermission;
   restSoundEnabled?: boolean;
@@ -342,9 +501,13 @@ export type ActiveWorkoutScreenProps = Readonly<{
   onFinishLater: () => void;
   onOutcomeSaved?: (sessionId: string) => void;
   onDiscarded?: () => void;
-  onOpenWorkoutPlan?: () => void;
-  onReturnToCurrent?: () => void;
-  reviewExerciseId?: string;
+  onResolveUnknownOutcome?: (sessionId: string) => Promise<Pick<SessionDetail, "id" | "status">>;
+  onRequestPlanEdit?: () => void;
+  onOpenPlanSettings?: () => void;
+  initialHeaderFocus?: boolean;
+  onInitialHeaderFocused?: () => void;
+  loadExerciseHistory?: ((exerciseId: string) => Promise<ExerciseMetricHistory>) | undefined;
+  acceptanceBenchmark?: V12AcceptanceBenchmarkPort;
   width?: number;
 }>;
 
@@ -361,14 +524,422 @@ export function ActiveWorkoutScreen({
   onFinishLater,
   onOutcomeSaved = () => onFinishLater(),
   onDiscarded = onFinishLater,
-  onOpenWorkoutPlan = () => undefined,
-  onReturnToCurrent = () => undefined,
-  reviewExerciseId,
+  onResolveUnknownOutcome = async () => {
+    throw new Error("outcome_source_reload_unavailable");
+  },
+  onRequestPlanEdit = () => undefined,
+  onOpenPlanSettings = () => undefined,
+  initialHeaderFocus = false,
+  onInitialHeaderFocused,
+  loadExerciseHistory,
+  acceptanceBenchmark,
+  availableExercises = [],
+  availableExercisesState = "ready",
+  onRetryAvailableExercises,
   width,
 }: ActiveWorkoutScreenProps) {
+  if ("state" in initialView) {
+    return (
+      <EmptyWorkoutOverview
+        commands={commands}
+        availableExercises={availableExercises}
+        availableExercisesState={availableExercisesState}
+        nowMs={nowMs}
+        onDiscarded={onDiscarded}
+        onRequestPlanEdit={onRequestPlanEdit}
+        loadExerciseHistory={loadExerciseHistory}
+        onFinishLater={onFinishLater}
+        onGoBack={onGoBack}
+        onOutcomeSaved={onOutcomeSaved}
+        onResolveUnknownOutcome={onResolveUnknownOutcome}
+        onRetryAvailableExercises={onRetryAvailableExercises}
+        sessionId={sessionId}
+        view={initialView}
+        {...(width === undefined ? {} : { width })}
+      />
+    );
+  }
+
+  return (
+    <PopulatedWorkoutOverview
+      {...(acceptanceBenchmark === undefined ? {} : { acceptanceBenchmark })}
+      commands={commands}
+      availableExercises={availableExercises}
+      availableExercisesState={availableExercisesState}
+      countdownCue={countdownCue}
+      initialView={initialView}
+      notificationPermission={notificationPermission}
+      nowMs={nowMs}
+      onDiscarded={onDiscarded}
+      onRequestPlanEdit={onRequestPlanEdit}
+      onOpenPlanSettings={onOpenPlanSettings}
+      initialHeaderFocus={initialHeaderFocus}
+      {...(onInitialHeaderFocused === undefined ? {} : { onInitialHeaderFocused })}
+      loadExerciseHistory={loadExerciseHistory}
+      onFinishLater={onFinishLater}
+      onGoBack={onGoBack}
+      onOpenNotificationSettings={onOpenNotificationSettings}
+      onOutcomeSaved={onOutcomeSaved}
+      onResolveUnknownOutcome={onResolveUnknownOutcome}
+      onRetryAvailableExercises={onRetryAvailableExercises}
+      restSoundEnabled={restSoundEnabled}
+      sessionId={sessionId}
+      {...(width === undefined ? {} : { width })}
+    />
+  );
+}
+
+type EmptyWorkoutOverviewProps = Readonly<{
+  sessionId: string;
+  view: EmptyWorkoutView;
+  commands: ActiveWorkoutCommands;
+  availableExercises?: readonly Readonly<{ id: string; name: string }>[];
+  availableExercisesState: "loading" | "ready" | "error";
+  nowMs: () => number;
+  onGoBack: () => void;
+  onFinishLater: () => void;
+  onOutcomeSaved: (sessionId: string) => void;
+  onDiscarded: () => void;
+  onResolveUnknownOutcome: (sessionId: string) => Promise<Pick<SessionDetail, "id" | "status">>;
+  onRequestPlanEdit: () => void;
+  onOpenPlanSettings?: () => void;
+  loadExerciseHistory?: ((exerciseId: string) => Promise<ExerciseMetricHistory>) | undefined;
+  onRetryAvailableExercises?: (() => void) | undefined;
+  width?: number;
+}>;
+
+function EmptyWorkoutOverview({
+  sessionId,
+  view,
+  commands,
+  availableExercises = [],
+  availableExercisesState,
+  nowMs,
+  onGoBack,
+  onFinishLater,
+  onOutcomeSaved,
+  onDiscarded,
+  onResolveUnknownOutcome,
+  onRequestPlanEdit,
+  loadExerciseHistory,
+  onRetryAvailableExercises,
+  width,
+}: EmptyWorkoutOverviewProps) {
   const { colors } = useAppTheme();
+  const [outcomeConfirmation, setOutcomeConfirmation] =
+    useState<"zero_sets" | "discard" | null>(null);
+  const [outcomeBusy, setOutcomeBusy] = useState(false);
+  const [outcomeFailure, setOutcomeFailure] =
+    useState<"zero_sets" | "discard" | null>(null);
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [query, setQuery] = useState("");
+  const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
+  const [addFailed, setAddFailed] = useState(false);
+  const searchRef = useRef<M3SearchFieldHandle>(null);
+  const saveZeroSetInputRef = useRef<SaveZeroSetInput | null>(null);
+  const discardWorkoutInputRef = useRef<DiscardWorkoutInput | null>(null);
+  const adaptiveWidth = width === undefined ? {} : { width };
+  const filteredExercises = availableExercises.filter((exercise) =>
+    exercise.name.toLocaleLowerCase("en").includes(query.trim().toLocaleLowerCase("en")),
+  );
+  const selectedExercise = availableExercises.find(
+    ({ id }) => id === selectedExerciseId,
+  );
+  const addExercise = async () => {
+    if (selectedExercise === undefined || commands.addExercise === undefined) return;
+    setOutcomeBusy(true);
+    setAddFailed(false);
+    try {
+      const requestId = `add-exercise:${sessionId}:${view.revision}:${selectedExercise.id}`;
+      const requestSha256 = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        requestId,
+      );
+      await commands.addExercise({
+        requestId, requestSha256, sessionId,
+        expectedSessionRevision: view.revision, occurredAtMs: nowMs(),
+        libraryExerciseId: selectedExercise.id,
+        sessionExerciseId: `${requestId}:exercise`, setId: `${requestId}:set`,
+      });
+      setPickerVisible(false);
+      setSelectedExerciseId(null);
+    } catch {
+      setAddFailed(true);
+    } finally {
+      setOutcomeBusy(false);
+    }
+  };
+  const confirmationCopy = outcomeConfirmation === "zero_sets"
+    ? {
+        body: "This workout will be saved with zero completed working sets.",
+        cancelLabel: "Keep training",
+        confirmLabel: "Save zero-set workout",
+        heading: "Finish without working sets?",
+        destructive: false,
+      }
+    : {
+        body: "This ends the workout and marks it discarded. It cannot be resumed.",
+        cancelLabel: "Keep workout",
+        confirmLabel: "Discard workout",
+        heading: "Discard workout?",
+        destructive: true,
+      };
+
+  const saveZeroSetWorkout = async () => {
+    if (outcomeBusy) return;
+    const input = saveZeroSetInputRef.current ?? {
+      sessionId,
+      expectedSessionRevision: view.revision,
+      confirmation: "save_zero_set_workout",
+      endedAtMs: nowMs(),
+    };
+    saveZeroSetInputRef.current = input;
+    setOutcomeBusy(true);
+    setOutcomeFailure(null);
+    try {
+      const result = await commands.saveZeroSetWorkout(input);
+      if (result.detail.id !== sessionId || result.detail.status !== "zero_sets") {
+        const durableDetail = await onResolveUnknownOutcome(sessionId);
+        if (durableDetail.id !== sessionId || durableDetail.status !== "zero_sets") {
+          throw new Error("zero_set_workout_result_unknown");
+        }
+      }
+      saveZeroSetInputRef.current = null;
+      setOutcomeConfirmation(null);
+      onOutcomeSaved(sessionId);
+    } catch {
+      setOutcomeConfirmation(null);
+      setOutcomeFailure("zero_sets");
+    } finally {
+      setOutcomeBusy(false);
+    }
+  };
+
+  const discardCurrentWorkout = async () => {
+    if (outcomeBusy) return;
+    const input = discardWorkoutInputRef.current ?? {
+      sessionId,
+      expectedSessionRevision: view.revision,
+      confirmation: "discard_workout",
+      endedAtMs: nowMs(),
+    };
+    discardWorkoutInputRef.current = input;
+    setOutcomeBusy(true);
+    setOutcomeFailure(null);
+    try {
+      const result = await commands.discardWorkout(input);
+      if (result.detail.id !== sessionId || result.detail.status !== "discarded") {
+        const durableDetail = await onResolveUnknownOutcome(sessionId);
+        if (durableDetail.id !== sessionId || durableDetail.status !== "discarded") {
+          throw new Error("discard_workout_result_unknown");
+        }
+      }
+      discardWorkoutInputRef.current = null;
+      setOutcomeConfirmation(null);
+      onDiscarded();
+    } catch {
+      setOutcomeConfirmation(null);
+      setOutcomeFailure("discard");
+    } finally {
+      setOutcomeBusy(false);
+    }
+  };
+
+  const confirmOutcome = async () => {
+    if (outcomeConfirmation === "zero_sets") {
+      await saveZeroSetWorkout();
+      return;
+    }
+    if (outcomeConfirmation === "discard") {
+      await discardCurrentWorkout();
+    }
+  };
+
+  const outcomeFailureCopy = outcomeFailure === "zero_sets"
+    ? {
+        body: "The workout is still active with zero completed working sets. Try saving it again or keep training.",
+        confirmLabel: "Retry saving zero-set workout",
+        heading: "Zero-set workout was not saved",
+        retry: saveZeroSetWorkout,
+      }
+    : outcomeFailure === "discard"
+      ? {
+          body: "The workout is still active. No saved set or history fact was removed. Try again or keep the workout.",
+          confirmLabel: "Retry discarding workout",
+          heading: "Workout was not discarded",
+          retry: discardCurrentWorkout,
+        }
+      : null;
+
+  return (
+    <>
+      <AdaptiveScreen
+        {...adaptiveWidth}
+        constrainActiveWork
+        stickyHeader={(
+          <ScreenHeader
+            backAction={onGoBack}
+            eyebrow="WORKOUT OVERVIEW"
+            title="Workout"
+          />
+        )}
+        primary={(
+          <>
+            <InlineNotice
+              body="No exercises are planned in this session yet. Save a zero-set visit explicitly, finish later, or discard it."
+              heading="Empty workout in progress"
+              tone="neutral"
+            />
+            <PrimaryAction
+              accessibilityHint="Choose one library exercise to append to this workout."
+              label="Add exercise"
+              onPress={() => setPickerVisible(true)}
+              testID="add-exercise"
+            />
+            {pickerVisible ? (
+              <ContentCard>
+                <SectionHeader title="Choose exercise" tone="card" />
+                {selectedExercise === undefined ? null : (
+                  <PrimaryAction
+                    busy={outcomeBusy}
+                    label={`Add ${selectedExercise.name}`}
+                    onPress={() => void addExercise()}
+                  />
+                )}
+                <M3SearchField
+                  label="Search exercises"
+                  onChangeText={setQuery}
+                  resultCount={filteredExercises.length}
+                  ref={searchRef}
+                  state={filteredExercises.length === 0 ? "empty" : "results"}
+                  value={query}
+                />
+                {availableExercisesState === "loading" ? (
+                  <InlineNotice
+                    body="Please wait while your exercise library loads."
+                    heading="Loading exercises"
+                    tone="neutral"
+                  />
+                ) : availableExercisesState === "error" ? (
+                  <InlineNotice
+                    action={<SecondaryAction label="Retry loading exercises" onPress={() => onRetryAvailableExercises?.()} />}
+                    body="Your workout was not changed. Retry loading exercises before choosing one."
+                    heading="Exercises could not be loaded"
+                    tone="error"
+                  />
+                ) : filteredExercises.length === 0 ? (
+                  <InlineNotice body="Try a different search." heading="No exercises found" tone="neutral" />
+                ) : filteredExercises.map((exercise) => (
+                  <FocusablePressable
+                    accessibilityLabel={`${exercise.name}. Add exercise`}
+                    accessibilityRole="button"
+                    key={exercise.id}
+                    onPress={() => {
+                      setSelectedExerciseId(exercise.id);
+                      searchRef.current?.blur();
+                      Keyboard.dismiss();
+                    }}
+                    style={[styles.exerciseOption, { borderColor: colors.contentCardBorder }]}
+                  >
+                    <Text style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>
+                      {exercise.name}
+                    </Text>
+                    <Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
+                      {selectedExerciseId === exercise.id ? "Selected" : "Select"}
+                    </Text>
+                  </FocusablePressable>
+                ))}
+                {addFailed ? (
+                  <InlineNotice
+                    body="Your workout was not changed. Try again from the latest workout."
+                    heading="Exercise was not added"
+                    tone="error"
+                  />
+                ) : null}
+              </ContentCard>
+            ) : null}
+            <ActionRow><PrimaryAction
+              busy={outcomeBusy}
+              label="Save zero-set workout"
+              onPress={() => setOutcomeConfirmation("zero_sets")}
+            />
+            <SecondaryAction
+              disabled={outcomeBusy}
+              label="Finish workout later"
+              onPress={onFinishLater}
+            />
+            <SecondaryAction
+              destructive
+              disabled={outcomeBusy}
+              label="Discard workout"
+              onPress={() => setOutcomeConfirmation("discard")}
+            /></ActionRow>
+          </>
+        )}
+        testID="active-workout"
+      />
+      <ConfirmationSheet
+        body={confirmationCopy.body}
+        cancelLabel={confirmationCopy.cancelLabel}
+        confirmLabel={confirmationCopy.confirmLabel}
+        destructive={confirmationCopy.destructive}
+        heading={confirmationCopy.heading}
+        onCancel={() => setOutcomeConfirmation(null)}
+        onConfirm={() => {
+          void confirmOutcome();
+        }}
+        visible={outcomeConfirmation !== null}
+      />
+      <ConfirmationSheet
+        body={outcomeFailureCopy?.body ?? ""}
+        cancelLabel="Return to Workout"
+        confirmBusy={outcomeBusy}
+        confirmLabel={outcomeFailureCopy?.confirmLabel ?? "Retry"}
+        heading={outcomeFailureCopy?.heading ?? "Workout was not saved"}
+        onCancel={() => setOutcomeFailure(null)}
+        onConfirm={() => { void outcomeFailureCopy?.retry(); }}
+        visible={outcomeFailureCopy !== null}
+      />
+    </>
+  );
+}
+
+type PopulatedWorkoutOverviewProps = Omit<ActiveWorkoutScreenProps, "view"> & Readonly<{
+  initialView: ActiveWorkoutView;
+}>;
+
+function PopulatedWorkoutOverview({
+  acceptanceBenchmark,
+  sessionId,
+  initialView,
+  commands,
+  nowMs,
+  notificationPermission = "undetermined",
+  restSoundEnabled = false,
+  countdownCue,
+  onOpenNotificationSettings = () => undefined,
+  onGoBack,
+  onFinishLater,
+  onOutcomeSaved = () => onFinishLater(),
+  onDiscarded = onFinishLater,
+  onResolveUnknownOutcome = async () => {
+    throw new Error("outcome_source_reload_unavailable");
+  },
+  onRequestPlanEdit = () => undefined,
+  onOpenPlanSettings = () => undefined,
+  initialHeaderFocus = false,
+  onInitialHeaderFocused,
+  loadExerciseHistory,
+  availableExercises = [],
+  availableExercisesState = "ready",
+  onRetryAvailableExercises,
+  width,
+}: PopulatedWorkoutOverviewProps) {
+  const { colors, reduceMotion } = useAppTheme();
+  const semanticToast = useOptionalSemanticToast();
   const [view, setView] = useState(initialView);
   const viewRef = useRef(initialView);
+  const parentActiveSetIdRef = useRef(initialView.activeSetId);
   const [warmupBusy, setWarmupBusy] = useState<WarmupCommandState>(null);
   const [workingBusySetId, setWorkingBusySetId] = useState<string | null>(null);
   const [saveFailedSetId, setSaveFailedSetId] = useState<string | null>(null);
@@ -376,76 +947,249 @@ export function ActiveWorkoutScreen({
     useState<SectionMutationFailure | null>(null);
   const [revealedSetId, setRevealedSetId] = useState<string | null>(null);
   const [revealedSetOffset, setRevealedSetOffset] = useState(0);
+  const [activeSetMeasurement, setActiveSetMeasurement] = useState<
+    Readonly<{ setId: string; y: number }> | null
+  >(null);
+  const [activeExerciseOffset, setActiveExerciseOffset] = useState<
+    Readonly<{ exerciseId: string; y: number }> | null
+  >(null);
+  const [activeWorkingCardOffset, setActiveWorkingCardOffset] = useState<
+    Readonly<{ exerciseId: string; y: number }> | null
+  >(null);
+  const [pendingScrollTarget, setPendingScrollTarget] = useState<
+    Readonly<{ key: string; setId: string; animated: boolean }> | null
+  >(() => initialView.activeSetId === null
+    ? null
+    : {
+      key: `entry-${initialView.revision}-${initialView.activeSetId}`,
+      setId: initialView.activeSetId,
+      animated: false,
+    });
   const [editingCompletedSetId, setEditingCompletedSetId] =
     useState<string | null>(null);
+  const [editingSetId, setEditingSetId] = useState<string | null>(null);
+  const [exerciseExpansionOverrides, setExerciseExpansionOverrides] = useState<ReadonlyMap<string, boolean>>(
+    () => new Map(),
+  );
+  const disclosureActiveRef = useRef({ exerciseId: initialView.activeExerciseId, setId: initialView.activeSetId });
+  const [expandedCompactSetId, setExpandedCompactSetId] = useState<string | null>(
+    null,
+  );
   const [correctionBusySetId, setCorrectionBusySetId] =
     useState<string | null>(null);
   const [correctionFailure, setCorrectionFailure] =
     useState<Readonly<{ setId: string; retry: () => void }> | null>(null);
   const [restBusy, setRestBusy] = useState(false);
+  const [restFailure, setRestFailure] = useState(false);
   const [moreVisible, setMoreVisible] = useState(false);
   const [outcomeConfirmation, setOutcomeConfirmation] =
     useState<OutcomeConfirmation>(null);
   const [outcomeBusy, setOutcomeBusy] = useState(false);
+  const [outcomeFailure, setOutcomeFailure] = useState<OutcomeFailure | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<RemovalCandidate | null>(null);
   const [removalBusy, setRemovalBusy] = useState(false);
   const [removalFailure, setRemovalFailure] = useState<RemovalFailure | null>(null);
   const [removalRecovery, setRemovalRecovery] = useState<RemovalCandidate | null>(null);
   const [removalAnnouncement, setRemovalAnnouncement] = useState<string | null>(null);
+  const [exerciseActionCandidate, setExerciseActionCandidate] =
+    useState<ExerciseEditCandidate | null>(null);
+  const [exerciseActionsVisibleForId, setExerciseActionsVisibleForId] =
+    useState<string | null>(null);
+  const [trendExerciseId, setTrendExerciseId] = useState<string | null>(null);
+  const [trendHistory, setTrendHistory] = useState<ExerciseMetricHistory | null>(null);
+  const [timingExerciseId, setTimingExerciseId] = useState<string | null>(null);
+  const [timingRestDraft, setTimingRestDraft] = useState("");
+  const [timingRestBusy, setTimingRestBusy] = useState(false);
+  const [timingRestFailure, setTimingRestFailure] = useState<string | null>(null);
+  const [exerciseEditBusy, setExerciseEditBusy] = useState(false);
+  const [exerciseEditFailure, setExerciseEditFailure] =
+    useState<ExerciseEditFailure | null>(null);
+  const [exerciseEditRecovery, setExerciseEditRecovery] =
+    useState<ExerciseEditCandidate | null>(null);
+  const [exerciseReorderBusy, setExerciseReorderBusy] = useState(false);
+  const exerciseReorderInFlightRef = useRef(false);
+  const [exerciseReorderFailure, setExerciseReorderFailure] =
+    useState<ExerciseReorderFailure | null>(null);
+  const [exerciseReorderRecovery, setExerciseReorderRecovery] = useState(false);
+  const [exerciseReorderAnnouncement, setExerciseReorderAnnouncement] =
+    useState<ExerciseReorderAnnouncement | null>(null);
+  const [exerciseAddPickerVisible, setExerciseAddPickerVisible] = useState(false);
+  const [exerciseAddQuery, setExerciseAddQuery] = useState("");
+  const [exerciseAddSelectedId, setExerciseAddSelectedId] = useState<string | null>(null);
+  const [exerciseAddBusy, setExerciseAddBusy] = useState(false);
+  const [exerciseAddFailed, setExerciseAddFailed] = useState(false);
+  const [addSetMenuExerciseId, setAddSetMenuExerciseId] = useState<string | null>(null);
+  const [reorderMode, setReorderMode] = useState(false);
+  const [exerciseReorderPreview, setExerciseReorderPreview] = useState<PlanEditorReorderPreview | null>(null);
+  const [replacementPickerForId, setReplacementPickerForId] =
+    useState<string | null>(null);
+  const [replacementQuery, setReplacementQuery] = useState("");
+  const [replacementExerciseId, setReplacementExerciseId] =
+    useState<string | null>(null);
+  const exerciseAddSearchRef = useRef<M3SearchFieldHandle>(null);
+  const exerciseAddTriggerRef = useRef<View>(null);
+  const replacementSearchRef = useRef<M3SearchFieldHandle>(null);
   const moreActionRef = useRef<View>(null);
   const moreFirstActionRef = useRef<View>(null);
-  const warmupAddRef = useRef<View>(null);
+  const exerciseActionRefs = useRef(new Map<string, View | null>());
+  const exerciseActionFirstRef = useRef<View>(null);
   const workingAddRef = useRef<View>(null);
   const removeFocusRef = useRef<View>(null);
   const removeGlyphRefs = useRef(new Map<string, View | null>());
+  const setRowRefs = useRef(new Map<string, View | null>());
   const draftQueue = useRef(Promise.resolve());
   const sectionMutationRef = useRef<SectionMutation | null>(null);
+  const completionInFlightRef = useRef(false);
+  const benchmarkDockPendingRef = useRef(false);
+  const finishCompletedInputRef = useRef<FinishCompletedInput | null>(null);
+  const finishPartialInputRef = useRef<FinishPartialInput | null>(null);
+  useEffect(() => {
+    if (!initialHeaderFocus || moreActionRef.current?.focus === undefined) return;
+    moreActionRef.current.focus();
+    onInitialHeaderFocused?.();
+  }, [initialHeaderFocus, onInitialHeaderFocused]);
+  const saveZeroSetInputRef = useRef<SaveZeroSetInput | null>(null);
+  const discardWorkoutInputRef = useRef<DiscardWorkoutInput | null>(null);
   const correctionSetIdRef = useRef<string | null>(null);
-  const restCommandInFlightRef = useRef(false);
-  const viewedExercise = reviewExerciseId === undefined
-    ? view.currentExercise
-    : view.exercises.find(({ id }) => id === reviewExerciseId)
-      ?? view.currentExercise;
-  const reviewingEarlierOrLater = viewedExercise.id !== view.currentExercise.id;
-  const activeSets = viewedExercise.workingSets;
-  const activeIndex = workingIndex(activeSets, view.activeSetId);
-  const activeSet = reviewingEarlierOrLater || view.activeSetId === null
+  const restCommandQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const restPendingCountRef = useRef(0);
+  const overviewExercises = React.useMemo(() => exercisesFor(view), [view]);
+  const presentationModel = React.useMemo(() => presentWorkoutSession(view), [view]);
+  const replacementCandidates = availableExercises.filter((exercise) =>
+    exercise.name.toLocaleLowerCase("en").includes(
+      replacementQuery.trim().toLocaleLowerCase("en"),
+    ),
+  );
+  const exerciseAddCandidates = availableExercises.filter((exercise) =>
+    exercise.name.toLocaleLowerCase("en").includes(
+      exerciseAddQuery.trim().toLocaleLowerCase("en"),
+    ),
+  );
+  const selectedExerciseToAdd = availableExercises.find(
+    ({ id }) => id === exerciseAddSelectedId,
+  );
+  const isMultiExerciseOverview = view.exercises.length > 0;
+  const activeOwner = view.activeSetId === null
     ? undefined
-    : activeSets[activeIndex];
+    : resolveSetOwner(view, view.activeSetId);
+  const activeExercise = activeOwner?.exercise ?? view.currentExercise;
+  const activeSets = activeExercise.workingSets;
+  const activeIndex = workingIndex(activeSets, view.activeSetId);
+  const activeSet = activeOwner?.set;
   const adaptiveWidth = width === undefined ? {} : { width };
+  const activeExerciseIndex = overviewExercises.findIndex(
+    ({ id }) => id === view.activeExerciseId,
+  );
+
+  useEffect(() => {
+    if (trendExerciseId === null || loadExerciseHistory === undefined) return;
+    let active = true;
+    setTrendHistory(null);
+    const exercise = overviewExercises.find(({ id }) => id === trendExerciseId);
+    if (exercise === undefined) return;
+    void loadExerciseHistory(exercise.exerciseId).then((history) => {
+      if (active) setTrendHistory(history);
+    }).catch(() => {
+      if (active) setTrendHistory(null);
+    });
+    return () => { active = false; };
+  }, [loadExerciseHistory, overviewExercises, trendExerciseId]);
+
+  const isExerciseCollapsed = (exercise: ActiveWorkoutExercise, index: number) => {
+    const expandedOverride = exerciseExpansionOverrides.get(exercise.id);
+    if (expandedOverride !== undefined) return !expandedOverride;
+    return (
+      (exercise.status === "completed" && (
+        exercise.id !== view.activeExerciseId || view.activeSetId === null
+      ))
+      || (activeExerciseIndex >= 0 && index < activeExerciseIndex)
+    );
+  };
+
+  useEffect(() => {
+    const previous = disclosureActiveRef.current;
+    disclosureActiveRef.current = { exerciseId: view.activeExerciseId, setId: view.activeSetId };
+    if (previous.exerciseId === view.activeExerciseId
+      && !(previous.setId !== null && view.activeSetId === null)) return;
+    setExerciseExpansionOverrides((current) => {
+      const next = new Map(current);
+      if (previous.exerciseId !== null) next.delete(previous.exerciseId);
+      if (view.activeExerciseId !== null) next.delete(view.activeExerciseId);
+      return next;
+    });
+  }, [view.activeExerciseId, view.activeSetId]);
 
   const applyView = (nextView: ActiveWorkoutView) => {
     viewRef.current = nextView;
     setView(nextView);
   };
 
+  const saveExerciseRest = async () => {
+    const exercise = overviewExercises.find(({ id }) => id === timingExerciseId);
+    const defaultRestSeconds = Number(timingRestDraft);
+    if (
+      exercise === undefined
+      || commands.updateSessionExerciseDefaultRest === undefined
+      || timingRestBusy
+      || !Number.isSafeInteger(defaultRestSeconds)
+      || defaultRestSeconds < 0
+    ) {
+      return;
+    }
+    setTimingRestBusy(true);
+    setTimingRestFailure(null);
+    try {
+      const occurredAtMs = nowMs();
+      const identity = {
+        operation: "update_session_exercise_default_rest",
+        sessionId,
+        sessionExerciseId: exercise.id,
+        defaultRestSeconds,
+        expectedSessionRevision: viewRef.current.revision,
+        expectedSessionExerciseRevision: exercise.revision,
+        occurredAtMs,
+      };
+      const requestSha256 = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        stableJson(identity),
+      );
+      const nextView = await commands.updateSessionExerciseDefaultRest({
+        ...identity,
+        requestId: `exercise-rest:${requestSha256}`,
+        requestSha256,
+      });
+      applyView(nextView);
+      setTimingExerciseId(null);
+      setTimingRestFailure(null);
+    } catch {
+      setTimingRestFailure("Between-set rest was not saved");
+    } finally {
+      setTimingRestBusy(false);
+    }
+  };
+
   const identityHeader = (
     <View
-      testID={reviewingEarlierOrLater
-        ? "active-workout-identity-review"
-        : "active-workout-identity-current"}
+      testID="active-workout-identity-current"
     >
       <ScreenHeader
         action={
           <ActionCluster style={styles.headerActions}>
             <IconAction
-              accessibilityLabel="Today's plan"
-              icon="plan"
-              onPress={onOpenWorkoutPlan}
-            />
-            {reviewingEarlierOrLater ? null : <IconAction
               accessibilityLabel="More workout actions"
               icon="more"
               onPress={() => setMoreVisible(true)}
               ref={moreActionRef}
-            />}
+              testID="workout-more-actions"
+            />
           </ActionCluster>
         }
         backAction={onGoBack}
+        backActionTestID="active-workout-back"
         eyebrow={
-          reviewingEarlierOrLater ? "REVIEWING WORKOUT" : "FOCUSED WORKOUT"
+          "WORKOUT OVERVIEW"
         }
-        title={viewedExercise.name}
+        title="Workout"
       />
     </View>
   );
@@ -455,6 +1199,7 @@ export function ActiveWorkoutScreen({
     : formatObservation(observationForSet(activeSet));
 
   const applyRestResult = (result: RestCommandResult) => {
+    if (result.sessionRevision < viewRef.current.revision) return;
     const nextView = {
       ...viewRef.current,
       revision: result.sessionRevision,
@@ -466,31 +1211,54 @@ export function ActiveWorkoutScreen({
 
   const restInput = (): RestRevisionInput => ({
     sessionId,
-    expectedSessionRevision: view.revision,
-    expectedRestRevision: view.rest.revision,
+    expectedSessionRevision: viewRef.current.revision,
+    expectedRestRevision: viewRef.current.rest.revision,
     nowMs: nowMs(),
   });
 
-  const runRest = async (
+  const runRest = (
     command: () => Promise<RestCommandResult>,
+    isStillApplicable: () => boolean = () => true,
   ) => {
-    if (restCommandInFlightRef.current) {
-      return;
-    }
-    restCommandInFlightRef.current = true;
+    restPendingCountRef.current += 1;
     setRestBusy(true);
-    try {
+    const task = restCommandQueueRef.current.then(async () => {
+      if (!isStillApplicable()) return;
+      acceptanceBenchmark?.markInputStart("rest-control");
       applyRestResult(await command());
-    } finally {
-      restCommandInFlightRef.current = false;
-      setRestBusy(false);
-    }
+      setRestFailure(false);
+      requestAnimationFrame(() => acceptanceBenchmark?.markInputVisible("rest-control"));
+    });
+    restCommandQueueRef.current = task.then(() => undefined, () => undefined);
+    return task.catch(() => { setRestFailure(true); }).finally(() => {
+      restPendingCountRef.current -= 1;
+      if (restPendingCountRef.current === 0) setRestBusy(false);
+    });
   };
 
   useEffect(() => {
+    if (initialView.id === viewRef.current.id
+      && initialView.revision < viewRef.current.revision) return;
+    const previousActiveSetId = parentActiveSetIdRef.current;
+    parentActiveSetIdRef.current = initialView.activeSetId;
     viewRef.current = initialView;
     setView(initialView);
+    if (previousActiveSetId !== initialView.activeSetId) {
+      setPendingScrollTarget(initialView.activeSetId === null
+        ? null
+        : {
+          key: `entry-${initialView.revision}-${initialView.activeSetId}`,
+          setId: initialView.activeSetId,
+          animated: false,
+        });
+    }
   }, [initialView]);
+
+  useEffect(() => {
+    setExpandedCompactSetId((current) =>
+      current === view.activeSetId ? null : current
+    );
+  }, [view.activeSetId]);
 
   useEffect(() => {
     if (moreVisible) {
@@ -502,19 +1270,24 @@ export function ActiveWorkoutScreen({
     const requestedSetId = set?.id;
     if (
       requestedSetId === undefined
-      || workingBusySetId !== null
+      || completionInFlightRef.current
     ) {
       return;
     }
+    completionInFlightRef.current = true;
+    acceptanceBenchmark?.markSetActivation();
     setWorkingBusySetId(requestedSetId);
     setSaveFailedSetId(null);
     try {
       await draftQueue.current;
       const currentView = viewRef.current;
-      const currentSet = currentView.currentExercise.workingSets.find(
-        ({ id }) => id === requestedSetId,
-      );
-      if (currentSet === undefined || currentView.activeSetId !== currentSet.id) {
+      const owner = resolveSetOwner(currentView, requestedSetId);
+      const currentSet = owner?.set;
+      if (
+        currentSet === undefined
+        || currentSet.kind !== "working"
+        || currentView.activeSetId !== currentSet.id
+      ) {
         return;
       }
       const completedAtMs = nowMs();
@@ -532,11 +1305,50 @@ export function ActiveWorkoutScreen({
         observation: observationForSet(currentSet),
         completedAtMs,
       });
+      if (result.outcome === "committed") {
+        acceptanceBenchmark?.markAuthoritativeSetCommit();
+        benchmarkDockPendingRef.current = true;
+      }
       applyView(result.view);
+      if (result.outcome === "committed") {
+        const completedSetId = currentSet.id;
+        semanticToast?.enqueue({
+          message: "Set completed",
+          durationMs: 8_000,
+          action: {
+            label: "Undo completed set",
+            onPress: () => { void undoCompletedSet(completedSetId); },
+          },
+        });
+      }
+      if (
+        result.outcome === "committed"
+        && result.view.activeSetId !== null
+        && result.view.activeSetId !== currentView.activeSetId
+      ) {
+        setExpandedCompactSetId(null);
+        setPendingScrollTarget({
+          key: `advance-${result.view.revision}-${result.view.activeSetId}`,
+          setId: result.view.activeSetId,
+          animated: !reduceMotion,
+        });
+      }
     } catch {
       setSaveFailedSetId(requestedSetId);
     } finally {
+      completionInFlightRef.current = false;
       setWorkingBusySetId(null);
+    }
+  };
+
+  const undoCompletedSet = async (completedSetId: string) => {
+    const result = await commands.undoCompletedSet?.({
+      sessionId,
+      completedSetId,
+      nowMs: nowMs(),
+    });
+    if (result?.outcome === "undone") {
+      applyView(result.view);
     }
   };
 
@@ -545,11 +1357,9 @@ export function ActiveWorkoutScreen({
     observation: SetObservation,
   ) => {
     const save = draftQueue.current.then(async () => {
+      acceptanceBenchmark?.markInputStart("numeric-edit");
       const currentView = viewRef.current;
-      const currentSet = [
-        ...currentView.currentExercise.warmups,
-        ...currentView.currentExercise.workingSets,
-      ].find(({ id }) => id === set.id) ?? set;
+      const currentSet = resolveSetOwner(currentView, set.id)?.set ?? set;
       const nextView = set.kind === "warmup"
         ? observation.profile === "load_reps"
           ? await commands.updateWarmupDraft({
@@ -569,6 +1379,7 @@ export function ActiveWorkoutScreen({
             updatedAtMs: nowMs(),
           });
       applyView(nextView);
+      requestAnimationFrame(() => acceptanceBenchmark?.markInputVisible("numeric-edit"));
       setSaveFailedSetId(null);
     });
     draftQueue.current = save.catch(() => {
@@ -577,13 +1388,30 @@ export function ActiveWorkoutScreen({
     return save;
   };
 
+  const editorOwner = editingSetId === null
+    ? undefined
+    : resolveSetOwner(view, editingSetId);
+
+  const saveEditorValues = async (observation: SetObservation) => {
+    const owner = editingSetId === null
+      ? undefined
+      : resolveSetOwner(viewRef.current, editingSetId);
+    if (owner === undefined) {
+      throw new Error("set_no_longer_available");
+    }
+    if (owner.set.status === "completed") {
+      await reviseCompletedSet(owner.set, observation);
+    } else {
+      await persistValues(owner.set, observation);
+    }
+    setEditingSetId(null);
+  };
+
   const runWarmup = async (set: ActiveWorkoutSet) => {
     setWarmupBusy({ setId: set.id, action: "complete" });
     try {
       await draftQueue.current;
-      const currentSet = viewRef.current.currentExercise.warmups.find(
-        ({ id }) => id === set.id,
-      ) ?? set;
+      const currentSet = resolveSetOwner(viewRef.current, set.id)?.set ?? set;
       const nextView = await commands.completeWarmup({
         sessionId,
         setId: currentSet.id,
@@ -596,12 +1424,12 @@ export function ActiveWorkoutScreen({
     }
   };
 
-  const addWarmup = async () => {
+  const addWarmup = async (exercise = activeExercise) => {
     if (sectionMutationRef.current !== null) {
       return;
     }
-    const source = view.currentExercise.warmups.at(-1);
-    const workingSource = view.currentExercise.workingSets.find(
+    const source = exercise.warmups.at(-1);
+    const workingSource = exercise.workingSets.find(
       ({ target }) => target.profile === "load_reps",
     );
     const observation = source?.observation
@@ -619,7 +1447,7 @@ export function ActiveWorkoutScreen({
     try {
       const result = await commands.addWarmup({
         sessionId,
-        sessionExerciseId: view.currentExercise.id,
+        sessionExerciseId: exercise.id,
         setId: `warmup_${sessionId}_${nowMs()}`,
         observation: {
           ...observation,
@@ -633,8 +1461,9 @@ export function ActiveWorkoutScreen({
     } catch {
       setSectionFailure({
         operation: "add_warmup",
+        sessionExerciseId: exercise.id,
         retry: () => {
-          void addWarmup();
+          void addWarmup(exercise);
         },
       });
     } finally {
@@ -643,11 +1472,11 @@ export function ActiveWorkoutScreen({
     }
   };
 
-  const addWorking = async () => {
+  const addWorking = async (exercise = activeExercise) => {
     if (sectionMutationRef.current !== null) {
       return;
     }
-    const source = view.currentExercise.workingSets.at(-1);
+    const source = exercise.workingSets.at(-1);
     if (source === undefined) {
       return;
     }
@@ -657,7 +1486,7 @@ export function ActiveWorkoutScreen({
     try {
       const result = await commands.addWorkingSet({
         sessionId,
-        sessionExerciseId: view.currentExercise.id,
+        sessionExerciseId: exercise.id,
         sourceSetId: source.id,
         setId: `working_${sessionId}_${nowMs()}`,
         nowMs: nowMs(),
@@ -668,8 +1497,9 @@ export function ActiveWorkoutScreen({
     } catch {
       setSectionFailure({
         operation: "add_working",
+        sessionExerciseId: exercise.id,
         retry: () => {
-          void addWorking();
+          void addWorking(exercise);
         },
       });
     } finally {
@@ -690,7 +1520,16 @@ export function ActiveWorkoutScreen({
     setRemovalAnnouncement(null);
     setRemovalFailure(null);
     setRemovalRecovery(null);
-    setPendingRemoval({ kind, setId: set.id, index });
+    const owner = resolveSetOwner(viewRef.current, set.id);
+    if (owner === undefined) {
+      return;
+    }
+    setPendingRemoval({
+      kind,
+      setId: set.id,
+      index,
+      sessionExerciseId: owner.exercise.id,
+    });
   };
 
   const confirmRemoval = async () => {
@@ -702,10 +1541,8 @@ export function ActiveWorkoutScreen({
     try {
       await draftQueue.current;
       const currentView = viewRef.current;
-      const sets = candidate.kind === "warmup"
-        ? currentView.currentExercise.warmups
-        : currentView.currentExercise.workingSets;
-      const currentSet = sets.find(({ id }) => id === candidate.setId);
+      const owner = resolveSetOwner(currentView, candidate.setId);
+      const currentSet = owner?.set;
       const remove = candidate.kind === "warmup"
         ? commands.removeWarmup
         : commands.removeWorkingSet;
@@ -752,13 +1589,15 @@ export function ActiveWorkoutScreen({
         return;
       }
       applyView(nextView);
+      const nextExercise = exercisesFor(nextView).find(
+        ({ id }) => id === candidate.sessionExerciseId,
+      ) ?? nextView.currentExercise;
       const nextSets = candidate.kind === "warmup"
-        ? nextView.currentExercise.warmups
-        : nextView.currentExercise.workingSets;
+        ? nextExercise.warmups
+        : nextExercise.workingSets;
       const nextSet = nextSets[candidate.index] ?? nextSets.at(-1);
       if (nextSet === undefined) {
-        (candidate.kind === "warmup" ? warmupAddRef : workingAddRef)
-          .current?.focus();
+        workingAddRef.current?.focus();
       } else {
         setRevealedSetId(nextSet.id);
         setRevealedSetOffset(0);
@@ -778,6 +1617,249 @@ export function ActiveWorkoutScreen({
     }
   };
 
+  const closeExerciseActions = () => {
+    const exerciseId = exerciseActionsVisibleForId;
+    setExerciseActionsVisibleForId(null);
+    if (exerciseId !== null) {
+      exerciseActionRefs.current.get(exerciseId)?.focus();
+    }
+  };
+
+  const beginExerciseEdit = (candidate: ExerciseEditCandidate) => {
+    setExerciseActionCandidate(candidate);
+    setExerciseEditFailure(null);
+    setExerciseEditRecovery(null);
+  };
+
+  const openReplacementPicker = (exerciseId: string) => {
+    setReplacementQuery("");
+    setReplacementExerciseId(null);
+    setReplacementPickerForId(exerciseId);
+  };
+
+  const closeReplacementPicker = () => {
+    const exerciseId = replacementPickerForId;
+    setReplacementPickerForId(null);
+    if (exerciseId !== null) {
+      exerciseActionRefs.current.get(exerciseId)?.focus();
+    }
+  };
+
+  const submitExerciseEdit = async (
+    candidate: ExerciseEditCandidate,
+    retryRequest?: ReplaceExerciseInput | RemoveExerciseInput,
+  ) => {
+    if (exerciseEditBusy) {
+      return;
+    }
+    const currentView = viewRef.current;
+    const exercise = exercisesFor(currentView).find(
+      ({ id }) => id === candidate.exerciseId,
+    );
+    if (exercise === undefined) {
+      return;
+    }
+    setExerciseEditBusy(true);
+    setExerciseEditFailure(null);
+    setExerciseEditRecovery(null);
+    let commandRequest = retryRequest;
+    try {
+      commandRequest = retryRequest ?? await (async (): Promise<
+        ReplaceExerciseInput | RemoveExerciseInput
+      > => {
+        const occurredAtMs = nowMs();
+        const operation = candidate.action === "replace"
+          ? "replace_exercise"
+          : "remove_exercise";
+        const identity = {
+          operation,
+          sessionId,
+          sessionExerciseId: exercise.id,
+          expectedSessionRevision: currentView.revision,
+          expectedSessionExerciseRevision: exercise.revision,
+          occurredAtMs,
+          ...(candidate.action === "replace"
+            ? { libraryExerciseId: replacementExerciseId }
+            : {}),
+        };
+        const requestSha256 = await Crypto.digestStringAsync(
+          Crypto.CryptoDigestAlgorithm.SHA256,
+          stableJson(identity),
+        );
+        const requestId = `${operation}:${requestSha256}`;
+        if (candidate.action === "replace") {
+          return {
+            requestId, requestSha256, sessionId,
+            expectedSessionRevision: currentView.revision,
+            sessionExerciseId: exercise.id,
+            expectedSessionExerciseRevision: exercise.revision,
+            occurredAtMs,
+            libraryExerciseId: replacementExerciseId ?? "",
+            replacementSessionExerciseId: `${requestId}:exercise`,
+            replacementSetId: `${requestId}:set`,
+          };
+        }
+        return {
+          requestId, requestSha256, sessionId,
+          expectedSessionRevision: currentView.revision,
+          sessionExerciseId: exercise.id,
+          expectedSessionExerciseRevision: exercise.revision,
+          occurredAtMs,
+        };
+      })();
+      const result = candidate.action === "replace"
+        ? await commands.replaceExercise?.(commandRequest as ReplaceExerciseInput)
+        : await commands.removeExercise?.(commandRequest as RemoveExerciseInput);
+      if (result === undefined) {
+        throw new Error("exercise_edit_unavailable");
+      }
+      if (isCommittedExerciseEditRefreshFailure(result)) {
+        setExerciseEditRecovery(candidate);
+        setExerciseActionCandidate(null);
+        setReplacementPickerForId(null);
+        return;
+      }
+      applyView(result);
+      setExerciseActionCandidate(null);
+      setReplacementPickerForId(null);
+      setReplacementExerciseId(null);
+    } catch {
+      setExerciseEditFailure({
+        ...candidate,
+        retry: () => {
+          void submitExerciseEdit(candidate, commandRequest);
+        },
+      });
+      setExerciseActionCandidate(null);
+      setReplacementPickerForId(null);
+      exerciseActionRefs.current.get(candidate.exerciseId)?.focus();
+    } finally {
+      setExerciseEditBusy(false);
+    }
+  };
+
+  const submitExerciseReorder = async (
+    sourcePosition: number,
+    targetPosition: number,
+    _method: PlanEditorReorderMethod = "fallback",
+    retryRequest?: ReorderExercisesInput,
+  ) => {
+    if (exerciseReorderInFlightRef.current || sourcePosition === targetPosition) {
+      return;
+    }
+    const currentView = viewRef.current;
+    const currentExercises = exercisesFor(currentView);
+    const source = currentExercises[sourcePosition];
+    if (source === undefined || targetPosition < 0
+      || targetPosition >= currentExercises.length) {
+      return;
+    }
+    const orderedExercises = [...currentExercises];
+    orderedExercises.splice(sourcePosition, 1);
+    orderedExercises.splice(targetPosition, 0, source);
+    exerciseReorderInFlightRef.current = true;
+    setExerciseReorderBusy(true);
+    setExerciseReorderFailure(null);
+    setExerciseReorderRecovery(false);
+    let commandRequest = retryRequest;
+    try {
+      commandRequest = retryRequest ?? await (async (): Promise<ReorderExercisesInput> => {
+        const occurredAtMs = nowMs();
+        const identity = {
+          operation: "reorder_exercises",
+          sessionId,
+          expectedSessionRevision: currentView.revision,
+          occurredAtMs,
+          orderedSessionExerciseIds: orderedExercises.map(({ id }) => id),
+          expectedSessionExerciseRevisions: orderedExercises.map(({ id, revision }) => ({
+            sessionExerciseId: id,
+            revision,
+          })),
+        };
+        const requestSha256 = await Crypto.digestStringAsync(
+          Crypto.CryptoDigestAlgorithm.SHA256,
+          stableJson(identity),
+        );
+        return {
+          requestId: `reorder_exercises:${requestSha256}`,
+          requestSha256,
+          ...identity,
+        };
+      })();
+      const result = await commands.reorderExercises?.(commandRequest);
+      if (result === undefined) {
+        throw new Error("reorder_exercises_unavailable");
+      }
+      if (isCommittedExerciseReorderRefreshFailure(result)) {
+        setExerciseReorderRecovery(true);
+        return;
+      }
+      applyView(result);
+      setExerciseReorderAnnouncement({
+        sessionExerciseId: source.id,
+        text: `${source.name} moved to ${targetPosition + 1} of ${orderedExercises.length}`,
+      });
+    } catch {
+      setExerciseReorderFailure({
+        sourcePosition,
+        targetPosition,
+        request: commandRequest as ReorderExercisesInput,
+        retry: () => {
+          void submitExerciseReorder(sourcePosition, targetPosition, "fallback", commandRequest);
+        },
+      });
+    } finally {
+      exerciseReorderInFlightRef.current = false;
+      setExerciseReorderPreview(null);
+      setExerciseReorderBusy(false);
+    }
+  };
+
+  const closeExerciseAddPicker = () => {
+    setExerciseAddPickerVisible(false);
+    setExerciseAddSelectedId(null);
+    setExerciseAddQuery("");
+  };
+
+  const submitExerciseAdd = async () => {
+    if (exerciseAddBusy || selectedExerciseToAdd === undefined) {
+      return;
+    }
+    const currentView = viewRef.current;
+    const occurredAtMs = nowMs();
+    const identity = {
+      operation: "add_exercise",
+      sessionId,
+      expectedSessionRevision: currentView.revision,
+      occurredAtMs,
+      libraryExerciseId: selectedExerciseToAdd.id,
+    };
+    setExerciseAddBusy(true);
+    setExerciseAddFailed(false);
+    try {
+      const requestSha256 = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        stableJson(identity),
+      );
+      const requestId = `add_exercise:${requestSha256}`;
+      const result = await commands.addExercise?.({
+        requestId,
+        requestSha256,
+        ...identity,
+        sessionExerciseId: `${requestId}:exercise`,
+        setId: `${requestId}:set`,
+      });
+      if (result === undefined) {
+        throw new Error("add_exercise_unavailable");
+      }
+      closeExerciseAddPicker();
+    } catch {
+      setExerciseAddFailed(true);
+    } finally {
+      setExerciseAddBusy(false);
+    }
+  };
+
 
   const reviseCompletedSet = async (
     set: ActiveWorkoutSet,
@@ -787,9 +1869,7 @@ export function ActiveWorkoutScreen({
       return;
     }
     const currentView = viewRef.current;
-    const currentSet = currentView.currentExercise.workingSets.find(
-      ({ id }) => id === set.id,
-    );
+    const currentSet = resolveSetOwner(currentView, set.id)?.set;
     if (
       currentSet === undefined
       || currentSet.status !== "completed"
@@ -815,13 +1895,14 @@ export function ActiveWorkoutScreen({
       setEditingCompletedSetId(null);
       setRevealedSetId(result.committedSetId);
       setRevealedSetOffset(0);
-    } catch {
+    } catch (error) {
       setCorrectionFailure({
         setId: currentSet.id,
         retry: () => {
           void reviseCompletedSet(currentSet, observation);
         },
       });
+      throw error;
     } finally {
       correctionSetIdRef.current = null;
       setCorrectionBusySetId(null);
@@ -829,14 +1910,120 @@ export function ActiveWorkoutScreen({
   };
 
   const finishCompletedWorkout = async () => {
+    if (outcomeBusy) return;
+    const input = finishCompletedInputRef.current ?? {
+      sessionId,
+      expectedSessionRevision: viewRef.current.revision,
+      endedAtMs: nowMs(),
+    };
+    finishCompletedInputRef.current = input;
     setOutcomeBusy(true);
+    setOutcomeFailure(null);
     try {
-      await commands.finishCompleted({
-        sessionId,
-        expectedSessionRevision: view.revision,
-        endedAtMs: nowMs(),
-      });
+      const result = await commands.finishCompleted(input);
+      if (
+        result.detail.id !== sessionId
+        || result.detail.status !== "completed"
+      ) {
+        const durableDetail = await onResolveUnknownOutcome(sessionId);
+        if (durableDetail.id !== sessionId || durableDetail.status !== "completed") {
+          throw new Error("finish_workout_result_unknown");
+        }
+      }
+      finishCompletedInputRef.current = null;
       onOutcomeSaved(sessionId);
+    } catch {
+      setOutcomeFailure({ operation: "finish_completed" });
+    } finally {
+      setOutcomeBusy(false);
+    }
+  };
+
+  const finishPartialWorkout = async () => {
+    if (outcomeBusy) return;
+    const input = finishPartialInputRef.current ?? {
+      sessionId,
+      expectedSessionRevision: viewRef.current.revision,
+      confirmation: "save_partial_workout",
+      endedAtMs: nowMs(),
+    };
+    finishPartialInputRef.current = input;
+    setOutcomeBusy(true);
+    setOutcomeFailure(null);
+    try {
+      const result = await commands.finishPartial(input);
+      if (result.detail.id !== sessionId || result.detail.status !== "partial") {
+        const durableDetail = await onResolveUnknownOutcome(sessionId);
+        if (durableDetail.id !== sessionId || durableDetail.status !== "partial") {
+          throw new Error("partial_workout_result_unknown");
+        }
+      }
+      finishPartialInputRef.current = null;
+      setOutcomeConfirmation(null);
+      onOutcomeSaved(sessionId);
+    } catch {
+      setOutcomeConfirmation(null);
+      setOutcomeFailure({ operation: "partial" });
+    } finally {
+      setOutcomeBusy(false);
+    }
+  };
+
+  const saveZeroSetWorkout = async () => {
+    if (outcomeBusy) return;
+    const input = saveZeroSetInputRef.current ?? {
+      sessionId,
+      expectedSessionRevision: viewRef.current.revision,
+      confirmation: "save_zero_set_workout",
+      endedAtMs: nowMs(),
+    };
+    saveZeroSetInputRef.current = input;
+    setOutcomeBusy(true);
+    setOutcomeFailure(null);
+    try {
+      const result = await commands.saveZeroSetWorkout(input);
+      if (result.detail.id !== sessionId || result.detail.status !== "zero_sets") {
+        const durableDetail = await onResolveUnknownOutcome(sessionId);
+        if (durableDetail.id !== sessionId || durableDetail.status !== "zero_sets") {
+          throw new Error("zero_set_workout_result_unknown");
+        }
+      }
+      saveZeroSetInputRef.current = null;
+      setOutcomeConfirmation(null);
+      onOutcomeSaved(sessionId);
+    } catch {
+      setOutcomeConfirmation(null);
+      setOutcomeFailure({ operation: "zero_sets" });
+    } finally {
+      setOutcomeBusy(false);
+    }
+  };
+
+  const discardCurrentWorkout = async () => {
+    if (outcomeBusy) return;
+    const input = discardWorkoutInputRef.current ?? {
+      sessionId,
+      expectedSessionRevision: viewRef.current.revision,
+      confirmation: "discard_workout",
+      endedAtMs: nowMs(),
+    };
+    discardWorkoutInputRef.current = input;
+    setOutcomeBusy(true);
+    setOutcomeFailure(null);
+    try {
+      const result = await commands.discardWorkout(input);
+      if (result.detail.id !== sessionId || result.detail.status !== "discarded") {
+        const durableDetail = await onResolveUnknownOutcome(sessionId);
+        if (durableDetail.id !== sessionId || durableDetail.status !== "discarded") {
+          throw new Error("discard_workout_result_unknown");
+        }
+      }
+      discardWorkoutInputRef.current = null;
+      setOutcomeConfirmation(null);
+      onDiscarded();
+    } catch {
+      setOutcomeConfirmation(null);
+      setOutcomeFailure({ operation: "discard" });
     } finally {
       setOutcomeBusy(false);
     }
@@ -847,47 +2034,32 @@ export function ActiveWorkoutScreen({
     if (confirmation === null) {
       return;
     }
+    if (confirmation === "partial") {
+      await finishPartialWorkout();
+      return;
+    }
+    if (confirmation === "zero_sets") {
+      await saveZeroSetWorkout();
+      return;
+    }
+    if (confirmation === "discard") {
+      await discardCurrentWorkout();
+      return;
+    }
     setOutcomeBusy(true);
     try {
       if (confirmation === "skip_exercise") {
         await commands.skipExercise({
           sessionId,
-          sessionExerciseId: view.currentExercise.id,
+          sessionExerciseId: activeExercise.id,
           expectedSessionRevision: view.revision,
-          expectedExerciseRevision: view.currentExercise.revision,
+          expectedExerciseRevision: activeExercise.revision,
           confirmation: "skip_exercise",
           nowMs: nowMs(),
         });
         setOutcomeConfirmation(null);
         return;
       }
-      if (confirmation === "partial") {
-        await commands.finishPartial({
-          sessionId,
-          expectedSessionRevision: view.revision,
-          confirmation: "save_partial_workout",
-          endedAtMs: nowMs(),
-        });
-        onOutcomeSaved(sessionId);
-        return;
-      }
-      if (confirmation === "zero_sets") {
-        await commands.saveZeroSetWorkout({
-          sessionId,
-          expectedSessionRevision: view.revision,
-          confirmation: "save_zero_set_workout",
-          endedAtMs: nowMs(),
-        });
-        onOutcomeSaved(sessionId);
-        return;
-      }
-      await commands.discardWorkout({
-        sessionId,
-        expectedSessionRevision: view.revision,
-        confirmation: "discard_workout",
-        endedAtMs: nowMs(),
-      });
-      onDiscarded();
     } finally {
       setOutcomeBusy(false);
     }
@@ -915,6 +2087,36 @@ export function ActiveWorkoutScreen({
           destructive: true,
         };
 
+  const outcomeFailureCopy = outcomeFailure?.operation === "finish_completed"
+    ? {
+        body: "Your workout is still active. Your completed sets and rest are unchanged. Try finishing again.",
+        confirmLabel: "Retry finishing workout",
+        heading: "Workout was not finished",
+        retry: finishCompletedWorkout,
+      }
+    : outcomeFailure?.operation === "partial"
+      ? {
+          body: "Your workout is still active. Your completed sets and current rest are unchanged. Try saving the partial workout again.",
+          confirmLabel: "Retry saving partial workout",
+          heading: "Partial workout was not saved",
+          retry: finishPartialWorkout,
+        }
+      : outcomeFailure?.operation === "zero_sets"
+        ? {
+            body: "The workout is still active with zero completed working sets. Try saving it again or keep training.",
+            confirmLabel: "Retry saving zero-set workout",
+            heading: "Zero-set workout was not saved",
+            retry: saveZeroSetWorkout,
+          }
+        : outcomeFailure?.operation === "discard"
+          ? {
+              body: "The workout is still active. No saved set or history fact was removed. Try again or keep the workout.",
+              confirmLabel: "Retry discarding workout",
+              heading: "Workout was not discarded",
+              retry: discardCurrentWorkout,
+            }
+          : null;
+
   function closeMoreActions() {
     setMoreVisible(false);
     moreActionRef.current?.focus();
@@ -927,39 +2129,70 @@ export function ActiveWorkoutScreen({
         constrainActiveWork
         scrollOffset={revealedSetOffset}
         {...(revealedSetId === null ? {} : { scrollRestoreKey: revealedSetId })}
+        {...(
+          pendingScrollTarget === null
+          || activeSet === undefined
+          || pendingScrollTarget.setId !== activeSet.id
+          || activeSetMeasurement?.setId !== activeSet.id
+          || activeExerciseOffset?.exerciseId !== activeExercise.id
+          || activeWorkingCardOffset?.exerciseId !== activeExercise.id
+            ? {}
+            : {
+              measuredScrollRequest: {
+                animated: pendingScrollTarget.animated,
+                targetKey: pendingScrollTarget.key,
+                y: activeExerciseOffset.y
+                  + activeWorkingCardOffset.y
+                  + activeSetMeasurement.y,
+              },
+            }
+        )}
         stickyHeader={identityHeader}
-        dock={reviewingEarlierOrLater ? undefined : (
+        dock={(
           view.rest.state === "running" || view.rest.state === "paused"
         ) ? (
-          <RestDock
-            busy={restBusy}
-            nextSetIndex={activeIndex + 1}
-            nextTarget={nextTarget}
-            notificationPermission={notificationPermission}
-            restSoundEnabled={restSoundEnabled}
-            countdownCue={countdownCue}
-            nowMs={nowMs}
-            onAdjust={(deltaMs) => {
-              void runRest(() => commands.adjustRest({
-                ...restInput(),
-                deltaMs,
-              }));
+          <View
+            onLayout={() => {
+              if (!benchmarkDockPendingRef.current) return;
+              benchmarkDockPendingRef.current = false;
+              acceptanceBenchmark?.markVisibleDock();
             }}
-            onExpired={() => {
-              void runRest(() => commands.expireRest(restInput()));
-            }}
-            onOpenSettings={onOpenNotificationSettings}
-            onPause={() => {
-              void runRest(() => commands.pauseRest(restInput()));
-            }}
-            onResume={() => {
-              void runRest(() => commands.resumeRest(restInput()));
-            }}
-            onSkip={() => {
-              void runRest(() => commands.skipRest(restInput()));
-            }}
-            state={view.rest}
-          />
+          >
+            <RestDock
+              sessionId={sessionId}
+              busy={restBusy}
+              exerciseName={activeExercise.name}
+              nextSetIndex={activeIndex + 1}
+              nextTarget={nextTarget}
+              notificationPermission={notificationPermission}
+              restSoundEnabled={restSoundEnabled}
+              countdownCue={countdownCue}
+              nowMs={nowMs}
+              onAdjust={(deltaMs) => {
+                void runRest(() => commands.adjustRest({
+                  ...restInput(),
+                  deltaMs,
+                }), () => viewRef.current.rest.state === "running"
+                  || viewRef.current.rest.state === "paused");
+              }}
+              onExpired={(feedback) => {
+                void runRest(() => commands.expireRest({ ...restInput(), ...feedback }),
+                  () => viewRef.current.rest.state === "running"
+                    && nowMs() >= viewRef.current.rest.endsAtMs);
+              }}
+              onOpenSettings={onOpenNotificationSettings}
+              onPause={() => {
+                void runRest(() => commands.pauseRest(restInput()));
+              }}
+              onResume={() => {
+                void runRest(() => commands.resumeRest(restInput()));
+              }}
+              onSkip={() => {
+                void runRest(() => commands.skipRest(restInput()));
+              }}
+              state={view.rest}
+            />
+          </View>
         ) : activeSet === undefined ? (
           <PrimaryAction
             busy={outcomeBusy}
@@ -968,48 +2201,252 @@ export function ActiveWorkoutScreen({
               void finishCompletedWorkout();
             }}
           />
-        ) : undefined}
+        ) : (
+          <WorkoutActionDock
+            addExerciseRef={exerciseAddTriggerRef}
+            completeLabel={saveFailedSetId === activeSet.id
+              ? "Set not saved · Retry"
+              : `Complete Set ${activeIndex + 1}`}
+            onAddExercise={() => {
+              setExerciseAddFailed(false);
+              setExerciseAddPickerVisible(true);
+            }}
+            onComplete={() => { void completeCurrentSet(activeSet); }}
+            state={workingBusySetId === activeSet.id
+              ? "saving"
+              : saveFailedSetId === activeSet.id ? "failed" : "ready"}
+          />
+        )}
         primary={
           <>
-            {reviewingEarlierOrLater ? (
-              <InlineNotice
-                action={
-                  <SecondaryAction
-                    label="Return to current exercise"
-                    onPress={onReturnToCurrent}
-                  />
-                }
-                body={`You are reviewing ${viewedExercise.name}. Workout progress remains on ${view.currentExercise.name}.`}
-                heading="Reviewing another exercise"
-                tone="neutral"
-              />
-            ) : null}
+            {restFailure ? <InlineNotice heading="Rest timer was not changed" body="Try the rest control again." tone="error" /> : null}
             {activeSet === undefined ? null : <TargetContext set={activeSet} />}
-            <ContentCard
-              style={styles.section}
-              testID="active-workout-warmups-card"
-            >
-              <SectionHeader
-                action={reviewingEarlierOrLater ? undefined : (
-                  <View
-                    style={styles.inlineActions}
-                    testID="active-workout-warmup-actions"
+            {reorderMode ? <SecondaryAction label="Done reordering" onPress={() => setReorderMode(false)} /> : null}
+            <WorkoutSessionPresentation
+              showGrip={false}
+              renderExerciseGrip={(presentationExercise) => reorderMode ? null : (
+                <FocusablePressable
+                  accessibilityLabel={`Reorder ${presentationExercise.name}`}
+                  accessibilityHint="Open exercise order. Then touch and hold a grip to drag, or use the move buttons."
+                  accessibilityRole="button"
+                  disabled={exerciseReorderBusy || commands.reorderExercises === undefined || overviewExercises.length < 2}
+                  onPress={() => setReorderMode(true)}
+                  onLongPress={() => setReorderMode(true)}
+                  style={styles.exerciseReorderGrip}
+                  testID={`workout-reorder-grip-${presentationExercise.id}`}
+                >
+                  <GripVertical color={colors.textSecondary} size={24} />
+                </FocusablePressable>
+              )}
+              renderExerciseHeader={(presentationExercise, index, header) => {
+                if (!reorderMode) return header;
+                const exercise = overviewExercises.find(({ id }) => id === presentationExercise.id);
+                if (exercise === undefined) return header;
+                return <>
+                  <PlanEditorReorderableRow
+                    count={overviewExercises.length}
+                    dragActivationDistance={8}
+                    disabled={exerciseReorderBusy}
+                    label={exercise.name}
+                    onMoveDown={() => {
+                      void submitExerciseReorder(index, index + 1);
+                    }}
+                    onMoveTo={(targetPosition, method) =>
+                      submitExerciseReorder(index, targetPosition, method)}
+                    onMoveUp={() => {
+                      void submitExerciseReorder(index, index - 1);
+                    }}
+                    onDragPreview={setExerciseReorderPreview}
+                    preview={exerciseReorderPreview}
+                    position={index}
+                    reorderId={`exercise-${exercise.id}`}
+                    tone="card"
                   >
-                    <SectionGlyphAction
-                      busy={sectionMutationRef.current === "add_warmup"}
-                      disabled={
-                        warmupBusy !== null
-                        || view.currentExercise.metricProfile !== "load_reps"
-                      }
-                      accessibilityLabel="Add warm-up"
-                      icon={Plus}
+                    {header}
+                  <View style={styles.reorderFallbackActions}>
+                    <ActionRow><SecondaryAction
+                      disabled={exerciseReorderBusy || index === 0}
+                      label={`Move ${exercise.name} up`}
                       onPress={() => {
-                        void addWarmup();
+                        void submitExerciseReorder(index, index - 1);
                       }}
-                      ref={warmupAddRef}
                     />
+                    <SecondaryAction
+                      disabled={exerciseReorderBusy || index === overviewExercises.length - 1}
+                      label={`Move ${exercise.name} down`}
+                      onPress={() => {
+                        void submitExerciseReorder(index, index + 1);
+                      }}
+                      testID="workout-reorder-exercise-down"
+                    /></ActionRow>
                   </View>
+                  </PlanEditorReorderableRow>
+                  {exerciseReorderAnnouncement?.sessionExerciseId === exercise.id
+                    ? (
+                      <Text
+                        accessibilityLiveRegion="polite"
+                        style={[
+                          workoutTypeScale.secondary as TextStyle,
+                          styles.reorderAnnouncement,
+                          { color: colors.contentCardTextSecondary },
+                        ]}
+                        testID={`exercise-reorder-announcement-${exercise.id}`}
+                      >
+                        {exerciseReorderAnnouncement.text}
+                      </Text>
+                    )
+                    : null}
+                </>;
+              }}
+              exerciseAccessibilityLabel={(presentationExercise, expanded, index) => {
+                const exercise = overviewExercises.find(({ id }) => id === presentationExercise.id);
+                if (exercise === undefined) return presentationExercise.name;
+                const metadata = exerciseHeaderMetadata(
+                  exercise,
+                  exercise.id === activeExercise.id ? view.activeSetId : null,
+                );
+                return `${exercise.name}. ${metadata}. ${expanded ? "Collapse" : "Expand"} exercise`;
+              }}
+              exerciseSupportingText={(presentationExercise, expanded, index) => {
+                const exercise = overviewExercises.find(({ id }) => id === presentationExercise.id);
+                if (exercise === undefined) return "";
+                return exerciseHeaderMetadata(
+                  exercise,
+                  exercise.id === activeExercise.id ? view.activeSetId : null,
+                );
+              }}
+              renderExerciseAccessory={(presentationExercise) => {
+                const exercise = overviewExercises.find(({ id }) => id === presentationExercise.id);
+                if (exercise === undefined) return null;
+                return <>
+                  <FocusablePressable
+                    accessibilityLabel={`View ${exercise.name} trend`}
+                    accessibilityRole="button"
+                    focusable
+                    nativeID="workout-exercise-trend"
+                    onPress={() => setTrendExerciseId(exercise.id)}
+                    style={({ pressed }) => [styles.exerciseHeaderAction, {
+                      backgroundColor: pressed ? colors.contentCardPressed : "transparent",
+                      borderColor: colors.contentCardBorder,
+                    }]}
+                    testID={exercise.id === activeExercise.id
+                      ? "workout-active-exercise-trend"
+                      : `exercise-trend-${exercise.exerciseId}`}
+                  >
+                    <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>↗</Text>
+                  </FocusablePressable>
+                  <FocusablePressable
+                    accessibilityLabel={`Open ${exercise.name} menu`}
+                    accessibilityRole="button"
+                    accessibilityState={{
+                      busy: exerciseEditBusy,
+                      disabled: exerciseEditBusy,
+                      expanded: exerciseActionsVisibleForId === exercise.id,
+                    }}
+                    disabled={exerciseEditBusy}
+                    focusable={!exerciseEditBusy}
+                    nativeID="workout-exercise-menu"
+                    onPress={() => {
+                      setExerciseActionsVisibleForId(exercise.id);
+                      setExerciseEditFailure(null);
+                      setExerciseEditRecovery(null);
+                    }}
+                    ref={(node) => {
+                      exerciseActionRefs.current.set(exercise.id, node);
+                    }}
+                    style={({ pressed }) => [
+                      styles.exerciseHeaderAction,
+                      {
+                        backgroundColor: pressed ? colors.contentCardPressed : "transparent",
+                        borderColor: exerciseActionsVisibleForId === exercise.id
+                          ? colors.action
+                          : colors.contentCardBorder,
+                        opacity: exerciseEditBusy ? 0.62 : 1,
+                      },
+                    ]}
+                    testID={exercise.id === activeExercise.id
+                      ? "workout-active-exercise-menu"
+                      : `exercise-actions-${exercise.exerciseId}`}
+                  >
+                    <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>•••</Text>
+                  </FocusablePressable>
+                </>;
+              }}
+              isExerciseExpanded={(presentationExercise, index) => {
+                const exercise = overviewExercises.find(({ id }) => id === presentationExercise.id);
+                return !reorderMode && exercise !== undefined && !isExerciseCollapsed(exercise, index);
+              }}
+              model={presentationModel}
+              onExerciseToggle={(presentationExercise, expanded) => {
+                if (reorderMode) setReorderMode(false);
+                setExerciseExpansionOverrides((current) => {
+                  const next = new Map(current);
+                  next.set(presentationExercise.id, !expanded);
+                  return next;
+                });
+              }}
+            >
+              {(presentationExercise, expanded, index) => {
+              const exercise = overviewExercises.find(({ id }) => id === presentationExercise.id);
+              if (exercise === undefined) return null;
+              const collapsed = !expanded;
+              return (
+              <View
+                key={exercise.id}
+                testID={`overview-exercise-${exercise.id}`}
+                onLayout={(event: LayoutChangeEvent) => {
+                  if (exercise.id === activeExercise.id) {
+                    const y = event.nativeEvent.layout.y;
+                    setActiveExerciseOffset((current) =>
+                      current?.exerciseId === exercise.id && current.y === y
+                        ? current
+                        : { exerciseId: exercise.id, y }
+                    );
+                  }
+                }}
+                style={styles.exerciseSection}
+              >
+                {exerciseEditFailure?.exerciseId !== exercise.id ? null : (
+                  <InlineNotice
+                    action={
+                      <SecondaryAction
+                        label={exerciseEditFailure.action === "replace"
+                          ? "Retry replacing exercise"
+                          : "Retry removing exercise"}
+                        onPress={exerciseEditFailure.retry}
+                      />
+                    }
+                    body="Your workout was not changed. Try again from the latest workout."
+                    heading={exerciseEditFailure.action === "replace"
+                      ? "Exercise could not be replaced"
+                      : "Exercise could not be removed"}
+                    tone="error"
+                  />
                 )}
+                {exerciseEditRecovery?.exerciseId !== exercise.id ? null : (
+                  <InlineNotice
+                    action={<SecondaryAction label="Return to Today" onPress={onGoBack} />}
+                    body="The exercise change was saved, but the latest workout could not be loaded. Return to Today and reopen this workout."
+                    heading="Exercise changed. Reload workout"
+                    tone="attention"
+                  />
+                )}
+                {exerciseReorderFailure?.sourcePosition !== index ? null : (
+                  <InlineNotice
+                    action={<SecondaryAction label="Retry reordering exercise" onPress={exerciseReorderFailure.retry} />}
+                    body="Your workout order was not changed. Try again from the latest workout."
+                    heading="Exercise could not be reordered"
+                    tone="error"
+                  />
+                )}
+                {collapsed ? null : <>
+                <ContentCard
+                  style={styles.section}
+                  testID={isMultiExerciseOverview
+                    ? `active-workout-${exercise.id}-warmups-card`
+                    : "active-workout-warmups-card"}
+                >
+              <SectionHeader
                 supportingText="Optional warm-up sets"
                 title="Warm-ups"
                 tone="card"
@@ -1046,55 +2483,71 @@ export function ActiveWorkoutScreen({
                   tone="attention"
                 />
               )}
-              {viewedExercise.warmups.map((set, index) => (
-                reviewingEarlierOrLater ? <ReviewSetSummary
-                  index={index + 1}
-                  key={set.id}
-                  kind="warmup"
-                  set={set}
-                /> : <SetRow
+              {exercise.warmups.map((set, index) => (
+                <React.Fragment key={set.id}>
+                <SetRow
                   active={false}
+                  compact={isMultiExerciseOverview
+                    && set.id !== activeSet?.id
+                    && set.id !== expandedCompactSetId}
                   busy={warmupBusy?.setId === set.id}
-                  count={viewedExercise.warmups.length}
                   index={index + 1}
-                  key={set.id}
+                  key={`${set.id}-${set.id === activeSet?.id || set.id === expandedCompactSetId ? "expanded" : "compact"}`}
                   kind="warmup"
-                  onChangeValues={(observation) => {
-                    return persistValues(set, observation);
-                  }}
-                  onComplete={() => {
-                    void runWarmup(set);
-                  }}
-                  onRevealedLayout={setRevealedSetOffset}
-                  onRemove={() => requestRemoval("warmup", set, index)}
-                  removeRef={(node) => {
-                    removeGlyphRefs.current.set(set.id, node);
-                  }}
-                  revealed={revealedSetId === set.id}
+                  onPress={() => setEditingSetId(set.id)}
+                  {...(isMultiExerciseOverview
+                    ? { overviewTestID: `overview-${exercise.id}-${set.id}` }
+                    : {})}
+                  ref={(node) => { setRowRefs.current.set(set.id, node); }}
                   set={set}
                   tone="card"
                 />
+                </React.Fragment>
               ))}
-            </ContentCard>
+                </ContentCard>
+            <View
+              testID={`overview-working-card-${exercise.id}`}
+              onLayout={(event: LayoutChangeEvent) => {
+                if (exercise.id === activeExercise.id) {
+                  const y = event.nativeEvent.layout.y;
+                  setActiveWorkingCardOffset((current) =>
+                    current?.exerciseId === exercise.id && current.y === y
+                      ? current
+                      : { exerciseId: exercise.id, y }
+                  );
+                }
+              }}
+            >
             <ContentCard
               style={styles.section}
-              testID="active-workout-working-sets-card"
+              testID={isMultiExerciseOverview
+                ? `active-workout-${exercise.id}-working-sets-card`
+                : "active-workout-working-sets-card"}
             >
               <SectionHeader
-                action={reviewingEarlierOrLater ? undefined : (
+                action={(
                   <View
                     style={styles.inlineActions}
-                    testID="active-workout-working-actions"
+                    testID={isMultiExerciseOverview
+                      ? `active-workout-${exercise.id}-working-actions`
+                      : "active-workout-working-actions"}
                   >
                     <SectionGlyphAction
-                      busy={sectionMutationRef.current === "add_working"}
-                      disabled={workingBusySetId !== null}
-                      accessibilityLabel="Add working set"
+                      busy={sectionMutationRef.current !== null}
+                      disabled={
+                        sectionMutationRef.current !== null
+                        || warmupBusy !== null
+                        || workingBusySetId !== null
+                      }
+                      accessibilityLabel="Add set"
                       icon={Plus}
                       onPress={() => {
-                        void addWorking();
+                        setAddSetMenuExerciseId(exercise.id);
                       }}
                       ref={workingAddRef}
+                      testID={exercise.id === activeExercise.id
+                        ? "workout-active-add-set"
+                        : `workout-add-set-${exercise.id}`}
                     />
                   </View>
                 )}
@@ -1102,7 +2555,8 @@ export function ActiveWorkoutScreen({
                 title="Working sets"
                 tone="card"
               />
-              {sectionFailure?.operation !== "add_working" ? null : (
+              {sectionFailure?.operation !== "add_working"
+                || sectionFailure.sessionExerciseId !== exercise.id ? null : (
                 <InlineNotice
                   action={
                     <SecondaryAction
@@ -1116,66 +2570,34 @@ export function ActiveWorkoutScreen({
                   tone="error"
                 />
               )}
-              {viewedExercise.workingSets.map((set, index) => (
-                reviewingEarlierOrLater ? <ReviewSetSummary
-                  index={index + 1}
-                  key={set.id}
-                  kind="working"
-                  set={set}
-                /> : <SetRow
+              {exercise.workingSets.map((set, index) => (
+                <React.Fragment key={set.id}>
+                <SetRow
                   active={view.activeSetId === set.id}
-                  actionsDisabled={
-                    view.rest.state === "running"
-                    || view.rest.state === "paused"
-                  }
+                  compact={isMultiExerciseOverview
+                    && set.id !== activeSet?.id
+                    && set.id !== expandedCompactSetId}
                   busy={workingBusySetId === set.id}
-                  count={viewedExercise.workingSets.length}
                   index={index + 1}
-                  key={set.id}
+                  key={`${set.id}-${set.id === activeSet?.id || set.id === expandedCompactSetId ? "expanded" : "compact"}`}
                   kind="working"
-                  onChangeValues={(observation) => {
-                    return persistValues(set, observation);
-                  }}
-                  onComplete={() => {
-                    void completeCurrentSet(set);
-                  }}
-                  onCancelCorrection={() => {
-                    setEditingCompletedSetId(null);
-                    setCorrectionFailure(null);
-                  }}
-                  onEditCompleted={() => {
-                    setEditingCompletedSetId(set.id);
-                    setCorrectionFailure(null);
-                  }}
-                  onSaveCorrection={(observation) => {
-                    return reviseCompletedSet(set, observation);
-                  }}
-                  onRemove={() => requestRemoval("working", set, index)}
-                  removeRef={(node) => {
-                    removeGlyphRefs.current.set(set.id, node);
-                  }}
-                  correctionBusy={correctionBusySetId === set.id}
-                  correctionError={correctionFailure?.setId === set.id
-                    ? "Correction was not saved. Retry the correction."
-                    : undefined}
-                  correctionMode={editingCompletedSetId === set.id}
-                  revealed={revealedSetId === set.id}
+                  disabled={view.rest.state === "running" || view.rest.state === "paused"}
+                  onPress={() => setEditingSetId(set.id)}
+                  ref={(node) => { setRowRefs.current.set(set.id, node); }}
                   set={set}
                   tone="card"
+                  {...(isMultiExerciseOverview
+                    ? { overviewTestID: view.activeSetId === set.id
+                      ? "workout-active-set-row"
+                      : `overview-${exercise.id}-${set.id}` }
+                    : view.activeSetId === set.id
+                      ? { overviewTestID: "workout-active-set-row" }
+                      : {})}
                 />
+                </React.Fragment>
               ))}
               {saveFailedSetId === null ? null : (
                 <InlineNotice
-                  action={
-                    saveFailedSetId === activeSet?.id ? (
-                      <PrimaryAction
-                        label="Set not saved · Retry"
-                        onPress={() => {
-                          void completeCurrentSet(activeSet);
-                        }}
-                      />
-                    ) : undefined
-                  }
                   body="Your values are still here. The set was not completed and rest did not start."
                   heading="Set not saved"
                   card
@@ -1214,28 +2636,25 @@ export function ActiveWorkoutScreen({
                 />
               )}
             </ContentCard>
+            </View>
+              </>}
+              </View>
+            );
+            }}</WorkoutSessionPresentation>
           </>
         }
         testID="active-workout"
       />
-      {reviewingEarlierOrLater ? null : <Modal
-        animationType="fade"
-        onRequestClose={closeMoreActions}
-        transparent
+      <BottomSheet
+        cancelLabel="Return to Workout"
+        contentStyle={styles.moreSheetContent}
+        heading="More workout actions"
+        onCancel={() => setMoreVisible(false)}
+        restoreFocusRef={moreActionRef}
+        scrollTestID="workout-actions-sheet-content"
+        testID="workout-actions-sheet"
         visible={moreVisible}
       >
-        <View style={styles.modalBackdrop}>
-          <ScrollView
-            accessibilityViewIsModal
-            contentContainerStyle={styles.moreSheetContent}
-            keyboardShouldPersistTaps="handled"
-            style={[
-              styles.moreSheet,
-              { backgroundColor: colors.surface },
-            ]}
-            testID="workout-actions-sheet-content"
-          >
-            <SectionHeader title="More workout actions" />
             {view.activeSetId === null ? (
               <PrimaryAction
                 busy={outcomeBusy}
@@ -1248,6 +2667,13 @@ export function ActiveWorkoutScreen({
               />
             ) : null}
             <SecondaryAction
+              label={reorderMode ? "Done reordering" : "Reorder exercises"}
+              onPress={() => {
+                closeMoreActions();
+                setReorderMode((current) => !current);
+              }}
+            />
+            <SecondaryAction
               disabled={outcomeBusy}
               label="Finish as partial"
               ref={view.activeSetId === null ? undefined : moreFirstActionRef}
@@ -1256,6 +2682,26 @@ export function ActiveWorkoutScreen({
                 setOutcomeConfirmation("partial");
               }}
             />
+            {view.planId === null || view.planId === undefined ? null : (
+              <SecondaryAction
+                disabled={outcomeBusy}
+                label="Plan settings"
+                onPress={() => {
+                  closeMoreActions();
+                  onOpenPlanSettings();
+                }}
+              />
+            )}
+            {view.planId === null || view.planId === undefined ? null : (
+              <SecondaryAction
+                disabled={outcomeBusy}
+                label="Edit plan after workout · Schedule"
+                onPress={() => {
+                  closeMoreActions();
+                  onRequestPlanEdit();
+                }}
+              />
+            )}
             <SecondaryAction
               destructive
               disabled={outcomeBusy}
@@ -1265,10 +2711,256 @@ export function ActiveWorkoutScreen({
                 setOutcomeConfirmation("discard");
               }}
             />
-          </ScrollView>
-        </View>
-      </Modal>}
-      {reviewingEarlierOrLater ? null : <ConfirmationSheet
+      </BottomSheet>
+      <ExerciseTrendSheet
+        exerciseName={overviewExercises.find(({ id }) => id === trendExerciseId)?.name ?? "Exercise"}
+        history={trendHistory}
+        onClose={() => setTrendExerciseId(null)}
+        visible={trendExerciseId !== null}
+      />
+      {timingExerciseId === null ? null : (() => {
+        const exercise = overviewExercises.find(({ id }) => id === timingExerciseId);
+        if (exercise === undefined) return null;
+        return (
+          <BottomSheet
+            cancelLabel="Return to Workout"
+            heading={`Timing · ${exercise.name}`}
+            cancelDisabled={timingRestBusy}
+            onCancel={() => setTimingExerciseId(null)}
+            restoreFocusRef={{ current: exerciseActionRefs.current.get(exercise.id) ?? null }}
+            visible
+          >
+            <Text style={[workoutTypeScale.body as TextStyle, { color: colors.textSecondary }]}>
+              {`Between-set rest · ${exercise.defaultRestSeconds} sec`}
+            </Text>
+            <TextInput
+              accessibilityLabel={`Between-set rest seconds for ${exercise.name}`}
+              keyboardType="number-pad"
+              onChangeText={setTimingRestDraft}
+              style={[styles.timingRestInput, { borderColor: colors.divider, color: colors.textPrimary }]}
+              value={timingRestDraft}
+            />
+            {timingRestFailure === null ? null : (
+              <Text accessibilityRole="alert" style={[workoutTypeScale.body as TextStyle, { color: colors.destructive }]}>
+                {timingRestFailure}
+              </Text>
+            )}
+            <PrimaryAction
+              busy={timingRestBusy}
+              disabled={timingRestBusy || commands.updateSessionExerciseDefaultRest === undefined}
+              label="Save between-set rest"
+              onPress={() => { void saveExerciseRest(); }}
+            />
+          </BottomSheet>
+        );
+      })()}
+      <BottomSheet
+        cancelLabel="Return to Workout"
+        contentStyle={styles.moreSheetContent}
+        heading="Exercise actions"
+        onCancel={closeExerciseActions}
+        scrollTestID="exercise-actions-sheet-content"
+        testID="exercise-actions-sheet"
+        visible={exerciseActionsVisibleForId !== null}
+      >
+            {exerciseActionsVisibleForId === null ? null : (
+              <SecondaryAction
+                label="Timing"
+                onPress={() => {
+                  setTimingExerciseId(exerciseActionsVisibleForId);
+                  const exercise = overviewExercises.find(({ id }) => id === exerciseActionsVisibleForId);
+                  setTimingRestDraft(String(exercise?.defaultRestSeconds ?? 0));
+                  setTimingRestFailure(null);
+                  closeExerciseActions();
+                }}
+              />
+            )}
+            {exerciseActionsVisibleForId === null ? null : (
+              <SecondaryAction
+                label="Replace exercise"
+                ref={exerciseActionFirstRef}
+                onPress={() => {
+                  const exerciseId = exerciseActionsVisibleForId;
+                  closeExerciseActions();
+                  if (exerciseId !== null) {
+                    openReplacementPicker(exerciseId);
+                  }
+                }}
+              />
+            )}
+            {exerciseActionsVisibleForId === null ? null : (
+              <SecondaryAction
+                destructive
+                label="Delete exercise"
+                onPress={() => {
+                  const exerciseId = exerciseActionsVisibleForId;
+                  closeExerciseActions();
+                  if (exerciseId !== null) {
+                    beginExerciseEdit({ action: "remove", exerciseId });
+                  }
+                }}
+              />
+            )}
+      </BottomSheet>
+      <BottomSheet
+        cancelLabel="Return to Workout"
+        contentStyle={styles.moreSheetContent}
+        heading="Choose exercise"
+        onCancel={closeExerciseAddPicker}
+        restoreFocusRef={exerciseAddTriggerRef}
+        scrollTestID="active-workout-add-exercise-picker-content"
+        testID="add-exercise-sheet"
+        visible={exerciseAddPickerVisible}
+      >
+        {selectedExerciseToAdd === undefined ? null : (
+          <PrimaryAction
+            busy={exerciseAddBusy}
+            label={`Add ${selectedExerciseToAdd.name}`}
+            onPress={() => {
+              void submitExerciseAdd();
+            }}
+            testID="workout-add-exercise-confirm"
+          />
+        )}
+        <M3SearchField
+          label="Search exercises"
+          onChangeText={setExerciseAddQuery}
+          resultCount={exerciseAddCandidates.length}
+          ref={exerciseAddSearchRef}
+          state={exerciseAddCandidates.length === 0 ? "empty" : "results"}
+          value={exerciseAddQuery}
+        />
+        {availableExercisesState === "loading" ? (
+          <InlineNotice
+            body="Please wait while your exercise library loads."
+            heading="Loading exercises"
+            tone="neutral"
+          />
+        ) : availableExercisesState === "error" ? (
+          <InlineNotice
+            action={<SecondaryAction label="Retry loading exercises" onPress={() => onRetryAvailableExercises?.()} />}
+            body="Your workout was not changed. Retry loading exercises before choosing one."
+            heading="Exercises could not be loaded"
+            tone="error"
+          />
+        ) : exerciseAddCandidates.length === 0 ? (
+          <InlineNotice body="Try a different search." heading="No exercises found" tone="neutral" />
+        ) : exerciseAddCandidates.map((candidate, index) => (
+          <FocusablePressable
+            accessibilityLabel={`${candidate.name}. Add exercise`}
+            accessibilityRole="button"
+            key={candidate.id}
+            onPress={() => {
+              setExerciseAddSelectedId(candidate.id);
+              exerciseAddSearchRef.current?.blur();
+              Keyboard.dismiss();
+            }}
+            testID={index === 0 ? "workout-add-exercise-first-option" : `add-exercise-option-${candidate.id}`}
+            style={[
+              styles.exerciseOption,
+              {
+                backgroundColor: exerciseAddSelectedId === candidate.id
+                  ? colors.contentCardSelected
+                  : colors.surface,
+                borderColor: exerciseAddSelectedId === candidate.id
+                  ? colors.action
+                  : colors.divider,
+              },
+            ]}
+          >
+            <Text style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>
+              {candidate.name}
+            </Text>
+            {exerciseAddSelectedId === candidate.id ? (
+              <Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+                Selected
+              </Text>
+            ) : null}
+          </FocusablePressable>
+        ))}
+        {exerciseAddFailed ? (
+          <InlineNotice
+            action={<SecondaryAction label="Retry adding exercise" onPress={() => { void submitExerciseAdd(); }} />}
+            body="Your workout was not changed. Try again from the latest workout."
+            heading="Exercise was not added"
+            tone="error"
+          />
+        ) : null}
+      </BottomSheet>
+      <BottomSheet
+        cancelLabel="Return to Workout"
+        contentStyle={styles.moreSheetContent}
+        heading="Choose exercise"
+        onCancel={closeReplacementPicker}
+        scrollTestID="replace-exercise-picker-content"
+        visible={replacementPickerForId !== null}
+      >
+            {replacementPickerForId === null || replacementExerciseId === null ? null : (
+              <PrimaryAction
+                busy={exerciseEditBusy}
+                label={`Replace with ${availableExercises.find(
+                  ({ id }) => id === replacementExerciseId,
+                )?.name ?? "exercise"}`}
+                onPress={() => {
+                  void submitExerciseEdit({
+                    action: "replace",
+                    exerciseId: replacementPickerForId,
+                  });
+                }}
+                testID="workout-replace-exercise-confirm"
+              />
+            )}
+            <M3SearchField
+              label="Search exercises"
+              onChangeText={setReplacementQuery}
+              resultCount={replacementCandidates.length}
+              ref={replacementSearchRef}
+              state={replacementCandidates.length === 0 ? "empty" : "results"}
+              value={replacementQuery}
+            />
+            {replacementCandidates.length !== 0 ? null : (
+              <InlineNotice
+                body="Try a different search or clear a filter."
+                heading="No exercises found"
+                tone="neutral"
+              />
+            )}
+            {replacementCandidates.map((candidate, index) => (
+              <FocusablePressable
+                accessibilityLabel={candidate.name}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: replacementExerciseId === candidate.id }}
+                key={candidate.id}
+                onPress={() => {
+                  setReplacementExerciseId(candidate.id);
+                  replacementSearchRef.current?.blur();
+                  Keyboard.dismiss();
+                }}
+                testID={index === 0 ? "workout-replace-exercise-first-option" : `replace-exercise-option-${candidate.id}`}
+                style={[
+                  styles.exerciseOption,
+                  {
+                    backgroundColor: replacementExerciseId === candidate.id
+                      ? colors.contentCardSelected
+                      : colors.surface,
+                    borderColor: replacementExerciseId === candidate.id
+                      ? colors.action
+                      : colors.divider,
+                  },
+                ]}
+              >
+                <Text style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>
+                  {candidate.name}
+                </Text>
+                {replacementExerciseId === candidate.id ? (
+                  <Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+                    Selected
+                  </Text>
+                ) : null}
+              </FocusablePressable>
+            ))}
+      </BottomSheet>
+      <ConfirmationSheet
         body={confirmationCopy.body}
         cancelLabel={confirmationCopy.cancelLabel}
         confirmLabel={confirmationCopy.confirmLabel}
@@ -1281,8 +2973,60 @@ export function ActiveWorkoutScreen({
         }}
         restoreFocusRef={moreActionRef}
         visible={outcomeConfirmation !== null}
-      />}
-      {reviewingEarlierOrLater || pendingRemoval === null ? null : <ConfirmationSheet
+      />
+      <ConfirmationSheet
+        body={outcomeFailureCopy?.body ?? ""}
+        cancelLabel="Return to Workout"
+        confirmBusy={outcomeBusy}
+        confirmLabel={outcomeFailureCopy?.confirmLabel ?? "Retry"}
+        heading={outcomeFailureCopy?.heading ?? "Workout was not saved"}
+        onCancel={() => setOutcomeFailure(null)}
+        onConfirm={() => {
+          void outcomeFailureCopy?.retry();
+        }}
+        restoreFocusRef={moreActionRef}
+        visible={outcomeFailureCopy !== null}
+      />
+      {exerciseActionCandidate?.action !== "remove" ? null : (
+        <ConfirmationSheet
+          body={(() => {
+            const exercise = exercisesFor(view).find(
+              ({ id }) => id === exerciseActionCandidate.exerciseId,
+            );
+            const hasCompletedHistory = exercise?.workingSets.some(
+              ({ status }) => status === "completed",
+            ) ?? false;
+            return hasCompletedHistory
+              ? "This exercise has completed sets. They will be retained and this exercise will be marked Skipped, not deleted."
+              : `Delete ${exercise?.name ?? "this exercise"} from this workout?`;
+          })()}
+          cancelLabel="Keep exercise"
+          confirmBusy={exerciseEditBusy}
+          confirmLabel={`Confirm delete ${exercisesFor(view).find(
+            ({ id }) => id === exerciseActionCandidate.exerciseId,
+          )?.name ?? "exercise"}`}
+          confirmTestID="delete-exercise-confirm"
+          destructive
+          heading={`Delete ${exercisesFor(view).find(
+            ({ id }) => id === exerciseActionCandidate.exerciseId,
+          )?.name ?? "exercise"}?`}
+          onCancel={() => {
+            const exerciseId = exerciseActionCandidate.exerciseId;
+            setExerciseActionCandidate(null);
+            exerciseActionRefs.current.get(exerciseId)?.focus();
+          }}
+          onConfirm={() => {
+            void submitExerciseEdit(exerciseActionCandidate);
+          }}
+          restoreFocusRef={{
+            current: exerciseActionRefs.current.get(
+              exerciseActionCandidate.exerciseId,
+            ) ?? null,
+          }}
+          visible
+        />
+      )}
+      {pendingRemoval === null ? null : <ConfirmationSheet
         body={pendingRemoval.kind === "warmup"
           ? "This warm-up will be removed from this workout. This cannot be undone."
           : "This set will be removed from this workout. This cannot be undone."}
@@ -1303,27 +3047,130 @@ export function ActiveWorkoutScreen({
         restoreFocusRef={removeFocusRef}
         visible
       />}
+      {addSetMenuExerciseId === null ? null : (() => {
+        const exercise = exercisesFor(view).find(
+          ({ id }) => id === addSetMenuExerciseId,
+        );
+        if (exercise === undefined) return null;
+        const warmupAvailable = exercise.metricProfile === "load_reps";
+        const workingAvailable = exercise.workingSets.length > 0;
+        return (
+          <BottomSheet
+            cancelLabel="Return to Workout"
+            heading={`Add set · ${exercise.name}`}
+            onCancel={() => setAddSetMenuExerciseId(null)}
+            restoreFocusRef={workingAddRef}
+            testID="add-set-sheet"
+            visible
+          >
+            <PrimaryAction
+              disabled={!warmupAvailable || sectionMutationRef.current !== null}
+              label="Add warm-up set"
+              onPress={() => {
+                setAddSetMenuExerciseId(null);
+                void addWarmup(exercise);
+              }}
+            />
+            <SecondaryAction
+              disabled={!workingAvailable || sectionMutationRef.current !== null}
+              label="Add working set"
+              onPress={() => {
+                setAddSetMenuExerciseId(null);
+                void addWorking(exercise);
+              }}
+            />
+          </BottomSheet>
+        );
+      })()}
       {removalAnnouncement === null ? null : (
         <Text accessibilityLiveRegion="polite" style={styles.visuallyHidden}>
           {removalAnnouncement}
         </Text>
       )}
+      {editorOwner === undefined ? null : (
+        <WorkoutSetEditorSheet
+          exerciseName={editorOwner.exercise.name}
+          onCancel={() => setEditingSetId(null)}
+          onSave={saveEditorValues}
+          restoreFocusRef={{ current: setRowRefs.current.get(editorOwner.set.id) ?? null }}
+          set={editorOwner.set}
+          visible
+        />
+      )}
+      {exerciseReorderRecovery ? (
+        <InlineNotice
+          action={<SecondaryAction label="Return to Today" onPress={onGoBack} />}
+          body="The exercise order was saved, but the latest workout could not be loaded. Return to Today and reopen this workout."
+          heading="Exercise reordered. Reload workout"
+          tone="attention"
+        />
+      ) : null}
     </>
   );
 }
 
 const styles = StyleSheet.create({
+  exerciseOption: {
+    borderRadius: radius.standard,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: space[1],
+    minHeight: sizes.minimumTarget,
+    padding: space[2],
+  },
+  exerciseHeaderAction: {
+    alignItems: "center",
+    borderRadius: radius.standard,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: "center",
+    minHeight: sizes.minimumTarget,
+    minWidth: sizes.minimumTarget,
+  },
+  exerciseDivider: {
+    height: sizes.focusRing,
+    width: "100%",
+  },
   targetSection: {
     gap: space[1],
   },
   section: {
     gap: space[2],
   },
+  exerciseSection: {
+    gap: space[2],
+  },
+  exerciseToggle: {
+    alignItems: "center",
+    borderRadius: radius.standard,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: sizes.minimumTarget,
+    minWidth: sizes.minimumTarget,
+    paddingHorizontal: space[2],
+    paddingRight: sizes.minimumTarget + space[2],
+    paddingVertical: space[2],
+  },
+  exerciseToggleCopy: {
+    flex: 1,
+    gap: space[1],
+    paddingRight: space[2],
+  },
   inlineActions: {
     alignSelf: "flex-end",
     flexDirection: "row",
     gap: space[2],
     justifyContent: "flex-end",
+  },
+  exerciseReorderGrip: {
+    alignItems: "center", justifyContent: "center", minHeight: 80, minWidth: 48,
+  },
+  reorderFallbackActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: space[2],
+  },
+  reorderAnnouncement: {
+    paddingHorizontal: space[2],
   },
   sectionGlyphAction: {
     alignItems: "center",
@@ -1336,24 +3183,16 @@ const styles = StyleSheet.create({
   headerActions: {
     gap: space[1],
   },
-  modalBackdrop: {
-    backgroundColor: "rgba(0, 0, 0, 0.48)",
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  moreSheet: {
-    borderTopLeftRadius: radius.emphasized,
-    borderTopRightRadius: radius.emphasized,
-    maxHeight: "90%",
-  },
   moreSheetContent: {
     gap: space[4],
     padding: space[6],
   },
-  reviewSet: {
-    gap: space[1],
-    minHeight: 48,
-    paddingVertical: space[2],
+  timingRestInput: {
+    borderRadius: radius.standard,
+    borderWidth: StyleSheet.hairlineWidth,
+    fontSize: 18,
+    minHeight: sizes.minimumTarget,
+    paddingHorizontal: space[2],
   },
   visuallyHidden: {
     height: 1,

@@ -10,6 +10,7 @@ export const SQLITE_ROLLBACK = "ROLLBACK" as const;
 export type SqliteWriterFailureStage =
   | "begin"
   | "commit"
+  | "acknowledgment"
   | "rollback"
   | "statement"
   | "transaction";
@@ -30,6 +31,7 @@ export class SerializedWriteExecutor {
   constructor(
     private readonly writer: SqliteConnection,
     private readonly beforeCommit?: () => Promise<void>,
+    private readonly afterCommit?: () => Promise<void>,
   ) {}
 
   execute<Result>(
@@ -66,11 +68,16 @@ export class SerializedWriteExecutor {
     try {
       await this.beforeCommit?.();
       await this.writer.execAsync(SQLITE_COMMIT);
-      return result;
     } catch (error) {
       await this.rollback(error);
       throw new SqliteWriterError("commit", error);
     }
+    try {
+      await this.afterCommit?.();
+    } catch (error) {
+      throw new SqliteWriterError("acknowledgment", error);
+    }
+    return result;
   }
 
   private async rollback(originalError: unknown): Promise<void> {

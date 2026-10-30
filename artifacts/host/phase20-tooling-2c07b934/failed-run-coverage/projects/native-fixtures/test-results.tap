@@ -1,0 +1,1059 @@
+TAP version 13
+# Subtest: unowned actions return undefined without native work
+ok 1 - unowned actions return undefined without native work
+  ---
+  duration_ms: 460.137167
+  type: 'test'
+  ...
+# Subtest: Garmin returns exactly 18 ordered privacy-safe native aggregates
+ok 2 - Garmin returns exactly 18 ordered privacy-safe native aggregates
+  ---
+  duration_ms: 6118.152166
+  type: 'test'
+  ...
+# Subtest: Garmin accepts a restart with a different PID and a new process birth claim
+ok 3 - Garmin accepts a restart with a different PID and a new process birth claim
+  ---
+  duration_ms: 6107.577375
+  type: 'test'
+  ...
+# Subtest: Garmin accepts same-PID reuse only when the process birth claim changes
+ok 4 - Garmin accepts same-PID reuse only when the process birth claim changes
+  ---
+  duration_ms: 6085.4425
+  type: 'test'
+  ...
+# Subtest: Garmin rejects the same PID with the same process birth claim
+ok 5 - Garmin rejects the same PID with the same process birth claim
+  ---
+  duration_ms: 6466.925125
+  type: 'test'
+  ...
+# Subtest: Garmin is reachable through the production adapter and checked-in default launcher subprocess
+ok 6 - Garmin is reachable through the production adapter and checked-in default launcher subprocess
+  ---
+  duration_ms: 6895.742834
+  type: 'test'
+  ...
+# Subtest: Garmin authRequired is bounded and never emits evidence
+ok 7 - Garmin authRequired is bounded and never emits evidence
+  ---
+  duration_ms: 5274.854667
+  type: 'test'
+  ...
+# Subtest: Garmin missingMarker is bounded and never emits evidence
+ok 8 - Garmin missingMarker is bounded and never emits evidence
+  ---
+  duration_ms: 50331.771667
+  type: 'test'
+  ...
+# Subtest: Garmin staleMarker is bounded and never emits evidence
+ok 9 - Garmin staleMarker is bounded and never emits evidence
+  ---
+  duration_ms: 50019.687792
+  type: 'test'
+  ...
+# Subtest: Garmin rejects private
+ok 10 - Garmin rejects private
+  ---
+  duration_ms: 5813.816667
+  type: 'test'
+  ...
+# Subtest: Garmin rejects extra
+ok 11 - Garmin rejects extra
+  ---
+  duration_ms: 6219.975667
+  type: 'test'
+  ...
+# Subtest: Garmin rejects order
+ok 12 - Garmin rejects order
+  ---
+  duration_ms: 6205.246917
+  type: 'test'
+  ...
+# Subtest: Garmin rejects count
+ok 13 - Garmin rejects count
+  ---
+  duration_ms: 6271.983875
+  type: 'test'
+  ...
+# Subtest: garmin validates attestation and device before actions
+ok 14 - garmin validates attestation and device before actions
+  ---
+  duration_ms: 1536.807709
+  type: 'test'
+  ...
+# Subtest: recovery validates attestation and device before actions
+ok 15 - recovery validates attestation and device before actions
+  ---
+  duration_ms: 1502.662875
+  type: 'test'
+  ...
+# Subtest: Recovery derives all 14 command steps by 8 cuts from durable native readback facts
+ok 16 - Recovery derives all 14 command steps by 8 cuts from durable native readback facts
+  ---
+  duration_ms: 47293.295917
+  type: 'test'
+  ...
+# Subtest: Recovery is reachable through the production adapter and checked-in default launcher subprocess
+ok 17 - Recovery is reachable through the production adapter and checked-in default launcher subprocess
+  ---
+  duration_ms: 48657.03525
+  type: 'test'
+  ...
+# Subtest: Recovery returns eight causal scenarios, eight distinct barriers, and per-cut rich facts
+ok 18 - Recovery returns eight causal scenarios, eight distinct barriers, and per-cut rich facts
+  ---
+  duration_ms: 48165.861167
+  type: 'test'
+  ...
+# Subtest: Recovery quarantines and deletes raw Maestro JUnit even when diagnostics contain secrets
+ok 19 - Recovery quarantines and deletes raw Maestro JUnit even when diagnostics contain secrets
+  ---
+  duration_ms: 48207.383667
+  type: 'test'
+  ...
+# Subtest: Recovery rejects missing cut and restores settings in finally
+ok 20 - Recovery rejects missing cut and restores settings in finally
+  ---
+  duration_ms: 6024.422125
+  type: 'test'
+  ...
+# Subtest: Recovery preserves junitFailure and restores settings
+ok 21 - Recovery preserves junitFailure and restores settings
+  ---
+  duration_ms: 48776.9035
+  type: 'test'
+  ...
+# Subtest: Recovery preserves junitSkip and restores settings
+ok 22 - Recovery preserves junitSkip and restores settings
+  ---
+  duration_ms: 48671.875375
+  type: 'test'
+  ...
+# Subtest: Recovery keeps the device lease when connectivity restore fails
+ok 23 - Recovery keeps the device lease when connectivity restore fails
+  ---
+  duration_ms: 4360.370083
+  type: 'test'
+  ...
+# Subtest: standalone APK rejects missingBundle before native actions
+ok 24 - standalone APK rejects missingBundle before native actions
+  ---
+  duration_ms: 3479.604375
+  type: 'test'
+  ...
+# Subtest: standalone APK rejects wrongSuite before native actions
+ok 25 - standalone APK rejects wrongSuite before native actions
+  ---
+  duration_ms: 3578.787208
+  type: 'test'
+  ...
+# Subtest: readRequest parses one bounded request and removes every listener
+ok 26 - readRequest parses one bounded request and removes every listener
+  ---
+  duration_ms: 1.911958
+  type: 'test'
+  ...
+# Subtest: readRequest handles abort, stream error, premature close, and oversize without listener leaks
+ok 27 - readRequest handles abort, stream error, premature close, and oversize without listener leaks
+  ---
+  duration_ms: 1.087334
+  type: 'test'
+  ...
+# Subtest: termination interrupts launcher stdin startup after a deterministic readiness handshake
+ok 28 - termination interrupts launcher stdin startup after a deterministic readiness handshake
+  ---
+  duration_ms: 211.00175
+  type: 'test'
+  ...
+# Subtest: controlled and fake tools use structured async exit and drain discipline
+ok 29 - controlled and fake tools use structured async exit and drain discipline
+  ---
+  duration_ms: 0.747875
+  type: 'test'
+  ...
+# Subtest: non-test harness exercises the default launcher without the fake adapter
+ok 30 - non-test harness exercises the default launcher without the fake adapter
+  ---
+  duration_ms: 7048.85575
+  type: 'test'
+  ...
+# Subtest: default launcher dispatches production quality actions instead of the unavailable fallback
+ok 31 - default launcher dispatches production quality actions instead of the unavailable fallback
+  ---
+  duration_ms: 4975.6895
+  type: 'test'
+  ...
+# Subtest: quality adapter subprocesses use the shared command-graph deadlines
+ok 32 - quality adapter subprocesses use the shared command-graph deadlines
+  ---
+  duration_ms: 0.108041
+  type: 'test'
+  ...
+# Subtest: wrong lease cannot read, restore or release settings
+ok 33 - wrong lease cannot read, restore or release settings
+  ---
+  duration_ms: 4734.974167
+  type: 'test'
+  ...
+# Subtest: only saved settings can be restored; absent settings are deleted
+ok 34 - only saved settings can be restored; absent settings are deleted
+  ---
+  duration_ms: 6074.632375
+  type: 'test'
+  ...
+# Subtest: Calendar snapshots every display setting under the lease and releases only after read-back
+ok 35 - Calendar snapshots every display setting under the lease and releases only after read-back
+  ---
+  duration_ms: 4107.108125
+  type: 'test'
+  ...
+# Subtest: Calendar restoration failure keeps the persisted snapshot and lease
+ok 36 - Calendar restoration failure keeps the persisted snapshot and lease
+  ---
+  duration_ms: 3004.448542
+  type: 'test'
+  ...
+# Subtest: failedSetting: restoration cannot report success or relinquish the lease
+ok 37 - failedSetting: restoration cannot report success or relinquish the lease
+  ---
+  duration_ms: 6368.427292
+  type: 'test'
+  ...
+# Subtest: ignoredSetting: restoration cannot report success or relinquish the lease
+ok 38 - ignoredSetting: restoration cannot report success or relinquish the lease
+  ---
+  duration_ms: 6577.80925
+  type: 'test'
+  ...
+# Subtest: cleanup remains possible after a source change
+ok 39 - cleanup remains possible after a source change
+  ---
+  duration_ms: 4552.500333
+  type: 'test'
+  ...
+# Subtest: offline is bounded before native execution
+ok 40 - offline is bounded before native execution
+  ---
+  duration_ms: 1043.3425
+  type: 'test'
+  ...
+# Subtest: identity mismatch is bounded before native execution
+ok 41 - identity mismatch is bounded before native execution
+  ---
+  duration_ms: 1173.263375
+  type: 'test'
+  ...
+# Subtest: APK mismatch is bounded before native execution
+ok 42 - APK mismatch is bounded before native execution
+  ---
+  duration_ms: 1378.553959
+  type: 'test'
+  ...
+# Subtest: lease acquisition failure after owner read runs both cleanup commands
+ok 43 - lease acquisition failure after owner read runs both cleanup commands
+  ---
+  duration_ms: 1430.48525
+  type: 'test'
+  ...
+# Subtest: SQLite returns exact native counts and never reconstructs them
+ok 44 - SQLite returns exact native counts and never reconstructs them
+  ---
+  duration_ms: 2818.911208
+  type: 'test'
+  ...
+# Subtest: SQLite rejects failed marker and releases restored lease
+ok 45 - SQLite rejects failed marker and releases restored lease
+  ---
+  duration_ms: 2970.617667
+  type: 'test'
+  ...
+# Subtest: SQLite rejects private marker and releases restored lease
+ok 46 - SQLite rejects private marker and releases restored lease
+  ---
+  duration_ms: 2952.256
+  type: 'test'
+  ...
+# Subtest: SQLite rejects missing-case marker and releases restored lease
+ok 47 - SQLite rejects missing-case marker and releases restored lease
+  ---
+  duration_ms: 2989.917084
+  type: 'test'
+  ...
+# Subtest: SQLite missingMarker failure is bounded and restores before returning
+ok 48 - SQLite missingMarker failure is bounded and restores before returning
+  ---
+  duration_ms: 33292.009208
+  type: 'test'
+  ...
+# Subtest: SQLite staleMarker failure is bounded and restores before returning
+ok 49 - SQLite staleMarker failure is bounded and restores before returning
+  ---
+  duration_ms: 33108.956459
+  type: 'test'
+  ...
+# Subtest: SQLite routeError failure is bounded and restores before returning
+ok 50 - SQLite routeError failure is bounded and restores before returning
+  ---
+  duration_ms: 5087.827916
+  type: 'test'
+  ...
+# Subtest: visual-capture reaches its checked-in production action module
+ok 51 - visual-capture reaches its checked-in production action module
+  ---
+  duration_ms: 2829.351334
+  type: 'test'
+  ...
+# Subtest: visual-capture-batch reaches its checked-in production action module
+ok 52 - visual-capture-batch reaches its checked-in production action module
+  ---
+  duration_ms: 2846.00275
+  type: 'test'
+  ...
+# Subtest: visual-compare reaches its checked-in production action module
+ok 53 - visual-compare reaches its checked-in production action module
+  ---
+  duration_ms: 2712.057958
+  type: 'test'
+  ...
+# Subtest: accessibility reaches its checked-in production action module
+ok 54 - accessibility reaches its checked-in production action module
+  ---
+  duration_ms: 2861.000459
+  type: 'test'
+  ...
+# Subtest: performance reaches its checked-in production action module
+ok 55 - performance reaches its checked-in production action module
+  ---
+  duration_ms: 2795.16375
+  type: 'test'
+  ...
+# Subtest: calendar reaches its checked-in production action module
+ok 56 - calendar reaches its checked-in production action module
+  ---
+  duration_ms: 1280.553875
+  type: 'test'
+  ...
+# Subtest: recovery reaches its checked-in production action module
+ok 57 - recovery reaches its checked-in production action module
+  ---
+  duration_ms: 3222.397834
+  type: 'test'
+  ...
+# Subtest: garmin reaches its checked-in production action module
+ok 58 - garmin reaches its checked-in production action module
+  ---
+  duration_ms: 3007.431541
+  type: 'test'
+  ...
+# Subtest: performance identity dispatches through the production quality module
+ok 59 - performance identity dispatches through the production quality module
+  ---
+  duration_ms: 2734.317791
+  type: 'test'
+  ...
+# Subtest: unknown actions fail closed before a module can run
+ok 60 - unknown actions fail closed before a module can run
+  ---
+  duration_ms: 381.422625
+  type: 'test'
+  ...
+# Subtest: the launcher itself rejects undeclared actions before reading a request
+ok 61 - the launcher itself rejects undeclared actions before reading a request
+  ---
+  duration_ms: 209.540292
+  type: 'test'
+  ...
+# Subtest: unsupported actions return undefined without reading identity or running ADB
+ok 62 - unsupported actions return undefined without reading identity or running ADB
+  ---
+  duration_ms: 1.194791
+  type: 'test'
+  ...
+# Subtest: production subprocess returns the complete native performance raw schema unchanged
+ok 63 - production subprocess returns the complete native performance raw schema unchanged
+  ---
+  duration_ms: 9583.3355
+  type: 'test'
+  ...
+# Subtest: cold launch rejects a clear-task-style cycle which does not restart the app process
+ok 64 - cold launch rejects a clear-task-style cycle which does not restart the app process
+  ---
+  duration_ms: 3802.980916
+  type: 'test'
+  ...
+# Subtest: cold launch rejects source mutation between otherwise valid process restarts
+ok 65 - cold launch rejects source mutation between otherwise valid process restarts
+  ---
+  duration_ms: 9198.688583
+  type: 'test'
+  ...
+# Subtest: production subprocess returns measured F200/accessibility with restored settings and attended exclusions
+not ok 66 - production subprocess returns measured F200/accessibility with restored settings and attended exclusions
+  ---
+  duration_ms: 3786.653792
+  type: 'test'
+  location: '/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-production-native-quality-actions.test.mjs:192:1'
+  failureType: 'testCodeFailure'
+  error: 'v12_phase14_retention_manifest_invalid'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    fail (file:///Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-phase14-retention.mjs:18:32)
+    parseJson (file:///Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-phase14-retention.mjs:61:59)
+    createV12RetainedPhase14Closure (file:///Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-phase14-retention.mjs:106:3)
+    executeLiveV12AccessibilityShard (file:///Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-accessibility-shard.mjs:73:20)
+    TestContext.<anonymous> (file:///Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-production-native-quality-actions.test.mjs:199:17)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+  ...
+# Subtest: identity request verifies installed identity under a lease and does not start instrumentation
+ok 67 - identity request verifies installed identity under a lease and does not start instrumentation
+  ---
+  duration_ms: 2838.884
+  type: 'test'
+  ...
+# Subtest: quality actions use the resolved absolute ADB even when PATH is poisoned
+ok 68 - quality actions use the resolved absolute ADB even when PATH is poisoned
+  ---
+  duration_ms: 2821.555291
+  type: 'test'
+  ...
+# Subtest: accessibility: noInstrumentation fails bounded and restores settings without emitting evidence
+ok 69 - accessibility: noInstrumentation fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 2813.383708
+  type: 'test'
+  ...
+# Subtest: accessibility: missingMarker fails bounded and restores settings without emitting evidence
+ok 70 - accessibility: missingMarker fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 3476.475333
+  type: 'test'
+  ...
+# Subtest: accessibility: staleMarker fails bounded and restores settings without emitting evidence
+ok 71 - accessibility: staleMarker fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 3475.133083
+  type: 'test'
+  ...
+# Subtest: accessibility: missingChunk fails bounded and restores settings without emitting evidence
+ok 72 - accessibility: missingChunk fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 3521.2845
+  type: 'test'
+  ...
+# Subtest: accessibility: duplicateChunk fails bounded and restores settings without emitting evidence
+ok 73 - accessibility: duplicateChunk fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 3673.731667
+  type: 'test'
+  ...
+# Subtest: accessibility: duplicateResult fails bounded and restores settings without emitting evidence
+ok 74 - accessibility: duplicateResult fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 3507.047542
+  type: 'test'
+  ...
+# Subtest: accessibility: duplicateProgress fails bounded and restores settings without emitting evidence
+ok 75 - accessibility: duplicateProgress fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 3599.072375
+  type: 'test'
+  ...
+# Subtest: accessibility: badDigest fails bounded and restores settings without emitting evidence
+ok 76 - accessibility: badDigest fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 3634.072792
+  type: 'test'
+  ...
+# Subtest: accessibility: noCompletion fails bounded and restores settings without emitting evidence
+ok 77 - accessibility: noCompletion fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 3526.944
+  type: 'test'
+  ...
+# Subtest: accessibility: failedCompletion fails bounded and restores settings without emitting evidence
+ok 78 - accessibility: failedCompletion fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 3544.714417
+  type: 'test'
+  ...
+# Subtest: accessibility: nativeFailure fails bounded and restores settings without emitting evidence
+ok 79 - accessibility: nativeFailure fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 3566.293208
+  type: 'test'
+  ...
+# Subtest: accessibility: afterWrongApk fails bounded and restores settings without emitting evidence
+ok 80 - accessibility: afterWrongApk fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 4006.492667
+  type: 'test'
+  ...
+# Subtest: accessibility: restoreFailure fails and retains the lease
+ok 81 - accessibility: restoreFailure fails and retains the lease
+  ---
+  duration_ms: 3674.091709
+  type: 'test'
+  ...
+# Subtest: accessibility: ignoredRestore fails and retains the lease
+ok 82 - accessibility: ignoredRestore fails and retains the lease
+  ---
+  duration_ms: 3610.340625
+  type: 'test'
+  ...
+# Subtest: accessibility: stopFailure fails and retains the lease
+ok 83 - accessibility: stopFailure fails and retains the lease
+  ---
+  duration_ms: 4233.325125
+  type: 'test'
+  ...
+# Subtest: accessibility: mismatched native identity and debug build cannot be promoted
+ok 84 - accessibility: mismatched native identity and debug build cannot be promoted
+  ---
+  duration_ms: 6431.970292
+  type: 'test'
+  ...
+# Subtest: performance: noInstrumentation fails bounded and restores settings without emitting evidence
+ok 85 - performance: noInstrumentation fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 2846.014375
+  type: 'test'
+  ...
+# Subtest: performance: missingMarker fails bounded and restores settings without emitting evidence
+ok 86 - performance: missingMarker fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 8962.156084
+  type: 'test'
+  ...
+# Subtest: performance: staleMarker fails bounded and restores settings without emitting evidence
+ok 87 - performance: staleMarker fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 8908.206792
+  type: 'test'
+  ...
+# Subtest: performance: missingChunk fails bounded and restores settings without emitting evidence
+ok 88 - performance: missingChunk fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 9148.691833
+  type: 'test'
+  ...
+# Subtest: performance: duplicateChunk fails bounded and restores settings without emitting evidence
+ok 89 - performance: duplicateChunk fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 9108.311417
+  type: 'test'
+  ...
+# Subtest: performance: duplicateResult fails bounded and restores settings without emitting evidence
+ok 90 - performance: duplicateResult fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 9180.221166
+  type: 'test'
+  ...
+# Subtest: performance: duplicateProgress fails bounded and restores settings without emitting evidence
+ok 91 - performance: duplicateProgress fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 9400.424166
+  type: 'test'
+  ...
+# Subtest: performance: badDigest fails bounded and restores settings without emitting evidence
+ok 92 - performance: badDigest fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 9348.574375
+  type: 'test'
+  ...
+# Subtest: performance: noCompletion fails bounded and restores settings without emitting evidence
+ok 93 - performance: noCompletion fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 9354.618458
+  type: 'test'
+  ...
+# Subtest: performance: failedCompletion fails bounded and restores settings without emitting evidence
+ok 94 - performance: failedCompletion fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 9343.573208
+  type: 'test'
+  ...
+# Subtest: performance: nativeFailure fails bounded and restores settings without emitting evidence
+ok 95 - performance: nativeFailure fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 9037.36375
+  type: 'test'
+  ...
+# Subtest: performance: afterWrongApk fails bounded and restores settings without emitting evidence
+ok 96 - performance: afterWrongApk fails bounded and restores settings without emitting evidence
+  ---
+  duration_ms: 9627.0345
+  type: 'test'
+  ...
+# Subtest: performance: restoreFailure fails and retains the lease
+ok 97 - performance: restoreFailure fails and retains the lease
+  ---
+  duration_ms: 9721.131
+  type: 'test'
+  ...
+# Subtest: performance: ignoredRestore fails and retains the lease
+ok 98 - performance: ignoredRestore fails and retains the lease
+  ---
+  duration_ms: 9502.885334
+  type: 'test'
+  ...
+# Subtest: performance: stopFailure fails and retains the lease
+ok 99 - performance: stopFailure fails and retains the lease
+  ---
+  duration_ms: 9116.976792
+  type: 'test'
+  ...
+# Subtest: performance: mismatched native identity and debug build cannot be promoted
+ok 100 - performance: mismatched native identity and debug build cannot be promoted
+  ---
+  duration_ms: 18844.336708
+  type: 'test'
+  ...
+# Subtest: performance rejects missing series
+ok 101 - performance rejects missing series
+  ---
+  duration_ms: 9647.412167
+  type: 'test'
+  ...
+# Subtest: performance rejects ninety-nine frames
+ok 102 - performance rejects ninety-nine frames
+  ---
+  duration_ms: 9155.983459
+  type: 'test'
+  ...
+# Subtest: performance rejects missing root
+ok 103 - performance rejects missing root
+  ---
+  duration_ms: 9161.37925
+  type: 'test'
+  ...
+# Subtest: performance rejects missing input path
+ok 104 - performance rejects missing input path
+  ---
+  duration_ms: 9220.47075
+  type: 'test'
+  ...
+# Subtest: performance rejects missing Garmin source
+ok 105 - performance rejects missing Garmin source
+  ---
+  duration_ms: 9077.593375
+  type: 'test'
+  ...
+# Subtest: performance rejects partial Phase12 merge
+ok 106 - performance rejects partial Phase12 merge
+  ---
+  duration_ms: 9055.986792
+  type: 'test'
+  ...
+# Subtest: performance rejects host clock
+ok 107 - performance rejects host clock
+  ---
+  duration_ms: 9189.669583
+  type: 'test'
+  ...
+# Subtest: performance rejects invented elapsed time
+ok 108 - performance rejects invented elapsed time
+  ---
+  duration_ms: 9072.971292
+  type: 'test'
+  ...
+# Subtest: performance rejects duplicated idle spans
+ok 109 - performance rejects duplicated idle spans
+  ---
+  duration_ms: 9033.56275
+  type: 'test'
+  ...
+# Subtest: performance rejects missing real command receipt
+ok 110 - performance rejects missing real command receipt
+  ---
+  duration_ms: 9068.818208
+  type: 'test'
+  ...
+# Subtest: performance rejects private raw payload
+ok 111 - performance rejects private raw payload
+  ---
+  duration_ms: 9136.677875
+  type: 'test'
+  ...
+# Subtest: accessibility rejects absent geometry
+ok 112 - accessibility rejects absent geometry
+  ---
+  duration_ms: 3505.079917
+  type: 'test'
+  ...
+# Subtest: accessibility rejects unreported overlap
+ok 113 - accessibility rejects unreported overlap
+  ---
+  duration_ms: 3775.802167
+  type: 'test'
+  ...
+# Subtest: accessibility rejects out of bounds
+ok 114 - accessibility rejects out of bounds
+  ---
+  duration_ms: 3447.871208
+  type: 'test'
+  ...
+# Subtest: accessibility rejects unresolved focus
+ok 115 - accessibility rejects unresolved focus
+  ---
+  duration_ms: 3445.5985
+  type: 'test'
+  ...
+# Subtest: accessibility rejects absent IME
+ok 116 - accessibility rejects absent IME
+  ---
+  duration_ms: 3598.728292
+  type: 'test'
+  ...
+# Subtest: accessibility rejects missing hardware keyboard
+ok 117 - accessibility rejects missing hardware keyboard
+  ---
+  duration_ms: 3481.695709
+  type: 'test'
+  ...
+# Subtest: accessibility rejects claimed TalkBack
+ok 118 - accessibility rejects claimed TalkBack
+  ---
+  duration_ms: 3499.553708
+  type: 'test'
+  ...
+# Subtest: accessibility rejects source mismatch
+ok 119 - accessibility rejects source mismatch
+  ---
+  duration_ms: 3587.790375
+  type: 'test'
+  ...
+# Subtest: accessibility rejects reduced motion changes source
+ok 120 - accessibility rejects reduced motion changes source
+  ---
+  duration_ms: 3527.647625
+  type: 'test'
+  ...
+# Subtest: accessibility rejects static overlap claim
+ok 121 - accessibility rejects static overlap claim
+  ---
+  duration_ms: 3471.871291
+  type: 'test'
+  ...
+# Subtest: accessibility rejects static modal state
+ok 122 - accessibility rejects static modal state
+  ---
+  duration_ms: 3455.138
+  type: 'test'
+  ...
+# Subtest: accessibility rejects static focus transition
+ok 123 - accessibility rejects static focus transition
+  ---
+  duration_ms: 3472.527125
+  type: 'test'
+  ...
+# Subtest: accessibility rejects static motion callback
+ok 124 - accessibility rejects static motion callback
+  ---
+  duration_ms: 3445.591417
+  type: 'test'
+  ...
+# Subtest: accessibility rejects missing command receipt
+ok 125 - accessibility rejects missing command receipt
+  ---
+  duration_ms: 3458.082083
+  type: 'test'
+  ...
+# Subtest: accessibility requires all four roots in both motion modes
+ok 126 - accessibility requires all four roots in both motion modes
+  ---
+  duration_ms: 3484.835709
+  type: 'test'
+  ...
+# Subtest: accessibility rejects shared root readiness hashes
+ok 127 - accessibility rejects shared root readiness hashes
+  ---
+  duration_ms: 3509.695125
+  type: 'test'
+  ...
+# Subtest: accessibility compares source outcomes across the actual normal and reduced observations
+ok 128 - accessibility compares source outcomes across the actual normal and reduced observations
+  ---
+  duration_ms: 3530.860709
+  type: 'test'
+  ...
+# Subtest: producer returns valid over-budget measurements for immutable FAIL publication
+ok 129 - producer returns valid over-budget measurements for immutable FAIL publication
+  ---
+  duration_ms: 9364.561083
+  type: 'test'
+  ...
+# Subtest: timing endpoints cannot be relabelled after collection
+ok 130 - timing endpoints cannot be relabelled after collection
+  ---
+  duration_ms: 9113.095584
+  type: 'test'
+  ...
+# Subtest: borrowed lease stays owned by the caller after verified restoration
+ok 131 - borrowed lease stays owned by the caller after verified restoration
+  ---
+  duration_ms: 4771.113583
+  type: 'test'
+  ...
+# Subtest: wrong borrowed lease is rejected before instrumentation
+ok 132 - wrong borrowed lease is rejected before instrumentation
+  ---
+  duration_ms: 1128.074
+  type: 'test'
+  ...
+# Subtest: forged attestation is rejected without native execution
+ok 133 - forged attestation is rejected without native execution
+  ---
+  duration_ms: 657.840833
+  type: 'test'
+  ...
+# Subtest: production module rejects adapter overrides, test markers and unknown request fields
+ok 134 - production module rejects adapter overrides, test markers and unknown request fields
+  ---
+  duration_ms: 1630.871
+  type: 'test'
+  ...
+# Subtest: missing progress is bounded even when the ADB subprocess never exits
+ok 135 - missing progress is bounded even when the ADB subprocess never exits
+  ---
+  duration_ms: 33599.65575
+  type: 'test'
+  ...
+# Subtest: non-owned actions do no work
+ok 136 - non-owned actions do no work
+  ---
+  duration_ms: 0.611583
+  type: 'test'
+  ...
+# Subtest: visual probe logs only opaque registry bindings, never route, semantic, or action values
+ok 137 - visual probe logs only opaque registry bindings, never route, semantic, or action values
+  ---
+  duration_ms: 0.852291
+  type: 'test'
+  ...
+# Subtest: production configuration resolves the exact required portrait and landscape bounds
+ok 138 - production configuration resolves the exact required portrait and landscape bounds
+  ---
+  duration_ms: 0.584375
+  type: 'test'
+  ...
+# Subtest: capture binds actual PNG, state/configuration and UI geometry, then reads back every setting
+ok 139 - capture binds actual PNG, state/configuration and UI geometry, then reads back every setting
+  ---
+  duration_ms: 466.726125
+  type: 'test'
+  ...
+# Subtest: batch preserves requested configuration order and individually bound receipts
+ok 140 - batch preserves requested configuration order and individually bound receipts
+  ---
+  duration_ms: 441.378292
+  type: 'test'
+  ...
+# Subtest: batch resets the operation deadline before every visual lock attempt
+ok 141 - batch resets the operation deadline before every visual lock attempt
+  ---
+  duration_ms: 475.022083
+  type: 'test'
+  ...
+# Subtest: System light to dark switches in place and preserves the mounted state receipt
+ok 142 - System light to dark switches in place and preserves the mounted state receipt
+  ---
+  duration_ms: 440.471625
+  type: 'test'
+  ...
+# Subtest: System transition rejects changed native focusChanged
+ok 143 - System transition rejects changed native focusChanged
+  ---
+  duration_ms: 466.233541
+  type: 'test'
+  ...
+# Subtest: System transition rejects changed native scrollChanged
+ok 144 - System transition rejects changed native scrollChanged
+  ---
+  duration_ms: 432.341375
+  type: 'test'
+  ...
+# Subtest: System transition rejects changed native timerChanged
+ok 145 - System transition rejects changed native timerChanged
+  ---
+  duration_ms: 419.348458
+  type: 'test'
+  ...
+# Subtest: System transition rejects changed native remounted
+ok 146 - System transition rejects changed native remounted
+  ---
+  duration_ms: 427.678833
+  type: 'test'
+  ...
+# Subtest: wrongState cannot become successful evidence
+ok 147 - wrongState cannot become successful evidence
+  ---
+  duration_ms: 428.642375
+  type: 'test'
+  ...
+# Subtest: wrongConfig cannot become successful evidence
+ok 148 - wrongConfig cannot become successful evidence
+  ---
+  duration_ms: 469.085083
+  type: 'test'
+  ...
+# Subtest: wrongTree cannot become successful evidence
+ok 149 - wrongTree cannot become successful evidence
+  ---
+  duration_ms: 426.555541
+  type: 'test'
+  ...
+# Subtest: invalidPng cannot become successful evidence
+ok 150 - invalidPng cannot become successful evidence
+  ---
+  duration_ms: 446.137209
+  type: 'test'
+  ...
+# Subtest: noRoute cannot become successful evidence
+ok 151 - noRoute cannot become successful evidence
+  ---
+  duration_ms: 429.380917
+  type: 'test'
+  ...
+# Subtest: failedRestore cannot become successful evidence
+ok 152 - failedRestore cannot become successful evidence
+  ---
+  duration_ms: 436.354333
+  type: 'test'
+  ...
+# Subtest: badReset cannot become successful evidence
+ok 153 - badReset cannot become successful evidence
+  ---
+  duration_ms: 452.217042
+  type: 'test'
+  ...
+# Subtest: extraMarkerField cannot become successful evidence
+ok 154 - extraMarkerField cannot become successful evidence
+  ---
+  duration_ms: 481.905333
+  type: 'test'
+  ...
+# Subtest: invalid input, state mapping and identity fail before configuration work
+ok 155 - invalid input, state mapping and identity fail before configuration work
+  ---
+  duration_ms: 482.180125
+  type: 'test'
+  ...
+# Subtest: source/launcher/manifest attestation mismatch is rejected before ADB
+ok 156 - source/launcher/manifest attestation mismatch is rejected before ADB
+  ---
+  duration_ms: 465.819541
+  type: 'test'
+  ...
+# Subtest: display snapshot must be durable before changing any setting
+ok 157 - display snapshot must be durable before changing any setting
+  ---
+  duration_ms: 451.32475
+  type: 'test'
+  ...
+# Subtest: busy visual lock never reads or overwrites the previous owner's snapshot
+ok 158 - busy visual lock never reads or overwrites the previous owner's snapshot
+  ---
+  duration_ms: 455.818916
+  type: 'test'
+  ...
+# Subtest: missingMarker times out without evidence and restores OS settings
+ok 159 - missingMarker times out without evidence and restores OS settings
+  ---
+  duration_ms: 10625.634542
+  type: 'test'
+  ...
+# Subtest: staleMarker times out without evidence and restores OS settings
+ok 160 - staleMarker times out without evidence and restores OS settings
+  ---
+  duration_ms: 10613.256
+  type: 'test'
+  ...
+# Subtest: absent settings and existing display overrides are restored exactly
+ok 161 - absent settings and existing display overrides are restored exactly
+  ---
+  duration_ms: 513.282834
+  type: 'test'
+  ...
+# Subtest: comparison reads pinned approved PNG and recaptures instrumented state; never accepts caller metrics
+ok 162 - comparison reads pinned approved PNG and recaptures instrumented state; never accepts caller metrics
+  ---
+  duration_ms: 533.583
+  type: 'test'
+  ...
+# Subtest: reference absence/drift and captured-state drift fail closed
+ok 163 - reference absence/drift and captured-state drift fail closed
+  ---
+  duration_ms: 610.612
+  type: 'test'
+  ...
+# Subtest: controlled non-test launcher runs default ADB/Maestro transport through production module
+not ok 164 - controlled non-test launcher runs default ADB/Maestro transport through production module
+  ---
+  duration_ms: 606.069334
+  type: 'test'
+  location: '/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-production-native-visual-actions.test.mjs:352:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    node:internal/modules/esm/resolve:271
+        throw new ERR_MODULE_NOT_FOUND(
+              ^
+    
+    Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/private/var/folders/6j/z_l3n2t532n8ydft_zytzmnw0000gn/T/phase20-visual-controlled-1etxmB/src/testing/v12NativeAcceptanceProductRegistry.ts' imported from /private/var/folders/6j/z_l3n2t532n8ydft_zytzmnw0000gn/T/phase20-visual-controlled-1etxmB/scripts/run-v12-maestro.mjs
+        at finalizeResolution (node:internal/modules/esm/resolve:271:11)
+        at moduleResolve (node:internal/modules/esm/resolve:865:10)
+        at defaultResolve (node:internal/modules/esm/resolve:992:11)
+        at #cachedDefaultResolve (node:internal/modules/esm/loader:701:20)
+        at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:721:38)
+        at ModuleLoader.resolveSync (node:internal/modules/esm/loader:759:56)
+        at #resolve (node:internal/modules/esm/loader:683:17)
+        at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:603:35)
+        at ModuleJob.syncLink (node:internal/modules/esm/module_job:163:33)
+        at ModuleJob.link (node:internal/modules/esm/module_job:253:17) {
+      code: 'ERR_MODULE_NOT_FOUND',
+      url: 'file:///private/var/folders/6j/z_l3n2t532n8ydft_zytzmnw0000gn/T/phase20-visual-controlled-1etxmB/src/testing/v12NativeAcceptanceProductRegistry.ts'
+    }
+    
+    Node.js v24.19.0
+    
+    
+    1 !== 0
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 0
+  actual: 1
+  operator: 'strictEqual'
+  stack: |-
+    finalizeResolution (node:internal/modules/esm/resolve:271:11)
+    moduleResolve (node:internal/modules/esm/resolve:865:10)
+    defaultResolve (node:internal/modules/esm/resolve:992:11)
+    #cachedDefaultResolve (node:internal/modules/esm/loader:701:20)
+    #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:721:38)
+    ModuleLoader.resolveSync (node:internal/modules/esm/loader:759:56)
+    #resolve (node:internal/modules/esm/loader:683:17)
+    ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:603:35)
+    ModuleJob.syncLink (node:internal/modules/esm/module_job:163:33)
+    ModuleJob.link (node:internal/modules/esm/module_job:253:17) {
+    TestContext.<anonymous> (file:///Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-production-native-visual-actions.test.mjs:380:10)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+1..164
+# tests 164
+# suites 0
+# pass 162
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1130950.140917

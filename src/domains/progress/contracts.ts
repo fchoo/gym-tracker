@@ -4,8 +4,12 @@ import type {
 } from "../history";
 import type {
   MetricIdentity,
+  MetricExposure,
   MetricTarget,
 } from "../metrics";
+import type {
+  RunningPacing,
+} from "./runningPacing";
 
 export type ProgressPeriod = "4_weeks" | "12_weeks" | "all_time";
 
@@ -77,6 +81,7 @@ export type ProgressEffectiveSourceSession = Readonly<{
 
 export type ProgressComparableExposure = HistoryProjectionComparableExposure & Readonly<{
   exerciseName: string;
+  sourceRevision?: number | null;
 }>;
 
 /**
@@ -146,6 +151,7 @@ export type ProgressRecord = Readonly<{
   sessionId: string;
   setId: string;
   localDate: string;
+  sourceRevision?: number | null;
   targetJson: string;
   observationJson: string;
 }>;
@@ -170,4 +176,206 @@ export type ProgressPeriodProjection = Readonly<{
   attention: readonly ProgressAttentionItem[];
   recommendations: readonly ProgressRecommendationReview[];
   stateSourceReferences: ProgressSourceReference;
+}>;
+
+/** Phase 19's factual dashboard is deliberately separate from the legacy
+ * period summary above.  It is a discriminated union so consumers cannot
+ * probe a bag of optional Strength and Running fields. */
+export type ProgressSport = "All" | "Strength" | "Running";
+
+export type ProgressReadState = "ready" | "empty" | "sparse" | "more_data_needed" | "unavailable";
+
+export type ProgressAbsenceReason =
+  | "exact_effort_evidence_insufficient"
+  | "no_factual_points"
+  | "incompatible_facts";
+
+export type ProgressEvidenceSufficiency = "source_summary" | "source_laps" | "sampled";
+
+export type ProgressRunningTimeBasis = "elapsed" | "timer" | "moving";
+
+/** A normalized, accepted source fact; screen and projector code never parse a
+ * provider payload or infer an arbitrary effort from chart samples. */
+export type ProgressRunningActivityFact = Readonly<{
+  activityId: string;
+  sourceIdentity: string;
+  sourceRevision: number;
+  startedAtMs: number;
+  localDate: string;
+  lifecycle: "active" | "removed";
+  accepted: boolean;
+  fixture: boolean;
+  distanceMeters: number;
+  durationSeconds: number;
+  timeBasis: ProgressRunningTimeBasis;
+  evidence: ProgressEvidenceSufficiency;
+  /** null means the payload has no source-reported exact effort basis. */
+  exactDistanceMeters: number | null;
+}>;
+
+export type ProgressGoalRevision = Readonly<{
+  targetId: string;
+  planId?: string;
+  sport: "Strength" | "Running";
+  distanceMeters?: number;
+  targetDurationSeconds: number | null;
+  targetLocalDate?: string;
+  effectiveAtMs: number;
+  revision: number;
+  /** Owner/source ordering is the first deterministic All-goal tie break. */
+  sourceOrder: number;
+  lifecycle?: "active" | "inactive" | "archived";
+  active?: boolean;
+  current?: boolean;
+}>;
+
+export type ProgressRunningEffort = Readonly<{
+  activityId: string;
+  sourceIdentity: string;
+  sourceRevision: number;
+  localDate: string;
+  durationSeconds: number;
+  timeBasis: ProgressRunningTimeBasis;
+  evidence: Exclude<ProgressEvidenceSufficiency, "sampled">;
+}>;
+
+export type ProgressRunningGoal = Readonly<{
+  distanceMeters: number;
+  timeBasis: ProgressRunningTimeBasis;
+  latest: ProgressRunningEffort | null;
+  best: ProgressRunningEffort | null;
+  target: Readonly<{ targetId: string; durationSeconds: number }> | null;
+  targetAtDate: Readonly<{ targetId: string; durationSeconds: number }> | null;
+  history: readonly Readonly<{
+    effort: ProgressRunningEffort;
+    targetAtDate: Readonly<{ targetId: string; durationSeconds: number }> | null;
+  }>[];
+  evidenceCount: number;
+  gap: string;
+  pacing: RunningPacing | null;
+}>;
+
+export type ProgressPlannedNext = Readonly<{
+  sport: "Strength" | "Running";
+  sourceOpportunityId: string;
+  sourceRevision: number;
+  localDate: string;
+  planId: string;
+  planName: string;
+  activityId: string;
+  activityName: string;
+}>;
+
+export type ProgressRunningDashboardProjection = Readonly<{
+  sport: "Running";
+  state: ProgressReadState;
+  goals: readonly ProgressRunningGoal[];
+  plannedNext?: ProgressPlannedNext | null;
+  absenceReason?: ProgressAbsenceReason;
+}>;
+
+export type ProgressAllDashboardProjection = Readonly<{
+  sport: "All";
+  state: ProgressReadState;
+  primaryGoal: ProgressAllGoal | null;
+  activeGoals: readonly ProgressAllGoal[];
+  plannedNext?: ProgressPlannedNext | null;
+}>;
+
+export type ProgressStrengthValueFormat =
+  | "kilograms"
+  | "repetitions"
+  | "seconds"
+  | "duration"
+  | "meters"
+  | "rounds"
+  | "completion";
+
+export type ProgressStrengthValue = Readonly<{
+  value: number;
+  label: string;
+  localDate: string;
+  sessionId: string;
+  sourceRevision: number | null;
+}>;
+
+export type ProgressStrengthHistoryPoint = ProgressStrengthValue & Readonly<{
+  targetAtDate: number | null;
+}>;
+
+export type ProgressStrengthGoal = Readonly<{
+  goalId: string;
+  exerciseId: string;
+  exerciseName: string;
+  identityKey: string;
+  status: ProgressExerciseStatus;
+  latest: ProgressStrengthValue;
+  best: ProgressStrengthValue;
+  target: Readonly<{ value: number; label: string }> | null;
+  gap: string;
+  evidenceCount: number;
+  fasterIsLower: boolean;
+  valueFormat: ProgressStrengthValueFormat;
+  unitLabel: string;
+  directionLabel: string;
+  history: readonly ProgressStrengthHistoryPoint[];
+}>;
+
+export type ProgressAllGoal =
+  | Readonly<{ sport: "Strength"; goal: ProgressStrengthGoal }>
+  | Readonly<{ sport: "Running"; goal: ProgressRunningGoal }>;
+
+export type ProgressStrengthDashboardProjection = Readonly<{
+  sport: "Strength";
+  state: ProgressReadState;
+  facts: readonly ProgressRecord[];
+  goals: readonly ProgressStrengthGoal[];
+  plannedNext?: ProgressPlannedNext | null;
+}>;
+
+/** Effective Strength facts retain the metric boundary and revision fence used
+ * to decide whether a pending recommendation is still actionable. */
+export type ProgressStrengthFactInput = Readonly<{
+  record: ProgressRecord;
+  metricExposure: MetricExposure;
+  effectiveRevision: number;
+  targetRevision: number;
+  recommendation?: Readonly<{
+    status: "pending" | "accepted" | "rejected" | "invalidated" | "superseded";
+    sourceRevision: number;
+    targetRevision: number;
+  }>;
+}>;
+
+export type ProgressDashboardProjection =
+  | ProgressAllDashboardProjection
+  | ProgressStrengthDashboardProjection
+  | ProgressRunningDashboardProjection;
+
+export type ProgressDashboardInput = Readonly<{
+  sport: ProgressSport;
+  running?: Readonly<{
+    activities: readonly ProgressRunningActivityFact[];
+    targets: readonly ProgressGoalRevision[];
+  }>;
+  strength?: Readonly<{
+    facts?: readonly ProgressRecord[];
+    candidates?: readonly ProgressStrengthFactInput[];
+  }>;
+  goals?: readonly ProgressGoalRevision[];
+  plannedNext?: readonly ProgressPlannedNext[];
+}>;
+
+/**
+ * Repository-owned refresh facts. Automatic refresh is deliberately bounded:
+ * callers can react to a new source generation, but cannot turn an updating
+ * projection into a permanent polling loop.
+ */
+export type ProgressRefreshMetadata = Readonly<{
+  generation: number;
+  automaticRefresh: Readonly<{
+    maxAttempts: number;
+    backoffMs: readonly number[];
+    terminal: ProgressProjectionFreshness;
+  }>;
 }>;

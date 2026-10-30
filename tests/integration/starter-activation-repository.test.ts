@@ -79,6 +79,7 @@ import {
 } from "../../src/platform/sqlite/repositories/ownedPlanRepository";
 import {
   createStarterPlanRepository,
+  installAcceptedStarterPlanSources,
   StarterPlanRepositoryError,
   type StarterPlanRepositoryTestObserver,
 } from "../../src/platform/sqlite/repositories/starterPlanRepository";
@@ -215,7 +216,8 @@ async function acceptedCatalogWithEmptyEquipment() {
   const acceptance = JSON.parse(
     catalogAcceptanceBytes,
   ) as Record<string, unknown>;
-  (catalog.metadata as Record<string, unknown>).revision = 2;
+  const metadata = catalog.metadata as Record<string, unknown>;
+  metadata.revision = Number(metadata.revision) + 1;
   const [exercise] = catalog.exercises as Array<Record<string, unknown>>;
   exercise!.equipment = [];
   const nextCatalogBytes = `${JSON.stringify(catalog, null, 2)}\n`;
@@ -232,9 +234,25 @@ async function acceptedCatalogWithEmptyEquipment() {
   });
 }
 
-async function createRuntime(
-  options: Readonly<{ includeOwnedPlans?: boolean }> = {},
-): Promise<SqliteKernel> {
+async function assertPhase17FixtureReady(kernel: SqliteKernel): Promise<void> {
+  const [version] = await kernel.queryAll<{ user_version: number }>("PRAGMA user_version");
+  if (version?.user_version !== 40) {
+    throw new Error(`starter_activation_fixture_schema_not_current:${String(version?.user_version)}`);
+  }
+  const tables = await kernel.queryAll<{ name: string }>(
+    `SELECT name FROM sqlite_master
+     WHERE type = 'table' AND name IN (
+       'exercise_instruction_sets', 'running_session_roots',
+       'running_session_slot_roots', 'running_session_slot_revisions',
+       'running_session_slots', 'schedule_collision_outcomes'
+     ) ORDER BY name`,
+  );
+  if (tables.length !== 6) {
+    throw new Error(`starter_activation_fixture_tables_not_current:${tables.map(({ name }) => name).join(",")}`);
+  }
+}
+
+async function createRuntime(includeCurrentMigrations = false): Promise<SqliteKernel> {
   const directory = mkdtempSync(join(tmpdir(), "gym-starter-activation-"));
   temporaryDirectories.add(directory);
   const databasePath = join(directory, "gym-tracker.db");
@@ -257,11 +275,10 @@ async function createRuntime(
   await createMigrationRunner({
     databaseName: "gym-tracker.db",
     kernel,
-    migrations: options.includeOwnedPlans === false
-      ? migrations.filter(({ version }) => version <= 8)
-      : migrations,
+    migrations: includeCurrentMigrations ? migrations : migrations.filter(({ version }) => version <= 40),
     recoveryBackup: validatedRecoveryBackup(),
   }).run();
+  if (!includeCurrentMigrations) await assertPhase17FixtureReady(kernel);
   const catalog = await parseExerciseCatalog({
     catalogBytes,
     manifestBytes: catalogManifestBytes,
@@ -428,6 +445,61 @@ function repositoryError(
 }
 
 describe("accepted starter activation repository", () => {
+  it("supports legacy plan-kind schemas and omits aggregate state when that optional table is absent", async () => {
+    const legacyTransaction = {
+      execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
+      queryAll: async (sql: string) => {
+        if (sql.includes("starter_plan_activation_requests")) return [];
+        if (sql === "PRAGMA table_info(plans)") return [];
+        if (sql.includes("FROM plans plan") || sql.includes("FROM owned_plan_schedules")) return [];
+        return [];
+      },
+    };
+    const legacyRepository = createStarterPlanRepository({
+      write: async (operation: (transaction: typeof legacyTransaction) => Promise<unknown>) => operation(legacyTransaction),
+    } as never);
+    await expect(legacyRepository.activateAcceptedStarterPlan({
+      requestId: "legacy-plan-kind-probe",
+      requestSha256: "a".repeat(64),
+      expectedActiveScheduleRevision: 1,
+    } as never)).rejects.toMatchObject({ code: "starter_schedule_revision_conflict" });
+
+    const kernel = await createRuntime();
+    await kernel.write((transaction) => transaction.execute("DROP TABLE owned_plan_aggregate_states"));
+    await expect(createInactiveCopy(kernel, {
+      activeScheduleRevision: null,
+      requestId: "copy-without-aggregate-state",
+      createdAtMs: 1_787_027_299_000,
+    })).resolves.toMatchObject({
+      outcome: "committed",
+      plan: { isActive: false },
+    });
+  });
+
+  it("installs immutable starter sources before activation and rejects conflicting bytes", async () => {
+    const kernel = await createRuntime();
+    const pack = await acceptedPack();
+
+    await installAcceptedStarterPlanSources(kernel, pack);
+    await installAcceptedStarterPlanSources(kernel, pack);
+
+    await expect(kernel.queryAll(
+      "SELECT source_namespace, template_id, source_revision FROM starter_plan_sources ORDER BY template_id",
+    )).resolves.toHaveLength(pack.templates.length);
+
+    const conflicting = await createRuntime();
+    const template = pack.templates[0]!;
+    await conflicting.write((transaction) => transaction.execute(
+      `INSERT INTO starter_plan_sources
+        (source_namespace, template_id, source_revision, asset_sha256,
+         display_name, template_json, accepted_at_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [pack.namespace, template.id, template.revision, "f".repeat(64), template.displayName, template.sourceJson, pack.acceptedAtMs],
+    ));
+    await expect(installAcceptedStarterPlanSources(conflicting, pack))
+      .rejects.toThrow("starter_source_conflict");
+  });
+
   it("repairs the workout projection without replacing meaningful rest", async () => {
     const kernel = await createRuntime();
     const catalog = await parseExerciseCatalog({
@@ -436,6 +508,17 @@ describe("accepted starter activation repository", () => {
       acceptanceBytes: catalogAcceptanceBytes,
       sha256,
     });
+    await expect(kernel.queryAll<{ revision: number; pack_sha256: string }>(
+      `SELECT revision, pack_sha256
+       FROM content_pack_revisions
+       WHERE namespace = ?
+       ORDER BY revision DESC
+       LIMIT 1`,
+      [catalog.metadata.namespace],
+    )).resolves.toEqual([{
+      revision: catalog.metadata.revision,
+      pack_sha256: catalog.acceptance.packSha256,
+    }]);
     const projected = catalog.exercises[0]!;
     await kernel.write((transaction) =>
       transaction.execute(
@@ -491,6 +574,7 @@ describe("accepted starter activation repository", () => {
     )).toEqual([{ default_rest_seconds: 120 }]);
 
     const emptyEquipmentCatalog = await acceptedCatalogWithEmptyEquipment();
+    expect(emptyEquipmentCatalog.metadata.revision).toBe(catalog.metadata.revision + 1);
     await createContentRepository(kernel).importAcceptedCatalog({
       catalog: emptyEquipmentCatalog,
       expectedInstalled: {
@@ -593,6 +677,78 @@ describe("accepted starter activation repository", () => {
         maxReps: 8,
       }),
     );
+  });
+
+  it("resolves owned exercise defaults and set overrides into immutable v21 session snapshots", async () => {
+    const kernel = await createRuntime();
+    const activation = await activate(kernel, {
+      templateId: "full-body-foundation",
+      requestId: "request-owned-advanced-timing",
+      activatedAtMs: 1_787_027_200_000,
+      expectedActiveScheduleRevision: null,
+    });
+    const perRep = '{"version":1,"mode":"per_rep","intervalMs":1000,"cueChannels":"haptic"}';
+    const override = '{"version":1,"mode":"per_rep","intervalMs":2000,"cueChannels":"audio"}';
+    const [occurrence] = await kernel.queryAll<{ id: string }>(
+      `SELECT id FROM owned_plan_day_exercises
+       WHERE plan_day_id = ? AND ordinal = 0`,
+      [activation.days[0]!.id],
+    );
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE owned_plan_day_exercises
+         SET advanced_timing_default_json = ?
+         WHERE id = ?`,
+        [perRep, occurrence!.id],
+      );
+      await transaction.execute(
+        `UPDATE owned_plan_working_set_targets
+         SET advanced_timing_override_json = ?
+         WHERE plan_day_exercise_id = ? AND ordinal = 1`,
+        [override, occurrence!.id],
+      );
+    });
+
+    const session = await startWorkout({
+      repository: createPlansWorkoutRepository(kernel),
+      request: {
+        mode: "alternate",
+        planId: activation.plan.id,
+        planDayId: activation.days[0]!.id,
+        localDate: "2026-08-19",
+        timezone: "Asia/Singapore",
+        startedAtMs: 1_787_027_201_001,
+      },
+    });
+
+    await expect(kernel.queryAll(
+      `SELECT se.advanced_timing_default_json, ss.ordinal,
+              ss.advanced_timing_override_json, ss.advanced_timing_resolved_json
+       FROM session_exercises se
+       JOIN session_sets ss ON ss.session_exercise_id = se.id
+       WHERE se.session_id = ? AND se.ordinal = 0 AND ss.set_kind = 'working'
+       ORDER BY ss.ordinal`,
+      [session.id],
+    )).resolves.toEqual([
+      {
+        advanced_timing_default_json: perRep,
+        ordinal: 0,
+        advanced_timing_override_json: null,
+        advanced_timing_resolved_json: perRep,
+      },
+      {
+        advanced_timing_default_json: perRep,
+        ordinal: 1,
+        advanced_timing_override_json: override,
+        advanced_timing_resolved_json: override,
+      },
+      {
+        advanced_timing_default_json: perRep,
+        ordinal: 2,
+        advanced_timing_override_json: null,
+        advanced_timing_resolved_json: perRep,
+      },
+    ]);
   });
 
   it("removes and replays scheduled and dynamic set IDs that exceed 128 characters", async () => {
@@ -719,7 +875,7 @@ describe("accepted starter activation repository", () => {
       const completedAtMs = 1_787_027_202_000 + ordinal * 1_000;
       const result = await completeSet({
         repository,
-        haptics: { committed: async () => undefined },
+        haptics: { committed: async () => undefined, cue: async () => undefined },
         invalidate: async () => undefined,
         drainEffects: async () => undefined,
         input: {
@@ -785,7 +941,7 @@ describe("accepted starter activation repository", () => {
       const set = workout.currentExercise.workingSets[ordinal]!;
       const result = await completeSet({
         repository: workoutRepository,
-        haptics: { committed: async () => undefined },
+        haptics: { committed: async () => undefined, cue: async () => undefined },
         invalidate: async () => undefined,
         drainEffects: async () => undefined,
         input: {
@@ -873,6 +1029,7 @@ describe("accepted starter activation repository", () => {
       status: "pending",
     }));
     const recommendation = detail.recommendations[0]!;
+    expect(recommendation.id).toMatch(/^[A-Za-z0-9._:-]{1,128}$/u);
     const nextSession = await startWorkout({
       repository: createPlansWorkoutRepository(kernel),
       request: {
@@ -1294,6 +1451,61 @@ describe("accepted starter activation repository", () => {
     ]);
   });
 
+  it.each(["weekday", "rotation"] as const)("starts the accepted Strength A day through current migrated %s schedule attribution", async (mode) => {
+    const kernel = await createRuntime(true);
+    const template = (await acceptedPack()).templates.find(({ id }) => id === "strength-conditioning")!;
+    const activation = await activate(kernel, {
+      templateId: "strength-conditioning",
+      requestId: "current-strength-start",
+      activatedAtMs: Date.parse("2026-08-24T04:00:00Z"),
+      expectedActiveScheduleRevision: null,
+      ...(mode === "rotation" ? { schedule: {
+        startLocalDate: "2026-08-24", timeZone: "Asia/Singapore", mode: "rotation" as const,
+        bindings: template.days.map((day, ordinal) => ({ planDaySourceId: day.id, ordinal })),
+      } } : {}),
+    });
+    const instantMs = Date.parse("2026-08-24T04:01:00Z");
+    const ownedPlans = createOwnedPlanRuntimePort(kernel, {
+      nowMs: () => instantMs,
+      randomUUID: () => "current-schedule",
+      sha256,
+    });
+    const schedule = createScheduleRuntimePort(kernel, ownedPlans, {
+      now: () => new Date(instantMs),
+      nowMs: () => instantMs,
+      randomUUID: () => "current-schedule",
+      sha256,
+    });
+    const today = await schedule.loadToday(instantMs);
+    const selected = today?.selectedStrengthOccurrence;
+    if (selected === null || selected === undefined) throw new Error("current_strength_selection_missing");
+    expect(selected.planId).toBe(activation.plan.id);
+    if (mode === "rotation") {
+      const otherDay = activation.days.find(({ id }) => id !== selected.planDayId)!;
+      await expect(startWorkout({
+        repository: createPlansWorkoutRepository(kernel),
+        request: {
+          mode: "scheduled", planId: selected.planId, planDayId: otherDay.id,
+          localDate: selected.localDate, timezone: selected.timeZone, startedAtMs: instantMs,
+          selectedOccurrence: { ...selected, planDayId: otherDay.id }, commandIdentity: "e".repeat(64),
+        },
+      })).rejects.toMatchObject({ cause: { message: "workout_selected_occurrence_stale" } });
+      expect(await kernel.queryAll(
+        "SELECT id FROM owned_plan_schedule_opportunities WHERE id = ?", [selected.opportunityId],
+      )).toEqual([]);
+    }
+    const session = await startWorkout({
+      repository: createPlansWorkoutRepository(kernel),
+      request: {
+        mode: "scheduled", planId: selected.planId, planDayId: selected.planDayId,
+        localDate: selected.localDate, timezone: selected.timeZone,
+        startedAtMs: instantMs, selectedOccurrence: selected, commandIdentity: "d".repeat(64),
+      },
+    });
+    expect((await createWorkoutRepository(kernel).getActiveWorkout(session.id)).currentExercise.name)
+      .toBe("Back Squat");
+  });
+
   it("keeps copied non-load policies factual and never creates pending target writes", async () => {
     const kernel = await createRuntime();
     const activation = await activate(kernel, {
@@ -1377,7 +1589,7 @@ describe("accepted starter activation repository", () => {
       })();
       view = await completeSet({
         repository: workout,
-        haptics: { committed: async () => undefined },
+        haptics: { committed: async () => undefined, cue: async () => undefined },
         invalidate: async () => undefined,
         drainEffects: async () => undefined,
         input: {
@@ -1978,7 +2190,7 @@ describe("accepted starter activation repository", () => {
     expect(sourceConflict.code).toBe("starter_source_conflict");
   });
 
-  it("fails closed on malformed inactive-copy receipts and supports retained v8 without aggregate state", async () => {
+  it("fails closed on malformed inactive-copy receipts and supports the migrated legacy fixture", async () => {
     const malformedKernel = await createRuntime();
     const malformedLegacy = await prepareLegacyUpdateSource(malformedKernel);
     const pack = await acceptedPack();
@@ -2019,7 +2231,7 @@ describe("accepted starter activation repository", () => {
     }).catch((error: unknown) => error);
     expect(malformed).toMatchObject({ code: "sqlite_transaction_failed" });
 
-    const retainedKernel = await createRuntime({ includeOwnedPlans: false });
+    const retainedKernel = await createRuntime();
     const retained = await activate(retainedKernel, {
       templateId: "upper-lower",
       requestId: "request-retained-v8-activation",
@@ -2031,8 +2243,8 @@ describe("accepted starter activation repository", () => {
       `SELECT COUNT(*) AS count
        FROM sqlite_master
        WHERE type = 'table'
-         AND name = 'owned_plan_aggregate_states'`,
-    )).resolves.toEqual([{ count: 0 }]);
+         AND name = 'exercise_instruction_sets'`,
+    )).resolves.toEqual([{ count: 1 }]);
   });
 
   it("reactivates the selected copy and preserves the previous plan and schedule", async () => {
@@ -2469,7 +2681,7 @@ describe("accepted starter activation repository", () => {
   it("fails closed on inconsistent active plan and schedule topology", async () => {
     const kernel = await createRuntime();
     await kernel.write(async (transaction) => {
-      await transaction.execute("DROP INDEX one_active_owned_plan");
+      await transaction.execute("DROP INDEX one_active_owned_plan_per_sport");
       await transaction.execute(
         `INSERT INTO plans
           (id, content_pack_id, origin, source_namespace, upstream_id, name,

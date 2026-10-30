@@ -43,11 +43,16 @@ export function parseNativeContractLogOutput(output, runId) {
     || latest.runId === undefined
     || latest.summary === undefined
   ) {
-    return latest;
+    // Current acceptance requests require the route-owned nonce envelope.
+    // Raw legacy results must not satisfy a fresh Phase 20 collection.
+    return /^v12-[a-f0-9]{32}$/u.test(runId) ? undefined : latest;
   }
   if (latest.runId !== runId) {
     return undefined;
   }
+  if (latest.summary === null || typeof latest.summary !== "object"
+    || Array.isArray(latest.summary) || !Number.isSafeInteger(latest.summary.total)
+    || latest.summary.total < 0 || latest.summary.total > 512) return undefined;
   const caseRecords = lines
     .map((line) => parseJson(markerPayload(
       line,
@@ -57,7 +62,8 @@ export function parseNativeContractLogOutput(output, runId) {
   const cases = caseRecords.map((payload) => payload.case);
   if (
     cases.length !== latest.summary.total
-    || cases.some((contractCase) => contractCase === undefined)
+    || cases.some((contractCase) => contractCase === null
+      || typeof contractCase !== "object" || typeof contractCase.id !== "string")
     || new Set(cases.map((contractCase) => contractCase.id)).size
       !== cases.length
   ) {
@@ -98,7 +104,7 @@ export function parseNativeContractLogProgress(output, runId) {
       && typeof payload === "object"
       && payload.runId === runId
       && typeof payload.stage === "string"
-      && /^[a-z0-9_:-]{3,80}$/iu.test(payload.stage)
+      && /^(?:v1\.2-acceptance:)?[a-z0-9_:-]{3,80}$/iu.test(payload.stage)
     ));
   return progress.at(-1)?.stage;
 }

@@ -1,0 +1,68 @@
+import { describe, expect, it } from "@jest/globals";
+
+import {
+  RUNNING_SESSION_KINDS,
+  addRunningSessionDraft,
+  deleteRunningSessionDraft,
+  isRunningSessionKind,
+  isCalendarLocalDate,
+  makeRunningSessionDraft,
+  reorderRunningSessionDraft,
+  validateRunningPlanDraft,
+  isFutureLocalDate,
+  type RunningPlanDraft,
+} from "./runningFormDraft";
+
+const draft: RunningPlanDraft = {
+  version: 1, id: "running", name: "Running", revision: 1, createdAtMs: 1,
+  goal: { version: 1, id: "goal", planId: "running", revision: 1, goalDistanceMeters: 5_000, targetDurationMs: 1_800_000, runsPerWeek: 1, trainingDays: ["Monday"], createdAtMs: 1 },
+  sessions: [],
+};
+
+describe("Running plan local draft", () => {
+  it("keeps zero sessions valid and keeps two same-day slots distinct and ordered", () => {
+    expect(validateRunningPlanDraft(draft)).toBeNull();
+    const recovery = makeRunningSessionDraft({ id: "recovery-v1", rootId: "recovery", slotId: "slot-a-v1", slotRootId: "slot-a", planId: "running", kind: "recovery", weekday: "Monday", ordinal: 0, createdAtMs: 1 });
+    const tempo = makeRunningSessionDraft({ id: "tempo-v1", rootId: "tempo", slotId: "slot-b-v1", slotRootId: "slot-b", planId: "running", kind: "tempo", weekday: "Monday", ordinal: 1, createdAtMs: 1 });
+    const withTwo = addRunningSessionDraft(addRunningSessionDraft(draft, recovery), tempo);
+    const reordered = reorderRunningSessionDraft(withTwo, ["slot-b", "slot-a"]);
+    expect(reordered.sessions.map((entry) => [entry.session.sessionKind, entry.slot.ordinal])).toEqual([["tempo", 0], ["recovery", 1]]);
+    expect(deleteRunningSessionDraft(reordered, "slot-a").sessions).toHaveLength(1);
+    expect(deleteRunningSessionDraft(deleteRunningSessionDraft(reordered, "slot-a"), "slot-b").sessions).toEqual([]);
+  });
+
+  it("constructs every approved kind as a typed local draft before any write", () => {
+    const allKinds = RUNNING_SESSION_KINDS.map((kind, ordinal) => makeRunningSessionDraft({
+      id: `${kind}-v1`, rootId: `${kind}-root`, slotId: `${kind}-slot-v1`, slotRootId: `${kind}-slot`,
+      planId: "running", kind, weekday: "Monday", ordinal, createdAtMs: 1,
+    }));
+    const complete = { ...allKinds.reduce(addRunningSessionDraft, draft), goal: { ...draft.goal, longRunDay: "Monday" as const } };
+    expect(validateRunningPlanDraft(complete)).toBeNull();
+    expect(complete.sessions.map((entry) => entry.session.sessionKind)).toEqual(RUNNING_SESSION_KINDS);
+  });
+
+  it("recognizes Fartlek as one of the fixed typed session discriminants", () => {
+    expect(isRunningSessionKind("fartlek")).toBe(true);
+    expect(isRunningSessionKind("cadence_cluster")).toBe(false);
+  });
+
+  it("accepts only calendar-valid dates after the injected local today", () => {
+    expect(isFutureLocalDate("2026-10-12", "2026-10-11")).toBe(true);
+    expect(isFutureLocalDate("2026-10-11", "2026-10-11")).toBe(false);
+    expect(isFutureLocalDate("2026-02-30", "2026-02-01")).toBe(false);
+  });
+
+  it("rejects an impossible benchmark recorded date while retaining a valid draft shape", () => {
+    const withImpossibleBenchmark = {
+      ...draft,
+      goal: {
+        ...draft.goal,
+        benchmark: { source: "manual" as const, distanceMeters: 5_000, durationMs: 1_800_000, localDate: "2026-02-30" },
+      },
+    };
+
+    expect(isCalendarLocalDate("2026-02-29")).toBe(false);
+    expect(isCalendarLocalDate("2028-02-29")).toBe(true);
+    expect(validateRunningPlanDraft(withImpossibleBenchmark, "2026-02-01")).toBe("running_goal_benchmark_invalid");
+  });
+});

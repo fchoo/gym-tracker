@@ -1,10 +1,11 @@
-import Constants from "expo-constants";
-
 export const workoutMutationTestActions = [
   "arm_add_warmup_failure",
   "arm_copy_warmup_failure",
   "arm_add_working_failure",
   "arm_completed_set_correction_failure",
+  "arm_replace_exercise_failure",
+  "arm_remove_exercise_failure",
+  "arm_plan_write_back_failure",
   "reset_workout_failures",
 ] as const;
 
@@ -15,7 +16,10 @@ export type WorkoutMutationTestOperation =
   | "add_warmup"
   | "copy_warmup"
   | "add_working"
-  | "completed_set_correction";
+  | "completed_set_correction"
+  | "replace_exercise"
+  | "remove_exercise"
+  | "plan_write_back";
 
 export type WorkoutMutationTestResult = Readonly<{
   action: WorkoutMutationTestAction;
@@ -48,6 +52,21 @@ const armedControls = Object.freeze({
     heading: "Completed set correction failure armed",
     body: "The next completed set correction attempt will fail once.",
   }),
+  arm_replace_exercise_failure: Object.freeze({
+    operation: "replace_exercise",
+    heading: "Replace exercise failure armed",
+    body: "The next Replace exercise attempt will fail once.",
+  }),
+  arm_remove_exercise_failure: Object.freeze({
+    operation: "remove_exercise",
+    heading: "Remove exercise failure armed",
+    body: "The next Remove exercise attempt will fail once.",
+  }),
+  arm_plan_write_back_failure: Object.freeze({
+    operation: "plan_write_back",
+    heading: "Plan write-back failure armed",
+    body: "The next Save changes to plan attempt will fail once.",
+  }),
 } as const satisfies Readonly<Record<
   Exclude<WorkoutMutationTestAction, "reset_workout_failures">,
   Readonly<{
@@ -66,6 +85,8 @@ type WorkoutMutationCommands = Readonly<{
   copyPreviousWarmup?: AsyncCommand;
   addWorkingSet: AsyncCommand;
   reviseCompletedSet: AsyncCommand;
+  replaceExercise?: AsyncCommand;
+  removeExercise?: AsyncCommand;
 }>;
 
 function result(
@@ -134,6 +155,9 @@ export function runWorkoutMutationWithTestFailure<T>(
 }
 
 export function workoutMutationTestControlsEnabled(): boolean {
+  const {
+    default: Constants,
+  } = require("expo-constants") as typeof import("expo-constants");
   return Constants.expoConfig?.extra?.nativeContractsEnabled === true;
 }
 
@@ -167,5 +191,17 @@ export function createWorkoutMutationTestCommandAdapters<
       "completed_set_correction",
       commands.reviseCompletedSet,
     ),
+    ...(commands.replaceExercise === undefined ? {} : {
+      replaceExercise: wrapCommand(
+        "replace_exercise",
+        commands.replaceExercise,
+      ),
+    }),
+    ...(commands.removeExercise === undefined ? {} : {
+      removeExercise: wrapCommand(
+        "remove_exercise",
+        commands.removeExercise,
+      ),
+    }),
   } as TCommands;
 }

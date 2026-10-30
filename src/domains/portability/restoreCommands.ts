@@ -2,6 +2,7 @@ import {
   BACKUP_LIMITS,
   LOGICAL_BACKUP_TABLE_DEFINITIONS,
   LOGICAL_BACKUP_TABLES,
+  logicalBackupTablesForVersion,
   type LogicalBackupSnapshot,
 } from "./backupContracts";
 import {
@@ -143,7 +144,9 @@ function validPassword(value: string): boolean {
   }
 }
 
-export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18] as const);
+// Keep every emitted producer schema explicit. Trigger-only schemas remain on
+// their prior format; a format bump is required when the archived graph grows.
+export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47] as const);
 
 type LogicalReference = Readonly<{
   childTable: string;
@@ -156,9 +159,19 @@ type LogicalReference = Readonly<{
 /** Versioned, explicit pre-write relationship contract for all logical source tables. */
 export const LOGICAL_BACKUP_REFERENCE_DEFINITIONS = Object.freeze([
   ["exercises", ["content_pack_id"], "content_packs", ["id"], true], ["plans", ["content_pack_id"], "content_packs", ["id"], true], ["exercise_owner_preferences", ["exercise_id"], "exercise_library_entries", ["exercise_id"], true], ["exercise_aliases", ["exercise_id"], "exercise_library_entries", ["exercise_id"], true], ["exercise_search_terms", ["exercise_id"], "exercise_library_entries", ["exercise_id"], true], ["exercise_taxonomy", ["exercise_id"], "exercise_library_entries", ["exercise_id"], true], ["exercise_taxonomy", ["kind", "slug"], "taxonomy_terms", ["kind", "slug"]], ["metric_profile_migration_events", ["exercise_id"], "exercises", ["id"]], ["exercise_metric_baselines", ["exercise_id"], "exercises", ["id"]],
-  ["plan_schedules", ["plan_id"], "plans", ["id"]], ["plan_schedule_bindings", ["schedule_id"], "plan_schedules", ["id"]], ["plan_schedule_bindings", ["plan_day_id"], "plan_days", ["id"]], ["plan_days", ["plan_id"], "plans", ["id"]], ["plan_day_exercises", ["plan_day_id"], "plan_days", ["id"]], ["plan_day_exercises", ["exercise_id", "metric_profile", "metric_contract_version", "exercise_metric_generation"], "exercises", ["id", "metric_profile", "metric_contract_version", "exercise_metric_generation"], true], ["plan_warmup_sets", ["plan_day_exercise_id"], "plan_day_exercises", ["id"]], ["plan_working_set_targets", ["plan_day_exercise_id", "metric_profile", "metric_contract_version", "exercise_metric_generation"], "plan_day_exercises", ["id", "metric_profile", "metric_contract_version", "exercise_metric_generation"]], ["progression_policies", ["plan_day_exercise_id"], "plan_day_exercises", ["id"]], ["progression_recommendations", ["exercise_id"], "exercises", ["id"], true], ["progression_recommendations", ["plan_working_set_target_id"], "plan_working_set_targets", ["id"]],
+  ["plan_schedules", ["plan_id"], "plans", ["id"]], ["plan_schedule_bindings", ["schedule_id"], "plan_schedules", ["id"]], ["plan_schedule_bindings", ["plan_day_id"], "plan_days", ["id"]], ["plan_days", ["plan_id"], "plans", ["id"]], ["plan_day_exercises", ["plan_day_id"], "plan_days", ["id"]], ["plan_day_exercises", ["exercise_id", "metric_profile", "metric_contract_version", "exercise_metric_generation"], "exercises", ["id", "metric_profile", "metric_contract_version", "exercise_metric_generation"], true], ["plan_warmup_sets", ["plan_day_exercise_id"], "plan_day_exercises", ["id"]], ["plan_working_set_targets", ["plan_day_exercise_id", "metric_profile", "metric_contract_version", "exercise_metric_generation"], "plan_day_exercises", ["id", "metric_profile", "metric_contract_version", "exercise_metric_generation"]], ["progression_policies", ["plan_day_exercise_id"], "plan_day_exercises", ["id"]], ["progression_recommendations", ["exercise_id"], "exercises", ["id"], true], ["progression_recommendations", ["plan_working_set_target_id"], "plan_working_set_targets", ["id"]], ["progression_recommendation_decision_receipts", ["recommendation_id"], "progression_recommendations", ["id"]],
   ["owned_plan_aggregate_states", ["plan_id"], "plans", ["id"]], ["owned_plan_mutation_requests", ["source_plan_id"], "plans", ["id"], true], ["owned_plan_mutation_requests", ["result_plan_id"], "plans", ["id"]], ["owned_plan_starter_sources", ["plan_id"], "plans", ["id"]], ["owned_plan_starter_sources", ["source_namespace", "template_id", "source_revision"], "starter_plan_sources", ["source_namespace", "template_id", "source_revision"], true], ["owned_plan_day_sources", ["plan_day_id"], "plan_days", ["id"]], ["owned_plan_day_sources", ["plan_id"], "plans", ["id"]], ["owned_plan_day_exercises", ["plan_day_id"], "plan_days", ["id"]], ["owned_plan_day_exercises", ["exercise_id"], "exercise_library_entries", ["exercise_id"], true], ["owned_plan_warmup_sets", ["plan_day_exercise_id"], "owned_plan_day_exercises", ["id"]], ["owned_plan_working_set_targets", ["plan_day_exercise_id"], "owned_plan_day_exercises", ["id"]], ["owned_plan_progression_policies", ["plan_day_exercise_id"], "owned_plan_day_exercises", ["id"]], ["owned_plan_occurrence_sources", ["plan_day_exercise_id"], "owned_plan_day_exercises", ["id"]], ["owned_plan_occurrence_sources", ["plan_day_id"], "plan_days", ["id"]], ["owned_plan_schedules", ["plan_id"], "plans", ["id"]], ["owned_plan_schedule_versions", ["schedule_id"], "owned_plan_schedules", ["id"]], ["owned_plan_schedule_bindings", ["schedule_version_id"], "owned_plan_schedule_versions", ["id"]], ["owned_plan_schedule_bindings", ["plan_day_id"], "plan_days", ["id"]], ["owned_plan_schedule_overrides", ["schedule_id"], "owned_plan_schedules", ["id"]], ["owned_plan_schedule_overrides", ["plan_day_id"], "plan_days", ["id"]], ["owned_plan_schedule_opportunities", ["schedule_id"], "owned_plan_schedules", ["id"]], ["owned_plan_schedule_opportunities", ["schedule_version_id"], "owned_plan_schedule_versions", ["id"]], ["owned_plan_schedule_opportunities", ["plan_day_id"], "plan_days", ["id"]], ["owned_plan_schedule_opportunities", ["session_id"], "workout_sessions", ["id"]], ["owned_plan_schedule_events", ["schedule_id"], "owned_plan_schedules", ["id"]], ["starter_plan_activation_requests", ["selected_plan_id"], "plans", ["id"]], ["starter_plan_activation_requests", ["result_plan_id"], "plans", ["id"]], ["starter_plan_activation_requests", ["result_schedule_id"], "owned_plan_schedules", ["id"]], ["starter_plan_activation_requests", ["source_namespace", "template_id", "source_revision"], "starter_plan_sources", ["source_namespace", "template_id", "source_revision"], true],
-  ["workout_sessions", ["plan_id"], "plans", ["id"], true], ["workout_sessions", ["plan_day_id"], "plan_days", ["id"], true], ["workout_sessions", ["active_session_exercise_id"], "session_exercises", ["id"]], ["workout_sessions", ["active_set_id"], "session_sets", ["id"]], ["session_exercises", ["session_id"], "workout_sessions", ["id"]], ["session_exercises", ["source_plan_day_exercise_id"], "plan_day_exercises", ["id"], true], ["session_exercises", ["exercise_id"], "exercises", ["id"], true], ["session_sets", ["session_exercise_id", "metric_profile", "metric_contract_version", "exercise_metric_generation"], "session_exercises", ["id", "metric_profile", "metric_contract_version", "exercise_metric_generation"]], ["session_sets", ["source_plan_working_set_target_id"], "plan_working_set_targets", ["id"], true], ["session_sets", ["source_owned_plan_working_set_target_id"], "owned_plan_working_set_targets", ["id"], true], ["session_rest_states", ["session_id"], "workout_sessions", ["id"]], ["session_rest_states", ["next_set_id"], "session_sets", ["id"]], ["session_undo_snapshots", ["session_id"], "workout_sessions", ["id"]], ["session_undo_snapshots", ["completed_set_id"], "session_sets", ["id"]], ["history_session_overlays", ["session_id"], "workout_sessions", ["id"]], ["history_audit_events", ["session_id"], "workout_sessions", ["id"]], ["owned_progression_recommendations", ["exercise_id"], "exercises", ["id"], true], ["owned_progression_recommendations", ["owned_plan_working_set_target_id"], "owned_plan_working_set_targets", ["id"]],
+  ["workout_sessions", ["plan_id"], "plans", ["id"], true], ["workout_sessions", ["plan_day_id"], "plan_days", ["id"], true], ["workout_sessions", ["active_session_exercise_id"], "session_exercises", ["id"]], ["workout_sessions", ["active_set_id"], "session_sets", ["id"]], ["session_exercises", ["session_id"], "workout_sessions", ["id"]], ["session_exercises", ["source_plan_day_exercise_id"], "plan_day_exercises", ["id"], true], ["session_exercises", ["exercise_id"], "exercises", ["id"], true], ["session_sets", ["session_exercise_id", "metric_profile", "metric_contract_version", "exercise_metric_generation"], "session_exercises", ["id", "metric_profile", "metric_contract_version", "exercise_metric_generation"]], ["session_sets", ["source_plan_working_set_target_id"], "plan_working_set_targets", ["id"], true], ["session_sets", ["source_owned_plan_working_set_target_id"], "owned_plan_working_set_targets", ["id"], true], ["session_rest_states", ["session_id"], "workout_sessions", ["id"]], ["session_rest_states", ["next_set_id"], "session_sets", ["id"]], ["session_advanced_timing_states", ["session_id"], "workout_sessions", ["id"]], ["session_advanced_timing_states", ["session_set_id"], "session_sets", ["id"]], ["session_undo_snapshots", ["session_id"], "workout_sessions", ["id"]], ["session_undo_snapshots", ["completed_set_id"], "session_sets", ["id"]], ["history_session_overlays", ["session_id"], "workout_sessions", ["id"]], ["history_audit_events", ["session_id"], "workout_sessions", ["id"]], ["workout_session_exercise_edit_receipts", ["session_id"], "workout_sessions", ["id"]], ["workout_session_exercise_reorder_receipts", ["session_id"], "workout_sessions", ["id"]], ["workout_session_exercise_rest_default_receipts", ["session_id"], "workout_sessions", ["id"]], ["workout_session_exercise_rest_default_receipts", ["session_exercise_id"], "session_exercises", ["id"]], ["owned_progression_recommendations", ["exercise_id"], "exercises", ["id"], true], ["owned_progression_recommendations", ["owned_plan_working_set_target_id"], "owned_plan_working_set_targets", ["id"]], ["owned_progression_recommendation_decision_receipts", ["recommendation_id"], "owned_progression_recommendations", ["id"]],
+  ["running_plans", ["plan_id"], "plans", ["id"]], ["running_session_revisions", ["plan_id"], "running_plans", ["plan_id"]], ["running_session_roots", ["plan_id"], "running_plans", ["plan_id"]], ["running_session_slot_roots", ["plan_id"], "running_plans", ["plan_id"]], ["running_session_slot_revisions", ["slot_root_id"], "running_session_slot_roots", ["id"]], ["running_session_slot_revisions", ["session_root_id"], "running_session_roots", ["id"]], ["running_session_slot_revisions", ["session_revision_id"], "running_session_revisions", ["id"]], ["running_plan_receipts", ["plan_id"], "running_plans", ["plan_id"]], ["running_plan_events", ["plan_id"], "running_plans", ["plan_id"]], ["running_goals", ["plan_id"], "running_plans", ["plan_id"]], ["running_session_slots", ["plan_id"], "running_plans", ["plan_id"]], ["running_session_slots", ["session_revision_id"], "running_session_revisions", ["id"]],
+  ["running_opportunities", ["plan_id"], "running_plans", ["plan_id"]], ["running_opportunities", ["schedule_id"], "owned_plan_schedules", ["id"]], ["running_opportunities", ["schedule_version_id"], "owned_plan_schedule_versions", ["id"]], ["running_opportunities", ["slot_id"], "running_session_slots", ["id"]], ["running_opportunities", ["session_revision_id"], "running_session_revisions", ["id"]],
+  ["schedule_collision_outcomes", ["strength_opportunity_id"], "owned_plan_schedule_opportunities", ["id"]], ["schedule_collision_outcomes", ["strength_schedule_id"], "owned_plan_schedules", ["id"]], ["schedule_collision_outcomes", ["running_opportunity_id"], "running_opportunities", ["id"]], ["schedule_collision_outcomes", ["running_schedule_id"], "owned_plan_schedules", ["id"]], ["schedule_collision_receipts", ["request_id"], "schedule_collision_outcomes", ["request_id"]], ["schedule_collision_receipts", ["outcome_id"], "schedule_collision_outcomes", ["id"]], ["schedule_collision_projections", ["outcome_id"], "schedule_collision_outcomes", ["id"]],
+  ["workout_provenance", ["workout_session_id"], "workout_sessions", ["id"]], ["workout_provenance", ["plan_id"], "plans", ["id"], true], ["workout_provenance", ["plan_day_id"], "plan_days", ["id"], true], ["workout_provenance", ["schedule_id"], "owned_plan_schedules", ["id"]], ["workout_provenance", ["schedule_version_id"], "owned_plan_schedule_versions", ["id"]], ["workout_provenance", ["opportunity_id"], "running_opportunities", ["id"]], ["workout_receipts", ["workout_session_id"], "workout_sessions", ["id"]],
+  ["workout_session_schedule_links", ["workout_session_id"], "workout_sessions", ["id"]], ["workout_session_schedule_links", ["opportunity_id"], "owned_plan_schedule_opportunities", ["id"]], ["workout_session_schedule_links", ["plan_id"], "plans", ["id"]], ["workout_session_schedule_links", ["plan_day_id"], "plan_days", ["id"]], ["workout_session_schedule_links", ["schedule_id"], "owned_plan_schedules", ["id"]], ["workout_session_schedule_links", ["schedule_version_id"], "owned_plan_schedule_versions", ["id"]], ["workout_schedule_reconciliation_receipts", ["workout_session_id"], "workout_sessions", ["id"]], ["workout_completed_set_correction_receipts", ["session_id"], "workout_sessions", ["id"]], ["workout_completed_set_correction_receipts", ["set_id"], "session_sets", ["id"]],
+  ["imported_activity_payloads", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_references", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_laps", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_chunks", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_receipts", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_removal_events", ["activity_id"], "imported_activities", ["id"]],
+  ["imported_activity_identities", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_events", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_match_invalidations", ["activity_id"], "imported_activities", ["id"]],
+  ["imported_activity_revision_proposals", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_revision_decisions", ["activity_id", "proposed_revision"], "imported_activity_revision_proposals", ["activity_id", "proposed_revision"]],
+  ["running_match_events", ["activity_id"], "imported_activities", ["id"]], ["running_match_events", ["opportunity_id"], "running_opportunities", ["id"]], ["running_current_matches", ["opportunity_id"], "running_opportunities", ["id"]], ["running_current_matches", ["activity_id"], "imported_activities", ["id"]], ["running_current_matches", ["event_id"], "running_match_events", ["id"]], ["bodyweight_tombstones", ["bodyweight_revision_id"], "bodyweight_revisions", ["id"]], ["bodyweight_entry_events", ["entry_id"], "bodyweight_entries", ["id"]], ["bodyweight_command_receipts", ["entry_id"], "bodyweight_entries", ["id"]],
+  ["running_activity_match_events", ["activity_id"], "imported_activities", ["id"]], ["running_activity_match_events", ["opportunity_id"], "running_opportunities", ["id"]], ["running_activity_match_events", ["prior_opportunity_id"], "running_opportunities", ["id"]], ["running_activity_match_receipts", ["activity_id"], "imported_activities", ["id"]], ["running_activity_match_receipts", ["opportunity_id"], "running_opportunities", ["id"]],
 ] .map(([childTable, childColumns, parentTable, parentColumns, allowRetained]) => Object.freeze({ childTable, childColumns, parentTable, parentColumns, ...(allowRetained === true ? { allowRetained: true } : {}) })) as readonly LogicalReference[]);
 
 function invalid(): never {
@@ -173,59 +186,160 @@ function exactKeys(value: Record<string, unknown>, expected: readonly string[]):
 
 function tupleKey(values: readonly unknown[]): string { return JSON.stringify(values); }
 
+const OFF_ADVANCED_TIMING_JSON = '{"version":1,"mode":"off"}';
+
+function additiveColumnDefaults(
+  table: string,
+  schemaVersion: number,
+): Readonly<Record<string, string | number | null>> {
+  const defaults: Record<string, string | number | null> = {};
+  if (schemaVersion < 21) {
+    if (["plan_day_exercises", "owned_plan_day_exercises", "session_exercises"].includes(table)) {
+      defaults.advanced_timing_default_json = OFF_ADVANCED_TIMING_JSON;
+    }
+    if (["plan_warmup_sets", "plan_working_set_targets", "owned_plan_warmup_sets", "owned_plan_working_set_targets", "session_sets"].includes(table)) {
+      defaults.advanced_timing_override_json = null;
+    }
+    if (table === "session_sets") {
+      defaults.advanced_timing_resolved_json = OFF_ADVANCED_TIMING_JSON;
+    }
+  }
+  if (schemaVersion < 22) {
+    if (table === "exercises" || table === "plans") {
+      defaults.portable_id = null;
+    }
+    if (table === "workout_sessions") {
+      defaults.portable_id = null;
+      defaults.merge_modified_at_ms = null;
+    }
+  }
+  return Object.freeze(defaults);
+}
+
 function validateDomainInvariants(snapshot: LogicalBackupSnapshot): void {
   const enumValues: ReadonlyArray<readonly [string, string, readonly string[]]> = [["exercises", "origin", ["custom", "copied"]], ["plans", "origin", ["custom", "copied"]], ["workout_sessions", "status", ["in_progress", "completed", "partial", "discarded", "voided", "manual_visit", "zero_sets"]]];
   for (const [table, column, allowed] of enumValues) for (const row of snapshot.tables[table]!) if (row[column] !== undefined && (typeof row[column] !== "string" || !allowed.includes(row[column] as string))) invalid();
-  for (const table of LOGICAL_BACKUP_TABLES) for (const row of snapshot.tables[table]!) for (const [column, value] of Object.entries(row)) if (column.endsWith("_json") && typeof value === "string") { try { JSON.parse(value); } catch { invalid(); } }
-  for (const [table, column] of [["plans", "is_active"], ["workout_sessions", "status"]] as const) {
-    const active = snapshot.tables[table]!.filter((row) => table === "plans" ? row[column] === 1 : row[column] === "in_progress");
-    if (active.length > 1) invalid();
+  for (const table of logicalBackupTablesForVersion(
+    snapshot.version,
+    snapshot.schemaVersion,
+  )) {
+    for (const row of snapshot.tables[table]!) {
+      for (const [column, value] of Object.entries(row)) {
+        if (column.endsWith("_json") && typeof value === "string") {
+          try { JSON.parse(value); } catch { invalid(); }
+        }
+      }
+    }
   }
+  const activePlans = snapshot.tables.plans!.filter((row) => row.is_active === 1);
+  if (snapshot.version >= 3) {
+    const kinds = new Set<string>();
+    for (const row of activePlans) {
+      if (row.plan_kind !== "strength" && row.plan_kind !== "running") invalid();
+      if (kinds.has(row.plan_kind)) invalid();
+      kinds.add(row.plan_kind);
+    }
+    const plansById = new Map(snapshot.tables.plans!.map((row) => [row.id, row]));
+    const schedules = snapshot.tables.owned_plan_schedules!;
+    const activeSchedules = schedules.filter((row) => row.lifecycle === "active");
+    const scheduleKinds = new Set<string>();
+    for (const row of activeSchedules) {
+      const plan = plansById.get(row.plan_id);
+      const planKind = row.plan_kind as string;
+      if (plan === undefined || plan.is_active !== 1 || plan.plan_kind !== planKind
+        || scheduleKinds.has(planKind)) invalid();
+      scheduleKinds.add(planKind);
+    }
+    if (scheduleKinds.size !== kinds.size) invalid();
+  } else if (activePlans.length > 1) invalid();
+  if (snapshot.tables.workout_sessions!.filter((row) => row.status === "in_progress").length > 1) invalid();
 }
 
 async function validateRows(
   snapshot: LogicalBackupSnapshot,
   schema: RestoreSchemaPort,
   retained: RestoreRetainedReferencePort | undefined,
-): Promise<Readonly<{ internal: number; retained: number }>> {
-  if (!(LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS as readonly number[]).includes(snapshot.schemaVersion)) throw new RestoreCommandError("restore_archive_unsupported_version");
-  if (!exactKeys(snapshot.tables, LOGICAL_BACKUP_TABLES)) invalid();
-  if (!exactKeys(snapshot.manifest.rowCounts, LOGICAL_BACKUP_TABLES)) invalid();
+): Promise<Readonly<{
+  internal: number;
+  retained: number;
+  snapshot: LogicalBackupSnapshot;
+}>> {
+  const schemaVersionSupported = (
+    LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS as readonly number[]
+  ).includes(snapshot.schemaVersion);
+  const formatMatchesSchema = snapshot.version === 11
+    ? snapshot.schemaVersion === 47
+    : snapshot.version === 10
+    ? snapshot.schemaVersion === 45 || snapshot.schemaVersion === 46
+    : snapshot.version === 9
+    ? snapshot.schemaVersion === 43 || snapshot.schemaVersion === 44
+    : snapshot.version === 8
+      ? snapshot.schemaVersion === 42
+    : snapshot.version === 7
+      ? snapshot.schemaVersion === 40 || snapshot.schemaVersion === 41
+    : snapshot.version === 6
+      ? snapshot.schemaVersion >= 36 && snapshot.schemaVersion <= 39
+    : snapshot.version === 5
+      ? snapshot.schemaVersion === 31
+    : snapshot.version === 4
+      ? snapshot.schemaVersion === 29 || snapshot.schemaVersion === 30
+      : snapshot.version === 3
+        ? snapshot.schemaVersion === 28
+        : snapshot.schemaVersion < 28;
+  if (!schemaVersionSupported || !formatMatchesSchema) {
+    throw new RestoreCommandError("restore_archive_unsupported_version");
+  }
+  const sourceTables = logicalBackupTablesForVersion(
+    snapshot.version,
+    snapshot.schemaVersion,
+  );
+  if (!exactKeys(snapshot.tables, sourceTables)) invalid();
+  if (!exactKeys(snapshot.manifest.rowCounts, sourceTables)) invalid();
   if (snapshot.manifest.totalRows !== Object.values(snapshot.manifest.rowCounts).reduce((sum, count) => sum + count, 0)) invalid();
 
-  for (const table of LOGICAL_BACKUP_TABLES) {
+  const materializedTables: Record<string, readonly LogicalBackupSnapshot["tables"][string][number][]> = {};
+  for (const table of sourceTables) {
     const rows = snapshot.tables[table]!;
     if (snapshot.manifest.rowCounts[table] !== rows.length) invalid();
     const columns = await schema.columnsFor(table);
     if (columns.length === 0 || new Set(columns.map(({ name }) => name)).size !== columns.length) invalid();
     const expectedColumns = columns.map(({ name }) => name);
+    const defaults = additiveColumnDefaults(table, snapshot.schemaVersion);
+    const producerColumns = expectedColumns.filter((name) => !(name in defaults));
     const identities = new Set<string>();
-    for (const row of rows) {
+    const materializedRows = rows.map((row) => {
       if (row === null || Array.isArray(row) || typeof row !== "object") invalid();
-      if (!exactKeys(row, expectedColumns)) invalid();
+      if (!exactKeys(row, producerColumns)) invalid();
+      const materialized = Object.freeze({ ...row, ...defaults });
       for (const column of columns) {
-        const value = row[column.name];
+        const value = materialized[column.name];
         if (value === null && !column.notNull) continue;
         if (column.sqliteType === "TEXT" && typeof value === "string") continue;
         if (column.sqliteType === "INTEGER" && typeof value === "number" && Number.isSafeInteger(value)) continue;
         invalid();
       }
       const definition = LOGICAL_BACKUP_TABLE_DEFINITIONS[table as keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS];
-      const identity = definition.primaryKey.map((column) => row[column]);
+      const identity = definition.primaryKey.map((column) => materialized[column]);
       if (identity.some((value) => (typeof value !== "string" || value.trim().length === 0) && (typeof value !== "number" || !Number.isSafeInteger(value)))) invalid();
       const key = JSON.stringify(identity);
       if (identities.has(key)) invalid();
       identities.add(key);
-    }
+      return materialized;
+    });
+    materializedTables[table] = Object.freeze(materializedRows);
   }
 
-  validateDomainInvariants(snapshot);
+  const materializedSnapshot = Object.freeze({
+    ...snapshot,
+    tables: Object.freeze(materializedTables),
+  });
+  validateDomainInvariants(materializedSnapshot);
   let internal = 0;
   let retainedCount = 0;
   for (const definition of LOGICAL_BACKUP_REFERENCE_DEFINITIONS) {
-    const childRows = snapshot.tables[definition.childTable];
+    const childRows = materializedSnapshot.tables[definition.childTable];
     if (childRows === undefined || childRows.length === 0) continue;
-    const parentRows = new Set((snapshot.tables[definition.parentTable] ?? []).map((row) => tupleKey(definition.parentColumns.map((column) => row[column]))));
+    const parentRows = new Set((materializedSnapshot.tables[definition.parentTable] ?? []).map((row) => tupleKey(definition.parentColumns.map((column) => row[column]))));
     for (const row of childRows) {
       const values = definition.childColumns.map((column) => row[column]);
       if (values.every((value) => value === null)) continue;
@@ -235,7 +349,19 @@ async function validateRows(
       invalid();
     }
   }
-  return { internal, retained: retainedCount };
+  return { internal, retained: retainedCount, snapshot: materializedSnapshot };
+}
+
+/**
+ * Shared authenticated-preflight validator for replacement restore and merge.
+ * It only reads schema/reference ports; the merge path deliberately has no writer.
+ */
+export async function validateLogicalRestoreSnapshot(
+  snapshot: LogicalBackupSnapshot,
+  schema: RestoreSchemaPort,
+  retained: RestoreRetainedReferencePort | undefined,
+): Promise<void> {
+  await validateRows(snapshot, schema, retained);
 }
 
 async function createPreview(snapshot: LogicalBackupSnapshot, availability: RestoreReferenceAvailabilityPort | undefined, referenceCounts: Readonly<{ internal: number; retained: number }>): Promise<RestorePreview> {
@@ -244,7 +370,11 @@ async function createPreview(snapshot: LogicalBackupSnapshot, availability: Rest
   return Object.freeze({
     sourceFormatVersion: snapshot.version,
     createdAtMs: snapshot.createdAtMs,
-    replacementCounts: Object.freeze(Object.fromEntries(LOGICAL_BACKUP_TABLES.filter((table) => snapshot.tables[table]!.length > 0).map((table) => [table, snapshot.tables[table]!.length]))),
+    replacementCounts: Object.freeze(Object.fromEntries(
+      logicalBackupTablesForVersion(snapshot.version, snapshot.schemaVersion)
+        .filter((table) => snapshot.tables[table]!.length > 0)
+        .map((table) => [table, snapshot.tables[table]!.length]),
+    )),
     references: Object.freeze({
       internalSnapshotReferences: referenceCounts.internal,
       requiredLocalBundled: Object.freeze({
@@ -313,10 +443,11 @@ export function createRestoreCommands(dependencies: RestoreCommandDependencies):
         if (archive === null) return { outcome: "cancelled" } as const;
         if (!(archive instanceof Uint8Array) || archive.byteLength === 0) invalid();
         if (archive.byteLength > BACKUP_LIMITS.maxArchiveBytes) throw new RestoreCommandError("restore_archive_limit_exceeded");
-        const snapshot = await codec.open({ archive, password });
-        const referenceCounts = await validateRows(snapshot, dependencies.schema, dependencies.retainedReferences);
+        const decodedSnapshot = await codec.open({ archive, password });
+        const validation = await validateRows(decodedSnapshot, dependencies.schema, dependencies.retainedReferences);
+        const snapshot = validation.snapshot;
         await dependencies.candidateProbe.validateCandidate(snapshot);
-        const preview = await createPreview(snapshot, dependencies.referenceAvailability, referenceCounts);
+        const preview = await createPreview(snapshot, dependencies.referenceAvailability, validation);
         const token = dependencies.store.issue({ snapshot, preview, digest: preflightDigest(snapshot) });
         return Object.freeze({ outcome: "ready" as const, token, preview });
       } catch (error) {

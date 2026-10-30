@@ -29,7 +29,7 @@ tags:
       - tapOn: "Train anyway"
 - tapOn: "Start Full Body A"
 - extendedWaitUntil:
-    visible: "FOCUSED WORKOUT"
+    visible: "WORKOUT OVERVIEW"
     timeout: 30000
 - assertVisible: "Back Squat"
 - repeat:
@@ -50,4 +50,5 @@ tags:
       notifications: deny
 - assertVisible: "Workout in progress"
 - tapOn: "Resume workout"
+- assertVisible: "WORKOUT OVERVIEW"
 - assertVisible: "RESTING · NEXT: SET 2 AT 60 kg × 8"

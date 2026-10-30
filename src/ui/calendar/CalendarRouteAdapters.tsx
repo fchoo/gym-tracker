@@ -1,0 +1,204 @@
+import React, { useEffect, useRef, useState } from "react";
+import { View, type TextStyle } from "react-native";
+
+import {
+  useCalendarActivityReadPort,
+  useCalendarSessionReadPort,
+  useCalendarStrengthOccurrenceReadPort,
+} from "../../bootstrap/workoutAppRuntime";
+import { useCalendarRunningPlanReadPort } from "../../bootstrap/runningPlanRuntime";
+import { WorkoutOutcomeConflictError, type SessionDetail } from "../../domains/workout";
+import { EmptyState, PrimaryAction, ScreenHeader, SkeletonBlock } from "../components";
+import { GarminRouteShell } from "../garmin/GarminRouteShell";
+import { AdaptiveScreen } from "../layout/AdaptiveScreen";
+import { calendarTypeScale } from "../theme";
+import {
+  ImportedActivityDetailScreen,
+  type ImportedActivityDetailScreenState,
+} from "../screens/ImportedActivityDetailScreen";
+import { PlannedWorkoutDetailScreen } from "../screens/PlannedWorkoutDetailScreen";
+import { RunningPlanDetailScreen } from "../screens/RunningPlanDetailScreen";
+import { CalendarReadOnlyWorkout } from "./CalendarReadOnlyWorkout";
+
+function CalendarSessionStateShell({
+  children,
+  onBack,
+}: Readonly<{ children: React.ReactNode; onBack(): void }>) {
+  const backActionRef = useRef<View>(null);
+
+  useEffect(() => {
+    backActionRef.current?.focus?.();
+  }, []);
+
+  return (
+    <AdaptiveScreen
+      primary={
+        <>
+          <ScreenHeader backAction={onBack} backActionLabel="Back to Calendar agenda" backActionRef={backActionRef} title="Workout details" titleStyle={calendarTypeScale.heading as TextStyle} />
+          {children}
+        </>
+      }
+    />
+  );
+}
+
+function CalendarSessionUnavailable({ onBack }: Readonly<{ onBack(): void }>) {
+  return (
+    <CalendarSessionStateShell onBack={onBack}>
+      <EmptyState
+        body="This workout was removed or changed. Return to Calendar to refresh."
+        bodyStyle={calendarTypeScale.body as TextStyle}
+        heading="Workout details unavailable"
+        headingStyle={calendarTypeScale.heading as TextStyle}
+        primaryAction={<PrimaryAction label="Back to Calendar" onPress={onBack} />}
+      />
+    </CalendarSessionStateShell>
+  );
+}
+
+export function CalendarSessionDetailRouteAdapter({
+  onBack,
+  sessionId,
+}: Readonly<{
+  onBack(): void;
+  sessionId: string | null;
+}>) {
+  const readSession = useCalendarSessionReadPort();
+  const [detail, setDetail] = useState<SessionDetail | null>(null);
+  const [state, setState] = useState<"loading" | "ready" | "missing" | "error">(
+    sessionId === null ? "missing" : "loading",
+  );
+  const [retryGeneration, setRetryGeneration] = useState(0);
+
+  useEffect(() => {
+    if (sessionId === null) {
+      setDetail(null);
+      setState("missing");
+      return undefined;
+    }
+    let active = true;
+    setDetail(null);
+    setState("loading");
+    void readSession.loadCalendarSessionDetail(sessionId).then((next) => {
+      if (active) {
+        setDetail(next);
+        setState(next === null ? "missing" : "ready");
+      }
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setState(error instanceof WorkoutOutcomeConflictError
+        && error.code === "workout_session_not_found"
+        ? "missing"
+        : "error");
+    });
+    return () => { active = false; };
+  }, [readSession.loadCalendarSessionDetail, retryGeneration, sessionId]);
+
+  if (state === "missing") return <CalendarSessionUnavailable onBack={onBack} />;
+  if (state === "error") {
+    return (
+      <CalendarSessionStateShell onBack={onBack}>
+        <EmptyState body="Your saved workout was not changed. Try loading these details again." bodyStyle={calendarTypeScale.body as TextStyle} heading="Workout details could not be loaded" headingStyle={calendarTypeScale.heading as TextStyle} primaryAction={<PrimaryAction label="Retry workout details" onPress={() => setRetryGeneration((value) => value + 1)} />} />
+      </CalendarSessionStateShell>
+    );
+  }
+  if (state === "loading" || detail === null) {
+    return <CalendarSessionStateShell onBack={onBack}><SkeletonBlock height={40} width="64%" /><SkeletonBlock height={96} /></CalendarSessionStateShell>;
+  }
+  return <CalendarReadOnlyWorkout detail={detail} onGoBack={onBack} />;
+}
+
+export function CalendarPlannedStrengthRouteAdapter({
+  occurrenceId,
+  onBack,
+}: Readonly<{
+  occurrenceId: string;
+  onBack(): void;
+}>) {
+  const readOccurrence = useCalendarStrengthOccurrenceReadPort();
+  return (
+    <PlannedWorkoutDetailScreen
+      occurrenceId={occurrenceId}
+      loadOccurrence={readOccurrence.loadPlannedStrengthOccurrence}
+      onBack={onBack}
+    />
+  );
+}
+
+export function CalendarRunningPlanRouteAdapter({
+  planId,
+  sessionId,
+  onBack,
+}: Readonly<{
+  planId: string;
+  sessionId: string;
+  onBack(): void;
+}>) {
+  const readPlan = useCalendarRunningPlanReadPort();
+  return (
+    <RunningPlanDetailScreen
+      loadPlan={readPlan.loadScheduledSessionPlan}
+      mode="calendar"
+      onBack={onBack}
+      planId={planId}
+      sessionId={sessionId}
+    />
+  );
+}
+
+export function CalendarImportedActivityRouteAdapter({
+  activityId,
+  loadActivityDetail,
+  loadRevisionReview,
+  onBack,
+}: Readonly<{
+  activityId: string | null;
+  loadActivityDetail?(activityId: string): ReturnType<ReturnType<typeof useCalendarActivityReadPort>["loadImportedActivityDetail"]>;
+  loadRevisionReview?(activityId: string): ReturnType<ReturnType<typeof useCalendarActivityReadPort>["loadGarminRevisionReview"]>;
+  onBack(): void;
+}>) {
+  const readActivity = useCalendarActivityReadPort();
+  const loadActivity = loadActivityDetail ?? readActivity.loadImportedActivityDetail;
+  const loadReview = loadRevisionReview ?? readActivity.loadGarminRevisionReview;
+  const [attempt, setAttempt] = useState(0);
+  const [state, setState] = useState<ImportedActivityDetailScreenState>(
+    activityId === null ? { kind: "missing" } : { kind: "loading" },
+  );
+
+  useEffect(() => {
+    if (activityId === null) {
+      setState({ kind: "missing" });
+      return undefined;
+    }
+    let active = true;
+    setState({ kind: "loading" });
+    void loadActivity(activityId).then(async (result) => {
+      if (!active) return;
+      if (result.kind !== "revision_review") {
+        setState(result);
+        return;
+      }
+      const review = await loadReview(activityId);
+      if (active) setState(review === null ? result : { kind: "revision_review", review });
+    }).catch(() => {
+      if (active) setState({ kind: "projection_error", code: "accepted_payload_unavailable" });
+    });
+    return () => { active = false; };
+  }, [
+    activityId,
+    attempt,
+    loadActivity,
+    loadReview,
+  ]);
+
+  return (
+    <GarminRouteShell origin="calendar">
+      <ImportedActivityDetailScreen
+        mode="calendar"
+        onBack={onBack}
+        onRetry={() => setAttempt((current) => current + 1)}
+        state={state}
+      />
+    </GarminRouteShell>
+  );
+}

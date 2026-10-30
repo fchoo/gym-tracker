@@ -14,10 +14,11 @@ import {
 import React from "react";
 
 import type {
+  SelectedStrengthOccurrence,
   TodayView,
 } from "../../domains/workout";
 import { TodayScreen } from "../screens/TodayScreen";
-import { AppearanceProvider, themes } from "../theme";
+import { AppearanceProvider, sizes, themes } from "../theme";
 
 async function renderToday(
   view: TodayView | undefined,
@@ -87,11 +88,166 @@ const scheduledView: TodayView = {
   ],
 };
 
+const selectedOccurrence: SelectedStrengthOccurrence = {
+  kind: "strength",
+  opportunityId: "occurrence-monday-a",
+  planId: "plan-copy",
+  planDayId: "day-a",
+  scheduleId: "schedule-copy",
+  scheduleVersionId: "schedule-version-1",
+  localDate: "2026-09-07",
+  timeZone: "Asia/Singapore",
+  sourceRevisions: { plan: 1, day: 1, schedule: 1, opportunity: 1 },
+};
+
 describe("Plan 01-07 TodayScreen", () => {
+  it("keeps rest and start-failure states truthful while alternatives remain explicit", async () => {
+    await renderToday({
+      state: "rest_day",
+      planId: "plan-copy",
+      planName: "Full Body Foundation",
+      nextDayId: "day-b",
+      nextDayName: "Full Body B",
+      nextLocalDate: "2026-09-09",
+    }, {
+      actionFailure: { code: "workout_action_failed", correlationCode: "GT-ACTION01" },
+    });
+
+    expect(screen.getByText("No workout planned")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Nothing scheduled" })).toBeDisabled();
+    expect(screen.getByText("Workout was not started")).toBeOnTheScreen();
+    expect(screen.getByText(/Your saved data was not changed\. Try again\./u)).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Retry starting workout" })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Train anyway" }));
+    expect(screen.getByRole("button", { name: "Return to Workout" })).toBeOnTheScreen();
+  });
+
+  it("keeps a source-less rest-day view truthful while offering explicit alternatives", async () => {
+    await renderToday({
+      state: "rest_day",
+      planId: "plan-copy",
+      planName: "Full Body Foundation",
+      nextDayId: "removed-day",
+      nextDayName: "Retired Strength Day",
+      nextLocalDate: "2026-09-09",
+    }, {
+      planDays: [{ id: "day-a", name: "Full Body A", ordinal: 0 }],
+    });
+
+    expect(screen.getByRole("button", { name: "Nothing scheduled" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Train anyway" })).not.toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Choose another day" })).toBeOnTheScreen();
+  });
+
+  it("shows independent Running context as navigation only", async () => {
+    const viewPlan = jest.fn();
+    const syncGarmin = jest.fn();
+    await renderToday(scheduledView, {
+      runningContext: { label: "Tempo", planId: "running-plan" },
+      onOpenRunningPlan: viewPlan,
+      onSyncGarmin: syncGarmin,
+    });
+
+    expect(screen.getByText("ALSO SCHEDULED")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "View plan" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Sync Garmin" }));
+    expect(viewPlan).toHaveBeenCalledWith("running-plan");
+    expect(syncGarmin).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByRole("button", { name: "Sync Garmin" })).toHaveLength(1);
+    expect(screen.getByText("Full Body A")).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: /Start Run/u })).not.toBeOnTheScreen();
+  });
+  it("renders the selected real occurrence before its complete persisted-order preview", async () => {
+    const start = jest.fn();
+    const { rendered } = await renderToday(scheduledView, {
+      onStartOccurrence: start,
+      selectedStrengthOccurrence: selectedOccurrence,
+      strengthOccurrences: [{
+        occurrence: selectedOccurrence,
+        dayName: "Full Body A",
+        planName: "Full Body Foundation",
+        estimateMinutes: 48,
+        exercises: scheduledView.exercises,
+      }],
+    });
+
+    expect(screen.getAllByText("MON · 07 SEP 2026")).toHaveLength(2);
+    expect(screen.getAllByText("Full Body A")).toHaveLength(2);
+    expect(screen.getByText("3 exercises · about 48 min")).toBeOnTheScreen();
+    expect(screen.getByText("Back Squat")).toBeOnTheScreen();
+    expect(screen.getByText("Bench Press")).toBeOnTheScreen();
+    expect(screen.getByText("Plank")).toBeOnTheScreen();
+    const tree = JSON.stringify(rendered.toJSON());
+    expect(tree.indexOf("Full Body A")).toBeLessThan(tree.indexOf("Back Squat"));
+    await fireEvent.press(screen.getByRole("button", { name: "Start Full Body A" }));
+    expect(start).toHaveBeenCalledWith(selectedOccurrence);
+  });
+
+  it("changes only the preview selection and gives a recovered session priority", async () => {
+    const alternate: SelectedStrengthOccurrence = {
+      ...selectedOccurrence,
+      opportunityId: "occurrence-wednesday-b",
+      planDayId: "day-b",
+      localDate: "2026-09-09",
+    };
+    const start = jest.fn();
+    const resume = jest.fn();
+    const { rendered } = await renderToday(scheduledView, {
+      onResumeWorkout: resume,
+      onStartOccurrence: start,
+      selectedStrengthOccurrence: selectedOccurrence,
+      strengthOccurrences: [
+        {
+          occurrence: selectedOccurrence,
+          dayName: "Full Body A",
+          planName: "Full Body Foundation",
+          estimateMinutes: 48,
+          exercises: scheduledView.exercises,
+        },
+        {
+          occurrence: alternate,
+          dayName: "Full Body B",
+          planName: "Full Body Foundation",
+          estimateMinutes: 42,
+          exercises: scheduledView.exercises.slice(0, 2),
+        },
+      ],
+    });
+
+    await fireEvent.press(screen.getByRole("tab", { name: /Preview Full Body B/u }));
+    expect(screen.getAllByText("Full Body B")).toHaveLength(2);
+    await fireEvent.press(screen.getByRole("button", { name: "Start Full Body B" }));
+    expect(start).toHaveBeenCalledWith(alternate);
+    expect(rendered.toJSON()).toBeTruthy();
+
+    await rendered.rerender(
+      <AppearanceProvider>
+        <TodayScreen
+          launchState="trusted"
+          onResumeWorkout={resume}
+          onStartOccurrence={start}
+          planDays={[]}
+          view={{
+            state: "active_workout",
+            sessionId: "recovered-session",
+            exerciseName: "Back Squat",
+            setLabel: "Working set 2",
+            restStatus: "idle",
+          }}
+          selectedStrengthOccurrence={selectedOccurrence}
+          strengthOccurrences={[]}
+        />
+      </AppearanceProvider>,
+    );
+    expect(screen.getByRole("button", { name: "Resume workout" })).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: /Start Full Body/u })).not.toBeOnTheScreen();
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
   it("renders trusted loading structure without stale facts", async () => {
     await renderToday(undefined);
 
-    expect(screen.getByRole("header", { name: "Today" })).toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "Workout" })).toBeOnTheScreen();
     expect(
       screen.getAllByTestId(/today-skeleton/u, { includeHiddenElements: true }),
     ).toHaveLength(6);
@@ -100,15 +256,17 @@ describe("Plan 01-07 TodayScreen", () => {
 
   it("uses one labelled Settings gear without manual schedule or duplicate data controls", async () => {
     const start = jest.fn();
+    const openSettings = jest.fn();
     await renderToday(scheduledView, {
+      onOpenSettings: openSettings,
       onStartPlanDay: start,
       width: 360,
     });
 
-    const settings = screen.getByRole("button", { name: "Settings" });
+    const settings = screen.getByRole("button", { name: "Open App Settings" });
     expect(settings).toHaveProp(
       "accessibilityHint",
-      "Opens Settings",
+      "Opens App Settings",
     );
     expect(settings).toHaveStyle({ minHeight: 48 });
     expect(screen.getByTestId("adaptive-screen"))
@@ -124,11 +282,12 @@ describe("Plan 01-07 TodayScreen", () => {
     }
 
     await fireEvent(settings, "focus");
-    expect(settings).toHaveStyle({ outlineWidth: 2 });
+    expect(settings).toHaveStyle({ outlineWidth: sizes.focusRing });
     await fireEvent(settings, "keyDown", {
       nativeEvent: { key: "Enter" },
     });
     expect(start).not.toHaveBeenCalled();
+    expect(openSettings).toHaveBeenCalledTimes(1);
   });
 
   it("shows only Full Body Foundation on first use and activates after preview", async () => {
@@ -290,7 +449,11 @@ describe("Plan 01-07 TodayScreen", () => {
       "handled",
     );
     expect(screen.getByTestId("workout-start-sheet-content")).toHaveStyle({
-      maxHeight: "90%",
+      flexShrink: 1,
+      minHeight: 0,
+    });
+    expect(screen.getByTestId("workout-start-sheet-content")).not.toHaveStyle({
+      maxHeight: "82%",
     });
     expect(screen.queryByRole("checkbox", {
       name: "Advance rotation after this workout",
@@ -405,7 +568,7 @@ describe("Plan 01-07 TodayScreen", () => {
     expect(retry).toHaveBeenCalledTimes(1);
   });
 
-  it("shows a safe action failure without hiding authoritative Today facts", async () => {
+  it("shows a safe action failure without hiding authoritative Workout facts", async () => {
     const retry = jest.fn();
     await renderToday(scheduledView, {
       actionFailure: {
@@ -415,19 +578,19 @@ describe("Plan 01-07 TodayScreen", () => {
       onRetry: retry,
     });
 
-    expect(screen.getByText("Workout action was not saved")).toBeOnTheScreen();
+    expect(screen.getByText("Workout was not started")).toBeOnTheScreen();
     expect(
-      screen.getByText("Your saved data was not changed. GT-ACTION01"),
+      screen.getByText("Your saved data was not changed. Try again. GT-ACTION01"),
     ).toBeOnTheScreen();
     expect(screen.getByText("60 kg × 8")).toBeOnTheScreen();
     await fireEvent.press(
-      screen.getByRole("button", { name: "Retry Today action" }),
+      screen.getByRole("button", { name: "Retry starting workout" }),
     );
     expect(retry).toHaveBeenCalledTimes(1);
   });
 
   it.each([599, 600, 840])(
-    "preserves Today hierarchy at width %i",
+    "preserves Workout root hierarchy at width %i",
     async (width) => {
       await renderToday(scheduledView, { width });
       expect(screen.getByRole("button", { name: "Start Full Body A" }))
@@ -479,7 +642,7 @@ describe("Plan 01-07 TodayScreen", () => {
     )).toHaveStyle({ color: themes.light.contentCardTextSecondary });
     expect(screen.getByRole("button", {
       name: /Full Body Foundation\. 3 days per week/u,
-    })).not.toHaveStyle({ backgroundColor: themes.light.surface });
+    })).toHaveProp("accessibilityRole", "button");
   });
 
   it.each(["Light", "Dark"] as const)(
@@ -511,7 +674,7 @@ describe("Plan 01-07 TodayScreen", () => {
       expect(screen.getByText("Back Squat")).toHaveStyle({
         color: colors.contentCardText,
       });
-      expect(screen.getByRole("button", { name: "Settings" }))
+      expect(screen.getByRole("button", { name: "Open App Settings" }))
         .toHaveStyle({ minHeight: 48 });
     },
   );

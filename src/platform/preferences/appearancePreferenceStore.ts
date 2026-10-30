@@ -11,26 +11,35 @@ type SyncPreferenceStorage = Readonly<{
   removeItemSync(key: string): boolean;
 }>;
 
+export type AppearanceReadResult =
+  | Readonly<{ status: "ready"; value: string | null }>
+  | Readonly<{ status: "failed" }>;
+
+export type AppearanceWriteResult =
+  | Readonly<{ status: "written"; value: "Light" | "Dark" | null }>
+  | Readonly<{ status: "failed" }>;
+
 export function createSqliteAppearanceStore(
   storage: SyncPreferenceStorage,
 ) {
   return Object.freeze({
-    read(): string | null {
+    read(): AppearanceReadResult {
       try {
-        return storage.getItemSync(APPEARANCE_PREFERENCE_KEY);
+        return { status: "ready", value: storage.getItemSync(APPEARANCE_PREFERENCE_KEY) };
       } catch {
-        return null;
+        return { status: "failed" };
       }
     },
-    write(value: "Light" | "Dark" | null): void {
+    write(value: "Light" | "Dark" | null): AppearanceWriteResult {
       try {
         if (value === null) {
           storage.removeItemSync(APPEARANCE_PREFERENCE_KEY);
-          return;
+          return { status: "written", value: null };
         }
         storage.setItemSync(APPEARANCE_PREFERENCE_KEY, value);
+        return { status: "written", value };
       } catch {
-        return;
+        return { status: "failed" };
       }
     },
   });
@@ -46,11 +55,11 @@ export function createLazyAppearanceStore(
   };
 
   return Object.freeze({
-    read(): string | null {
+    read(): AppearanceReadResult {
       return getStore().read();
     },
-    write(value: "Light" | "Dark" | null): void {
-      getStore().write(value);
+    write(value: "Light" | "Dark" | null): AppearanceWriteResult {
+      return getStore().write(value);
     },
   });
 }

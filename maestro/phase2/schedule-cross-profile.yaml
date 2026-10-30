@@ -256,7 +256,7 @@ tags:
 - assertVisible: "Rest day"
 - tapOn: "Train anyway"
 - tapOn: "Start Push"
-- assertVisible: "FOCUSED WORKOUT"
+- assertVisible: "WORKOUT OVERVIEW"
 - assertVisible: "Bench Press"
 - repeat:
     times: 4
@@ -314,7 +314,7 @@ tags:
 - assertVisible: "Rest day"
 - tapOn: "Train anyway"
 - tapOn: "Start Push"
-- assertVisible: "FOCUSED WORKOUT"
+- assertVisible: "WORKOUT OVERVIEW"
 - assertVisible: "Bench Press"
 - repeat:
     times: 4

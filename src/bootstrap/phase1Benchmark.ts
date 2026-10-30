@@ -154,6 +154,7 @@ export async function performPhase1BenchmarkWithDependencies(
       repository: workout,
       haptics: {
         committed: async () => undefined,
+        cue: async () => undefined,
       },
       invalidate: async () => {
         const callbackStartedAt = dependencies.now();

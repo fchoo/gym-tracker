@@ -1,2110 +1,1028 @@
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react-native";
-import {
-  describe,
-  expect,
-  it,
-  jest,
-} from "@jest/globals";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
+import { describe, expect, it, jest } from "@jest/globals";
+import { readFileSync } from "node:fs";
 import React from "react";
+import { getByGestureTestId } from "react-native-gesture-handler/jest-utils";
+
+import type { ActiveWorkoutView, CompleteSetResult } from "../../domains/workout";
+import { ActiveWorkoutScreen, type ActiveWorkoutCommands } from "../screens/ActiveWorkoutScreen";
+import { AppearanceProvider } from "../theme";
+import { SemanticToastProvider } from "../components/SemanticToast";
+import { RestDock } from "../components/RestDock";
 
 jest.mock("expo-crypto", () => ({
-  CryptoDigestAlgorithm: { SHA256: "SHA256" },
-  digestStringAsync: async () => "a".repeat(64),
+  CryptoDigestAlgorithm: { SHA256: "SHA-256" },
+  digestStringAsync: async (_algorithm: string, value: string) =>
+    require("node:crypto").createHash("sha256").update(value).digest("hex"),
 }));
 
-import type {
-  RestCommandResult,
-} from "../../domains/rest";
-import type {
-  ActiveWorkoutView,
-  CompleteSetResult,
-  EmptyWorkoutView,
-} from "../../domains/workout";
-import {
-  ActiveWorkoutScreen,
-  type ActiveWorkoutCommands,
-} from "../screens/ActiveWorkoutScreen";
-import {
-  resolveWorkoutPlanOverviewScene,
-  WorkoutPlanOverviewScreen,
-} from "../screens/WorkoutPlanOverviewScreen";
-import { AppearanceProvider, themes } from "../theme";
+const identity = { profile: "load_reps" as const, contractVersion: 1, exerciseMetricGeneration: 1 };
+const observation = { version: 1 as const, profile: "load_reps" as const, loadGrams: 60_000, reps: 8, source: "manual" as const };
 
-function loadReps(
-  loadGrams: number,
-  reps: number,
-  source: "recommended" | "last_workout" | "plan_default" | "manual",
-) {
+function workoutView(overrides: Partial<ActiveWorkoutView> = {}): ActiveWorkoutView {
+  const set = {
+    id: "working-1", kind: "working" as const, ordinal: 0, sourceTargetId: "target-1",
+    metricIdentity: identity,
+    target: { version: 1 as const, profile: "load_reps" as const, loadGrams: 60_000, minReps: 6, maxReps: 8, incrementGrams: 2_500, perSide: false },
+    observation, status: "planned" as const, completedAtMs: null, revision: 1,
+    valueSources: [
+      { source: "recommended" as const, observation: { ...observation, loadGrams: 62_500, reps: 6, source: "recommended" as const } },
+      { source: "manual" as const, observation },
+    ],
+  };
+  const exercise = {
+    id: "exercise-1", exerciseId: "back-squat", name: "Back Squat", metricIdentity: identity,
+    metricProfile: "load_reps" as const, ordinal: 0, defaultRestSeconds: 0,
+    status: "active" as const, revision: 1, warmups: [], workingSets: [set],
+  };
   return {
-    version: 1 as const,
-    profile: "load_reps" as const,
-    loadGrams,
-    reps,
-    source,
+    id: "session-1", status: "in_progress", revision: 1, activeExerciseId: exercise.id,
+    activeSetId: set.id, currentExercise: exercise, exercises: [exercise],
+    progress: { completedWorkingSets: 0, totalWorkingSets: 1 },
+    rest: { version: 1, state: "idle", revision: 0, nextSetId: null },
+    ...overrides,
   };
 }
 
-const loadRepsIdentity = {
-  profile: "load_reps" as const,
-  contractVersion: 1,
-  exerciseMetricGeneration: 1,
-};
+function commands(view: ActiveWorkoutView, overrides: Partial<ActiveWorkoutCommands> = {}): ActiveWorkoutCommands {
+  const rest = {
+    state: view.rest,
+    sessionRevision: view.revision,
+    invalidationScopes: [["active-workout", view.id], ["today"]] as const,
+  };
+  return {
+    updateActiveSetDraft: jest.fn(async () => view),
+    updateWarmupDraft: jest.fn(async () => view),
+    reviseCompletedSet: jest.fn(async () => ({ ...view, committedSetId: "working-1" })),
+    completeSet: jest.fn(async () => ({ outcome: "already_completed" as const, view })),
+    addWarmup: jest.fn(async () => ({ ...view, committedSetId: "warmup-1" })),
+    addWorkingSet: jest.fn(async () => ({ ...view, committedSetId: "working-1" })),
+    completeWarmup: jest.fn(async () => view),
+    skipWarmup: jest.fn(async () => view),
+    skipWorkingSet: jest.fn(async () => view),
+    startManualRest: jest.fn(async () => rest),
+    pauseRest: jest.fn(async () => rest),
+    resumeRest: jest.fn(async () => rest),
+    adjustRest: jest.fn(async () => rest),
+    skipRest: jest.fn(async () => rest),
+    expireRest: jest.fn(async () => rest),
+    finishCompleted: jest.fn(async () => ({ detail: {} as never, invalidationScopes: [] })),
+    finishPartial: jest.fn(async () => ({ detail: {} as never, invalidationScopes: [] })),
+    saveZeroSetWorkout: jest.fn(async () => ({ detail: {} as never, invalidationScopes: [] })),
+    discardWorkout: jest.fn(async () => ({ detail: {} as never, invalidationScopes: [] })),
+    skipExercise: jest.fn(async () => ({ sessionId: view.id, status: "in_progress" as const, sessionRevision: view.revision })),
+    undoCompletedSet: jest.fn(async () => ({ outcome: "unavailable" as const })),
+    ...overrides,
+  };
+}
 
-const initialView: ActiveWorkoutView = {
-  id: "session-1",
-  status: "in_progress",
-  revision: 1,
-  activeExerciseId: "session-exercise-1",
-  activeSetId: "working-1",
-  currentExercise: {
-    id: "session-exercise-1",
-    exerciseId: "squat",
-    name: "Back Squat",
-    metricIdentity: loadRepsIdentity,
-    metricProfile: "load_reps",
-    ordinal: 0,
-    defaultRestSeconds: 180,
-    status: "active",
-    revision: 1,
-    warmups: [
-      {
-        id: "warmup-1",
-        kind: "warmup",
-        ordinal: 0,
-        sourceTargetId: null,
-        metricIdentity: loadRepsIdentity,
-        target: {
-          version: 1,
-          profile: "load_reps",
-          loadGrams: 20_000,
-          minReps: 8,
-          maxReps: 8,
-          incrementGrams: 2_500,
-          perSide: false,
-        },
-        observation: null,
-        status: "planned",
-        completedAtMs: null,
-        revision: 1,
-        valueSources: [],
-      },
-    ],
-    workingSets: [
-      {
-        id: "working-1",
-        kind: "working",
-        ordinal: 0,
-        sourceTargetId: "target-1",
-        metricIdentity: loadRepsIdentity,
-        target: {
-          version: 1,
-          profile: "load_reps",
-          loadGrams: 60_000,
-          minReps: 6,
-          maxReps: 8,
-          incrementGrams: 2_500,
-          perSide: false,
-        },
-        observation: null,
-        status: "planned",
-        completedAtMs: null,
-        revision: 1,
-        valueSources: [
-          {
-            source: "recommended",
-            observation: loadReps(62_500, 6, "recommended"),
-          },
-          {
-            source: "last_workout",
-            observation: loadReps(60_000, 7, "last_workout"),
-          },
-          {
-            source: "plan_default",
-            observation: loadReps(60_000, 8, "plan_default"),
-          },
-          {
-            source: "manual",
-            observation: loadReps(60_000, 8, "manual"),
-          },
-        ],
-      },
-      {
-        id: "working-2",
-        kind: "working",
-        ordinal: 1,
-        sourceTargetId: "target-2",
-        metricIdentity: loadRepsIdentity,
-        target: {
-          version: 1,
-          profile: "load_reps",
-          loadGrams: 60_000,
-          minReps: 6,
-          maxReps: 8,
-          incrementGrams: 2_500,
-          perSide: false,
-        },
-        observation: null,
-        status: "planned",
-        completedAtMs: null,
-        revision: 1,
-        valueSources: [
-          {
-            source: "plan_default",
-            observation: loadReps(60_000, 8, "plan_default"),
-          },
-          {
-            source: "manual",
-            observation: loadReps(60_000, 8, "manual"),
-          },
-        ],
-      },
-    ],
-  },
-  exercises: [],
-  progress: {
-    completedWorkingSets: 0,
-    totalWorkingSets: 2,
-  },
-  rest: {
-    version: 1,
-    state: "idle",
-    revision: 0,
-    nextSetId: null,
-  },
-};
+async function renderScreen(view = workoutView(), commandOverrides: Partial<ActiveWorkoutCommands> = {}) {
+  const renderedCommands = commands(view, commandOverrides);
+  await render(
+    <AppearanceProvider>
+      <ActiveWorkoutScreen
+        commands={renderedCommands}
+        nowMs={() => 3_000}
+        onFinishLater={jest.fn()}
+        onGoBack={jest.fn()}
+        sessionId={view.id}
+        view={view}
+      />
+    </AppearanceProvider>,
+  );
+  return renderedCommands;
+}
 
-const completedView: ActiveWorkoutView = {
-  ...initialView,
-  revision: 2,
-  activeSetId: "working-2",
-  currentExercise: {
-    ...initialView.currentExercise,
-    revision: 2,
-    workingSets: [
-      {
-        ...initialView.currentExercise.workingSets[0]!,
-        observation: loadReps(60_000, 8, "plan_default"),
-        status: "completed",
-        completedAtMs: 2_000,
-        revision: 2,
-      },
-      initialView.currentExercise.workingSets[1]!,
-    ],
-  },
-  progress: {
-    completedWorkingSets: 1,
-    totalWorkingSets: 2,
-  },
-  rest: {
-    version: 1,
-    state: "running",
-    revision: 1,
-    startedAtMs: 2_000,
-    endsAtMs: 182_000,
-    nextSetId: "working-2",
-  },
-};
-
-function commands(
-  overrides: Partial<ActiveWorkoutCommands> = {},
-): ActiveWorkoutCommands {
-  const restResult = (state = initialView.rest): RestCommandResult => ({
-    state,
-    sessionRevision: initialView.revision + 1,
-    invalidationScopes: [
-      ["active-workout", initialView.id],
-      ["today"],
-    ],
+describe("ActiveWorkoutScreen explicit-save editor", () => {
+  it("honors current and future exercise disclosure without changing the active set", async () => {
+    const initial = workoutView();
+    const future = {
+      ...initial.currentExercise, id: "exercise-2", exerciseId: "cable-row", name: "Cable Row",
+      status: "planned" as const, ordinal: 1,
+      workingSets: [{ ...initial.currentExercise.workingSets[0]!, id: "working-2" }],
+    };
+    const renderedCommands = await renderScreen({ ...initial, exercises: [initial.currentExercise, future] });
+    for (const exercise of [initial.currentExercise, future]) {
+      const cardId = `active-workout-${exercise.id}-working-sets-card`;
+      expect(screen.getByTestId(cardId)).toBeOnTheScreen();
+      await fireEvent.press(screen.getByRole("button", { name: new RegExp(`${exercise.name}\\..*Collapse exercise`, "u") }));
+      expect(screen.queryByTestId(cardId)).not.toBeOnTheScreen();
+      await fireEvent.press(screen.getByRole("button", { name: new RegExp(`${exercise.name}\\..*Expand exercise`, "u") }));
+      expect(screen.getByTestId(cardId)).toBeOnTheScreen();
+    }
+    expect(screen.getByRole("button", { name: "Complete Set 1" })).toBeOnTheScreen();
+    expect(renderedCommands.completeSet).not.toHaveBeenCalled();
+    expect(renderedCommands.updateActiveSetDraft).not.toHaveBeenCalled();
   });
-  return {
-    updateActiveSetDraft: jest.fn(async () => initialView),
-    updateWarmupDraft: jest.fn(async () => initialView),
-    addWarmup: jest.fn(async () => ({
-      ...initialView,
-      committedSetId: "warmup-1",
-    })),
-    addWorkingSet: jest.fn(async () => ({
-      ...initialView,
-      committedSetId: "working-1",
-    })),
-    completeWarmup: jest.fn(async () => initialView),
-    skipWarmup: jest.fn(async () => initialView),
-    skipWorkingSet: jest.fn(async () => initialView),
-    reviseCompletedSet: jest.fn(async () => ({
-      ...initialView,
-      committedSetId: "working-1",
-    })),
-    completeSet: jest.fn<ActiveWorkoutCommands["completeSet"]>(async () => ({
-      outcome: "committed",
-      view: completedView,
-    })),
-    startManualRest: jest.fn(async () => restResult()),
-    pauseRest: jest.fn(async () => restResult()),
-    resumeRest: jest.fn(async () => restResult()),
-    adjustRest: jest.fn(async () => restResult()),
-    skipRest: jest.fn(async () => restResult()),
-    expireRest: jest.fn(async () => restResult()),
-    finishCompleted: jest.fn(async () => ({
-      detail: {} as never,
-      invalidationScopes: [],
-    })),
-    finishPartial: jest.fn(async () => ({
-      detail: {} as never,
-      invalidationScopes: [],
-    })),
-    saveZeroSetWorkout: jest.fn(async () => ({
-      detail: {} as never,
-      invalidationScopes: [],
-    })),
-    discardWorkout: jest.fn(async () => ({
-      detail: {} as never,
-      invalidationScopes: [],
-    })),
-    skipExercise: jest.fn(async () => ({
-      sessionId: initialView.id,
-      status: "in_progress" as const,
-      sessionRevision: initialView.revision + 1,
-    })),
-    ...overrides,
-  };
-}
 
-async function renderActive(
-  overrides: Partial<React.ComponentProps<typeof ActiveWorkoutScreen>> = {},
-  appearance?: "Light" | "Dark",
-) {
-  const activeCommands = overrides.commands ?? commands();
-  const props = {
-    commands: activeCommands,
-    nowMs: () => 2_000,
-    onFinishLater: jest.fn(),
-    onGoBack: jest.fn(),
-    sessionId: "session-1",
-    view: initialView,
-    ...overrides,
-  } satisfies React.ComponentProps<typeof ActiveWorkoutScreen>;
-  return {
-    commands: activeCommands,
-    props,
-    rendered: await render(
-      <AppearanceProvider
-        {...(appearance === undefined
-          ? {}
-          : { store: { read: () => appearance, write: () => undefined } })}
-      >
-        <ActiveWorkoutScreen {...props} />
-      </AppearanceProvider>,
-    ),
-  };
-}
-
-describe("Plan 01-08 ActiveWorkoutScreen", () => {
-  it("keeps current and reviewed exercise identity outside scrolling content", async () => {
-    const reviewedExercise = {
-      ...initialView.currentExercise,
-      id: "session-exercise-2",
-      name: "Bench Press",
-      ordinal: 1,
-      status: "completed" as const,
+  it("opens the newly active exercise after completion and keeps the completed exercise manually expandable", async () => {
+    const initial = workoutView();
+    const future = {
+      ...initial.currentExercise, id: "exercise-2", exerciseId: "cable-row", name: "Cable Row",
+      status: "planned" as const, ordinal: 1,
+      workingSets: [{ ...initial.currentExercise.workingSets[0]!, id: "working-2" }],
     };
-    const view: ActiveWorkoutView = {
-      ...initialView,
-      exercises: [initialView.currentExercise, reviewedExercise],
+    const completed = { ...initial.currentExercise, status: "completed" as const,
+      workingSets: initial.currentExercise.workingSets.map((set) => ({ ...set, status: "completed" as const, completedAtMs: 3_000 })) };
+    const next = { ...initial, revision: 2, activeExerciseId: future.id, activeSetId: "working-2",
+      currentExercise: { ...future, status: "active" as const }, exercises: [completed, { ...future, status: "active" as const }] };
+    await renderScreen({ ...initial, exercises: [initial.currentExercise, future] }, {
+      completeSet: jest.fn(async () => ({ outcome: "committed" as const, view: next })),
+    });
+    await fireEvent.press(screen.getByRole("button", { name: /Cable Row\..*Collapse exercise/u }));
+    await fireEvent.press(screen.getByRole("button", { name: "Complete Set 1" }));
+    await waitFor(() => expect(screen.getByTestId("active-workout-exercise-2-working-sets-card")).toBeOnTheScreen());
+    expect(screen.queryByTestId("active-workout-exercise-1-working-sets-card")).not.toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: /Back Squat\..*Expand exercise/u }));
+    expect(screen.getByTestId("active-workout-exercise-1-working-sets-card")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: /Back Squat\..*Collapse exercise/u }));
+    expect(screen.queryByTestId("active-workout-exercise-1-working-sets-card")).not.toBeOnTheScreen();
+  });
+
+  it("submits one reorder for rapid taps and retries a failed write with the exact envelope", async () => {
+    const initial = workoutView();
+    const future = { ...initial.currentExercise, id: "exercise-2", exerciseId: "cable-row", name: "Cable Row",
+      status: "planned" as const, ordinal: 1, workingSets: [{ ...initial.currentExercise.workingSets[0]!, id: "working-2" }] };
+    let rejectWrite!: (error: Error) => void;
+    const pendingWrite = new Promise<ActiveWorkoutView>((_resolve, reject) => { rejectWrite = reject; });
+    const reordered = { ...initial, revision: 2, exercises: [future, initial.currentExercise] };
+    const reorderExercises = jest.fn<NonNullable<ActiveWorkoutCommands["reorderExercises"]>>()
+      .mockImplementationOnce(() => pendingWrite).mockResolvedValue(reordered);
+    await renderScreen({ ...initial, exercises: [initial.currentExercise, future] }, { reorderExercises });
+    await fireEvent.press(screen.getByRole("button", { name: "Reorder Back Squat" }));
+    const move = screen.getByRole("button", { name: "Move Back Squat down" });
+    await act(async () => { await Promise.all([fireEvent.press(move), fireEvent.press(move)]); });
+    await waitFor(() => expect(reorderExercises).toHaveBeenCalledTimes(1));
+    await act(() => { rejectWrite(new Error("storage_failed")); });
+    await fireEvent.press(await screen.findByRole("button", { name: "Retry reordering exercise" }));
+    await waitFor(() => expect(reorderExercises).toHaveBeenCalledTimes(2));
+    expect(reorderExercises.mock.calls[1]).toEqual(reorderExercises.mock.calls[0]);
+    expect(screen.getByText("Back Squat moved to 2 of 2")).toBeOnTheScreen();
+  });
+
+  it("uses the visible grip to reorder compact headers and keeps committed set identity and collapse choices", async () => {
+    const initial = workoutView({ rest: { version: 1, state: "running", revision: 1,
+      startedAtMs: 3_000, endsAtMs: 63_000, nextSetId: "working-1" } });
+    const future = {
+      ...initial.currentExercise, id: "exercise-2", exerciseId: "cable-row", name: "Cable Row",
+      status: "planned" as const, ordinal: 1,
+      workingSets: [{ ...initial.currentExercise.workingSets[0]!, id: "working-2" }],
     };
-    const { props, rendered } = await renderActive({ view });
-    const stickyHeader = screen.getByTestId("active-workout-sticky-header");
-    const scroll = screen.getByTestId("active-workout-scroll");
+    const start = { ...initial, exercises: [initial.currentExercise, future] };
+    let persisted = start;
+    let resolveWrite!: (view: ActiveWorkoutView) => void;
+    const pendingWrite = new Promise<ActiveWorkoutView>((resolve) => { resolveWrite = resolve; });
+    const reorderExercises = jest.fn<NonNullable<ActiveWorkoutCommands["reorderExercises"]>>()
+      .mockImplementationOnce(() => pendingWrite)
+      .mockImplementationOnce(async (input) => {
+        persisted = { ...persisted, revision: persisted.revision + 1,
+          exercises: input.orderedSessionExerciseIds.map((id) => persisted.exercises.find((exercise) => exercise.id === id)!) };
+        return persisted;
+      });
+    await renderScreen(start, { reorderExercises });
+    const originalWorkoutRoot = screen.getByTestId("active-workout");
+    const originalRestControls = screen.getByTestId("rest-controls");
+    const originalListRoot = screen.getByTestId("workout-session-presentation");
+    const originalSourceContainer = screen.getByTestId("workout-presentation-exercise-exercise-1");
+    const originalNeighborContainer = screen.getByTestId("workout-presentation-exercise-exercise-2");
+    await fireEvent.press(screen.getByRole("button", { name: /Cable Row\..*Collapse exercise/u }));
+    await fireEvent.press(screen.getByRole("button", { name: "Reorder Back Squat" }));
+    expect(screen.queryByTestId("active-workout-exercise-1-working-sets-card")).not.toBeOnTheScreen();
+    const row = screen.getByTestId("reorder-row-exercise-exercise-1");
+    expect(within(row).getByTestId("exercise-header-exercise-1")).toBeOnTheScreen();
+    await fireEvent(row, "layout", { nativeEvent: { layout: { height: 160, width: 320, x: 0, y: 0 } } });
+    const gesture = getByGestureTestId("reorder-gesture-exercise-exercise-1") as unknown as {
+      handlers: { onStart(event: { translationY: number }): void; onUpdate(event: { translationY: number }): void;
+        onEnd(event: { translationY: number }, success: boolean): void; onFinalize(event: { translationY: number }, success: boolean): void };
+    };
+    await act(() => { gesture.handlers.onStart({ translationY: 0 }); gesture.handlers.onUpdate({ translationY: 160 }); });
+    expect(screen.getByTestId("drag-exercise-exercise-1")).toHaveProp("accessibilityState", { busy: true, disabled: false });
+    expect(reorderExercises).not.toHaveBeenCalled();
+    expect(screen.getByTestId("workout-session-presentation")).toBe(originalListRoot);
+    await act(() => { gesture.handlers.onEnd({ translationY: 160 }, true); gesture.handlers.onFinalize({ translationY: 160 }, true); });
+    await waitFor(() => expect(reorderExercises).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("workout-session-presentation")).toBe(originalListRoot);
+    expect(screen.getByTestId("workout-presentation-exercise-exercise-1")).toBe(originalSourceContainer);
+    expect(screen.getByTestId("workout-presentation-exercise-exercise-2")).toBe(originalNeighborContainer);
+    expect(screen.getByTestId("reorder-row-exercise-exercise-1")).toHaveStyle({ transform: [{ translateY: 160 }] });
+    expect(screen.getByTestId("reorder-row-exercise-exercise-2")).toHaveStyle({ transform: [{ translateY: -160 }] });
+    expect(screen.queryByText("Back Squat moved to 2 of 2")).not.toBeOnTheScreen();
+    await act(() => {
+      gesture.handlers.onEnd({ translationY: 160 }, true);
+      gesture.handlers.onFinalize({ translationY: 160 }, false);
+    });
+    expect(reorderExercises).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("reorder-row-exercise-exercise-1")).toHaveStyle({ transform: [{ translateY: 160 }] });
+    const request = reorderExercises.mock.calls[0]![0];
+    expect(request).toMatchObject({ expectedSessionRevision: 1, orderedSessionExerciseIds: ["exercise-2", "exercise-1"],
+      expectedSessionExerciseRevisions: [{ sessionExerciseId: "exercise-2", revision: 1 }, { sessionExerciseId: "exercise-1", revision: 1 }] });
+    expect(screen.getAllByTestId(/^workout-presentation-exercise-/u).map(({ props }) => props.testID))
+      .toEqual(["workout-presentation-exercise-exercise-1", "workout-presentation-exercise-exercise-2"]);
+    persisted = { ...start, revision: 2, exercises: [future, initial.currentExercise] };
+    await act(() => { resolveWrite(persisted); });
+    await waitFor(() => expect(screen.getAllByTestId(/^workout-presentation-exercise-/u).map(({ props }) => props.testID))
+      .toEqual(["workout-presentation-exercise-exercise-2", "workout-presentation-exercise-exercise-1"]));
+    expect(screen.getByTestId("workout-session-presentation")).toBe(originalListRoot);
+    expect(screen.getByTestId("workout-presentation-exercise-exercise-1")).toBe(originalSourceContainer);
+    expect(screen.getByTestId("workout-presentation-exercise-exercise-2")).toBe(originalNeighborContainer);
+    expect(screen.getByTestId("active-workout")).toBe(originalWorkoutRoot);
+    expect(screen.getByTestId("rest-controls")).toBe(originalRestControls);
+    expect(screen.getByTestId("reorder-row-exercise-exercise-1")).toHaveStyle({ transform: [{ translateY: 0 }] });
+    expect(screen.getByTestId("reorder-row-exercise-exercise-2")).toHaveStyle({ transform: [{ translateY: 0 }] });
+    await fireEvent.press(screen.getByRole("button", { name: "Move Back Squat up" }));
+    await waitFor(() => expect(reorderExercises).toHaveBeenCalledTimes(2));
+    expect(reorderExercises.mock.calls[1]![0]).toMatchObject({ expectedSessionRevision: 2,
+      orderedSessionExerciseIds: ["exercise-1", "exercise-2"] });
+    await fireEvent.press(screen.getByRole("button", { name: "Done reordering" }));
+    expect(screen.getByTestId("active-workout-exercise-1-working-sets-card")).toBeOnTheScreen();
+    expect(screen.queryByTestId("active-workout-exercise-2-working-sets-card")).not.toBeOnTheScreen();
+    expect(persisted.activeSetId).toBe("working-1");
+    expect(persisted.currentExercise).toBe(initial.currentExercise);
+  });
 
-    expect(within(stickyHeader).getByTestId(
-      "active-workout-identity-current",
-    )).toBeOnTheScreen();
-    expect(within(stickyHeader).getByRole("header", { name: "Back Squat" }))
-      .toBeOnTheScreen();
-    expect(within(stickyHeader).getByText("FOCUSED WORKOUT"))
-      .toBeOnTheScreen();
-    expect(within(scroll).queryByTestId("active-workout-identity-current"))
-      .not.toBeOnTheScreen();
+  it("rolls back a failed drag without acknowledging it and retries the same authoritative request", async () => {
+    const initial = workoutView();
+    const future = { ...initial.currentExercise, id: "exercise-2", exerciseId: "cable-row", name: "Cable Row",
+      status: "planned" as const, ordinal: 1, workingSets: [{ ...initial.currentExercise.workingSets[0]!, id: "working-2" }] };
+    const start = { ...initial, exercises: [initial.currentExercise, future] };
+    let rejectWrite!: (error: Error) => void;
+    const pendingWrite = new Promise<ActiveWorkoutView>((_resolve, reject) => { rejectWrite = reject; });
+    const reordered = { ...start, revision: 2, exercises: [future, initial.currentExercise] };
+    const reorderExercises = jest.fn<NonNullable<ActiveWorkoutCommands["reorderExercises"]>>()
+      .mockImplementationOnce(() => pendingWrite).mockResolvedValue(reordered);
+    await renderScreen(start, { reorderExercises });
+    const originalListRoot = screen.getByTestId("workout-session-presentation");
+    const originalSourceContainer = screen.getByTestId("workout-presentation-exercise-exercise-1");
+    const originalNeighborContainer = screen.getByTestId("workout-presentation-exercise-exercise-2");
+    await fireEvent.press(screen.getByRole("button", { name: "Reorder Back Squat" }));
+    await fireEvent(screen.getByTestId("reorder-row-exercise-exercise-1"), "layout", {
+      nativeEvent: { layout: { height: 100, width: 320, x: 0, y: 0 } },
+    });
+    const gesture = getByGestureTestId("reorder-gesture-exercise-exercise-1") as unknown as {
+      handlers: { onStart(event: { translationY: number }): void; onUpdate(event: { translationY: number }): void;
+        onEnd(event: { translationY: number }, success: boolean): void; onFinalize(event: { translationY: number }, success: boolean): void };
+    };
+    await act(() => {
+      gesture.handlers.onStart({ translationY: 0 }); gesture.handlers.onUpdate({ translationY: 80 });
+      gesture.handlers.onEnd({ translationY: 80 }, true); gesture.handlers.onFinalize({ translationY: 80 }, true);
+    });
+    await waitFor(() => expect(reorderExercises).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("reorder-row-exercise-exercise-1")).toHaveStyle({ transform: [{ translateY: 100 }] });
+    expect(screen.getByTestId("reorder-row-exercise-exercise-2")).toHaveStyle({ transform: [{ translateY: -100 }] });
+    await act(() => { rejectWrite(new Error("storage_failed")); });
+    const retry = await screen.findByRole("button", { name: "Retry reordering exercise" });
+    expect(screen.getByTestId("workout-session-presentation")).toBe(originalListRoot);
+    expect(screen.getByTestId("workout-presentation-exercise-exercise-1")).toBe(originalSourceContainer);
+    expect(screen.getByTestId("workout-presentation-exercise-exercise-2")).toBe(originalNeighborContainer);
+    expect(screen.getByTestId("reorder-row-exercise-exercise-1")).toHaveStyle({ transform: [{ translateY: 0 }] });
+    expect(screen.getByTestId("reorder-row-exercise-exercise-2")).toHaveStyle({ transform: [{ translateY: 0 }] });
+    expect(screen.getAllByTestId(/^workout-presentation-exercise-/u).map(({ props }) => props.testID))
+      .toEqual(["workout-presentation-exercise-exercise-1", "workout-presentation-exercise-exercise-2"]);
+    expect(screen.queryByText("Back Squat moved to 2 of 2")).not.toBeOnTheScreen();
+    expect(reorderExercises.mock.calls[0]![0]).toMatchObject({ expectedSessionRevision: 1,
+      expectedSessionExerciseRevisions: [{ sessionExerciseId: "exercise-2", revision: 1 }, { sessionExerciseId: "exercise-1", revision: 1 }] });
+    await fireEvent.press(retry);
+    await waitFor(() => expect(reorderExercises).toHaveBeenCalledTimes(2));
+    expect(reorderExercises.mock.calls[1]).toEqual(reorderExercises.mock.calls[0]);
+    expect(screen.getByTestId("workout-session-presentation")).toBe(originalListRoot);
+    expect(screen.getByText("Back Squat moved to 2 of 2")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Done reordering" }));
+    expect(screen.getByTestId("active-workout-exercise-1-working-sets-card")).toBeOnTheScreen();
+    expect(reordered.activeSetId).toBe("working-1");
+    expect(reordered.currentExercise).toBe(initial.currentExercise);
+  });
 
-    await rendered.rerender(
+  it("keeps the exercise presentation mounted when a committed draft changes revisions without changing order", async () => {
+    const initial = workoutView();
+    const savedExercise = { ...initial.currentExercise, revision: 2,
+      workingSets: [{ ...initial.currentExercise.workingSets[0]!, revision: 2,
+        observation: { ...observation, loadGrams: 65_000 }, status: "draft" as const }] };
+    const saved = { ...initial, revision: 2, currentExercise: savedExercise, exercises: [savedExercise] };
+    const updateActiveSetDraft = jest.fn(async () => saved);
+    await renderScreen(initial, { updateActiveSetDraft });
+    const originalListRoot = screen.getByTestId("workout-session-presentation");
+    const originalExerciseContainer = screen.getByTestId("workout-presentation-exercise-exercise-1");
+    await fireEvent.press(screen.getByRole("button", { name: /Set 1\. 60 kg × 8/u }));
+    await fireEvent.changeText(screen.getByLabelText("Load (kg)"), "65");
+    await fireEvent.press(screen.getByRole("button", { name: "Save set values" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Set 1\. 65 kg × 8/u })).toBeOnTheScreen());
+    expect(updateActiveSetDraft).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("workout-session-presentation")).toBe(originalListRoot);
+    expect(screen.getByTestId("workout-presentation-exercise-exercise-1")).toBe(originalExerciseContainer);
+  });
+
+  it("queues rapid rest adjustments with the latest committed revisions", async () => {
+    const initial = workoutView({ rest: { version: 1, state: "running", revision: 1, startedAtMs: 3_000, endsAtMs: 63_000, nextSetId: "working-1" } });
+    let resolveFirst!: (result: import("../../domains/rest").RestCommandResult) => void;
+    const first = new Promise<import("../../domains/rest").RestCommandResult>((resolve) => { resolveFirst = resolve; });
+    const adjusted = { state: { ...initial.rest, state: "running" as const, startedAtMs: 3_000, endsAtMs: 48_000, revision: 2 }, sessionRevision: 2, invalidationScopes: [["active-workout", "session-1"], ["today"]] as const };
+    const adjustRest = jest.fn<ActiveWorkoutCommands["adjustRest"]>().mockImplementationOnce(() => first).mockImplementationOnce(async () => ({ ...adjusted, state: { ...adjusted.state, endsAtMs: 33_000, revision: 3 }, sessionRevision: 3 }));
+    await renderScreen(initial, { adjustRest });
+    const control = screen.getByRole("button", { name: "Subtract 15 seconds from rest" });
+    await act(async () => { await Promise.all([fireEvent.press(control), fireEvent.press(control)]); });
+    expect(adjustRest).toHaveBeenCalledTimes(1);
+    expect(adjustRest).toHaveBeenNthCalledWith(1, expect.objectContaining({ expectedSessionRevision: 1, expectedRestRevision: 1, deltaMs: -15_000 }));
+    await act(() => { resolveFirst(adjusted); });
+    await waitFor(() => expect(adjustRest).toHaveBeenCalledTimes(2));
+    expect(adjustRest).toHaveBeenNthCalledWith(2, expect.objectContaining({ expectedSessionRevision: 2, expectedRestRevision: 2, deltaMs: -15_000 }));
+    expect(screen.getByLabelText("00:30 remaining")).toBeOnTheScreen();
+  });
+
+  it("ignores a deferred stale parent refresh after rest commits while accepting a new session", async () => {
+    const initial = workoutView({ rest: { version: 1, state: "running", revision: 1, startedAtMs: 3_000, endsAtMs: 63_000, nextSetId: "working-1" } });
+    let resolveFirst!: (result: import("../../domains/rest").RestCommandResult) => void;
+    const first = new Promise<import("../../domains/rest").RestCommandResult>((resolve) => { resolveFirst = resolve; });
+    const adjusted = { state: { ...initial.rest, state: "running" as const, startedAtMs: 3_000, endsAtMs: 48_000, revision: 2 }, sessionRevision: 2,
+      invalidationScopes: [["active-workout", "session-1"], ["today"]] as const };
+    const adjustRest = jest.fn<ActiveWorkoutCommands["adjustRest"]>().mockImplementationOnce(() => first)
+      .mockImplementationOnce(async (input) => {
+        if (input.expectedSessionRevision !== 2 || input.expectedRestRevision !== 2) throw new Error("revision_conflict");
+        return { ...adjusted, sessionRevision: 3, state: { ...adjusted.state, revision: 3, endsAtMs: 33_000 } };
+      });
+    const renderedCommands = commands(initial, { adjustRest });
+    const present = (view: ActiveWorkoutView) => <AppearanceProvider><ActiveWorkoutScreen
+      commands={renderedCommands} nowMs={() => 3_000} onFinishLater={jest.fn()} onGoBack={jest.fn()} sessionId={view.id} view={view}
+    /></AppearanceProvider>;
+    const rendered = await render(present(initial));
+    await fireEvent.press(screen.getByRole("button", { name: "Subtract 15 seconds from rest" }));
+    await act(() => { resolveFirst(adjusted); });
+    await waitFor(() => expect(screen.getByLabelText("00:45 remaining")).toBeOnTheScreen());
+    await rendered.rerender(present({ ...initial }));
+    expect(screen.getByLabelText("00:45 remaining")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Subtract 15 seconds from rest" }));
+    await waitFor(() => expect(adjustRest).toHaveBeenCalledTimes(2));
+    expect(adjustRest.mock.calls[1]![0]).toMatchObject({ expectedSessionRevision: 2, expectedRestRevision: 2 });
+    await waitFor(() => expect(screen.getByLabelText("00:30 remaining")).toBeOnTheScreen());
+    expect(screen.queryByText("Rest timer was not changed")).not.toBeOnTheScreen();
+    const newSession = { ...initial, id: "session-2", revision: 1,
+      rest: { ...initial.rest, state: "running" as const, startedAtMs: 3_000, endsAtMs: 123_000 } };
+    await rendered.rerender(present(newSession));
+    expect(screen.getByLabelText("02:00 remaining")).toBeOnTheScreen();
+  });
+
+  it("skips obsolete adjustments and duplicate expiry queued after rest reaches zero", async () => {
+    const initial = workoutView({ rest: { version: 1, state: "running", revision: 1, startedAtMs: 3_000, endsAtMs: 13_000, nextSetId: "working-1" } });
+    let resolveFirst!: (result: import("../../domains/rest").RestCommandResult) => void;
+    const first = new Promise<import("../../domains/rest").RestCommandResult>((resolve) => { resolveFirst = resolve; });
+    const expired = { state: { version: 1 as const, state: "expired" as const, revision: 2, expiredAtMs: 3_000, nextSetId: "working-1" },
+      sessionRevision: 2, invalidationScopes: [["active-workout", "session-1"], ["today"]] as const };
+    const adjustRest = jest.fn<ActiveWorkoutCommands["adjustRest"]>().mockImplementationOnce(() => first)
+      .mockRejectedValue(new Error("rest_not_adjustable"));
+    const expireRest = jest.fn<ActiveWorkoutCommands["expireRest"]>().mockRejectedValue(new Error("rest_not_running"));
+    let dockProps!: React.ComponentProps<typeof RestDock>;
+    const actualDock = RestDock;
+    const dockSpy = jest.spyOn(require("../components/RestDock") as typeof import("../components/RestDock"), "RestDock")
+      .mockImplementation((props) => { dockProps = props; return React.createElement(actualDock, props); });
+    try {
+      await render(<AppearanceProvider><ActiveWorkoutScreen commands={commands(initial, { adjustRest, expireRest })}
+        nowMs={() => 3_000} onFinishLater={jest.fn()} onGoBack={jest.fn()} sessionId={initial.id} view={initial}
+      /></AppearanceProvider>);
+      await act(() => {
+        dockProps.onAdjust(-15_000);
+        dockProps.onAdjust(-15_000);
+        dockProps.onExpired({ foregroundCountdownTone: true });
+      });
+      await waitFor(() => expect(adjustRest).toHaveBeenCalledTimes(1));
+      await act(() => { resolveFirst(expired); });
+      expect(adjustRest).toHaveBeenCalledTimes(1);
+      expect(expireRest).not.toHaveBeenCalled();
+      expect(screen.queryByText("Rest timer was not changed")).not.toBeOnTheScreen();
+      expect(screen.getByRole("button", { name: "Complete Set 1" })).toBeOnTheScreen();
+    } finally { dockSpy.mockRestore(); }
+  });
+
+  it("skips queued expiry after an extension and forwards foreground feedback only when the latest rest is due", async () => {
+    let clockMs = 3_000;
+    const initial = workoutView({ rest: { version: 1, state: "running", revision: 1, startedAtMs: 3_000, endsAtMs: 13_000, nextSetId: "working-1" } });
+    let resolveAdjustment!: (result: import("../../domains/rest").RestCommandResult) => void;
+    const pending = new Promise<import("../../domains/rest").RestCommandResult>((resolve) => { resolveAdjustment = resolve; });
+    const extended = { state: { ...initial.rest, state: "running" as const, revision: 2, startedAtMs: 3_000, endsAtMs: 28_000 },
+      sessionRevision: 2, invalidationScopes: [["active-workout", "session-1"], ["today"]] as const };
+    const adjustRest = jest.fn<ActiveWorkoutCommands["adjustRest"]>().mockImplementationOnce(() => pending);
+    const expireRest = jest.fn<ActiveWorkoutCommands["expireRest"]>().mockResolvedValue({ ...extended, sessionRevision: 3,
+      state: { version: 1, state: "expired", revision: 3, expiredAtMs: 29_000, nextSetId: "working-1" } });
+    let dockProps!: React.ComponentProps<typeof RestDock>;
+    const actualDock = RestDock;
+    const dockSpy = jest.spyOn(require("../components/RestDock") as typeof import("../components/RestDock"), "RestDock")
+      .mockImplementation((props) => { dockProps = props; return React.createElement(actualDock, props); });
+    try {
+      await render(<AppearanceProvider><ActiveWorkoutScreen commands={commands(initial, { adjustRest, expireRest })}
+        nowMs={() => clockMs} onFinishLater={jest.fn()} onGoBack={jest.fn()} sessionId={initial.id} view={initial}
+      /></AppearanceProvider>);
+      await act(() => { dockProps.onAdjust(15_000); });
+      await waitFor(() => expect(adjustRest).toHaveBeenCalledTimes(1));
+      clockMs = 14_000;
+      await act(() => { dockProps.onExpired({ foregroundCountdownTone: true }); });
+      await act(() => { resolveAdjustment(extended); });
+      expect(expireRest).not.toHaveBeenCalled();
+      expect(screen.queryByText("Rest timer was not changed")).not.toBeOnTheScreen();
+      clockMs = 29_000;
+      await act(() => { dockProps.onExpired({ foregroundCountdownTone: true }); });
+      expect(expireRest).toHaveBeenCalledTimes(1);
+      expect(expireRest).toHaveBeenCalledWith({ sessionId: "session-1", expectedSessionRevision: 2,
+        expectedRestRevision: 2, nowMs: 29_000, foregroundCountdownTone: true });
+    } finally { dockSpy.mockRestore(); }
+  });
+
+  it("still reports a real revision conflict while rest remains adjustable", async () => {
+    const initial = workoutView({ rest: { version: 1, state: "running", revision: 1, startedAtMs: 3_000, endsAtMs: 63_000, nextSetId: "working-1" } });
+    const adjustRest = jest.fn<ActiveWorkoutCommands["adjustRest"]>().mockRejectedValue(new Error("session_revision_conflict"));
+    await renderScreen(initial, { adjustRest });
+    await fireEvent.press(screen.getByRole("button", { name: "Subtract 15 seconds from rest" }));
+    await waitFor(() => expect(screen.getByText("Rest timer was not changed")).toBeOnTheScreen());
+    expect(adjustRest).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("01:00 remaining")).toBeOnTheScreen();
+  });
+  it("focuses the real Active header action before publishing a resumed-route receipt", async () => {
+    const onInitialHeaderFocused = jest.fn();
+    const view = workoutView();
+    await render(
       <AppearanceProvider>
         <ActiveWorkoutScreen
-          {...props}
-          reviewExerciseId="session-exercise-2"
+          commands={commands(view)}
+          initialHeaderFocus
+          nowMs={() => 3_000}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          onInitialHeaderFocused={onInitialHeaderFocused}
+          sessionId={view.id}
+          view={view}
         />
       </AppearanceProvider>,
     );
 
-    const reviewStickyHeader = screen.getByTestId(
-      "active-workout-sticky-header",
-    );
-    const reviewScroll = screen.getByTestId("active-workout-scroll");
-    expect(within(reviewStickyHeader).getByTestId(
-      "active-workout-identity-review",
-    )).toBeOnTheScreen();
-    expect(within(reviewStickyHeader).getByRole("header", {
-      name: "Bench Press",
-    })).toBeOnTheScreen();
-    expect(within(reviewStickyHeader).getByText("REVIEWING WORKOUT"))
-      .toBeOnTheScreen();
-    expect(within(reviewStickyHeader).queryByRole("button", {
-      name: "More workout actions",
-    })).not.toBeOnTheScreen();
-    expect(within(reviewScroll).queryByTestId("active-workout-identity-review"))
-      .not.toBeOnTheScreen();
-    expect(within(reviewScroll).getByRole("button", {
-      name: "Return to current exercise",
-    })).toBeOnTheScreen();
+    await waitFor(() => expect(onInitialHeaderFocused).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "More workout actions" })).toHaveProp("hasTVPreferredFocus", true);
   });
 
-  it("opens Today's plan without sending a workout mutation", async () => {
-    const activeCommands = commands();
-    const onOpenWorkoutPlan = jest.fn();
-    await renderActive({
-      commands: activeCommands,
-      onOpenWorkoutPlan,
+  it("sets Return to Workout on every non-confirmation Active bottom-sheet call site", () => {
+    const source = readFileSync("src/ui/screens/ActiveWorkoutScreen.tsx", "utf8");
+    expect([...source.matchAll(/<BottomSheet\s+cancelLabel="Return to Workout"/gu)])
+      .toHaveLength(6);
+  });
+
+  it("saves a per-exercise rest draft with authoritative revisions and a stable receipt envelope", async () => {
+    const initial = workoutView();
+    const saved = workoutView({
+      revision: 2,
+      currentExercise: { ...initial.currentExercise, defaultRestSeconds: 120 },
+      exercises: [{ ...initial.exercises[0]!, defaultRestSeconds: 120 }],
     });
+    const updateSessionExerciseDefaultRest = jest.fn(async () => saved);
+    await renderScreen(initial, { updateSessionExerciseDefaultRest });
 
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Today's plan" }),
+    await fireEvent.press(screen.getByRole("button", { name: "Open Back Squat menu" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Timing" }));
+    await fireEvent.changeText(
+      screen.getByLabelText("Between-set rest seconds for Back Squat"),
+      "120",
     );
+    await fireEvent.press(screen.getByRole("button", { name: "Save between-set rest" }));
 
-    expect(onOpenWorkoutPlan).toHaveBeenCalledTimes(1);
-    expect(activeCommands.completeSet).not.toHaveBeenCalled();
-    expect(activeCommands.skipExercise).not.toHaveBeenCalled();
-    expect(activeCommands.updateActiveSetDraft).not.toHaveBeenCalled();
-  });
-
-  it("renders production-owned loading and error scenes with the existing navigation actions", async () => {
-    const onBack = jest.fn();
-    const onReturnToActiveWorkout = jest.fn();
-    const { rerender } = await render(
-      <AppearanceProvider>
-        <WorkoutPlanOverviewScreen
-          onBack={onBack}
-          onReturnToActiveWorkout={onReturnToActiveWorkout}
-          onReviewExercise={jest.fn()}
-          scene={{ state: "loading" }}
-        />
-      </AppearanceProvider>,
-    );
-
-    expect(screen.getByRole("header", { name: "Today's plan" }))
-      .toBeOnTheScreen();
-    expect(screen.getByLabelText("Loading today's plan"))
-      .toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
-    expect(onBack).toHaveBeenCalledTimes(1);
-
-    await rerender(
-      <AppearanceProvider>
-        <WorkoutPlanOverviewScreen
-          onBack={onBack}
-          onReturnToActiveWorkout={onReturnToActiveWorkout}
-          onReviewExercise={jest.fn()}
-          scene={{ state: "error" }}
-        />
-      </AppearanceProvider>,
-    );
-
-    expect(screen.getByRole("header", {
-      name: "Today's plan could not be opened",
-    })).toBeOnTheScreen();
-    expect(screen.getByText(
-      "Your workout was not changed. Return to the active workout to continue.",
-    )).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
-    expect(onBack).toHaveBeenCalledTimes(2);
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Return to active workout",
+    await waitFor(() => expect(updateSessionExerciseDefaultRest).toHaveBeenCalledTimes(1));
+    expect(updateSessionExerciseDefaultRest).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: initial.id,
+      sessionExerciseId: "exercise-1",
+      defaultRestSeconds: 120,
+      expectedSessionRevision: initial.revision,
+      expectedSessionExerciseRevision: 1,
+      occurredAtMs: 3_000,
+      requestId: expect.stringMatching(/^exercise-rest:/u),
+      requestSha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
     }));
-    expect(onReturnToActiveWorkout).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText("Between-set rest seconds for Back Squat")).toBeNull();
   });
 
-  it("renders an accessible empty scene without fabricating currentExercise", async () => {
-    const emptyWorkout: EmptyWorkoutView = {
-      state: "empty_workout",
-      id: "session-empty",
-      status: "in_progress",
-      revision: 1,
-      activeSetId: null,
-      activeExerciseId: null,
-      progress: {
-        completedWorkingSets: 0,
-        totalWorkingSets: 0,
-      },
-      rest: {
-        version: 1,
-        state: "idle",
-        revision: 0,
-        nextSetId: null,
-      },
-    };
-    const onReturnToActiveWorkout = jest.fn();
+  it("keeps the per-exercise rest draft open without a write acknowledgement on failure", async () => {
+    const updateSessionExerciseDefaultRest = jest.fn(async () => {
+      throw new Error("write_failed");
+    });
+    await renderScreen(workoutView(), { updateSessionExerciseDefaultRest });
 
-    expect(resolveWorkoutPlanOverviewScene(initialView)).toEqual({
-      state: "empty",
-    });
-    expect(resolveWorkoutPlanOverviewScene(emptyWorkout)).toEqual({
-      state: "empty",
-    });
+    await fireEvent.press(screen.getByRole("button", { name: "Open Back Squat menu" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Timing" }));
+    const input = screen.getByLabelText("Between-set rest seconds for Back Squat");
+    await fireEvent.changeText(input, "120");
+    await fireEvent.press(screen.getByRole("button", { name: "Save between-set rest" }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Between-set rest was not saved"));
+    expect(screen.getByLabelText("Between-set rest seconds for Back Squat")).toHaveProp("value", "120");
+  });
+
+  it("opens real plan settings only for the session's owning plan", async () => {
+    const onOpenPlanSettings = jest.fn();
+    await render(
+      <AppearanceProvider>
+        <ActiveWorkoutScreen
+          commands={commands(workoutView({ planId: "plan-owner" }))}
+          nowMs={() => 3_000}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          onOpenPlanSettings={onOpenPlanSettings}
+          sessionId="session-1"
+          view={workoutView({ planId: "plan-owner" })}
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "More workout actions" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Plan settings" }));
+    expect(onOpenPlanSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("reloads durable facts before accepting an unknown finish receipt", async () => {
+    const initial = workoutView({ activeSetId: null });
+    const onOutcomeSaved = jest.fn();
+    const onResolveUnknownOutcome = jest.fn(async () => ({
+      id: initial.id,
+      status: "completed",
+    } as never));
+    const finishCompleted = jest.fn<ActiveWorkoutCommands["finishCompleted"]>()
+      .mockResolvedValue({
+        detail: {
+          id: "unexpected-session",
+          status: "completed",
+        } as never,
+        invalidationScopes: [],
+      });
 
     await render(
       <AppearanceProvider>
-        <WorkoutPlanOverviewScreen
-          onBack={jest.fn()}
-          onReturnToActiveWorkout={onReturnToActiveWorkout}
-          onReviewExercise={jest.fn()}
-          scene={resolveWorkoutPlanOverviewScene(initialView)}
+        <ActiveWorkoutScreen
+          commands={commands(initial, { finishCompleted })}
+          nowMs={() => 3_000}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          onOutcomeSaved={onOutcomeSaved}
+          onResolveUnknownOutcome={onResolveUnknownOutcome}
+          sessionId={initial.id}
+          view={initial}
         />
       </AppearanceProvider>,
     );
 
-    expect(screen.getByRole("summary", {
-      name: "No exercises in today's plan",
-    })).toBeOnTheScreen();
-    expect(screen.getByText(
-      "No exercises are planned in this session yet.",
-    )).toBeOnTheScreen();
-    expect(screen.queryByText("Back Squat")).not.toBeOnTheScreen();
-    expect(screen.queryByTestId("today-plan-exercise-session-exercise-1"))
-      .not.toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Return to active workout",
-    }));
-    expect(onReturnToActiveWorkout).toHaveBeenCalledTimes(1);
+    await fireEvent.press(screen.getByRole("button", { name: "Finish workout" }));
+
+    await waitFor(() => expect(onResolveUnknownOutcome).toHaveBeenCalledWith(initial.id));
+    expect(onOutcomeSaved).toHaveBeenCalledWith(initial.id);
   });
 
-  it("lists every workout exercise in order and reviews it without changing the active pointer", async () => {
-    const reviewedExercise = {
-      ...initialView.currentExercise,
-      id: "session-exercise-2",
-      name: "Bench Press",
-      ordinal: 1,
+  it("keeps the workout active and offers an operation-specific retry when finishing fails", async () => {
+    const onOutcomeSaved = jest.fn();
+    const initial = workoutView({ activeSetId: null });
+    const finishCompleted = jest.fn<ActiveWorkoutCommands["finishCompleted"]>()
+      .mockRejectedValueOnce(new Error("storage_failed"));
+
+    await render(
+      <AppearanceProvider>
+        <ActiveWorkoutScreen
+          commands={commands(initial, { finishCompleted })}
+          nowMs={() => 3_000}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          onOutcomeSaved={onOutcomeSaved}
+          sessionId={initial.id}
+          view={initial}
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Finish workout" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("header", {
+        name: "Workout was not finished",
+      })).toBeOnTheScreen();
+    });
+    expect(screen.getByText(
+      "Your workout is still active. Your completed sets and rest are unchanged. Try finishing again.",
+    )).toBeOnTheScreen();
+    expect(onOutcomeSaved).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Retry finishing workout",
+    }));
+    await waitFor(() => expect(finishCompleted).toHaveBeenCalledTimes(2));
+  });
+
+  it("keeps a failed partial save in its confirmation context and reuses its exact token", async () => {
+    const finishPartial = jest.fn<ActiveWorkoutCommands["finishPartial"]>()
+      .mockRejectedValueOnce(new Error("storage_failed"));
+    const initial = workoutView();
+
+    await render(
+      <AppearanceProvider>
+        <ActiveWorkoutScreen
+          commands={commands(initial, { finishPartial })}
+          nowMs={() => 3_000}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          sessionId={initial.id}
+          view={initial}
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "More workout actions",
+    }));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Finish as partial",
+    }));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Save partial workout",
+    }));
+
+    await waitFor(() => expect(screen.getByRole("header", {
+      name: "Partial workout was not saved",
+    })).toBeOnTheScreen());
+    expect(screen.getByText(
+      "Your workout is still active. Your completed sets and current rest are unchanged. Try saving the partial workout again.",
+    )).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Retry saving partial workout",
+    }));
+    await waitFor(() => expect(finishPartial).toHaveBeenCalledTimes(2));
+    expect(finishPartial.mock.calls[1]?.[0]).toEqual(finishPartial.mock.calls[0]?.[0]);
+  });
+
+  it("keeps the exercise overflow to Timing, Replace exercise, and Delete exercise", async () => {
+    await renderScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Open Back Squat menu" }));
+
+    expect(screen.getByRole("button", { name: "Timing" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Replace exercise" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Delete exercise" })).toBeOnTheScreen();
+    expect(within(screen.getByTestId("exercise-actions-sheet-content"))
+      .queryByRole("button", { name: /trend/i })).not.toBeOnTheScreen();
+  });
+
+  it("keeps the global add picker non-mutating until an exercise is selected and confirmed", async () => {
+    const addExercise = jest.fn(async () => ({
+      outcome: "committed" as const,
+      sessionId: "session-1",
+      sessionExerciseId: "added-exercise",
+      setId: "added-set",
+      sessionRevision: 2,
+    }));
+    const initial = workoutView();
+    const renderedCommands = commands(initial, { addExercise });
+
+    await render(
+      <AppearanceProvider>
+        <ActiveWorkoutScreen
+          availableExercises={[
+            { id: "deadlift", name: "Deadlift" },
+            { id: "lat-pulldown", name: "Lat pulldown" },
+          ]}
+          commands={renderedCommands}
+          nowMs={() => 3_000}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          sessionId={initial.id}
+          view={initial}
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Add exercise" }));
+    expect(addExercise).not.toHaveBeenCalled();
+    await fireEvent.changeText(screen.getByLabelText("Search exercises"), "dead");
+    expect(screen.getByRole("button", { name: "Deadlift. Add exercise" })).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Lat pulldown. Add exercise" })).not.toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Deadlift. Add exercise" }));
+    expect(addExercise).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", { name: "Add Deadlift" }));
+
+    await waitFor(() => expect(addExercise).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: "session-1",
+      expectedSessionRevision: 1,
+      libraryExerciseId: "deadlift",
+    })));
+  });
+
+  it("explains an empty global add search without issuing a mutation", async () => {
+    const addExercise = jest.fn<NonNullable<ActiveWorkoutCommands["addExercise"]>>();
+    const initial = workoutView();
+    await render(
+      <AppearanceProvider>
+        <ActiveWorkoutScreen
+          availableExercises={[]}
+          commands={commands(initial, { addExercise })}
+          nowMs={() => 3_000}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          sessionId={initial.id}
+          view={initial}
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Add exercise" }));
+
+    expect(screen.getByText("No exercises found")).toBeOnTheScreen();
+    expect(addExercise).not.toHaveBeenCalled();
+  });
+
+  it("requires explicit named delete confirmation and retains protected history truthfully", async () => {
+    const base = workoutView();
+    const completed = {
+      ...base.currentExercise.workingSets[0]!,
+      completedAtMs: 3_000,
       status: "completed" as const,
-      workingSets: initialView.currentExercise.workingSets.map((set) => ({
+    };
+    const protectedView = {
+      ...base,
+      activeSetId: null,
+      currentExercise: {
+        ...base.currentExercise,
+        status: "completed" as const,
+        workingSets: [completed],
+      },
+      exercises: [{
+        ...base.currentExercise,
+        status: "completed" as const,
+        workingSets: [completed],
+      }],
+    };
+    await renderScreen(protectedView);
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Open Back Squat menu",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Delete exercise" }));
+
+    expect(screen.getByRole("header", { name: "Delete Back Squat?" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Confirm delete Back Squat" })).toBeOnTheScreen();
+    expect(screen.getByText(/completed sets.*marked Skipped/u)).toBeOnTheScreen();
+  });
+
+  it("retries a failed replace with the exact receipt-fenced command envelope", async () => {
+    let clock = 3_000;
+    const replaceExercise = jest.fn<NonNullable<ActiveWorkoutCommands["replaceExercise"]>>()
+      .mockRejectedValueOnce(new Error("storage_failed"));
+    const initial = workoutView();
+    await render(
+      <AppearanceProvider>
+        <ActiveWorkoutScreen
+          availableExercises={[{ id: "deadlift", name: "Deadlift" }]}
+          commands={commands(initial, { replaceExercise })}
+          nowMs={() => clock++}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          sessionId={initial.id}
+          view={initial}
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Open Back Squat menu" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Replace exercise" }));
+    await fireEvent.press(screen.getByRole("radio", { name: "Deadlift" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Replace with Deadlift" }));
+    await waitFor(() => expect(replaceExercise).toHaveBeenCalledTimes(1));
+    await fireEvent.press(screen.getByRole("button", { name: "Retry replacing exercise" }));
+    await waitFor(() => expect(replaceExercise).toHaveBeenCalledTimes(2));
+
+    expect(replaceExercise.mock.calls[1]).toEqual(replaceExercise.mock.calls[0]);
+  });
+
+  it("scopes the two-option Add set menu to its invoking exercise", async () => {
+    const initial = workoutView();
+    const warmup = {
+      ...initial.currentExercise.workingSets[0]!,
+      id: "warmup-1",
+      kind: "warmup" as const,
+      ordinal: 0,
+      sourceTargetId: null,
+      metricIdentity: identity,
+      status: "draft" as const,
+    };
+    const withWarmup = {
+      ...initial,
+      revision: 2,
+      currentExercise: {
+        ...initial.currentExercise,
+        revision: 2,
+        warmups: [warmup],
+      },
+    };
+    const nextView = { ...withWarmup, exercises: [withWarmup.currentExercise] };
+    const addWarmup = jest.fn(async () => ({ ...nextView, committedSetId: warmup.id }));
+    await renderScreen(initial, { addWarmup });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Add set" }));
+    expect(screen.getByRole("button", { name: "Add warm-up set" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Add working set" })).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Add circuit set" })).not.toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Add warm-up set" }));
+
+    await waitFor(() => expect(addWarmup).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: "session-1",
+      sessionExerciseId: "exercise-1",
+    })));
+    expect(screen.getByRole("button", { name: /Warm-up W1/u })).toBeOnTheScreen();
+  });
+
+  it("opens a facts-only row in one local editor, keeps source choice local, and cancels without a source write", async () => {
+    const updateActiveSetDraft = jest.fn(async () => workoutView());
+    await renderScreen(undefined, { updateActiveSetDraft });
+
+    const row = screen.getByRole("button", { name: /Set 1\. 60 kg × 8\. Current\. Edit set values/u });
+    expect(screen.queryByRole("button", { name: /reset|remove/u })).not.toBeOnTheScreen();
+    await fireEvent.press(row);
+    await fireEvent.press(screen.getByRole("button", { name: "Use recommended" }));
+    expect(screen.getByLabelText("Load (kg)")).toHaveProp("value", "62.5");
+    expect(screen.getByLabelText("Repetitions")).toHaveProp("value", "6");
+    await fireEvent.changeText(screen.getByLabelText("Load (kg)"), "65");
+    await fireEvent.changeText(screen.getByLabelText("Repetitions"), "9");
+    expect(updateActiveSetDraft).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getAllByRole("button", { name: "Return to Workout" })[1]!);
+
+    expect(updateActiveSetDraft).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("workout-set-editor-sheet")).not.toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: /Set 1\. 60 kg × 8/u })).toBeOnTheScreen();
+  });
+
+  it("saves the selected source or direct draft once through the revision-fenced command", async () => {
+    const saved = workoutView({
+      revision: 2,
+      currentExercise: { ...workoutView().currentExercise, revision: 2, workingSets: [{ ...workoutView().currentExercise.workingSets[0]!, observation: { ...observation, loadGrams: 65_000, reps: 9 }, status: "draft" as const, revision: 2 }] },
+    });
+    const savedWithExercises = { ...saved, exercises: [saved.currentExercise] };
+    const updateActiveSetDraft = jest.fn(async () => savedWithExercises);
+    await renderScreen(undefined, { updateActiveSetDraft });
+
+    await fireEvent.press(screen.getByRole("button", { name: /Set 1\. 60 kg × 8/u }));
+    await fireEvent.changeText(screen.getByLabelText("Load (kg)"), "65");
+    await fireEvent.changeText(screen.getByLabelText("Repetitions"), "9");
+    await fireEvent.press(screen.getByRole("button", { name: "Save set values" }));
+
+    await waitFor(() => expect(updateActiveSetDraft).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: "session-1", setId: "working-1", expectedSetRevision: 1,
+      metricIdentity: identity, observation: { ...observation, loadGrams: 65_000, reps: 9 },
+    })));
+    expect(screen.queryByTestId("workout-set-editor-sheet")).not.toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: /Set 1\. 65 kg × 9/u })).toBeOnTheScreen();
+  });
+
+  it("keeps a committed correction sheet and its draft open after a revision-fenced failure", async () => {
+    const base = workoutView();
+    const completedBase = workoutView({
+      revision: 2, activeSetId: null,
+      currentExercise: { ...base.currentExercise, status: "completed" as const, revision: 2, workingSets: [{ ...base.currentExercise.workingSets[0]!, status: "completed" as const, completedAtMs: 2_000, revision: 2 }] },
+    });
+    const completed = { ...completedBase, exercises: [completedBase.currentExercise] };
+    const reviseCompletedSet = jest.fn(async () => { throw new Error("storage_failed"); });
+    await renderScreen(completed, { reviseCompletedSet });
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: /Back Squat\. 60 kg × 8 · 1\/1 complete\. Expand exercise/u,
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: /Set 1\. 60 kg × 8\. Completed/u }));
+    await fireEvent.changeText(screen.getByLabelText("Load (kg)"), "65");
+    await fireEvent.press(screen.getByRole("button", { name: "Save committed set edit" }));
+
+    await waitFor(() => expect(reviseCompletedSet).toHaveBeenCalledWith(expect.objectContaining({
+      setId: "working-1", expectedSetRevision: 2, observation: { ...observation, loadGrams: 65_000 },
+    })));
+    expect(screen.getByTestId("workout-set-editor-sheet")).toBeOnTheScreen();
+    expect(screen.getByLabelText("Load (kg)")).toHaveProp("value", "65");
+    expect(screen.getByText(/Your draft is still available; try Save again/u)).toBeOnTheScreen();
+  });
+
+  it("gates completion in the screen-owned dock until its exclusive transaction resolves", async () => {
+    let resolveCompletion: (result: CompleteSetResult) => void = () => undefined;
+    const completeSet = jest.fn(() => new Promise<CompleteSetResult>((resolve) => { resolveCompletion = resolve; }));
+    await renderScreen(undefined, { completeSet });
+
+    const complete = screen.getByRole("button", { name: "Complete Set 1" });
+    await fireEvent.press(complete);
+    await fireEvent.press(complete);
+    expect(completeSet).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Complete Set 1" })).toBeDisabled();
+    expect(screen.queryByText("Completed working set 1")).not.toBeOnTheScreen();
+
+    const completedBase = workoutView({
+      activeSetId: null,
+      currentExercise: { ...workoutView().currentExercise, status: "completed" as const, workingSets: [{ ...workoutView().currentExercise.workingSets[0]!, status: "completed" as const, completedAtMs: 3_000 }] },
+    });
+    await act(async () => resolveCompletion({ outcome: "committed", view: { ...completedBase, exercises: [completedBase.currentExercise] } }));
+    expect(screen.getByRole("button", {
+      name: /Back Squat\. 60 kg × 8 · 1\/1 complete\. Expand exercise/u,
+    })).toBeOnTheScreen();
+  });
+
+  it("collapses the final exercise and reveals Finish workout only after its committed source view", async () => {
+    const initial = workoutView();
+    const completedExercise = {
+      ...initial.currentExercise,
+      status: "completed" as const,
+      revision: 2,
+      workingSets: initial.currentExercise.workingSets.map((set) => ({
         ...set,
+        completedAtMs: 3_000,
+        revision: 2,
         status: "completed" as const,
       })),
     };
-    const plannedExercise = {
-      ...initialView.currentExercise,
-      id: "session-exercise-3",
-      name: "Barbell Row",
-      ordinal: 2,
-      status: "planned" as const,
-    };
-    const skippedExercise = {
-      ...initialView.currentExercise,
-      id: "session-exercise-4",
-      name: "Pull-up",
-      ordinal: 3,
-      status: "skipped" as const,
-    };
-    const view: ActiveWorkoutView = {
-      ...initialView,
-      exercises: [
-        initialView.currentExercise,
-        reviewedExercise,
-        plannedExercise,
-        skippedExercise,
-      ],
-    };
-    const onReviewExercise = jest.fn();
-    await render(
-      <AppearanceProvider>
-        <WorkoutPlanOverviewScreen
-          onBack={jest.fn()}
-          onReturnToActiveWorkout={jest.fn()}
-          onReviewExercise={onReviewExercise}
-          scene={resolveWorkoutPlanOverviewScene(view)}
-        />
-      </AppearanceProvider>,
-    );
-
-    expect(screen.getByLabelText(
-      "1. Back Squat. Current. Open for review",
-    )).toBeOnTheScreen();
-    expect(screen.getByLabelText(
-      "2. Bench Press. Completed. Open for review",
-    )).toBeOnTheScreen();
-    expect(screen.getByLabelText(
-      "3. Barbell Row. Planned. Open for review",
-    )).toBeOnTheScreen();
-    expect(screen.getByLabelText(
-      "4. Pull-up. Skipped. Open for review",
-    )).toBeOnTheScreen();
-
-    await fireEvent.press(screen.getByLabelText(
-      "2. Bench Press. Completed. Open for review",
-    ));
-
-    expect(onReviewExercise).toHaveBeenCalledWith("session-exercise-2");
-    expect(view.activeExerciseId).toBe("session-exercise-1");
-
-    const activeCommands = commands();
-    const onReturnToCurrent = jest.fn();
-    await renderActive({
-      commands: activeCommands,
-      onReturnToCurrent,
-      reviewExerciseId: "session-exercise-2",
-      view,
-    });
-    expect(screen.getByRole("header", { name: "Bench Press" }))
-      .toBeOnTheScreen();
-    expect(screen.getByText("Reviewing another exercise"))
-      .toBeOnTheScreen();
-    expect(screen.getByRole("button", {
-      name: "Return to current exercise",
-    })).toBeOnTheScreen();
-    expect(screen.queryByRole("button", {
-      name: "Complete Set 1",
-    })).not.toBeOnTheScreen();
-    expect(activeCommands.completeSet).not.toHaveBeenCalled();
-
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Return to current exercise",
-    }));
-    expect(onReturnToCurrent).toHaveBeenCalledTimes(1);
-    expect(view.activeExerciseId).toBe("session-exercise-1");
-  });
-
-  it("keeps workout context in flat cards while inline set controls and action sheet retain semantic surfaces", async () => {
-    await renderActive({ width: 840 });
-
-    for (const cardId of [
-      "active-workout-target-card",
-      "active-workout-warmups-card",
-      "active-workout-working-sets-card",
-    ]) {
-      expect(screen.getByTestId(cardId)).toHaveStyle({
-        backgroundColor: themes.light.contentCard,
-        borderColor: themes.light.contentCardBorder,
-        borderWidth: 0.5,
-      });
-    }
-    expect(screen.getByText("60 kg × 8")).toHaveStyle({
-      color: themes.light.contentCardText,
-    });
-    await fireEvent.press(
-      screen.getByRole("button", { name: "More workout actions" }),
-    );
-    expect(screen.getByTestId("workout-actions-sheet-content"))
-      .not.toHaveStyle({ backgroundColor: themes.light.contentCard });
-  });
-
-  it.each(["Light", "Dark"] as const)(
-    "uses global card tokens while retaining editable set fields in %s appearance",
-    async (appearance) => {
-      await renderActive({ width: 840 }, appearance);
-      const colors = themes[appearance.toLowerCase() as "light" | "dark"];
-
-      expect(screen.getByTestId("active-workout-warmups-card")).toHaveStyle({
-        backgroundColor: colors.contentCard,
-        borderColor: colors.contentCardBorder,
-      });
-      expect(screen.getByRole("header", { name: "Warm-ups" }))
-        .toHaveStyle({ color: colors.contentCardText });
-      expect(screen.queryByText("Excluded from records and progression"))
-        .not.toBeOnTheScreen();
-      expect(screen.getByLabelText("Working set 1 load in kilograms"))
-        .toHaveStyle({ backgroundColor: colors.surface });
-    },
-  );
-
-  it("renders cohesive compact warm-up and working-set rows", async () => {
-    const { rendered } = await renderActive();
-
-    expect(screen.getByRole("header", { name: "Back Squat" }))
-      .toBeOnTheScreen();
-    expect(screen.getByText("TODAY'S TARGET")).toBeOnTheScreen();
-    expect(screen.getAllByText("60 kg × 8").length).toBeGreaterThan(0);
-    expect(screen.getByText("Last workout · 60 kg × 7")).toBeOnTheScreen();
-    expect(screen.getByText("W1")).toBeOnTheScreen();
-    expect(screen.getByLabelText(/Working set 1 of 2/u))
-      .toHaveProp("accessibilityState", { selected: true });
-    expect(screen.getByLabelText(/Working set 2 of 2/u))
-      .toHaveProp("accessibilityState", { selected: false });
-    expect(screen.getByRole("button", { name: "Complete Set 1" }))
-      .toHaveStyle({ minHeight: 48, minWidth: 48 });
-    expect(screen.getByRole("button", { name: "Complete warm-up W1" }))
-      .toHaveStyle({ minHeight: 48, minWidth: 48 });
-    expect(screen.getByTestId("working-set-1-actions")).toHaveStyle({
-      flexDirection: "row",
-    });
-    expect(screen.getByTestId("warmup-W1-actions")).toHaveStyle({
-      flexDirection: "row",
-    });
-    expect(screen.getByLabelText("Working set 1 load in kilograms"))
-      .toHaveDisplayValue("60");
-    const loadInput = screen.getByLabelText(
-      "Working set 1 load in kilograms",
-    );
-    await fireEvent(loadInput, "focus");
-    expect(loadInput).toHaveStyle({
-      outlineColor: "#155EEF",
-      outlineWidth: 2,
-    });
-    await fireEvent(loadInput, "blur");
-    expect(loadInput).toHaveStyle({ outlineWidth: 0 });
-    expect(screen.getByLabelText("Working set 1 repetitions"))
-      .toHaveDisplayValue("8");
-    expect(screen.getByTestId("working-set-1-row")).toHaveProp(
-      "accessible",
-      false,
-    );
-    expect(screen.getByLabelText(/Working set 1 of 2/u))
-      .toHaveProp("accessible", true);
-    expect(screen.getByLabelText("Warm-up W1 load in kilograms"))
-      .toHaveDisplayValue("20");
-    expect(screen.getByLabelText("Warm-up W1 repetitions"))
-      .toHaveDisplayValue("8");
-    const tree = JSON.stringify(rendered.toJSON());
-    expect(tree).not.toContain("Excluded from records and progression");
-    expect(screen.getByTestId("active-workout-warmup-actions"))
-      .toHaveStyle({ alignSelf: "flex-end" });
-    expect(screen.getByTestId("active-workout-working-actions"))
-      .toHaveStyle({ alignSelf: "flex-end" });
-    for (const label of [
-      "Add warm-up",
-      "Add working set",
-      "Complete Set 1",
-      "Remove set 1",
-      "Complete warm-up W1",
-      "Remove warm-up W1",
-    ]) {
-      expect(screen.getByRole("button", { name: label }))
-        .toHaveStyle({ minHeight: 48, minWidth: 48 });
-    }
-  });
-
-  it("offers inline value sources in approved order and persists one tap selection", async () => {
-    const updatedView: ActiveWorkoutView = {
-      ...initialView,
+    const completed = {
+      ...initial,
+      activeSetId: null,
+      currentExercise: completedExercise,
+      exercises: [completedExercise],
+      progress: { completedWorkingSets: 1, totalWorkingSets: 1 },
       revision: 2,
-      currentExercise: {
-        ...initialView.currentExercise,
-        workingSets: [
-          {
-            ...initialView.currentExercise.workingSets[0]!,
-            observation: loadReps(62_500, 6, "recommended"),
-            status: "draft",
-            revision: 2,
-          },
-          initialView.currentExercise.workingSets[1]!,
-        ],
-      },
     };
-    const updateActiveSetDraft = jest.fn(async () => updatedView);
-    await renderActive({
-      commands: commands({ updateActiveSetDraft }),
+    await renderScreen(initial, {
+      completeSet: jest.fn(async () => ({ outcome: "committed" as const, view: completed })),
     });
 
-    expect(screen.getAllByRole("button").map(
-      (source) => source.props.accessibilityLabel,
-    )).toEqual(expect.arrayContaining([
-      "Use Recommended values for working set 1: 62.5 kg × 6",
-      "Use Last workout values for working set 1: 60 kg × 7",
-      "Use Plan default values for working set 1: 60 kg × 8",
-    ]));
-    await fireEvent.press(
-      screen.getByRole("button", {
-        name: "Use Recommended values for working set 1: 62.5 kg × 6",
-      }),
-    );
+    await fireEvent.press(screen.getByRole("button", { name: "Complete Set 1" }));
 
-    await waitFor(() => {
-      expect(updateActiveSetDraft).toHaveBeenCalledWith(
-        expect.objectContaining({
-          setId: "working-1",
-          expectedSetRevision: 1,
-          observation: loadReps(62_500, 6, "recommended"),
-        }),
-      );
-    });
-    expect(screen.getByLabelText("Working set 1 load in kilograms"))
-      .toHaveDisplayValue("62.5");
-    expect(screen.getByLabelText("Working set 1 repetitions"))
-      .toHaveDisplayValue("6");
+    await waitFor(() => expect(screen.getByRole("button", {
+      name: /Back Squat\. 60 kg × 8 · 1\/1 complete\. Expand exercise/u,
+    })).toBeOnTheScreen());
+    expect(screen.getByRole("button", { name: "Finish workout" })).toBeOnTheScreen();
   });
 
-  it("edits load and reps inline and persists the combined draft on blur", async () => {
-    const updatedView: ActiveWorkoutView = {
-      ...initialView,
-      revision: 2,
-      currentExercise: {
-        ...initialView.currentExercise,
-        workingSets: [{
-          ...initialView.currentExercise.workingSets[0]!,
-          observation: loadReps(65_000, 9, "manual"),
-          status: "draft",
-          revision: 2,
-        }, initialView.currentExercise.workingSets[1]!],
-      },
-    };
-    const updateActiveSetDraft = jest.fn(async () => updatedView);
-    await renderActive({
-      commands: commands({ updateActiveSetDraft }),
+  it("retries a failed screen-owned completion with the exact command envelope", async () => {
+    const committedBase = workoutView({
+      activeSetId: null,
+      currentExercise: { ...workoutView().currentExercise, status: "completed" as const, workingSets: [{ ...workoutView().currentExercise.workingSets[0]!, status: "completed" as const, completedAtMs: 3_000 }] },
     });
-
-    await fireEvent.changeText(
-      screen.getByLabelText("Working set 1 load in kilograms"),
-      "65",
-    );
-    await fireEvent.changeText(
-      screen.getByLabelText("Working set 1 repetitions"),
-      "9",
-    );
-    await fireEvent(
-      screen.getByLabelText("Working set 1 repetitions"),
-      "blur",
-    );
-
-    await waitFor(() => {
-      expect(updateActiveSetDraft).toHaveBeenCalledWith(
-        expect.objectContaining({
-          observation: loadReps(65_000, 9, "manual"),
-        }),
-      );
-    });
-  });
-
-  it("completes with inline values after the queued draft save", async () => {
-    const updatedView: ActiveWorkoutView = {
-      ...initialView,
-      revision: 2,
-      currentExercise: {
-        ...initialView.currentExercise,
-        workingSets: [{
-          ...initialView.currentExercise.workingSets[0]!,
-          observation: loadReps(65_000, 9, "manual"),
-          status: "draft",
-          revision: 2,
-        }, initialView.currentExercise.workingSets[1]!],
-      },
-    };
-    let resolveDraft: ((view: ActiveWorkoutView) => void) | undefined;
-    const updateActiveSetDraft = jest.fn(() => new Promise<ActiveWorkoutView>(
-      (resolve) => {
-        resolveDraft = resolve;
-      },
-    ));
-    const completeSet = jest.fn<ActiveWorkoutCommands["completeSet"]>(
-      async () => ({
-        outcome: "committed",
-        view: completedView,
-      }),
-    );
-    await renderActive({
-      commands: commands({ completeSet, updateActiveSetDraft }),
-    });
-
-    await fireEvent.changeText(
-      screen.getByLabelText("Working set 1 load in kilograms"),
-      "65",
-    );
-    await fireEvent.changeText(
-      screen.getByLabelText("Working set 1 repetitions"),
-      "9",
-    );
-    await fireEvent(
-      screen.getByLabelText("Working set 1 repetitions"),
-      "blur",
-    );
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Complete Set 1" }),
-    );
-    expect(completeSet).not.toHaveBeenCalled();
-    await act(async () => {
-      resolveDraft?.(updatedView);
-    });
-
-    await waitFor(() => {
-      expect(completeSet).toHaveBeenCalledWith(expect.objectContaining({
-        expectedSessionRevision: 2,
-        expectedSetRevision: 2,
-        observation: loadReps(65_000, 9, "manual"),
-      }));
-    });
-  });
-
-  it("flushes focused inline values before completing", async () => {
-    const updatedView: ActiveWorkoutView = {
-      ...initialView,
-      revision: 2,
-      currentExercise: {
-        ...initialView.currentExercise,
-        workingSets: [{
-          ...initialView.currentExercise.workingSets[0]!,
-          observation: loadReps(60_000, 7, "manual"),
-          status: "draft",
-          revision: 2,
-        }, initialView.currentExercise.workingSets[1]!],
-      },
-    };
-    let resolveDraft: ((view: ActiveWorkoutView) => void) | undefined;
-    const updateActiveSetDraft = jest.fn(() => new Promise<ActiveWorkoutView>(
-      (resolve) => {
-        resolveDraft = resolve;
-      },
-    ));
-    const completeSet = jest.fn<ActiveWorkoutCommands["completeSet"]>(
-      async () => ({
-        outcome: "committed",
-        view: completedView,
-      }),
-    );
-    await renderActive({
-      commands: commands({ completeSet, updateActiveSetDraft }),
-    });
-
-    await fireEvent.changeText(
-      screen.getByLabelText("Working set 1 repetitions"),
-      "7",
-    );
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Complete Set 1" }),
-    );
-
-    expect(updateActiveSetDraft).toHaveBeenCalledWith(
-      expect.objectContaining({
-        observation: loadReps(60_000, 7, "manual"),
-      }),
-    );
-    expect(completeSet).not.toHaveBeenCalled();
-
-    await act(async () => {
-      resolveDraft?.(updatedView);
-    });
-    await waitFor(() => {
-      expect(completeSet).toHaveBeenCalledWith(expect.objectContaining({
-        expectedSessionRevision: 2,
-        expectedSetRevision: 2,
-        observation: loadReps(60_000, 7, "manual"),
-      }));
-    });
-  });
-
-  it("retries a failed focused inline save before completing", async () => {
-    const updatedView: ActiveWorkoutView = {
-      ...initialView,
-      revision: 2,
-      currentExercise: {
-        ...initialView.currentExercise,
-        workingSets: [{
-          ...initialView.currentExercise.workingSets[0]!,
-          observation: loadReps(60_000, 7, "manual"),
-          status: "draft",
-          revision: 2,
-        }, initialView.currentExercise.workingSets[1]!],
-      },
-    };
-    const updateActiveSetDraft = jest.fn<
-      ActiveWorkoutCommands["updateActiveSetDraft"]
-    >()
-      .mockRejectedValueOnce(new Error("draft save failed"))
-      .mockResolvedValueOnce(updatedView);
-    const completeSet = jest.fn<ActiveWorkoutCommands["completeSet"]>(
-      async () => ({
-        outcome: "committed",
-        view: completedView,
-      }),
-    );
-    await renderActive({
-      commands: commands({ completeSet, updateActiveSetDraft }),
-    });
-
-    await fireEvent.changeText(
-      screen.getByLabelText("Working set 1 repetitions"),
-      "7",
-    );
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Complete Set 1" }),
-    );
-    await waitFor(() => {
-      expect(updateActiveSetDraft).toHaveBeenCalledTimes(1);
-    });
-    expect(completeSet).not.toHaveBeenCalled();
-
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Complete Set 1" }),
-    );
-    await waitFor(() => {
-      expect(updateActiveSetDraft).toHaveBeenCalledTimes(2);
-      expect(completeSet).toHaveBeenCalledWith(expect.objectContaining({
-        expectedSessionRevision: 2,
-        expectedSetRevision: 2,
-        observation: loadReps(60_000, 7, "manual"),
-      }));
-    });
-  });
-
-  it("does not persist invalid inline values", async () => {
-    const updateActiveSetDraft = jest.fn(async () => initialView);
-    await renderActive({
-      commands: commands({ updateActiveSetDraft }),
-    });
-
-    await fireEvent.changeText(
-      screen.getByLabelText("Working set 1 load in kilograms"),
-      "not-a-number",
-    );
-    await fireEvent(
-      screen.getByLabelText("Working set 1 load in kilograms"),
-      "blur",
-    );
-
-    expect(updateActiveSetDraft).not.toHaveBeenCalled();
-    expect(screen.getByText("Enter a valid load.")).toBeOnTheScreen();
-  });
-
-  it("edits timed-hold duration inline without encoding it as repetitions", async () => {
-    const timedView: ActiveWorkoutView = {
-      ...initialView,
-      currentExercise: {
-        ...initialView.currentExercise,
-        exerciseId: "plank",
-        name: "Plank",
-        metricProfile: "timed_hold",
-        warmups: [],
-        workingSets: [{
-          ...initialView.currentExercise.workingSets[0]!,
-          target: {
-            version: 1,
-            profile: "timed_hold",
-            durationSeconds: 45,
-            perSide: false,
-          },
-          valueSources: [
-            {
-              source: "plan_default",
-              observation: {
-                version: 1,
-                profile: "timed_hold",
-                durationSeconds: 45,
-                source: "plan_default",
-              },
-            },
-            {
-              source: "manual",
-              observation: {
-                version: 1,
-                profile: "timed_hold",
-                durationSeconds: 45,
-                source: "manual",
-              },
-            },
-          ],
-        }],
-      },
-      progress: {
-        completedWorkingSets: 0,
-        totalWorkingSets: 1,
-      },
-    };
-    const updateActiveSetDraft = jest.fn(async () => timedView);
-    await renderActive({
-      commands: commands({ updateActiveSetDraft }),
-      view: timedView,
-    });
-
-    await fireEvent.press(
-      screen.getByRole("button", {
-        name: "Working set 1 duration in seconds",
-      }),
-    );
-    await fireEvent.changeText(
-      screen.getByLabelText("Working set 1 duration in seconds minutes"),
-      "1",
-    );
-    await fireEvent.changeText(
-      screen.getByLabelText("Working set 1 duration in seconds seconds"),
-      "",
-    );
-    await fireEvent.press(
-      screen.getByRole("button", {
-        name: "Confirm working set 1 duration in seconds",
-      }),
-    );
-
-    await waitFor(() => {
-      expect(updateActiveSetDraft).toHaveBeenCalledWith(
-        expect.objectContaining({
-          observation: {
-            version: 1,
-            profile: "timed_hold",
-            durationSeconds: 60,
-            source: "manual",
-          },
-        }),
-      );
-    });
-    expect(screen.queryByLabelText(/repetitions/iu)).not.toBeOnTheScreen();
-  });
-
-  it("shows Saving set without optimistic completion until the command commits", async () => {
-    let resolveCompletion: (
-      result: CompleteSetResult,
-    ) => void = () => undefined;
-    const completeSet = jest.fn(() => new Promise<CompleteSetResult>(
-      (resolve) => {
-        resolveCompletion = resolve;
-      },
-    ));
-    await renderActive({ commands: commands({ completeSet }) });
-
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Complete Set 1" }),
-    );
-    expect(screen.getByRole("button", { name: "Saving set…" }))
-      .toBeDisabled();
-    expect(screen.getByLabelText(/Working set 1 of 2/u))
-      .toHaveProp("accessibilityState", { selected: true });
-    expect(screen.queryByText("Completed working set 1"))
-      .not.toBeOnTheScreen();
-
-    await act(async () => {
-      resolveCompletion({ outcome: "committed", view: completedView });
-    });
-    expect(screen.getByText("Completed working set 1")).toBeOnTheScreen();
-    expect(screen.getByLabelText(/Working set 2 of 2/u))
-      .toHaveProp("accessibilityState", { selected: true });
-    expect(screen.getByRole("button", { name: "Edit completed set 1" }))
-      .toBeOnTheScreen();
-    expect(screen.queryByRole("button", { name: "Undo completed set" }))
-      .not.toBeOnTheScreen();
-  });
-
-  it("retains values and follows the normal committed path after exact Retry", async () => {
+    const committed = { ...committedBase, exercises: [committedBase.currentExercise] };
     const completeSet = jest.fn<ActiveWorkoutCommands["completeSet"]>()
       .mockRejectedValueOnce(new Error("storage_failed"))
-      .mockResolvedValueOnce({
-        outcome: "committed",
-        view: completedView,
-      });
-    await renderActive({ commands: commands({ completeSet }) });
+      .mockResolvedValueOnce({ outcome: "committed", view: committed });
+    await renderScreen(undefined, { completeSet });
 
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Complete Set 1" }),
-    );
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Set not saved · Retry" }),
-      ).toBeOnTheScreen();
-    });
-    expect(screen.getByText(
-      "Your values are still here. The set was not completed and rest did not start.",
-    )).toBeOnTheScreen();
-    expect(screen.getAllByText("60 kg × 8").length).toBeGreaterThan(0);
+    await fireEvent.press(screen.getByRole("button", { name: "Complete Set 1" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Set not saved · Retry" })).toBeOnTheScreen());
+    await fireEvent.press(screen.getByRole("button", { name: "Set not saved · Retry" }));
+    await waitFor(() => expect(screen.getByRole("button", {
+      name: /Back Squat\. 60 kg × 8 · 1\/1 complete\. Expand exercise/u,
+    })).toBeOnTheScreen());
 
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Set not saved · Retry" }),
-    );
-    await waitFor(() => {
-      expect(screen.getByText("Completed working set 1")).toBeOnTheScreen();
-    });
     expect(completeSet).toHaveBeenCalledTimes(2);
     expect(completeSet.mock.calls[1]).toEqual(completeSet.mock.calls[0]);
   });
 
-  it.each<[
-    string,
-    string,
-    Readonly<{ nativeEvent: Readonly<{ actionName?: string; key?: string }> }>,
-  ]>([
-    ["Semantic activate action", "accessibilityAction", {
-      nativeEvent: { actionName: "activate" },
-    }],
-    ["Enter", "keyDown", { nativeEvent: { key: "Enter" } }],
-    ["Space", "keyDown", { nativeEvent: { key: " " } }],
-  ])(
-    "routes %s activation through the same completeSet command",
-    async (_label, eventName, event) => {
-      const completeSet = jest.fn(async () => ({
-        outcome: "already_completed" as const,
-        view: initialView,
-      }));
-      await renderActive({ commands: commands({ completeSet }) });
-      const action = screen.getByRole("button", { name: "Complete Set 1" });
-
-      await fireEvent(action, eventName, event);
-
-      expect(completeSet).toHaveBeenCalledTimes(1);
-      expect(completeSet).toHaveBeenCalledWith(expect.objectContaining({
-        sessionId: "session-1",
-        setId: "working-1",
-      }));
-    },
-  );
-
-  it("uses separate warm-up commands and excludes them from working progress", async () => {
-    const completeWarmup = jest.fn(async () => ({
-      ...initialView,
+  it("offers contextual Undo after a committed set and restores the returned source view", async () => {
+    const initial = workoutView();
+    const completedSet = {
+      ...initial.currentExercise.workingSets[0]!,
+      completedAtMs: 3_000,
       revision: 2,
-      currentExercise: {
-        ...initialView.currentExercise,
-        warmups: [{
-          ...initialView.currentExercise.warmups[0]!,
-          status: "completed" as const,
-          completedAtMs: 2_000,
-          revision: 2,
-        }],
-      },
-    }));
-    await renderActive({ commands: commands({ completeWarmup }) });
-
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Complete warm-up W1" }),
-    );
-
-    await waitFor(() => {
-      expect(completeWarmup).toHaveBeenCalledWith(expect.objectContaining({
-        setId: "warmup-1",
-      }));
-    });
-    expect(screen.getByText("0 of 2 working sets")).toBeOnTheScreen();
-    expect(screen.getByText("Completed warm-up W1")).toBeOnTheScreen();
-    expect(screen.getByTestId("warmup-W1-status-glyph"))
-      .toHaveStyle({ right: 8, top: 8 });
-  });
-
-  it("adds warm-ups and confirms removal only through the trusted removal port", async () => {
-    const addWarmup = jest.fn<ActiveWorkoutCommands["addWarmup"]>(async () => ({
-      ...initialView,
-      committedSetId: "warmup-1",
-    }));
-    const removedView: ActiveWorkoutView = {
-      ...initialView,
-      revision: 2,
-      currentExercise: {
-        ...initialView.currentExercise,
-        warmups: [],
-      },
+      status: "completed" as const,
     };
-    const removeWarmup = jest.fn(async () => removedView);
-    await renderActive({
-      commands: commands({
-        addWarmup,
-        removeWarmup,
-      }),
-    });
-
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Add warm-up" }),
-    );
-    await waitFor(() => {
-      expect(addWarmup).toHaveBeenCalledWith(expect.objectContaining({
-        sessionExerciseId: "session-exercise-1",
-        observation: loadReps(20_000, 8, "manual"),
-      }));
-    });
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Remove warm-up W1" }),
-    );
-    expect(screen.getByText("Remove warm-up W1?")).toBeOnTheScreen();
-    expect(screen.getByText("This warm-up will be removed from this workout. This cannot be undone."))
-      .toBeOnTheScreen();
-    expect(removeWarmup).not.toHaveBeenCalled();
-    await fireEvent.press(screen.getByRole("button", { name: "Remove warm-up" }));
-    await waitFor(() => {
-      expect(removeWarmup).toHaveBeenCalledWith(expect.objectContaining({
-        setId: "warmup-1",
-        requestSha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
-      }));
-    });
-    expect(screen.queryByRole("button", { name: "Remove warm-up W1" }))
-      .not.toBeOnTheScreen();
-    expect(screen.getByText("Warm-up W1 removed")).toBeOnTheScreen();
-  });
-
-  it("uses a bounded deterministic request ID when removing restored long IDs", async () => {
-    const sessionId = "s".repeat(128);
-    const setId = "w".repeat(128);
-    const longIdView: ActiveWorkoutView = {
-      ...initialView,
-      id: sessionId,
-      activeSetId: setId,
-      currentExercise: {
-        ...initialView.currentExercise,
-        workingSets: [{
-          ...initialView.currentExercise.workingSets[0]!,
-          id: setId,
-        }],
-      },
-      progress: {
-        completedWorkingSets: 0,
-        totalWorkingSets: 1,
-      },
-    };
-    const removeWorkingSet = jest.fn<NonNullable<
-      ActiveWorkoutCommands["removeWorkingSet"]
-    >>(async () => ({
-      ...longIdView,
-      revision: 2,
-      currentExercise: {
-        ...longIdView.currentExercise,
-        workingSets: [],
-      },
-    }));
-    await renderActive({
-      commands: commands({ removeWorkingSet }),
-      sessionId,
-      view: longIdView,
-    });
-
-    await fireEvent.press(screen.getByRole("button", { name: "Remove set 1" }));
-    await fireEvent.press(screen.getByRole("button", { name: "Remove set" }));
-
-    await waitFor(() => {
-      expect(removeWorkingSet).toHaveBeenCalledWith(expect.objectContaining({
-        requestId: `remove_${"a".repeat(64)}`,
-        requestSha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
-        sessionId,
-        setId,
-      }));
-    });
-    const removalRequest = removeWorkingSet.mock.calls[0]?.[0];
-    expect(removalRequest).toBeDefined();
-    expect(removalRequest?.requestId).toHaveLength(71);
-  });
-
-  it("adds a first warm-up from the active load/reps target when none are planned", async () => {
-    const addWarmup = jest.fn<ActiveWorkoutCommands["addWarmup"]>(async () => ({
-      ...initialView,
-      committedSetId: "warmup-1",
-    }));
-    await renderActive({
-      commands: commands({ addWarmup }),
-      view: {
-        ...initialView,
-        currentExercise: {
-          ...initialView.currentExercise,
-          warmups: [],
-        },
-      },
-    });
-
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Add warm-up" }),
-    );
-
-    await waitFor(() => {
-      expect(addWarmup).toHaveBeenCalledWith(expect.objectContaining({
-        observation: loadReps(60_000, 8, "manual"),
-      }));
-    });
-  });
-
-  it("adds working sets and leaves rows unchanged until confirmed removal commits", async () => {
-    const addedView: ActiveWorkoutView = {
-      ...initialView,
-      revision: 2,
-      currentExercise: {
-        ...initialView.currentExercise,
-        workingSets: [
-          ...initialView.currentExercise.workingSets,
-          {
-            ...initialView.currentExercise.workingSets[1]!,
-            id: "working-added",
-            ordinal: 2,
-            sourceTargetId: null,
-            observation: loadReps(60_000, 8, "manual"),
-            status: "draft",
-          },
-        ],
-      },
-      progress: {
-        completedWorkingSets: 0,
-        totalWorkingSets: 3,
-      },
-    };
-    const removedView: ActiveWorkoutView = {
-      ...addedView,
-      revision: 3,
-      activeSetId: "working-2",
-      currentExercise: {
-        ...addedView.currentExercise,
-        workingSets: addedView.currentExercise.workingSets.filter(
-          ({ id }) => id !== "working-1",
-        ),
-      },
-    };
-    const addWorkingSet = jest.fn(async () => ({
-      ...addedView,
-      committedSetId: "working-added",
-    }));
-    const removeWorkingSet = jest.fn(async () => removedView);
-    await renderActive({
-      commands: commands({ addWorkingSet, removeWorkingSet }),
-    });
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Add working set" }),
-    );
-    await waitFor(() => {
-      expect(addWorkingSet).toHaveBeenCalledWith(expect.objectContaining({
-        sessionExerciseId: "session-exercise-1",
-        sourceSetId: "working-2",
-      }));
-    });
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Remove set 1" }),
-    );
-    expect(screen.getByRole("button", { name: "Keep set" })).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Keep set" }));
-    expect(removeWorkingSet).not.toHaveBeenCalled();
-    await fireEvent.press(screen.getByRole("button", { name: "Remove set 1" }));
-    await fireEvent.press(screen.getByRole("button", { name: "Remove set" }));
-    await waitFor(() => {
-      expect(removeWorkingSet).toHaveBeenCalledWith(expect.objectContaining({
-        setId: "working-1",
-        expectedSessionRevision: 2,
-      }));
-    });
-    expect(screen.getByText("Set 1 removed")).toBeOnTheScreen();
-  });
-
-  it("confirms and removes an inactive future working set, then follows the authoritative pointer", async () => {
-    const removedView: ActiveWorkoutView = {
-      ...initialView,
-      revision: 2,
-      activeSetId: "working-1",
-      currentExercise: {
-        ...initialView.currentExercise,
-        workingSets: [{
-          ...initialView.currentExercise.workingSets[0]!,
-          ordinal: 0,
-        }],
-      },
-    };
-    const removeWorkingSet = jest.fn(async () => removedView);
-    await renderActive({ commands: commands({ removeWorkingSet }) });
-
-    expect(screen.getByRole("button", { name: "Remove set 2" }).props
-      .accessibilityState).toMatchObject({ disabled: false });
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Remove set 2" }),
-    );
-    expect(screen.getByText("Remove set 2?")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Remove set" }));
-
-    await waitFor(() => {
-      expect(removeWorkingSet).toHaveBeenCalledWith(expect.objectContaining({
-        setId: "working-2",
-        expectedSessionRevision: 1,
-        expectedSetRevision: 1,
-      }));
-    });
-    expect(screen.getByText("Set 2 removed")).toBeOnTheScreen();
-    expect(screen.getByText("Current set")).toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Remove set 1" }))
-      .toBeOnTheScreen();
-  });
-
-  it.each([
-    ["warm-up", "warmup-1", "Remove warm-up W1", "Remove warm-up"],
-    ["working set", "working-2", "Remove set 2", "Remove set"],
-  ])(
-    "confirms removal for a skipped %s",
-    async (_kind, setId, removeLabel, confirmLabel) => {
-      const view: ActiveWorkoutView = {
-        ...initialView,
-        currentExercise: {
-          ...initialView.currentExercise,
-          warmups: initialView.currentExercise.warmups.map((set) => ({
-            ...set,
-            status: "skipped" as const,
-          })),
-          workingSets: initialView.currentExercise.workingSets.map((set) =>
-            set.id === "working-2"
-              ? { ...set, status: "skipped" as const }
-              : set
-          ),
-        },
-      };
-      const removedView: ActiveWorkoutView = {
-        ...view,
-        revision: 2,
-        currentExercise: {
-          ...view.currentExercise,
-          warmups: setId === "warmup-1" ? [] : view.currentExercise.warmups,
-          workingSets: setId === "working-2"
-            ? view.currentExercise.workingSets.filter(({ id }) => id !== setId)
-            : view.currentExercise.workingSets,
-        },
-      };
-      const removeWarmup = jest.fn(async () => removedView);
-      const removeWorkingSet = jest.fn(async () => removedView);
-      await renderActive({
-        commands: commands({ removeWarmup, removeWorkingSet }),
-        view,
-      });
-
-      expect(screen.getByRole("button", { name: removeLabel })).toBeOnTheScreen();
-      await fireEvent.press(screen.getByRole("button", { name: removeLabel }));
-      expect(screen.getByRole("button", { name: confirmLabel })).toBeOnTheScreen();
-      await fireEvent.press(screen.getByRole("button", { name: confirmLabel }));
-
-      await waitFor(() => {
-        const remove = setId === "warmup-1" ? removeWarmup : removeWorkingSet;
-        expect(remove).toHaveBeenCalledWith(expect.objectContaining({ setId }));
-      });
-    },
-  );
-
-  it("does not reissue a committed removal when the authoritative reload fails", async () => {
-    const onGoBack = jest.fn();
-    const removeWorkingSet = jest.fn<NonNullable<
-      ActiveWorkoutCommands["removeWorkingSet"]
-    >>(
-      async () => ({
-        outcome: "committed_refresh_failed",
-        sessionId: "session-1",
-        setId: "working-2",
-        sessionRevision: 2,
-      }),
-    );
-    await renderActive({
-      commands: commands({ removeWorkingSet }),
-      onGoBack,
-    });
-
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Remove set 2" }),
-    );
-    await fireEvent.press(screen.getByRole("button", { name: "Remove set" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Set removed. Reload workout")).toBeOnTheScreen();
-    });
-    expect(screen.getByText(
-      "The set was removed, but the latest workout could not be loaded. Return to Today and reopen this workout.",
-    )).toBeOnTheScreen();
-    expect(screen.queryByText("Your workout was not changed. Try again."))
-      .not.toBeOnTheScreen();
-    expect(removeWorkingSet).toHaveBeenCalledTimes(1);
-
-    await fireEvent.press(screen.getByRole("button", { name: "Return to Today" }));
-    expect(onGoBack).toHaveBeenCalledTimes(1);
-    expect(removeWorkingSet).toHaveBeenCalledTimes(1);
-  });
-
-  it("corrects a completed working set throughout the active workout without whole-session Undo", async () => {
-    const revisedView: ActiveWorkoutView = {
-      ...completedView,
-      revision: 3,
-      currentExercise: {
-        ...completedView.currentExercise,
-        workingSets: completedView.currentExercise.workingSets.map((set) =>
-          set.id === "working-1"
-            ? {
-                ...set,
-                observation: loadReps(62_500, 8, "manual"),
-                revision: 3,
-              }
-            : set
-        ),
-      },
-    };
-    const reviseCompletedSet = jest.fn(async () => ({
-      ...revisedView,
-      committedSetId: "working-1",
-    }));
-    await renderActive({
-      commands: commands({ reviseCompletedSet }),
-      view: completedView,
-    });
-
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Edit completed set 1" }),
-    );
-    await fireEvent.changeText(
-      screen.getByLabelText("Working set 1 load in kilograms"),
-      "62.5",
-    );
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Save correction for completed set 1" }),
-    );
-
-    await waitFor(() => {
-      expect(reviseCompletedSet).toHaveBeenCalledWith(expect.objectContaining({
-        sessionId: "session-1",
-        setId: "working-1",
-        expectedSessionRevision: completedView.revision,
-        expectedSetRevision: 2,
-        observation: loadReps(62_500, 8, "manual"),
-      }));
-    });
-    expect(screen.getAllByText("62.5 kg × 8").length).toBeGreaterThan(0);
-    expect(screen.queryByRole("button", { name: "Undo completed set" }))
-      .not.toBeOnTheScreen();
-  });
-
-  it("keeps section mutations retryable without duplicate submissions", async () => {
-    const addWarmup = jest.fn<ActiveWorkoutCommands["addWarmup"]>()
-      .mockRejectedValueOnce(new Error("storage_failed"))
-      .mockResolvedValueOnce({ ...initialView, committedSetId: "warmup-2" });
-    const addWorkingSet = jest.fn<ActiveWorkoutCommands["addWorkingSet"]>()
-      .mockRejectedValueOnce(new Error("storage_failed"))
-      .mockResolvedValueOnce({ ...initialView, committedSetId: "working-added" });
-    await renderActive({
-      commands: commands({ addWarmup, addWorkingSet }),
-    });
-
-    for (const [action, retry] of [
-      ["Add warm-up", "Retry add warm-up"],
-      ["Add working set", "Retry add working set"],
-    ] as const) {
-      await fireEvent.press(screen.getByRole("button", { name: action }));
-      await waitFor(() => {
-        expect(screen.getByRole("button", { name: retry })).toBeOnTheScreen();
-      });
-      await fireEvent.press(screen.getByRole("button", { name: retry }));
-    }
-
-    await waitFor(() => {
-      expect(addWarmup).toHaveBeenCalledTimes(2);
-      expect(addWorkingSet).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  it("guards repeated add-working taps until the committed mutation settles", async () => {
-    let resolveAdd: (value: Awaited<
-      ReturnType<ActiveWorkoutCommands["addWorkingSet"]>
-    >) => void = () => undefined;
-    const addWorkingSet = jest.fn<ActiveWorkoutCommands["addWorkingSet"]>(
-      () => new Promise((resolve) => {
-        resolveAdd = resolve;
-      }),
-    );
-    await renderActive({ commands: commands({ addWorkingSet }) });
-    const addAction = screen.getByRole("button", { name: "Add working set" });
-
-    await fireEvent.press(addAction);
-    await fireEvent.press(addAction);
-
-    expect(addWorkingSet).toHaveBeenCalledTimes(1);
-    expect(addAction).toHaveProp("accessibilityState", expect.objectContaining({
-      busy: true,
-      disabled: true,
-    }));
-    await act(async () => {
-      resolveAdd({ ...initialView, committedSetId: "working-2" });
-    });
-  });
-
-  it("shows the finish action after the final authoritative set result", async () => {
-    const finish = jest.fn();
-    const finalView: ActiveWorkoutView = {
-      ...completedView,
-      activeSetId: null,
-      progress: {
-        completedWorkingSets: 2,
-        totalWorkingSets: 2,
-      },
-      currentExercise: {
-        ...completedView.currentExercise,
-        status: "completed",
-        workingSets: completedView.currentExercise.workingSets.map((set) => ({
-          ...set,
-          status: "completed" as const,
-          completedAtMs: 2_000,
-        })),
-      },
-      rest: {
-        version: 1,
-        state: "idle",
-        revision: 2,
-        nextSetId: null,
-      },
-    };
-    await renderActive({
-      commands: commands({
-        completeSet: jest.fn<ActiveWorkoutCommands["completeSet"]>(async () => ({
-          outcome: "committed",
-          view: finalView,
-        })),
-      }),
-      onFinishLater: finish,
-    });
-
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Complete Set 1" }),
-    );
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Finish workout" }),
-    );
-    expect(finish).toHaveBeenCalledTimes(1);
-  });
-
-  it("shows a completion state when no working set remains", async () => {
-    const finish = jest.fn();
-    const completedExerciseView: ActiveWorkoutView = {
-      ...initialView,
+    const completed = {
+      ...initial,
       activeSetId: null,
       currentExercise: {
-        ...initialView.currentExercise,
-        status: "completed",
-        workingSets: initialView.currentExercise.workingSets.map((set) => ({
-          ...set,
-          status: "skipped" as const,
-        })),
+        ...initial.currentExercise,
+        status: "completed" as const,
+        workingSets: [completedSet],
       },
-      progress: {
-        completedWorkingSets: 0,
-        totalWorkingSets: 2,
-      },
-    };
-    const { rendered } = await renderActive({
-      onFinishLater: finish,
-    });
-
-    await rendered.rerender(
-      <AppearanceProvider>
-        <ActiveWorkoutScreen
-          commands={commands()}
-          nowMs={() => 2_000}
-          onFinishLater={finish}
-          onGoBack={jest.fn()}
-          sessionId="session-1"
-          view={completedExerciseView}
-        />
-      </AppearanceProvider>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Finish workout" }))
-        .toBeOnTheScreen();
-    });
-    expect(screen.getByLabelText(/Working set 1 of 2/u))
-      .toBeOnTheScreen();
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Finish workout" }),
-    );
-    expect(finish).toHaveBeenCalledTimes(1);
-  });
-
-  it("requires explicit partial and discard confirmations", async () => {
-    const activeCommands = commands();
-    const finishLater = jest.fn();
-    const outcomeSaved = jest.fn();
-    const discarded = jest.fn();
-    await renderActive({
-      commands: activeCommands,
-      onFinishLater: finishLater,
-      onOutcomeSaved: outcomeSaved,
-      onDiscarded: discarded,
-    });
-
-    await fireEvent.press(
-      screen.getByRole("button", { name: "More workout actions" }),
-    );
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Finish as partial" }),
-    );
-    expect(screen.getByRole("header", { name: "Save partial workout?" }))
-      .toBeOnTheScreen();
-    expect(activeCommands.finishPartial).not.toHaveBeenCalled();
-    expect(screen.getByTestId("save-partial-workout-confirm"))
-      .toBeEnabled();
-    await fireEvent.press(
-      screen.getByTestId("save-partial-workout-confirm"),
-    );
-    await waitFor(() => {
-      expect(activeCommands.finishPartial).toHaveBeenCalledWith(
-        expect.objectContaining({
-          confirmation: "save_partial_workout",
-          expectedSessionRevision: initialView.revision,
-        }),
-      );
-      expect(outcomeSaved).toHaveBeenCalledWith(initialView.id);
-    });
-
-    await fireEvent.press(
-      screen.getByRole("button", { name: "More workout actions" }),
-    );
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Discard workout" }),
-    );
-    expect(screen.getByRole("header", { name: "Discard workout?" }))
-      .toBeOnTheScreen();
-    expect(activeCommands.discardWorkout).not.toHaveBeenCalled();
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Discard workout" }),
-    );
-    await waitFor(() => {
-      expect(activeCommands.discardWorkout).toHaveBeenCalledWith(
-        expect.objectContaining({ confirmation: "discard_workout" }),
-      );
-      expect(discarded).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  it("keeps the workout overflow quiet, natural-height, and limited to retained outcomes", async () => {
-    await renderActive();
-
-    expect(screen.queryByText("Rest resumed")).not.toBeOnTheScreen();
-    expect(screen.queryByText("Warm-up added")).not.toBeOnTheScreen();
-    await fireEvent.press(
-      screen.getByRole("button", { name: "More workout actions" }),
-    );
-
-    const sheet = screen.getByTestId("workout-actions-sheet-content");
-    expect(sheet).toHaveStyle({ maxHeight: "90%" });
-    expect(sheet.props.style).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ height: expect.anything() }),
-    ]));
-    expect(screen.getByRole("button", { name: "Finish as partial" }))
-      .toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Discard workout" }))
-      .toBeOnTheScreen();
-    for (const removedAction of [
-      "Start rest",
-      "Skip Back Squat",
-      "Save zero-set workout",
-      "Finish workout later",
-      "Close",
-    ]) {
-      expect(screen.queryByRole("button", { name: removedAction }))
-        .not.toBeOnTheScreen();
-    }
-  });
-
-  it("routes RestDock controls through revision-checked rest commands", async () => {
-    const runningView: ActiveWorkoutView = {
-      ...initialView,
+      exercises: [{
+        ...initial.currentExercise,
+        status: "completed" as const,
+        workingSets: [completedSet],
+      }],
       revision: 2,
-      rest: {
-        version: 1,
-        state: "running",
-        revision: 1,
-        startedAtMs: 2_000,
-        endsAtMs: 182_000,
-        nextSetId: "working-1",
-      },
     };
-    const pausedState = {
-      version: 1 as const,
-      state: "paused" as const,
-      revision: 2,
-      remainingMs: 180_000,
-      nextSetId: "working-1",
-    };
-    const pauseRest = jest.fn(async () => ({
-      state: pausedState,
-      sessionRevision: 3,
-      invalidationScopes: [
-        ["active-workout", "session-1"],
-        ["today"],
-      ] as const,
-    }));
-    const resumeRest = jest.fn(async () => ({
-      state: runningView.rest,
-      sessionRevision: 4,
-      invalidationScopes: [
-        ["active-workout", "session-1"],
-        ["today"],
-      ] as const,
-    }));
-    const adjustRest = jest.fn(async () => ({
-      state: runningView.rest,
-      sessionRevision: 5,
-      invalidationScopes: [
-        ["active-workout", "session-1"],
-        ["today"],
-      ] as const,
-    }));
-    const skipRest = jest.fn(async () => ({
-      state: {
-        version: 1 as const,
-        state: "idle" as const,
-        revision: 6,
-        nextSetId: null,
-      },
-      sessionRevision: 6,
-      invalidationScopes: [
-        ["active-workout", "session-1"],
-        ["today"],
-      ] as const,
-    }));
-    await renderActive({
-      commands: commands({
-        pauseRest,
-        resumeRest,
-        adjustRest,
-        skipRest,
-      }),
-      view: runningView,
-    });
-    expect(screen.getByRole("button", { name: "Complete Set 1" }))
-      .toBeDisabled();
-    expect(screen.getByRole("button", { name: "Remove set 1" }))
-      .toBeDisabled();
-
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Expand rest controls",
-    }));
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Pause rest" }),
-    );
-    await waitFor(() => {
-      expect(pauseRest).toHaveBeenCalledWith(expect.objectContaining({
-        expectedSessionRevision: 2,
-        expectedRestRevision: 1,
-      }));
-    });
-    expect(screen.getByText("REST PAUSED · NEXT: SET 1 AT 60 kg × 8"))
-      .toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Collapse rest controls",
-    }));
-    expect(screen.getByText("03:00")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Expand rest controls",
-    }));
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Resume rest" }),
-    );
-    await waitFor(() => {
-      expect(resumeRest).toHaveBeenCalledWith(expect.objectContaining({
-        expectedSessionRevision: 3,
-        expectedRestRevision: 2,
-      }));
-    });
-    expect(screen.getByText("RESTING · NEXT: SET 1 AT 60 kg × 8"))
-      .toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Collapse rest controls",
-    }));
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Expand rest controls",
-    }));
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Add 15 seconds",
-    }));
-    await waitFor(() => {
-      expect(adjustRest).toHaveBeenCalledWith(expect.objectContaining({
-        deltaMs: 15_000,
-      }));
-    });
-    await fireEvent.press(screen.getByRole("button", { name: "Skip rest" }));
-    await waitFor(() => {
-      expect(skipRest).toHaveBeenCalledTimes(1);
-    });
-    expect(screen.getByRole("button", { name: "Complete Set 1" }))
-      .toBeOnTheScreen();
-  });
-
-  it("expires collapsed rest through the authoritative command without skipped feedback", async () => {
-    jest.useFakeTimers();
-    try {
-      let nowMs = 1_000;
-      const expireRest = jest.fn(async () => ({
-        state: {
-          version: 1 as const,
-          state: "expired" as const,
-          revision: 2,
-          expiredAtMs: 2_000,
-          nextSetId: "working-1",
-        },
-        sessionRevision: 3,
-        invalidationScopes: [
-          ["active-workout", "session-1"],
-          ["today"],
-        ] as const,
-      }));
-      await renderActive({
-        commands: commands({ expireRest }),
-        nowMs: () => nowMs,
-        view: {
-          ...initialView,
-          revision: 2,
-          rest: {
-            version: 1,
-            state: "running",
-            revision: 1,
-            startedAtMs: 1_000,
-            endsAtMs: 2_000,
-            nextSetId: "working-1",
-          },
-        },
-      });
-
-      expect(screen.getByText("00:01")).toBeOnTheScreen();
-      nowMs = 2_000;
-      await act(async () => {
-        jest.advanceTimersByTime(1_000);
-      });
-
-      await waitFor(() => {
-        expect(expireRest).toHaveBeenCalledWith(expect.objectContaining({
-          expectedSessionRevision: 2,
-          expectedRestRevision: 1,
-        }));
-        expect(screen.getByRole("button", { name: "Complete Set 1" }))
-          .toBeOnTheScreen();
-      });
-      expect(screen.queryByText("Rest skipped")).not.toBeOnTheScreen();
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it.each([
-    [
-      "running",
-      {
-        version: 1 as const,
-        state: "running" as const,
-        revision: 1,
-        startedAtMs: 2_000,
-        endsAtMs: 182_000,
-        nextSetId: "working-1",
-      },
-    ],
-    [
-      "paused",
-      {
-        version: 1 as const,
-        state: "paused" as const,
-        revision: 1,
-        remainingMs: 180_000,
-        nextSetId: "working-1",
-      },
-    ],
-  ] as const)(
-    "skips %s rest once and transitions directly to the ready state",
-    async (...[_stateName, rest]) => {
-      let resolveSkip: ((result: RestCommandResult) => void) | undefined;
-      const skipRest = jest.fn<ActiveWorkoutCommands["skipRest"]>(
-        () => new Promise<RestCommandResult>((resolve) => {
-          resolveSkip = resolve;
-        }),
-      );
-      const { rendered } = await renderActive({
-        commands: commands({ skipRest }),
-        view: {
-          ...initialView,
-          revision: 2,
-          rest,
-        },
-      });
-
-      await fireEvent.press(screen.getByRole("button", {
-        name: "Expand rest controls",
-      }));
-      await fireEvent.press(screen.getByRole("button", { name: "Skip rest" }));
-      await fireEvent.press(screen.getByRole("button", { name: "Skip rest" }));
-      expect(skipRest).toHaveBeenCalledTimes(1);
-
-      await act(async () => {
-        resolveSkip?.({
-          state: {
-            version: 1,
-            state: "idle",
-            revision: rest.revision + 1,
-            nextSetId: null,
-          },
-          sessionRevision: 3,
-          invalidationScopes: [
-            ["active-workout", "session-1"],
-            ["today"],
-          ],
-        });
-      });
-
-      await waitFor(() => {
-        expect(screen.getByRole("button", { name: "Complete Set 1" }))
-          .toBeOnTheScreen();
-      });
-      expect(screen.queryByText("Rest skipped")).not.toBeOnTheScreen();
-      expect(JSON.stringify(rendered.toJSON())).not.toContain("Rest skipped");
-    },
-  );
-
-  it("rehydrates running, paused, and expired rest from authoritative props", async () => {
-    const { rendered } = await renderActive();
-    await rendered.rerender(
+    const undoCompletedSet = jest.fn<NonNullable<ActiveWorkoutCommands["undoCompletedSet"]>>()
+      .mockResolvedValue({ outcome: "undone", view: initial });
+    await render(
       <AppearanceProvider>
-        <ActiveWorkoutScreen
-          commands={commands()}
-          nowMs={() => 40_000}
-          onFinishLater={jest.fn()}
-          onGoBack={jest.fn()}
-          sessionId="session-1"
-          view={{
-            ...initialView,
-            revision: 2,
-            rest: {
-              version: 1,
-              state: "running",
-              revision: 1,
-              startedAtMs: 10_000,
-              endsAtMs: 100_000,
-              nextSetId: "working-1",
-            },
-          }}
-        />
+        <SemanticToastProvider>
+          <ActiveWorkoutScreen
+            commands={commands(initial, {
+              completeSet: jest.fn(async () => ({ outcome: "committed" as const, view: completed })),
+              undoCompletedSet,
+            })}
+            nowMs={() => 3_000}
+            onFinishLater={jest.fn()}
+            onGoBack={jest.fn()}
+            sessionId={initial.id}
+            view={initial}
+          />
+        </SemanticToastProvider>
       </AppearanceProvider>,
     );
-    expect(screen.getByText("RESTING · NEXT: SET 1 AT 60 kg × 8"))
-      .toBeOnTheScreen();
 
-    await rendered.rerender(
-      <AppearanceProvider>
-        <ActiveWorkoutScreen
-          commands={commands()}
-          nowMs={() => 40_000}
-          onFinishLater={jest.fn()}
-          onGoBack={jest.fn()}
-          sessionId="session-1"
-          view={{
-            ...initialView,
-            revision: 3,
-            rest: {
-              version: 1,
-              state: "paused",
-              revision: 2,
-              remainingMs: 60_000,
-              nextSetId: "working-1",
-            },
-          }}
-        />
-      </AppearanceProvider>,
-    );
-    expect(screen.getByText("REST PAUSED · NEXT: SET 1 AT 60 kg × 8"))
-      .toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Complete Set 1" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Undo completed set" })).toBeOnTheScreen());
+    await fireEvent.press(screen.getByRole("button", { name: "Undo completed set" }));
 
-    await rendered.rerender(
-      <AppearanceProvider>
-        <ActiveWorkoutScreen
-          commands={commands()}
-          nowMs={() => 50_000}
-          onFinishLater={jest.fn()}
-          onGoBack={jest.fn()}
-          sessionId="session-1"
-          view={{
-            ...initialView,
-            revision: 4,
-            rest: {
-              version: 1,
-              state: "expired",
-              revision: 3,
-              expiredAtMs: 45_000,
-              nextSetId: "working-1",
-            },
-          }}
-        />
-      </AppearanceProvider>,
-    );
-    expect(screen.getByRole("button", { name: "Complete Set 1" }))
-      .toBeOnTheScreen();
-    expect(screen.queryByText("RESTING · NEXT: SET 1 AT 60 kg × 8"))
-      .not.toBeOnTheScreen();
+    await waitFor(() => expect(undoCompletedSet).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      completedSetId: "working-1",
+      nowMs: 3_000,
+    }));
+    expect(screen.getByRole("button", { name: "Complete Set 1" })).toBeOnTheScreen();
   });
 });

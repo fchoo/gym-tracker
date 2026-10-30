@@ -1,4 +1,7 @@
 import type {
+  AdvancedTimingConfigV1,
+} from "../advancedTiming";
+import type {
   MetricIdentity,
   MetricObservation,
   MetricProfile,
@@ -50,6 +53,8 @@ export type ActiveWorkoutSet = Readonly<{
   status: ActiveWorkoutSetStatus;
   completedAtMs: number | null;
   revision: number;
+  advancedTimingOverride?: AdvancedTimingConfigV1 | null;
+  advancedTimingResolved?: AdvancedTimingConfigV1;
   valueSources: readonly SetValueSource[];
 }>;
 
@@ -60,7 +65,10 @@ export type ActiveWorkoutExercise = Readonly<{
   metricIdentity: MetricIdentity;
   metricProfile: MetricProfile;
   ordinal: number;
+  origin?: "planned" | "added";
+  displayOrdinal?: number;
   defaultRestSeconds: number;
+  advancedTimingDefault?: AdvancedTimingConfigV1;
   status: "planned" | "active" | "completed" | "skipped";
   revision: number;
   warmups: readonly ActiveWorkoutSet[];
@@ -106,6 +114,8 @@ export type ActiveWorkoutView = Readonly<{
   id: string;
   status: "in_progress";
   revision: number;
+  planId?: string | null;
+  modifiedFromPlan?: boolean;
   activeSetId: string | null;
   activeExerciseId: string | null;
   currentExercise: ActiveWorkoutExercise;
@@ -161,6 +171,88 @@ export type AddWorkingSetInput = Readonly<{
   sourceSetId: string;
   setId: string;
   nowMs: number;
+}>;
+
+export type AddExerciseInput = Readonly<{
+  requestId: string;
+  requestSha256: string;
+  sessionId: string;
+  expectedSessionRevision: number;
+  occurredAtMs: number;
+  libraryExerciseId: string;
+  sessionExerciseId: string;
+  setId: string;
+}>;
+
+export type AddExerciseResult = Readonly<{
+  outcome: "committed" | "already_committed";
+  sessionId: string;
+  sessionExerciseId: string;
+  setId: string;
+  sessionRevision: number;
+}>;
+
+export type ReplaceExerciseInput = Readonly<{
+  requestId: string;
+  requestSha256: string;
+  sessionId: string;
+  expectedSessionRevision: number;
+  sessionExerciseId: string;
+  expectedSessionExerciseRevision: number;
+  occurredAtMs: number;
+  libraryExerciseId: string;
+  replacementSessionExerciseId: string;
+  replacementSetId: string;
+}>;
+
+export type ReplaceExerciseResult = Readonly<{
+  outcome: "committed" | "already_committed";
+  disposition: "deleted_provisional" | "skipped_history_preserved";
+  sessionId: string;
+  sessionExerciseId: string;
+  replacementSessionExerciseId: string;
+  replacementSetId: string;
+  sessionRevision: number;
+}>;
+
+export type RemoveExerciseInput = Readonly<{
+  requestId: string;
+  requestSha256: string;
+  sessionId: string;
+  expectedSessionRevision: number;
+  sessionExerciseId: string;
+  expectedSessionExerciseRevision: number;
+  occurredAtMs: number;
+}>;
+
+export type RemoveExerciseResult = Readonly<{
+  outcome: "committed" | "already_committed";
+  disposition: "deleted_provisional" | "skipped_history_preserved";
+  sessionId: string;
+  sessionExerciseId: string;
+  sessionRevision: number;
+}>;
+
+export type ReorderExerciseRevision = Readonly<{
+  sessionExerciseId: string;
+  revision: number;
+}>;
+
+export type ReorderExercisesInput = Readonly<{
+  requestId: string;
+  requestSha256: string;
+  sessionId: string;
+  expectedSessionRevision: number;
+  occurredAtMs: number;
+  orderedSessionExerciseIds: readonly string[];
+  expectedSessionExerciseRevisions: readonly ReorderExerciseRevision[];
+}>;
+
+export type ReorderExercisesResult = Readonly<{
+  outcome: "committed" | "already_committed";
+  sessionId: string;
+  orderedSessionExerciseIds: readonly string[];
+  sessionRevision: number;
 }>;
 
 export type CopyPreviousWarmupInput = Readonly<{
@@ -267,6 +359,17 @@ export type UndoCompletedSetResult =
       outcome: "unavailable";
     }>;
 
+export type UpdateSessionExerciseDefaultRestInput = Readonly<{
+  sessionId: string;
+  sessionExerciseId: string;
+  defaultRestSeconds: number;
+  expectedSessionRevision: number;
+  expectedSessionExerciseRevision: number;
+  occurredAtMs: number;
+  requestId: string;
+  requestSha256: string;
+}>;
+
 export interface ActiveWorkoutRepository {
   getActiveWorkout(sessionId: string): Promise<ActiveWorkoutView>;
   getWorkoutSession(sessionId: string): Promise<WorkoutSessionView>;
@@ -278,6 +381,19 @@ export interface ActiveWorkoutRepository {
   ): Promise<ActiveWorkoutView>;
   addWarmup(input: AddWarmupInput): Promise<ActiveWorkoutView>;
   addWorkingSet(input: AddWorkingSetInput): Promise<ActiveWorkoutView>;
+  addExercise?: (input: AddExerciseInput) => Promise<AddExerciseResult>;
+  replaceExercise?: (
+    input: ReplaceExerciseInput,
+  ) => Promise<ReplaceExerciseResult>;
+  removeExercise?: (
+    input: RemoveExerciseInput,
+  ) => Promise<RemoveExerciseResult>;
+  reorderExercises?: (
+    input: ReorderExercisesInput,
+  ) => Promise<ReorderExercisesResult>;
+  updateSessionExerciseDefaultRest?: (
+    input: UpdateSessionExerciseDefaultRestInput,
+  ) => Promise<ActiveWorkoutView>;
   copyPreviousWarmup(
     input: CopyPreviousWarmupInput,
   ): Promise<ActiveWorkoutView>;

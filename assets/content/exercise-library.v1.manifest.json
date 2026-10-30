@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "reviewStatus": "pending_owner_acceptance",
   "source": {
     "namespace": "kinetic-place.exercises-db",
@@ -18,7 +18,7 @@
     "licensePath": "assets/content/third-party/kinetic-place-exercises-db.MIT.txt"
   },
   "overlaySha256": "a1faea46857937ba5ef0c0ea4ffa5343ece6cec5acdaeab765e5980b4b614636",
-  "packSha256": "9ffa6209c4e07ddbd0f3988a2b3607b8f536595f70d4b74f41e0d5fa95779ae9",
+  "packSha256": "d1e5f190d1bab2c337a203c67374e19807606f9340cb618bcf7564cf75fe2b13",
   "licenseSha256": "497dedffb4292e2b74e250f159ad8d70136564d6ccf13be604642350d34538e0",
   "normalizationVersion": 1,
   "metricSchemaVersion": 1,

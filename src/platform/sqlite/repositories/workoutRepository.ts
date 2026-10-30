@@ -5,10 +5,21 @@ import type {
   ActiveWorkoutSet,
   ActiveWorkoutSetStatus,
   ActiveWorkoutView,
+  AddExerciseInput,
+  AddExerciseResult,
   CompleteSetInput,
+  RemoveExerciseInput,
+  RemoveExerciseResult,
   RemoveSetResult,
   RemoveWarmupInput,
   RemoveWorkingSetInput,
+  ReplaceExerciseInput,
+  ReplaceExerciseResult,
+  ReorderExerciseRevision,
+  ReorderExercisesInput,
+  ReorderExercisesResult,
+  ReviseCompletedSetInput,
+  UpdateSessionExerciseDefaultRestInput,
   SetObservation,
   SetTarget,
   SetValueSource,
@@ -19,6 +30,11 @@ import {
   WorkoutCommandConflictError,
 } from "../../../domains/workout/activeWorkout";
 import {
+  OFF_ADVANCED_TIMING_CONFIG,
+  parseAdvancedTimingConfig,
+  type AdvancedTimingConfigV1,
+} from "../../../domains/advancedTiming";
+import {
   parseMetricIdentity,
   parseMetricObservation,
   parseMetricTarget,
@@ -28,12 +44,22 @@ import {
 import {
   enqueuePendingEffect,
 } from "../effects/effectStore";
+import {
+  runtimeSha256,
+} from "../../crypto/runtimeSha256";
+import {
+  DEFAULT_WORKOUT_PREFERENCE,
+  workoutPreferenceKey,
+} from "../../../domains/workout/workoutPreferences";
 import type {
   SqliteKernel,
   SqliteTransactionExecutor,
 } from "../sqliteKernel";
 
 type QueryExecutor = Pick<SqliteTransactionExecutor, "queryAll">;
+const OFF_ADVANCED_TIMING_CONFIG_JSON = JSON.stringify(
+  OFF_ADVANCED_TIMING_CONFIG,
+);
 
 type SessionRow = Readonly<{
   id: string;
@@ -41,17 +67,22 @@ type SessionRow = Readonly<{
   active_session_exercise_id: string | null;
   active_set_id: string | null;
   revision: number;
+  plan_id?: string | null;
+  modified_from_plan?: number;
 }>;
 
 type ExerciseRow = Readonly<{
   id: string;
   exercise_id: string;
   ordinal: number;
+  origin?: "planned" | "added";
+  display_ordinal?: number;
   exercise_name: string;
   metric_profile: MetricProfile;
   metric_contract_version?: number;
   exercise_metric_generation?: number;
   default_rest_seconds: number;
+  advanced_timing_default_json?: string;
   status: "planned" | "active" | "completed" | "skipped";
   revision: number;
 }>;
@@ -78,6 +109,8 @@ type SetRow = Readonly<{
   completed_at_ms: number | null;
   completion_idempotency_key: string | null;
   revision: number;
+  advanced_timing_override_json?: string | null;
+  advanced_timing_resolved_json?: string;
 }>;
 
 type RestRow = Readonly<{
@@ -103,6 +136,79 @@ type RemoveReceiptRow = Readonly<{
   committed_at_ms: number;
 }>;
 
+type CompletedSetCorrectionReceiptRow = Readonly<{
+  request_sha256: string;
+  session_id: string;
+  set_id: string;
+  expected_session_revision: number;
+  expected_set_revision: number;
+  result_session_revision: number;
+  result_set_revision: number;
+}>;
+
+type SessionExerciseEditReceiptRow = Readonly<{
+  request_sha256: string;
+  operation: "add_exercise" | "replace_exercise" | "remove_exercise";
+  session_id: string;
+  subject_session_exercise_id: string;
+  replacement_session_exercise_id: string | null;
+  expected_session_revision: number;
+  result_session_revision: number;
+  result_json: string;
+  committed_at_ms: number;
+}>;
+
+type SessionExerciseReorderReceiptRow = Readonly<{
+  request_sha256: string;
+  operation: "reorder_exercises";
+  session_id: string;
+  ordered_session_exercise_ids_json: string;
+  expected_session_revision: number;
+  result_session_revision: number;
+  result_json: string;
+  committed_at_ms: number;
+}>;
+
+type SessionExerciseRestDefaultReceiptRow = Readonly<{
+  request_sha256: string;
+  session_id: string;
+  session_exercise_id: string;
+  default_rest_seconds: number;
+  expected_session_revision: number;
+  expected_session_exercise_revision: number;
+  result_session_revision: number;
+  result_session_exercise_revision: number;
+  committed_at_ms: number;
+}>;
+
+type PersistedReplaceExerciseResult = Readonly<{
+  outcome: "committed";
+  disposition: "deleted_provisional" | "skipped_history_preserved";
+  sessionId: string;
+  sessionExerciseId: string;
+  replacementSessionExerciseId: string;
+  replacementSetId: string;
+  sessionRevision: number;
+  expectedSessionExerciseRevision: number;
+}>;
+
+type PersistedRemoveExerciseResult = Readonly<{
+  outcome: "committed";
+  disposition: "deleted_provisional" | "skipped_history_preserved";
+  sessionId: string;
+  sessionExerciseId: string;
+  sessionRevision: number;
+  expectedSessionExerciseRevision: number;
+}>;
+
+type PersistedReorderExercisesResult = Readonly<{
+  outcome: "committed";
+  sessionId: string;
+  orderedSessionExerciseIds: readonly string[];
+  expectedSessionExerciseRevisions: readonly ReorderExerciseRevision[];
+  sessionRevision: number;
+}>;
+
 type CompletionSetRow = SetRow & Readonly<{
   exercise_id: string;
   exercise_metric_profile: MetricProfile;
@@ -112,6 +218,7 @@ type CompletionSetRow = SetRow & Readonly<{
   exercise_revision: number;
   source_plan_day_exercise_id: string | null;
   default_rest_seconds: number;
+  default_rest_seconds_is_override: 0 | 1;
 }>;
 
 type SnapshotV1 = Readonly<{
@@ -425,6 +532,37 @@ function sameMetricIdentity(
     && left.exerciseMetricGeneration === right.exerciseMetricGeneration;
 }
 
+async function correctionRequestHash(
+  input: ReviseCompletedSetInput,
+  immutableTargetJson: string,
+): Promise<string> {
+  return runtimeSha256(JSON.stringify({
+    operation: "revise_completed_set",
+    sessionId: input.sessionId,
+    setId: input.setId,
+    expectedSessionRevision: input.expectedSessionRevision,
+    expectedSetRevision: input.expectedSetRevision,
+    metricIdentity: input.metricIdentity,
+    immutableTargetJson,
+    observation: input.observation,
+    revisedAtMs: input.revisedAtMs,
+  }));
+}
+
+function correctionReceiptMatches(
+  receipt: CompletedSetCorrectionReceiptRow,
+  input: ReviseCompletedSetInput,
+  requestSha256: string,
+): boolean {
+  return receipt.request_sha256 === requestSha256
+    && receipt.session_id === input.sessionId
+    && receipt.set_id === input.setId
+    && receipt.expected_session_revision === input.expectedSessionRevision
+    && receipt.expected_set_revision === input.expectedSetRevision
+    && receipt.result_session_revision === input.expectedSessionRevision + 1
+    && receipt.result_set_revision === input.expectedSetRevision + 1;
+}
+
 async function supportsCompleteMetricIdentity(
   executor: QueryExecutor,
 ): Promise<boolean> {
@@ -445,6 +583,37 @@ async function supportsOwnedTargetSnapshots(
   return columns.some(({ name }) =>
     name === "source_owned_plan_working_set_target_id"
   );
+}
+
+async function supportsAdvancedTimingSnapshots(
+  executor: Pick<SqliteKernel, "queryAll"> | SqliteTransactionExecutor,
+): Promise<boolean> {
+  const [exerciseColumns, setColumns] = await Promise.all([
+    executor.queryAll<{ name: string }>("PRAGMA table_info(session_exercises)"),
+    executor.queryAll<{ name: string }>("PRAGMA table_info(session_sets)"),
+  ]);
+  const exerciseNames = new Set(exerciseColumns.map(({ name }) => name));
+  const setNames = new Set(setColumns.map(({ name }) => name));
+  return exerciseNames.has("advanced_timing_default_json")
+    && setNames.has("advanced_timing_override_json")
+    && setNames.has("advanced_timing_resolved_json");
+}
+
+function parseTimingConfigJson(value: string | undefined): AdvancedTimingConfigV1 {
+  if (value === undefined) {
+    return OFF_ADVANCED_TIMING_CONFIG;
+  }
+  try {
+    return parseAdvancedTimingConfig(JSON.parse(value));
+  } catch {
+    throw new Error("active_workout_advanced_timing_invalid");
+  }
+}
+
+function parseTimingOverrideJson(
+  value: string | null | undefined,
+): AdvancedTimingConfigV1 | null {
+  return value == null ? null : parseTimingConfigJson(value);
 }
 
 async function valueSources(
@@ -616,8 +785,10 @@ async function loadActiveWorkout(
 ): Promise<WorkoutSessionView> {
   const completeIdentity = await supportsCompleteMetricIdentity(executor);
   const ownedTargetSnapshots = await supportsOwnedTargetSnapshots(executor);
+  const advancedTimingSnapshots = await supportsAdvancedTimingSnapshots(executor);
   const [session] = await executor.queryAll<SessionRow>(
-    `SELECT id, status, active_session_exercise_id, active_set_id, revision
+    `SELECT id, status, active_session_exercise_id, active_set_id, revision,
+            plan_id, modified_from_plan
      FROM workout_sessions
      WHERE id = ?`,
     [sessionId],
@@ -627,14 +798,17 @@ async function loadActiveWorkout(
   }
 
   const exerciseRows = await executor.queryAll<ExerciseRow>(
-    `SELECT id, exercise_id, ordinal, exercise_name, metric_profile,
+    `SELECT id, exercise_id, ordinal, origin, display_ordinal, exercise_name, metric_profile,
             ${completeIdentity
               ? "metric_contract_version, exercise_metric_generation,"
+              : ""}
+            ${advancedTimingSnapshots
+              ? "advanced_timing_default_json,"
               : ""}
             default_rest_seconds, status, revision
      FROM session_exercises
      WHERE session_id = ?
-     ORDER BY ordinal`,
+     ORDER BY display_ordinal, id`,
     [sessionId],
   );
   const setRows = await executor.queryAll<SetRow>(
@@ -648,13 +822,17 @@ async function loadActiveWorkout(
               ? `ss.metric_profile, ss.metric_contract_version,
                  ss.exercise_metric_generation,`
               : ""}
+            ${advancedTimingSnapshots
+              ? `ss.advanced_timing_override_json,
+                 ss.advanced_timing_resolved_json,`
+              : ""}
             ss.observed_load_grams, ss.observed_reps, ss.observed_json,
             ss.status, ss.draft_updated_at_ms, ss.completed_at_ms,
             ss.completion_idempotency_key, ss.revision
      FROM session_sets ss
      JOIN session_exercises se ON se.id = ss.session_exercise_id
      WHERE se.session_id = ?
-     ORDER BY se.ordinal,
+     ORDER BY se.display_ordinal, se.id,
               CASE ss.set_kind WHEN 'warmup' THEN 0 ELSE 1 END,
               ss.ordinal`,
     [sessionId],
@@ -681,6 +859,12 @@ async function loadActiveWorkout(
         status: row.status,
         completedAtMs: row.completed_at_ms,
         revision: row.revision,
+        advancedTimingOverride: advancedTimingSnapshots
+          ? parseTimingOverrideJson(row.advanced_timing_override_json)
+          : null,
+        advancedTimingResolved: advancedTimingSnapshots
+          ? parseTimingConfigJson(row.advanced_timing_resolved_json)
+          : OFF_ADVANCED_TIMING_CONFIG,
         valueSources: row.set_kind === "working"
           ? await valueSources(
               executor,
@@ -702,7 +886,12 @@ async function loadActiveWorkout(
       metricIdentity: identity,
       metricProfile: exercise.metric_profile,
       ordinal: exercise.ordinal,
+      origin: exercise.origin ?? "planned",
+      displayOrdinal: exercise.display_ordinal ?? exercise.ordinal,
       defaultRestSeconds: exercise.default_rest_seconds,
+      advancedTimingDefault: advancedTimingSnapshots
+        ? parseTimingConfigJson(exercise.advanced_timing_default_json)
+        : OFF_ADVANCED_TIMING_CONFIG,
       status: exercise.status,
       revision: exercise.revision,
       warmups: sets.filter(({ kind }) => kind === "warmup"),
@@ -748,6 +937,8 @@ async function loadActiveWorkout(
     id: session.id,
     status: "in_progress",
     revision: session.revision,
+    planId: session.plan_id ?? null,
+    modifiedFromPlan: session.modified_from_plan === 1,
     activeSetId: session.active_set_id,
     activeExerciseId: session.active_session_exercise_id,
     currentExercise,
@@ -836,6 +1027,928 @@ function loadRepsTargetJson(
   });
 }
 
+function defaultAddedExerciseTarget(identity: MetricIdentity): Readonly<{
+  targetJson: string;
+  targetLoadGrams: number;
+  targetMinReps: number;
+  targetMaxReps: number;
+}> {
+  switch (identity.profile) {
+    case "load_reps":
+      return { targetJson: loadRepsTargetJson(0, 8), targetLoadGrams: 0, targetMinReps: 8, targetMaxReps: 8 };
+    case "bodyweight_reps":
+      return { targetJson: JSON.stringify({ version: identity.contractVersion, profile: identity.profile, minReps: 8, maxReps: 8, variationId: "default", perSide: false }), targetLoadGrams: 0, targetMinReps: 8, targetMaxReps: 8 };
+    case "added_load_reps":
+      return { targetJson: JSON.stringify({ version: identity.contractVersion, profile: identity.profile, addedLoadGrams: 0, minReps: 8, maxReps: 8, incrementGrams: 1_000, perSide: false }), targetLoadGrams: 0, targetMinReps: 8, targetMaxReps: 8 };
+    case "assisted_reps":
+      return { targetJson: JSON.stringify({ version: identity.contractVersion, profile: identity.profile, assistanceGrams: 0, minReps: 8, maxReps: 8, decrementGrams: 1_000, assistanceEquipmentId: "default", perSide: false }), targetLoadGrams: 0, targetMinReps: 8, targetMaxReps: 8 };
+    case "timed_hold":
+      return identity.contractVersion === 2
+        ? { targetJson: JSON.stringify({ version: 2, profile: identity.profile, durationMs: 30_000, perSide: false }), targetLoadGrams: 0, targetMinReps: 0, targetMaxReps: 0 }
+        : { targetJson: JSON.stringify({ version: 1, profile: identity.profile, durationSeconds: 30, perSide: false }), targetLoadGrams: 0, targetMinReps: 0, targetMaxReps: 0 };
+    case "fixed_distance":
+      return { targetJson: JSON.stringify({ version: 1, profile: identity.profile, plannedDistanceMeters: 1_000 }), targetLoadGrams: 0, targetMinReps: 0, targetMaxReps: 0 };
+    case "fixed_time":
+      return { targetJson: JSON.stringify({ version: 1, profile: identity.profile, plannedDurationMs: 60_000 }), targetLoadGrams: 0, targetMinReps: 0, targetMaxReps: 0 };
+    case "intervals":
+      return { targetJson: JSON.stringify({ version: 1, profile: identity.profile, protocolId: "manual", comparatorId: "rounds_then_work", comparatorVersion: 1, plannedRounds: 1, workIntervalMs: 60_000, restIntervalMs: 0 }), targetLoadGrams: 0, targetMinReps: 0, targetMaxReps: 0 };
+    case "unscored":
+      return { targetJson: JSON.stringify({ version: 1, profile: identity.profile, completionRequired: true }), targetLoadGrams: 0, targetMinReps: 0, targetMaxReps: 0 };
+  }
+}
+
+function addReceiptMatches(
+  receipt: SessionExerciseEditReceiptRow,
+  input: AddExerciseInput,
+): boolean {
+  return receipt.request_sha256 === input.requestSha256
+    && receipt.operation === "add_exercise"
+    && receipt.session_id === input.sessionId
+    && receipt.subject_session_exercise_id === input.sessionExerciseId
+    && receipt.replacement_session_exercise_id === null
+    && receipt.expected_session_revision === input.expectedSessionRevision
+    && receipt.committed_at_ms === input.occurredAtMs;
+}
+
+function parseReceiptResult<Result>(
+  receipt: Readonly<{ result_json: string }>,
+  code: string,
+): Result | null {
+  try {
+    return JSON.parse(receipt.result_json) as Result;
+  } catch {
+    throw new WorkoutCommandConflictError(code);
+  }
+}
+
+function replaceReceiptMatches(
+  receipt: SessionExerciseEditReceiptRow,
+  input: ReplaceExerciseInput,
+): PersistedReplaceExerciseResult | null {
+  if (receipt.request_sha256 !== input.requestSha256
+    || receipt.operation !== "replace_exercise"
+    || receipt.session_id !== input.sessionId
+    || receipt.subject_session_exercise_id !== input.sessionExerciseId
+    || receipt.replacement_session_exercise_id
+      !== input.replacementSessionExerciseId
+    || receipt.expected_session_revision !== input.expectedSessionRevision
+    || receipt.committed_at_ms !== input.occurredAtMs) {
+    return null;
+  }
+  const result = parseReceiptResult<PersistedReplaceExerciseResult>(
+    receipt,
+    "replace_exercise_receipt_invalid",
+  );
+  if (result === null
+    || result.outcome !== "committed"
+    || (result.disposition !== "deleted_provisional"
+      && result.disposition !== "skipped_history_preserved")
+    || result.sessionId !== receipt.session_id
+    || result.sessionExerciseId !== receipt.subject_session_exercise_id
+    || result.replacementSessionExerciseId
+      !== receipt.replacement_session_exercise_id
+    || result.replacementSetId !== input.replacementSetId
+    || result.expectedSessionExerciseRevision
+      !== input.expectedSessionExerciseRevision
+    || result.sessionRevision !== receipt.result_session_revision) {
+    return null;
+  }
+  return result;
+}
+
+function removeReceiptMatches(
+  receipt: SessionExerciseEditReceiptRow,
+  input: RemoveExerciseInput,
+): PersistedRemoveExerciseResult | null {
+  if (receipt.request_sha256 !== input.requestSha256
+    || receipt.operation !== "remove_exercise"
+    || receipt.session_id !== input.sessionId
+    || receipt.subject_session_exercise_id !== input.sessionExerciseId
+    || receipt.replacement_session_exercise_id !== null
+    || receipt.expected_session_revision !== input.expectedSessionRevision
+    || receipt.committed_at_ms !== input.occurredAtMs) {
+    return null;
+  }
+  const result = parseReceiptResult<PersistedRemoveExerciseResult>(
+    receipt,
+    "remove_exercise_receipt_invalid",
+  );
+  if (result === null
+    || result.outcome !== "committed"
+    || (result.disposition !== "deleted_provisional"
+      && result.disposition !== "skipped_history_preserved")
+    || result.sessionId !== receipt.session_id
+    || result.sessionExerciseId !== receipt.subject_session_exercise_id
+    || result.expectedSessionExerciseRevision
+      !== input.expectedSessionExerciseRevision
+    || result.sessionRevision !== receipt.result_session_revision) {
+    return null;
+  }
+  return result;
+}
+
+async function editReceipt(
+  transaction: SqliteTransactionExecutor,
+  requestId: string,
+): Promise<SessionExerciseEditReceiptRow | undefined> {
+  const [receipt] = await transaction.queryAll<SessionExerciseEditReceiptRow>(
+    `SELECT request_sha256, operation, session_id, subject_session_exercise_id,
+            replacement_session_exercise_id, expected_session_revision,
+            result_session_revision, result_json, committed_at_ms
+     FROM workout_session_exercise_edit_receipts
+     WHERE request_id = ?`,
+    [requestId],
+  );
+  return receipt;
+}
+
+function sameOrderedIds(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return left.length === right.length
+    && left.every((value, index) => value === right[index]);
+}
+
+function toReorderResult(
+  result: PersistedReorderExercisesResult,
+  outcome: "committed" | "already_committed",
+): ReorderExercisesResult {
+  return {
+    outcome,
+    sessionId: result.sessionId,
+    orderedSessionExerciseIds: result.orderedSessionExerciseIds,
+    sessionRevision: result.sessionRevision,
+  };
+}
+
+function sameReorderRevisions(
+  left: readonly ReorderExerciseRevision[],
+  right: readonly ReorderExerciseRevision[],
+): boolean {
+  return left.length === right.length
+    && left.every(({ sessionExerciseId, revision }, index) =>
+      sessionExerciseId === right[index]?.sessionExerciseId
+      && revision === right[index]?.revision
+    );
+}
+
+function reorderReceiptMatches(
+  receipt: SessionExerciseReorderReceiptRow,
+  input: ReorderExercisesInput,
+): PersistedReorderExercisesResult | null {
+  if (receipt.request_sha256 !== input.requestSha256
+    || receipt.operation !== "reorder_exercises"
+    || receipt.session_id !== input.sessionId
+    || receipt.ordered_session_exercise_ids_json
+      !== JSON.stringify(input.orderedSessionExerciseIds)
+    || receipt.expected_session_revision !== input.expectedSessionRevision
+    || receipt.committed_at_ms !== input.occurredAtMs) {
+    return null;
+  }
+  const result = parseReceiptResult<PersistedReorderExercisesResult>(
+    receipt,
+    "reorder_exercises_receipt_invalid",
+  );
+  if (result === null
+    || result.outcome !== "committed"
+    || result.sessionId !== receipt.session_id
+    || !Array.isArray(result.orderedSessionExerciseIds)
+    || !sameOrderedIds(
+      result.orderedSessionExerciseIds,
+      input.orderedSessionExerciseIds,
+    )
+    || !Array.isArray(result.expectedSessionExerciseRevisions)
+    || !sameReorderRevisions(
+      result.expectedSessionExerciseRevisions,
+      input.expectedSessionExerciseRevisions,
+    )
+    || result.sessionRevision !== receipt.result_session_revision) {
+    return null;
+  }
+  return result;
+}
+
+async function reorderReceipt(
+  transaction: SqliteTransactionExecutor,
+  requestId: string,
+): Promise<SessionExerciseReorderReceiptRow | undefined> {
+  const [receipt] = await transaction.queryAll<SessionExerciseReorderReceiptRow>(
+    `SELECT request_sha256, operation, session_id,
+            ordered_session_exercise_ids_json, expected_session_revision,
+            result_session_revision, result_json, committed_at_ms
+     FROM workout_session_exercise_reorder_receipts
+     WHERE request_id = ?`,
+    [requestId],
+  );
+  return receipt;
+}
+
+async function sessionExerciseRestDefaultRequestHash(
+  input: UpdateSessionExerciseDefaultRestInput,
+): Promise<string> {
+  return runtimeSha256(JSON.stringify({
+    operation: "update_session_exercise_default_rest",
+    sessionId: input.sessionId,
+    sessionExerciseId: input.sessionExerciseId,
+    defaultRestSeconds: input.defaultRestSeconds,
+    expectedSessionRevision: input.expectedSessionRevision,
+    expectedSessionExerciseRevision: input.expectedSessionExerciseRevision,
+    occurredAtMs: input.occurredAtMs,
+    requestId: input.requestId,
+  }));
+}
+
+function sessionExerciseRestDefaultReceiptMatches(
+  receipt: SessionExerciseRestDefaultReceiptRow,
+  input: UpdateSessionExerciseDefaultRestInput,
+): boolean {
+  return receipt.request_sha256 === input.requestSha256
+    && receipt.session_id === input.sessionId
+    && receipt.session_exercise_id === input.sessionExerciseId
+    && receipt.default_rest_seconds === input.defaultRestSeconds
+    && receipt.expected_session_revision === input.expectedSessionRevision
+    && receipt.expected_session_exercise_revision
+      === input.expectedSessionExerciseRevision
+    && receipt.result_session_revision === input.expectedSessionRevision + 1
+    && receipt.result_session_exercise_revision
+      === input.expectedSessionExerciseRevision + 1
+    && receipt.committed_at_ms === input.occurredAtMs;
+}
+
+async function exerciseRows(
+  transaction: SqliteTransactionExecutor,
+  input: Readonly<{ sessionId: string; sessionExerciseId: string }>,
+): Promise<Readonly<{ session: SessionRow; exercise: ExerciseRow }> | null> {
+  const [session] = await transaction.queryAll<SessionRow>(
+    `SELECT id, status, active_session_exercise_id, active_set_id, revision, plan_id
+     FROM workout_sessions WHERE id = ?`,
+    [input.sessionId],
+  );
+  const [exercise] = await transaction.queryAll<ExerciseRow>(
+    `SELECT id, exercise_id, ordinal, origin, display_ordinal, exercise_name,
+            metric_profile, metric_contract_version, exercise_metric_generation,
+            default_rest_seconds, status, revision
+     FROM session_exercises
+     WHERE id = ? AND session_id = ?`,
+    [input.sessionExerciseId, input.sessionId],
+  );
+  return session === undefined || exercise === undefined ? null : { session, exercise };
+}
+
+async function exerciseHasProtectedHistory(
+  transaction: SqliteTransactionExecutor,
+  sessionExerciseId: string,
+): Promise<boolean> {
+  const [row] = await transaction.queryAll<{ protected_count: number }>(
+    `SELECT COUNT(*) AS protected_count
+     FROM session_sets ss
+     WHERE ss.session_exercise_id = ?
+       AND (
+         ss.status = 'completed'
+         OR EXISTS (
+           SELECT 1 FROM session_undo_snapshots su
+           WHERE su.completed_set_id = ss.id
+         )
+       )`,
+    [sessionExerciseId],
+  );
+  return (row?.protected_count ?? 0) > 0;
+}
+
+async function stableNextWorkingSet(
+  transaction: SqliteTransactionExecutor,
+  sessionId: string,
+  removedExerciseId: string,
+): Promise<Readonly<{ set_id: string; exercise_id: string }> | null> {
+  const [row] = await transaction.queryAll<{ set_id: string; exercise_id: string }>(
+    `SELECT ss.id AS set_id, se.id AS exercise_id
+     FROM session_exercises se
+     JOIN session_sets ss ON ss.session_exercise_id = se.id
+     WHERE se.session_id = ?
+       AND se.id <> ?
+       AND se.status <> 'skipped'
+       AND ss.set_kind = 'working'
+       AND ss.status IN ('planned', 'draft')
+     ORDER BY se.display_ordinal, se.id, ss.ordinal, ss.id
+     LIMIT 1`,
+    [sessionId, removedExerciseId],
+  );
+  return row ?? null;
+}
+
+async function repairExercisePointers(
+  transaction: SqliteTransactionExecutor,
+  input: Readonly<{
+    session: SessionRow;
+    sessionExerciseId: string;
+    next: Readonly<{ set_id: string; exercise_id: string }> | null;
+    nowMs: number;
+    requestId: string;
+  }>,
+): Promise<void> {
+  const activeOwnsExercise = input.session.active_session_exercise_id
+    === input.sessionExerciseId;
+  const [rest] = await transaction.queryAll<RestRow>(
+    `SELECT state_version, status, started_at_ms, ends_at_ms, remaining_ms,
+            expired_at_ms, next_set_id, revision
+     FROM session_rest_states WHERE session_id = ?`,
+    [input.session.id],
+  );
+  const restOwnsExercise = rest?.next_set_id !== null
+    && rest?.next_set_id !== undefined
+    && (await transaction.queryAll<{ id: string }>(
+      "SELECT id FROM session_sets WHERE id = ? AND session_exercise_id = ?",
+      [rest.next_set_id, input.sessionExerciseId],
+    )).length === 1;
+  if (restOwnsExercise) {
+    const restRevision = await setIdleRest(
+      transaction,
+      input.session.id,
+      rest?.revision ?? 0,
+    );
+    await enqueueRestReconciliation(transaction, {
+      idempotencyKey: `rest:exercise-edit:${input.requestId}`,
+      sessionId: input.session.id,
+      restRevision,
+      nowMs: input.nowMs,
+    });
+  }
+  if (activeOwnsExercise) {
+    const update = await transaction.execute(
+      `UPDATE workout_sessions
+       SET active_session_exercise_id = ?, active_set_id = ?
+       WHERE id = ? AND status = 'in_progress'`,
+      [input.next?.exercise_id ?? null, input.next?.set_id ?? null, input.session.id],
+    );
+    if (update.changes !== 1) {
+      throw new Error("exercise_edit_pointer_repair_failed");
+    }
+    if (input.next !== null) {
+      await transaction.execute(
+        `UPDATE session_exercises
+         SET status = 'active', revision = revision + 1
+         WHERE id = ? AND session_id = ? AND status = 'planned'`,
+        [input.next.exercise_id, input.session.id],
+      );
+    }
+  }
+}
+
+async function insertReplacementSnapshot(
+  transaction: SqliteTransactionExecutor,
+  input: ReplaceExerciseInput,
+  displayOrdinal: number,
+): Promise<boolean> {
+  const advancedTimingSnapshots = await supportsAdvancedTimingSnapshots(
+    transaction,
+  );
+  const [library] = await transaction.queryAll<Readonly<{
+    id: string;
+    name: string;
+    metric_profile: MetricProfile;
+    metric_contract_version: number;
+    exercise_metric_generation: number;
+    default_rest_seconds: number;
+  }>>(
+    `SELECT exercise.id, exercise.name, entry.metric_profile,
+            entry.metric_contract_version, entry.exercise_metric_generation,
+            exercise.default_rest_seconds
+     FROM exercise_library_entries entry
+     JOIN exercises exercise ON exercise.id = entry.exercise_id
+     WHERE entry.exercise_id = ? AND entry.availability = 'available'`,
+    [input.libraryExerciseId],
+  );
+  const [existing] = await transaction.queryAll<{ id: string }>(
+    `SELECT id FROM session_exercises WHERE id IN (?, ?)
+     UNION ALL
+     SELECT id FROM session_sets WHERE id IN (?, ?)`,
+    [
+      input.replacementSessionExerciseId, input.replacementSetId,
+      input.replacementSessionExerciseId, input.replacementSetId,
+    ],
+  );
+  if (library === undefined || existing !== undefined) {
+    return false;
+  }
+  const identity = metricIdentity({
+    profile: library.metric_profile,
+    contractVersion: library.metric_contract_version,
+    exerciseMetricGeneration: library.exercise_metric_generation,
+  });
+  const target = defaultAddedExerciseTarget(identity);
+  const [ordinal] = await transaction.queryAll<{ next_ordinal: number }>(
+    `SELECT COALESCE(MAX(ordinal), -1) + 1 AS next_ordinal
+     FROM session_exercises WHERE session_id = ?`,
+    [input.sessionId],
+  );
+  await transaction.execute(
+    `INSERT INTO session_exercises
+      (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal,
+       origin, display_ordinal, exercise_name, metric_profile,
+       metric_contract_version, exercise_metric_generation,
+       ${advancedTimingSnapshots ? "advanced_timing_default_json," : ""}
+       default_rest_seconds, target_revision, status, revision)
+     VALUES (?, ?, NULL, ?, ?, 'added', ?, ?, ?, ?, ?,
+             ${advancedTimingSnapshots ? "?," : ""}
+             ?, 0, 'planned', 1)`,
+    [
+      input.replacementSessionExerciseId, input.sessionId, library.id,
+      ordinal?.next_ordinal ?? 0, displayOrdinal, library.name, identity.profile,
+      identity.contractVersion, identity.exerciseMetricGeneration,
+      ...(advancedTimingSnapshots ? [JSON.stringify(OFF_ADVANCED_TIMING_CONFIG)] : []),
+      library.default_rest_seconds,
+    ],
+  );
+  await transaction.execute(
+    `INSERT INTO session_sets
+      (id, session_exercise_id, set_kind, ordinal,
+       source_plan_working_set_target_id,
+       source_owned_plan_working_set_target_id,
+       ${advancedTimingSnapshots
+         ? "advanced_timing_override_json, advanced_timing_resolved_json,"
+         : ""}
+       target_load_grams,
+       target_min_reps, target_max_reps, target_json, unit_json, rule_type,
+       rule_version, metric_profile, metric_contract_version,
+       exercise_metric_generation, observed_load_grams, observed_reps,
+       observed_json, status, draft_updated_at_ms, completed_at_ms,
+       completion_idempotency_key, revision)
+     VALUES (?, ?, 'working', 0, NULL, NULL,
+             ${advancedTimingSnapshots ? "NULL, ?," : ""}
+             ?, ?, ?, ?, ?, ?, 1,
+             ?, ?, ?, NULL, NULL, NULL, 'planned', NULL, NULL, NULL, 1)`,
+    [
+      input.replacementSetId, input.replacementSessionExerciseId,
+      ...(advancedTimingSnapshots ? [JSON.stringify(OFF_ADVANCED_TIMING_CONFIG)] : []),
+      target.targetLoadGrams,
+      target.targetMinReps, target.targetMaxReps,
+      target.targetJson, JSON.stringify({ version: 1 }), identity.profile,
+      identity.profile, identity.contractVersion, identity.exerciseMetricGeneration,
+    ],
+  );
+  return true;
+}
+
+function toReplaceResult(
+  result: PersistedReplaceExerciseResult,
+  outcome: "committed" | "already_committed",
+): ReplaceExerciseResult {
+  return {
+    outcome,
+    disposition: result.disposition,
+    sessionId: result.sessionId,
+    sessionExerciseId: result.sessionExerciseId,
+    replacementSessionExerciseId: result.replacementSessionExerciseId,
+    replacementSetId: result.replacementSetId,
+    sessionRevision: result.sessionRevision,
+  };
+}
+
+function toRemoveResult(
+  result: PersistedRemoveExerciseResult,
+  outcome: "committed" | "already_committed",
+): RemoveExerciseResult {
+  return {
+    outcome,
+    disposition: result.disposition,
+    sessionId: result.sessionId,
+    sessionExerciseId: result.sessionExerciseId,
+    sessionRevision: result.sessionRevision,
+  };
+}
+
+async function storeEditReceipt(
+  transaction: SqliteTransactionExecutor,
+  input: Readonly<{
+    requestId: string;
+    requestSha256: string;
+    operation: "replace_exercise" | "remove_exercise";
+    sessionId: string;
+    sessionExerciseId: string;
+    replacementSessionExerciseId: string | null;
+    expectedSessionRevision: number;
+    occurredAtMs: number;
+    result: PersistedReplaceExerciseResult | PersistedRemoveExerciseResult;
+  }>,
+): Promise<void> {
+  await transaction.execute(
+    `INSERT INTO workout_session_exercise_edit_receipts
+      (request_id, request_sha256, operation, session_id,
+       subject_session_exercise_id, replacement_session_exercise_id,
+       expected_session_revision, result_session_revision, result_json,
+       committed_at_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      input.requestId, input.requestSha256, input.operation, input.sessionId,
+      input.sessionExerciseId, input.replacementSessionExerciseId,
+      input.expectedSessionRevision, input.result.sessionRevision,
+      JSON.stringify(input.result), input.occurredAtMs,
+    ],
+  );
+}
+
+async function markExerciseSkipped(
+  transaction: SqliteTransactionExecutor,
+  input: Readonly<{
+    sessionId: string;
+    sessionExerciseId: string;
+    expectedRevision: number;
+  }>,
+): Promise<void> {
+  const update = await transaction.execute(
+    `UPDATE session_exercises
+     SET status = 'skipped', revision = revision + 1
+     WHERE id = ? AND session_id = ? AND revision = ?
+       AND status <> 'skipped'`,
+    [input.sessionExerciseId, input.sessionId, input.expectedRevision],
+  );
+  if (update.changes !== 1) {
+    throw new Error("exercise_edit_skip_update_failed");
+  }
+}
+
+async function markUnprotectedSetsSkipped(
+  transaction: SqliteTransactionExecutor,
+  sessionExerciseId: string,
+): Promise<void> {
+  await transaction.execute(
+    `UPDATE session_sets
+     SET status = 'skipped', revision = revision + 1
+     WHERE session_exercise_id = ?
+       AND status NOT IN ('completed', 'skipped')
+       AND NOT EXISTS (
+         SELECT 1 FROM session_undo_snapshots su
+         WHERE su.completed_set_id = session_sets.id
+       )`,
+    [sessionExerciseId],
+  );
+}
+
+async function deleteAdvancedTimingForExercise(
+  transaction: SqliteTransactionExecutor,
+  sessionId: string,
+  sessionExerciseId: string,
+): Promise<void> {
+  await transaction.execute(
+    `DELETE FROM session_advanced_timing_states
+     WHERE session_id = ?
+       AND session_set_id IN (
+         SELECT id FROM session_sets WHERE session_exercise_id = ?
+       )`,
+    [sessionId, sessionExerciseId],
+  );
+}
+
+async function deleteAdvancedTimingForSet(
+  transaction: SqliteTransactionExecutor,
+  sessionId: string,
+  sessionSetId: string,
+): Promise<void> {
+  await transaction.execute(
+    `DELETE FROM session_advanced_timing_states
+     WHERE session_id = ? AND session_set_id = ?`,
+    [sessionId, sessionSetId],
+  );
+}
+
+async function finalizeExerciseEdit(
+  transaction: SqliteTransactionExecutor,
+  input: Readonly<{
+    sessionId: string;
+    expectedSessionRevision: number;
+  }>,
+): Promise<void> {
+  const update = await transaction.execute(
+    `UPDATE workout_sessions
+     SET modified_from_plan = 1, revision = revision + 1
+     WHERE id = ? AND status = 'in_progress' AND revision = ?`,
+    [input.sessionId, input.expectedSessionRevision],
+  );
+  if (update.changes !== 1) {
+    throw new Error("exercise_edit_session_update_failed");
+  }
+}
+
+async function replaceExercise(
+  kernel: SqliteKernel,
+  input: ReplaceExerciseInput,
+): Promise<ReplaceExerciseResult> {
+  const mutation = await kernel.write(async (transaction): Promise<
+    | Readonly<{ kind: "result"; result: ReplaceExerciseResult }>
+    | Readonly<{ kind: "conflict"; code: string }>
+  > => {
+    const receipt = await editReceipt(transaction, input.requestId);
+    if (receipt !== undefined) {
+      const persisted = replaceReceiptMatches(receipt, input);
+      if (persisted === null) {
+        return { kind: "conflict", code: "replace_exercise_replay_conflict" };
+      }
+      return { kind: "result", result: toReplaceResult(persisted, "already_committed") };
+    }
+
+    const rows = await exerciseRows(transaction, input);
+    if (rows === null
+      || rows.session.status !== "in_progress"
+      || rows.session.revision !== input.expectedSessionRevision
+      || rows.exercise.revision !== input.expectedSessionExerciseRevision) {
+      return { kind: "conflict", code: "replace_exercise_conflict" };
+    }
+    const protectedHistory = await exerciseHasProtectedHistory(
+      transaction,
+      input.sessionExerciseId,
+    );
+    const inserted = await insertReplacementSnapshot(
+      transaction,
+      input,
+      rows.exercise.display_ordinal ?? rows.exercise.ordinal,
+    );
+    if (!inserted) {
+      return { kind: "conflict", code: "replace_exercise_not_available" };
+    }
+    const next = await stableNextWorkingSet(
+      transaction,
+      input.sessionId,
+      input.sessionExerciseId,
+    );
+    await repairExercisePointers(transaction, {
+      session: rows.session,
+      sessionExerciseId: input.sessionExerciseId,
+      next,
+      nowMs: input.occurredAtMs,
+      requestId: input.requestId,
+    });
+    await deleteAdvancedTimingForExercise(
+      transaction,
+      input.sessionId,
+      input.sessionExerciseId,
+    );
+    const disposition = protectedHistory
+      ? "skipped_history_preserved" as const
+      : "deleted_provisional" as const;
+    if (protectedHistory) {
+      await markUnprotectedSetsSkipped(transaction, input.sessionExerciseId);
+      if (rows.exercise.status !== "skipped") {
+        await markExerciseSkipped(transaction, {
+          sessionId: input.sessionId,
+          sessionExerciseId: input.sessionExerciseId,
+          expectedRevision: input.expectedSessionExerciseRevision,
+        });
+      }
+    } else {
+      const deletedSets = await transaction.execute(
+        `DELETE FROM session_sets
+         WHERE session_exercise_id = ?
+           AND status IN ('planned', 'draft', 'skipped')`,
+        [input.sessionExerciseId],
+      );
+      const deletedExercise = await transaction.execute(
+        `DELETE FROM session_exercises
+         WHERE id = ? AND session_id = ? AND revision = ?`,
+        [
+          input.sessionExerciseId, input.sessionId,
+          input.expectedSessionExerciseRevision,
+        ],
+      );
+      if (deletedExercise.changes !== 1 || deletedSets.changes < 0) {
+        throw new Error("replace_exercise_conditional_delete_failed");
+      }
+    }
+    await finalizeExerciseEdit(transaction, {
+      sessionId: input.sessionId,
+      expectedSessionRevision: input.expectedSessionRevision,
+    });
+    const persisted: PersistedReplaceExerciseResult = {
+      outcome: "committed", disposition, sessionId: input.sessionId,
+      sessionExerciseId: input.sessionExerciseId,
+      replacementSessionExerciseId: input.replacementSessionExerciseId,
+      replacementSetId: input.replacementSetId,
+      sessionRevision: input.expectedSessionRevision + 1,
+      expectedSessionExerciseRevision: input.expectedSessionExerciseRevision,
+    };
+    await storeEditReceipt(transaction, {
+      ...input, operation: "replace_exercise",
+      replacementSessionExerciseId: input.replacementSessionExerciseId,
+      result: persisted,
+    });
+    return { kind: "result", result: toReplaceResult(persisted, "committed") };
+  });
+  if (mutation.kind === "conflict") {
+    throw new WorkoutCommandConflictError(mutation.code);
+  }
+  return mutation.result;
+}
+
+async function removeExercise(
+  kernel: SqliteKernel,
+  input: RemoveExerciseInput,
+): Promise<RemoveExerciseResult> {
+  const mutation = await kernel.write(async (transaction): Promise<
+    | Readonly<{ kind: "result"; result: RemoveExerciseResult }>
+    | Readonly<{ kind: "conflict"; code: string }>
+  > => {
+    const receipt = await editReceipt(transaction, input.requestId);
+    if (receipt !== undefined) {
+      const persisted = removeReceiptMatches(receipt, input);
+      if (persisted === null) {
+        return { kind: "conflict", code: "remove_exercise_replay_conflict" };
+      }
+      return { kind: "result", result: toRemoveResult(persisted, "already_committed") };
+    }
+
+    const rows = await exerciseRows(transaction, input);
+    if (rows === null
+      || rows.session.status !== "in_progress"
+      || rows.session.revision !== input.expectedSessionRevision
+      || rows.exercise.revision !== input.expectedSessionExerciseRevision) {
+      return { kind: "conflict", code: "remove_exercise_conflict" };
+    }
+    const protectedHistory = await exerciseHasProtectedHistory(
+      transaction,
+      input.sessionExerciseId,
+    );
+    const next = await stableNextWorkingSet(
+      transaction,
+      input.sessionId,
+      input.sessionExerciseId,
+    );
+    await repairExercisePointers(transaction, {
+      session: rows.session,
+      sessionExerciseId: input.sessionExerciseId,
+      next,
+      nowMs: input.occurredAtMs,
+      requestId: input.requestId,
+    });
+    await deleteAdvancedTimingForExercise(
+      transaction,
+      input.sessionId,
+      input.sessionExerciseId,
+    );
+    const disposition = protectedHistory
+      ? "skipped_history_preserved" as const
+      : "deleted_provisional" as const;
+    if (protectedHistory) {
+      await markUnprotectedSetsSkipped(transaction, input.sessionExerciseId);
+      if (rows.exercise.status !== "skipped") {
+        await markExerciseSkipped(transaction, {
+          sessionId: input.sessionId,
+          sessionExerciseId: input.sessionExerciseId,
+          expectedRevision: input.expectedSessionExerciseRevision,
+        });
+      }
+    } else {
+      const deletedSets = await transaction.execute(
+        `DELETE FROM session_sets
+         WHERE session_exercise_id = ?
+           AND status IN ('planned', 'draft', 'skipped')`,
+        [input.sessionExerciseId],
+      );
+      const deletedExercise = await transaction.execute(
+        `DELETE FROM session_exercises
+         WHERE id = ? AND session_id = ? AND revision = ?`,
+        [
+          input.sessionExerciseId, input.sessionId,
+          input.expectedSessionExerciseRevision,
+        ],
+      );
+      if (deletedExercise.changes !== 1 || deletedSets.changes < 0) {
+        throw new Error("remove_exercise_conditional_delete_failed");
+      }
+    }
+    await finalizeExerciseEdit(transaction, {
+      sessionId: input.sessionId,
+      expectedSessionRevision: input.expectedSessionRevision,
+    });
+    const persisted: PersistedRemoveExerciseResult = {
+      outcome: "committed", disposition, sessionId: input.sessionId,
+      sessionExerciseId: input.sessionExerciseId,
+      sessionRevision: input.expectedSessionRevision + 1,
+      expectedSessionExerciseRevision: input.expectedSessionExerciseRevision,
+    };
+    await storeEditReceipt(transaction, {
+      ...input, operation: "remove_exercise",
+      replacementSessionExerciseId: null, result: persisted,
+    });
+    return { kind: "result", result: toRemoveResult(persisted, "committed") };
+  });
+  if (mutation.kind === "conflict") {
+    throw new WorkoutCommandConflictError(mutation.code);
+  }
+  return mutation.result;
+}
+
+async function reorderExercises(
+  kernel: SqliteKernel,
+  input: ReorderExercisesInput,
+): Promise<ReorderExercisesResult> {
+  const mutation = await kernel.write(async (transaction): Promise<
+    | Readonly<{ kind: "result"; result: ReorderExercisesResult }>
+    | Readonly<{ kind: "conflict"; code: string }>
+  > => {
+    const receipt = await reorderReceipt(transaction, input.requestId);
+    if (receipt !== undefined) {
+      const persisted = reorderReceiptMatches(receipt, input);
+      if (persisted === null) {
+        return { kind: "conflict", code: "reorder_exercises_replay_conflict" };
+      }
+      return {
+        kind: "result",
+        result: toReorderResult(persisted, "already_committed"),
+      };
+    }
+
+    const [session] = await transaction.queryAll<SessionRow>(
+      `SELECT id, status, active_session_exercise_id, active_set_id, revision
+       FROM workout_sessions WHERE id = ?`,
+      [input.sessionId],
+    );
+    if (session === undefined
+      || session.status !== "in_progress"
+      || session.revision !== input.expectedSessionRevision) {
+      return { kind: "conflict", code: "reorder_exercises_conflict" };
+    }
+
+    const exercises = await transaction.queryAll<ExerciseRow>(
+      `SELECT id, exercise_id, ordinal, origin, display_ordinal, exercise_name,
+              metric_profile, metric_contract_version, exercise_metric_generation,
+              default_rest_seconds, status, revision
+       FROM session_exercises
+       WHERE session_id = ?
+       ORDER BY display_ordinal, id`,
+      [input.sessionId],
+    );
+    const expectedRevisions = new Map(input.expectedSessionExerciseRevisions.map(
+      ({ sessionExerciseId, revision }) => [sessionExerciseId, revision],
+    ));
+    const liveIds = exercises.map(({ id }) => id);
+    if (exercises.length === 0
+      || !sameOrderedIds(
+        [...input.orderedSessionExerciseIds].sort(),
+        [...liveIds].sort(),
+      )
+      || expectedRevisions.size !== exercises.length
+      || exercises.some(({ id, revision }) => expectedRevisions.get(id) !== revision)
+      || exercises.every(({ status }) => status === "skipped")) {
+      return { kind: "conflict", code: "reorder_exercises_membership_conflict" };
+    }
+    if (sameOrderedIds(input.orderedSessionExerciseIds, liveIds)) {
+      return { kind: "conflict", code: "reorder_exercises_noop" };
+    }
+
+    for (const [displayOrdinal, sessionExerciseId] of input
+      .orderedSessionExerciseIds.entries()) {
+      const update = await transaction.execute(
+        `UPDATE session_exercises
+         SET display_ordinal = ?
+         WHERE id = ? AND session_id = ? AND revision = ?`,
+        [
+          displayOrdinal,
+          sessionExerciseId,
+          input.sessionId,
+          expectedRevisions.get(sessionExerciseId)!,
+        ],
+      );
+      if (update.changes !== 1) {
+        throw new Error("reorder_exercises_display_update_failed");
+      }
+    }
+    const sessionUpdate = await transaction.execute(
+      `UPDATE workout_sessions
+       SET modified_from_plan = 1, revision = revision + 1
+       WHERE id = ? AND status = 'in_progress' AND revision = ?`,
+      [input.sessionId, input.expectedSessionRevision],
+    );
+    if (sessionUpdate.changes !== 1) {
+      throw new Error("reorder_exercises_session_update_failed");
+    }
+    const result: PersistedReorderExercisesResult = {
+      outcome: "committed",
+      sessionId: input.sessionId,
+      orderedSessionExerciseIds: input.orderedSessionExerciseIds,
+      expectedSessionExerciseRevisions: input.expectedSessionExerciseRevisions,
+      sessionRevision: input.expectedSessionRevision + 1,
+    };
+    await transaction.execute(
+      `INSERT INTO workout_session_exercise_reorder_receipts
+        (request_id, request_sha256, operation, session_id,
+         ordered_session_exercise_ids_json, expected_session_revision,
+         result_session_revision, result_json, committed_at_ms)
+       VALUES (?, ?, 'reorder_exercises', ?, ?, ?, ?, ?, ?)`,
+      [
+        input.requestId, input.requestSha256, input.sessionId,
+        JSON.stringify(input.orderedSessionExerciseIds),
+        input.expectedSessionRevision, result.sessionRevision,
+        JSON.stringify(result), input.occurredAtMs,
+      ],
+    );
+    return { kind: "result", result: toReorderResult(result, "committed") };
+  });
+  if (mutation.kind === "conflict") {
+    throw new WorkoutCommandConflictError(mutation.code);
+  }
+  return mutation.result;
+}
+
 async function nextWarmupOrdinal(
   transaction: SqliteTransactionExecutor,
   sessionExerciseId: string,
@@ -885,7 +1998,7 @@ async function completionRows(
   set: CompletionSetRow;
 }> | null> {
   const [session] = await transaction.queryAll<SessionRow>(
-    `SELECT id, status, active_session_exercise_id, active_set_id, revision
+    `SELECT id, status, active_session_exercise_id, active_set_id, revision, plan_id
      FROM workout_sessions
      WHERE id = ?`,
     [sessionId],
@@ -905,7 +2018,8 @@ async function completionRows(
                  se.exercise_metric_generation,`
               : ""}
             se.status AS exercise_status, se.revision AS exercise_revision,
-            se.source_plan_day_exercise_id, se.default_rest_seconds
+            se.source_plan_day_exercise_id, se.default_rest_seconds,
+            se.default_rest_seconds_is_override
      FROM session_sets ss
      JOIN session_exercises se ON se.id = ss.session_exercise_id
      WHERE ss.id = ? AND se.session_id = ?`,
@@ -936,7 +2050,7 @@ async function nextWorkingSet(
        AND ss.set_kind = 'working'
        AND ss.id <> ?
        AND ss.status IN ('planned', 'draft')
-     ORDER BY se.ordinal, ss.ordinal
+     ORDER BY se.display_ordinal, se.id, ss.ordinal, ss.id
      LIMIT 1`,
     [sessionId, completedSetId],
   );
@@ -1114,6 +2228,7 @@ async function removeSet(
       throw new Error("remove_set_session_update_failed");
     }
 
+    await deleteAdvancedTimingForSet(transaction, input.sessionId, set.id);
     const deletion = await transaction.execute(
       `DELETE FROM session_sets
        WHERE id = ? AND revision = ?
@@ -1179,12 +2294,37 @@ async function restDurationSeconds(
   transaction: SqliteTransactionExecutor,
   set: CompletionSetRow,
   next: Awaited<ReturnType<typeof nextWorkingSet>>,
+  planId: string | null | undefined,
 ): Promise<number | null> {
   if (next === null) {
     return null;
   }
   if (next.exercise_id === set.session_exercise_id) {
-    return set.default_rest_seconds;
+    if (set.default_rest_seconds_is_override === 1) {
+      return set.default_rest_seconds;
+    }
+    if (planId === null || planId === undefined) {
+      return DEFAULT_WORKOUT_PREFERENCE.defaultRestSeconds;
+    }
+    const [preference] = await transaction.queryAll<{ value_json: string }>(
+      "SELECT value_json FROM app_settings WHERE key = ?",
+      [workoutPreferenceKey(planId)],
+    );
+    if (preference === undefined) return DEFAULT_WORKOUT_PREFERENCE.defaultRestSeconds;
+    try {
+      const value = JSON.parse(preference.value_json) as Readonly<{
+        version: number; planId: string; defaultRestSeconds: number;
+      }>;
+      if (value.version !== 1 || value.planId !== planId
+        || !Number.isSafeInteger(value.defaultRestSeconds)
+        || value.defaultRestSeconds < 0 || value.defaultRestSeconds > 86_400) {
+        throw new Error("workout_preference_for_rest_invalid");
+      }
+      return value.defaultRestSeconds;
+    } catch (error) {
+      if (error instanceof Error && error.message === "workout_preference_for_rest_invalid") throw error;
+      throw new Error("workout_preference_for_rest_invalid");
+    }
   }
   if (set.source_plan_day_exercise_id === null) {
     return set.default_rest_seconds;
@@ -1330,6 +2470,248 @@ export function createWorkoutRepository(
     getWorkoutSession: (sessionId: string) =>
       loadActiveWorkout(kernel, sessionId),
 
+    async updateSessionExerciseDefaultRest(input: UpdateSessionExerciseDefaultRestInput) {
+      if (!Number.isSafeInteger(input.defaultRestSeconds) || input.defaultRestSeconds < 0
+        || input.defaultRestSeconds > 86_400 || !Number.isSafeInteger(input.occurredAtMs)
+        || input.occurredAtMs < 0 || !/^[a-f0-9]{64}$/u.test(input.requestSha256)
+        || input.requestId.trim().length === 0 || input.requestId.length > 128) {
+        throw new WorkoutCommandConflictError("session_exercise_default_rest_invalid");
+      }
+      const canonicalHash = await sessionExerciseRestDefaultRequestHash(input);
+      if (canonicalHash !== input.requestSha256) {
+        throw new WorkoutCommandConflictError("session_exercise_default_rest_request_hash_invalid");
+      }
+      const view = await kernel.write(async (transaction): Promise<
+        ActiveWorkoutView | null | Readonly<{ code: string }>
+      > => {
+        const [receipt] = await transaction.queryAll<SessionExerciseRestDefaultReceiptRow>(
+          `SELECT request_sha256, session_id, session_exercise_id,
+                  default_rest_seconds, expected_session_revision,
+                  expected_session_exercise_revision, result_session_revision,
+                  result_session_exercise_revision, committed_at_ms
+           FROM workout_session_exercise_rest_default_receipts
+           WHERE request_id = ?`,
+          [input.requestId],
+        );
+        if (receipt !== undefined) {
+          if (!sessionExerciseRestDefaultReceiptMatches(receipt, input)) {
+            return { code: "session_exercise_default_rest_replay_conflict" };
+          }
+          return loadPlannedWorkout(transaction, input.sessionId);
+        }
+        const [session] = await transaction.queryAll<SessionRow>(
+          "SELECT id, status, active_session_exercise_id, active_set_id, revision FROM workout_sessions WHERE id = ?",
+          [input.sessionId],
+        );
+        if (session === undefined || session.status !== "in_progress" || session.revision !== input.expectedSessionRevision) return null;
+        const update = await transaction.execute(
+          `UPDATE session_exercises
+           SET default_rest_seconds = ?, default_rest_seconds_is_override = 1,
+               revision = revision + 1
+           WHERE id = ? AND session_id = ? AND revision = ?`,
+          [input.defaultRestSeconds, input.sessionExerciseId, input.sessionId, input.expectedSessionExerciseRevision],
+        );
+        if (update.changes !== 1) return null;
+        const sessionUpdate = await transaction.execute(
+          "UPDATE workout_sessions SET revision = revision + 1 WHERE id = ? AND revision = ?",
+          [input.sessionId, input.expectedSessionRevision],
+        );
+        if (sessionUpdate.changes !== 1) throw new Error("session_exercise_default_rest_session_update_failed");
+        await transaction.execute(
+          `INSERT INTO workout_session_exercise_rest_default_receipts
+            (request_id, request_sha256, session_id, session_exercise_id,
+             default_rest_seconds, expected_session_revision,
+             expected_session_exercise_revision, result_session_revision,
+             result_session_exercise_revision, result_json, committed_at_ms)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            input.requestId, input.requestSha256, input.sessionId,
+            input.sessionExerciseId, input.defaultRestSeconds,
+            input.expectedSessionRevision, input.expectedSessionExerciseRevision,
+            input.expectedSessionRevision + 1,
+            input.expectedSessionExerciseRevision + 1,
+            JSON.stringify({ version: 1, sessionId: input.sessionId,
+              sessionExerciseId: input.sessionExerciseId,
+              defaultRestSeconds: input.defaultRestSeconds }),
+            input.occurredAtMs,
+          ],
+        );
+        return loadPlannedWorkout(transaction, input.sessionId);
+      });
+      if (view !== null && "code" in view) {
+        throw new WorkoutCommandConflictError(view.code);
+      }
+      if (view === null) throw new WorkoutCommandConflictError("session_exercise_default_rest_conflict");
+      return view;
+    },
+
+    async addExercise(input) {
+      const mutation = await kernel.write(async (transaction): Promise<
+        AddExerciseResult | { code: string }
+      > => {
+        const [receipt] = await transaction.queryAll<SessionExerciseEditReceiptRow>(
+          `SELECT request_sha256, operation, session_id, subject_session_exercise_id,
+                  replacement_session_exercise_id,
+                  expected_session_revision, result_session_revision, result_json,
+                  committed_at_ms
+           FROM workout_session_exercise_edit_receipts
+           WHERE request_id = ?`,
+          [input.requestId],
+        );
+        if (receipt !== undefined) {
+          if (!addReceiptMatches(receipt, input)) {
+            return { code: "add_exercise_replay_conflict" };
+          }
+          return {
+            outcome: "already_committed",
+            sessionId: receipt.session_id,
+            sessionExerciseId: receipt.subject_session_exercise_id,
+            setId: JSON.parse(receipt.result_json).setId as string,
+            sessionRevision: receipt.result_session_revision,
+          };
+        }
+
+        const [session] = await transaction.queryAll<SessionRow>(
+          `SELECT id, status, active_session_exercise_id, active_set_id, revision
+           FROM workout_sessions WHERE id = ?`,
+          [input.sessionId],
+        );
+        if (session === undefined || session.status !== "in_progress"
+          || session.revision !== input.expectedSessionRevision) {
+          return { code: "add_exercise_conflict" };
+        }
+        const advancedTimingSnapshots = await supportsAdvancedTimingSnapshots(
+          transaction,
+        );
+        const [library] = await transaction.queryAll<Readonly<{
+          id: string;
+          name: string;
+          metric_profile: MetricProfile;
+          metric_contract_version: number;
+          exercise_metric_generation: number;
+          default_rest_seconds: number;
+        }>>(
+          `SELECT exercise.id, exercise.name, entry.metric_profile,
+                  entry.metric_contract_version, entry.exercise_metric_generation,
+                  exercise.default_rest_seconds
+           FROM exercise_library_entries entry
+           JOIN exercises exercise ON exercise.id = entry.exercise_id
+           WHERE entry.exercise_id = ? AND entry.availability = 'available'`,
+          [input.libraryExerciseId],
+        );
+        const [existing] = await transaction.queryAll<{ id: string }>(
+          `SELECT id FROM session_exercises WHERE id = ?
+           UNION ALL SELECT id FROM session_sets WHERE id = ?`,
+          [input.sessionExerciseId, input.setId],
+        );
+        if (library === undefined || existing !== undefined) {
+          return { code: "add_exercise_not_available" };
+        }
+        const [ordinalRow] = await transaction.queryAll<Readonly<{
+          ordinal: number;
+          display_ordinal: number;
+        }>>(
+          `SELECT COALESCE(MAX(ordinal), -1) + 1 AS ordinal,
+                  COALESCE(MAX(display_ordinal), -1) + 1 AS display_ordinal
+           FROM session_exercises WHERE session_id = ?`,
+          [input.sessionId],
+        );
+        const identity = metricIdentity({
+          profile: library.metric_profile,
+          contractVersion: library.metric_contract_version,
+          exerciseMetricGeneration: library.exercise_metric_generation,
+        });
+        const target = defaultAddedExerciseTarget(identity);
+        const ordinal = ordinalRow?.ordinal ?? 0;
+        const displayOrdinal = ordinalRow?.display_ordinal ?? 0;
+        await transaction.execute(
+          `INSERT INTO session_exercises
+            (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal,
+             origin, display_ordinal, exercise_name, metric_profile,
+             metric_contract_version, exercise_metric_generation,
+             ${advancedTimingSnapshots ? "advanced_timing_default_json," : ""}
+             default_rest_seconds, target_revision, status, revision)
+           VALUES (?, ?, NULL, ?, ?, 'added', ?, ?, ?, ?, ?,
+                   ${advancedTimingSnapshots ? "?," : ""}
+                   ?, 0, 'planned', 1)`,
+          [input.sessionExerciseId, input.sessionId, library.id, ordinal,
+            displayOrdinal, library.name, identity.profile, identity.contractVersion,
+            identity.exerciseMetricGeneration,
+            ...(advancedTimingSnapshots ? [OFF_ADVANCED_TIMING_CONFIG_JSON] : []),
+            library.default_rest_seconds],
+        );
+        await transaction.execute(
+          `INSERT INTO session_sets
+            (id, session_exercise_id, set_kind, ordinal,
+             source_plan_working_set_target_id,
+             source_owned_plan_working_set_target_id,
+             ${advancedTimingSnapshots
+               ? "advanced_timing_override_json, advanced_timing_resolved_json,"
+               : ""}
+             target_load_grams,
+             target_min_reps, target_max_reps, target_json, unit_json,
+             rule_type, rule_version, metric_profile, metric_contract_version,
+             exercise_metric_generation, observed_load_grams, observed_reps,
+             observed_json, status, draft_updated_at_ms, completed_at_ms,
+             completion_idempotency_key, revision)
+           VALUES (?, ?, 'working', 0, NULL, NULL,
+                   ${advancedTimingSnapshots ? "NULL, ?," : ""}
+                   ?, ?, ?, ?, ?, ?, 1,
+                   ?, ?, ?, NULL, NULL, NULL, 'planned', NULL, NULL, NULL, 1)`,
+          [
+            input.setId,
+            input.sessionExerciseId,
+            ...(advancedTimingSnapshots ? [OFF_ADVANCED_TIMING_CONFIG_JSON] : []),
+            target.targetLoadGrams,
+            target.targetMinReps, target.targetMaxReps, target.targetJson,
+            JSON.stringify({ version: 1 }), identity.profile, identity.profile,
+            identity.contractVersion, identity.exerciseMetricGeneration],
+        );
+        const isEmpty = session.active_session_exercise_id === null
+          && session.active_set_id === null;
+        const update = await transaction.execute(
+          `UPDATE workout_sessions
+           SET modified_from_plan = 1,
+               active_session_exercise_id = CASE WHEN ? THEN ? ELSE active_session_exercise_id END,
+               active_set_id = CASE WHEN ? THEN ? ELSE active_set_id END,
+               revision = revision + 1
+           WHERE id = ? AND status = 'in_progress' AND revision = ?`,
+          [isEmpty ? 1 : 0, input.sessionExerciseId, isEmpty ? 1 : 0, input.setId,
+            input.sessionId, input.expectedSessionRevision],
+        );
+        if (update.changes !== 1) {
+          throw new Error("add_exercise_session_update_failed");
+        }
+        const result: AddExerciseResult = {
+          outcome: "committed", sessionId: input.sessionId,
+          sessionExerciseId: input.sessionExerciseId, setId: input.setId,
+          sessionRevision: input.expectedSessionRevision + 1,
+        };
+        await transaction.execute(
+          `INSERT INTO workout_session_exercise_edit_receipts
+            (request_id, request_sha256, operation, session_id,
+             subject_session_exercise_id, replacement_session_exercise_id,
+             expected_session_revision,
+             result_session_revision, result_json, committed_at_ms)
+           VALUES (?, ?, 'add_exercise', ?, ?, NULL, ?, ?, ?, ?)`,
+          [input.requestId, input.requestSha256, input.sessionId,
+            input.sessionExerciseId, input.expectedSessionRevision,
+            result.sessionRevision, JSON.stringify(result), input.occurredAtMs],
+        );
+        return result;
+      });
+      if ("code" in mutation) {
+        throw new WorkoutCommandConflictError(mutation.code);
+      }
+      return mutation;
+    },
+
+    replaceExercise: (input) => replaceExercise(kernel, input),
+
+    removeExercise: (input) => removeExercise(kernel, input),
+
+    reorderExercises: (input) => reorderExercises(kernel, input),
+
     removeWarmup: (input) => removeSet(kernel, input, "remove_warmup"),
 
     removeWorkingSet: (input) => removeSet(
@@ -1455,10 +2837,16 @@ export function createWorkoutRepository(
     async addWarmup(input) {
       const observation = observationColumns(input.observation);
       const result = await kernel.write(async (transaction) => {
+        const advancedTimingSnapshots = await supportsAdvancedTimingSnapshots(
+          transaction,
+        );
         const [exercise] = await transaction.queryAll<ExerciseRow>(
           `SELECT se.id, se.exercise_id, se.ordinal, se.exercise_name,
                   se.metric_profile, se.metric_contract_version,
                   se.exercise_metric_generation, se.default_rest_seconds,
+                  ${advancedTimingSnapshots
+                    ? "se.advanced_timing_default_json,"
+                    : ""}
                   se.status, se.revision
            FROM session_exercises se
            JOIN workout_sessions ws ON ws.id = se.session_id
@@ -1481,6 +2869,9 @@ export function createWorkoutRepository(
           `INSERT INTO session_sets
             (id, session_exercise_id, set_kind, ordinal,
              source_plan_working_set_target_id,
+             ${advancedTimingSnapshots
+               ? "advanced_timing_override_json, advanced_timing_resolved_json,"
+               : ""}
              target_load_grams, target_min_reps, target_max_reps,
              target_json, unit_json, rule_type, rule_version,
              metric_profile, metric_contract_version,
@@ -1488,12 +2879,17 @@ export function createWorkoutRepository(
              observed_load_grams, observed_reps, observed_json, status,
              draft_updated_at_ms, completed_at_ms,
              completion_idempotency_key, revision)
-           VALUES (?, ?, 'warmup', ?, NULL, ?, ?, ?, ?, ?,
+           VALUES (?, ?, 'warmup', ?, NULL,
+                   ${advancedTimingSnapshots ? "NULL, ?," : ""}
+                   ?, ?, ?, ?, ?,
                    'load_reps', 1, ?, ?, ?, ?, ?, ?, 'draft', ?, NULL, NULL, 1)`,
           [
             input.setId,
             input.sessionExerciseId,
             ordinal,
+            ...(advancedTimingSnapshots
+              ? [exercise.advanced_timing_default_json ?? OFF_ADVANCED_TIMING_CONFIG_JSON]
+              : []),
             input.observation.loadGrams,
             input.observation.reps,
             input.observation.reps,
@@ -1526,6 +2922,9 @@ export function createWorkoutRepository(
 
     async addWorkingSet(input) {
       const result = await kernel.write(async (transaction) => {
+        const advancedTimingSnapshots = await supportsAdvancedTimingSnapshots(
+          transaction,
+        );
         const [source] = await transaction.queryAll<SetRow & Readonly<{
           unit_json: string;
           rule_type: "load_reps" | "manual_hold";
@@ -1538,6 +2937,10 @@ export function createWorkoutRepository(
                   ss.unit_json, ss.rule_type, ss.rule_version,
                   ss.metric_profile, ss.metric_contract_version,
                   ss.exercise_metric_generation,
+                  ${advancedTimingSnapshots
+                    ? `ss.advanced_timing_override_json,
+                       ss.advanced_timing_resolved_json,`
+                    : ""}
                   ss.observed_load_grams, ss.observed_reps, ss.observed_json,
                   ss.status, ss.draft_updated_at_ms, ss.completed_at_ms,
                   ss.completion_idempotency_key, ss.revision,
@@ -1585,6 +2988,9 @@ export function createWorkoutRepository(
           `INSERT INTO session_sets
             (id, session_exercise_id, set_kind, ordinal,
              source_plan_working_set_target_id,
+             ${advancedTimingSnapshots
+               ? "advanced_timing_override_json, advanced_timing_resolved_json,"
+               : ""}
              target_load_grams, target_min_reps, target_max_reps,
              target_json, unit_json, rule_type, rule_version,
              metric_profile, metric_contract_version,
@@ -1592,12 +2998,20 @@ export function createWorkoutRepository(
              observed_load_grams, observed_reps, observed_json, status,
              draft_updated_at_ms, completed_at_ms,
              completion_idempotency_key, revision)
-           VALUES (?, ?, 'working', ?, NULL, ?, ?, ?, ?, ?, ?, ?,
+           VALUES (?, ?, 'working', ?, NULL,
+                   ${advancedTimingSnapshots ? "?, ?," : ""}
+                   ?, ?, ?, ?, ?, ?, ?,
                    ?, ?, ?, ?, ?, ?, 'draft', ?, NULL, NULL, 1)`,
           [
             input.setId,
             input.sessionExerciseId,
             ordinal,
+            ...(advancedTimingSnapshots
+              ? [
+                  source.advanced_timing_override_json ?? null,
+                  source.advanced_timing_resolved_json ?? OFF_ADVANCED_TIMING_CONFIG_JSON,
+                ]
+              : []),
             source.target_load_grams,
             source.target_min_reps,
             source.target_max_reps,
@@ -1625,6 +3039,9 @@ export function createWorkoutRepository(
 
     async copyPreviousWarmup(input) {
       const result = await kernel.write(async (transaction) => {
+        const advancedTimingSnapshots = await supportsAdvancedTimingSnapshots(
+          transaction,
+        );
         const [source] = await transaction.queryAll<SetRow & Readonly<{
           exercise_metric_profile: MetricProfile;
           exercise_metric_contract_version: number;
@@ -1635,6 +3052,10 @@ export function createWorkoutRepository(
                   ss.target_min_reps, ss.target_max_reps, ss.target_json,
                   ss.metric_profile, ss.metric_contract_version,
                   ss.exercise_metric_generation,
+                  ${advancedTimingSnapshots
+                    ? `ss.advanced_timing_override_json,
+                       ss.advanced_timing_resolved_json,`
+                    : ""}
                   ss.observed_load_grams, ss.observed_reps, ss.observed_json,
                   ss.status, ss.draft_updated_at_ms, ss.completed_at_ms,
                   ss.completion_idempotency_key, ss.revision,
@@ -1684,6 +3105,9 @@ export function createWorkoutRepository(
           `INSERT INTO session_sets
             (id, session_exercise_id, set_kind, ordinal,
              source_plan_working_set_target_id,
+             ${advancedTimingSnapshots
+               ? "advanced_timing_override_json, advanced_timing_resolved_json,"
+               : ""}
              target_load_grams, target_min_reps, target_max_reps,
              target_json, unit_json, rule_type, rule_version,
              metric_profile, metric_contract_version,
@@ -1691,12 +3115,20 @@ export function createWorkoutRepository(
              observed_load_grams, observed_reps, observed_json, status,
              draft_updated_at_ms, completed_at_ms,
              completion_idempotency_key, revision)
-           VALUES (?, ?, 'warmup', ?, NULL, ?, ?, ?, ?, ?,
+           VALUES (?, ?, 'warmup', ?, NULL,
+                   ${advancedTimingSnapshots ? "?, ?," : ""}
+                   ?, ?, ?, ?, ?,
                    'load_reps', 1, ?, ?, ?, ?, ?, ?, 'draft', ?, NULL, NULL, 1)`,
           [
             input.setId,
             source.session_exercise_id,
             ordinal,
+            ...(advancedTimingSnapshots
+              ? [
+                  source.advanced_timing_override_json ?? null,
+                  source.advanced_timing_resolved_json ?? OFF_ADVANCED_TIMING_CONFIG_JSON,
+                ]
+              : []),
             observation.loadGrams,
             observation.reps,
             observation.reps,
@@ -1765,6 +3197,11 @@ export function createWorkoutRepository(
         if (observation === null || observation.profile !== "load_reps") {
           return null;
         }
+        await deleteAdvancedTimingForSet(
+          transaction,
+          input.sessionId,
+          input.setId,
+        );
         const columns = observationColumns(observation);
         await transaction.execute(
           `UPDATE session_sets
@@ -1818,6 +3255,11 @@ export function createWorkoutRepository(
         if (update.changes !== 1) {
           return null;
         }
+        await deleteAdvancedTimingForSet(
+          transaction,
+          input.sessionId,
+          input.setId,
+        );
         await incrementSessionRevision(transaction, input.sessionId);
         return loadPlannedWorkout(transaction, input.sessionId);
       });
@@ -1855,6 +3297,11 @@ export function createWorkoutRepository(
         ) {
           return null;
         }
+        await deleteAdvancedTimingForSet(
+          transaction,
+          input.sessionId,
+          input.setId,
+        );
         const next = await nextWorkingSet(
           transaction,
           input.sessionId,
@@ -1977,6 +3424,12 @@ export function createWorkoutRepository(
           return { kind: "conflict" as const, code: "complete_set_conflict" };
         }
 
+        await deleteAdvancedTimingForSet(
+          transaction,
+          input.sessionId,
+          input.setId,
+        );
+
         const exercises = await transaction.queryAll<ExerciseRow>(
           `SELECT id, exercise_id, ordinal, exercise_name, metric_profile,
                   default_rest_seconds, status, revision
@@ -1996,6 +3449,7 @@ export function createWorkoutRepository(
           transaction,
           set,
           next,
+          session.plan_id,
         );
         const observation = observationColumns(input.observation);
         const setUpdate = await transaction.execute(
@@ -2121,7 +3575,18 @@ export function createWorkoutRepository(
     },
 
     async reviseCompletedSet(input) {
-      const result = await kernel.write(async (transaction) => {
+      const result = await kernel.write(async (transaction): Promise<
+        | Readonly<{ kind: "committed" }>
+        | Readonly<{ kind: "replay" }>
+        | null
+      > => {
+        const [receipt] = await transaction.queryAll<CompletedSetCorrectionReceiptRow>(
+          `SELECT request_sha256, session_id, set_id, expected_session_revision,
+                  expected_set_revision, result_session_revision, result_set_revision
+           FROM workout_completed_set_correction_receipts
+           WHERE request_id = ?`,
+          [input.correctionIdempotencyKey],
+        );
         const rows = await completionRows(
           transaction,
           input.sessionId,
@@ -2131,6 +3596,15 @@ export function createWorkoutRepository(
           return null;
         }
         const { session, set } = rows;
+        const requestSha256 = await correctionRequestHash(
+          input,
+          set.target_json,
+        );
+        if (receipt !== undefined) {
+          return correctionReceiptMatches(receipt, input, requestSha256)
+            ? { kind: "replay" }
+            : null;
+        }
         const identity: MetricIdentity = {
           profile: set.exercise_metric_profile,
           contractVersion: set.exercise_metric_contract_version ?? 1,
@@ -2183,12 +3657,57 @@ export function createWorkoutRepository(
         if (sessionUpdate.changes !== 1) {
           throw new Error("revise_completed_set_session_update_failed");
         }
-        return loadPlannedWorkout(transaction, input.sessionId);
+        await transaction.execute(
+          `INSERT INTO history_audit_events
+            (id, session_id, effective_revision, event_type, field_identity,
+             before_json, after_json, occurred_at_ms)
+           VALUES (?, ?, ?, 'correction', ?, ?, ?, ?)`,
+          [
+            `completed-set-correction:${input.correctionIdempotencyKey}`,
+            input.sessionId,
+            input.expectedSessionRevision + 1,
+            `session_sets:${input.setId}`,
+            JSON.stringify({
+              setId: input.setId,
+              metricIdentity: identity,
+              targetJson: set.target_json,
+              observationJson: set.observed_json,
+              revision: input.expectedSetRevision,
+            }),
+            JSON.stringify({
+              setId: input.setId,
+              metricIdentity: identity,
+              targetJson: set.target_json,
+              observationJson: observation.json,
+              revision: input.expectedSetRevision + 1,
+            }),
+            input.revisedAtMs,
+          ],
+        );
+        await transaction.execute(
+          `INSERT INTO workout_completed_set_correction_receipts
+            (request_id, request_sha256, session_id, set_id,
+             expected_session_revision, expected_set_revision,
+             result_session_revision, result_set_revision, committed_at_ms)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            input.correctionIdempotencyKey,
+            requestSha256,
+            input.sessionId,
+            input.setId,
+            input.expectedSessionRevision,
+            input.expectedSetRevision,
+            input.expectedSessionRevision + 1,
+            input.expectedSetRevision + 1,
+            input.revisedAtMs,
+          ],
+        );
+        return { kind: "committed" };
       });
       if (result === null) {
         throw new WorkoutCommandConflictError("revise_completed_set_conflict");
       }
-      return result;
+      return loadPlannedWorkout(kernel, input.sessionId);
     },
 
     async undoCompletedSet(input) {

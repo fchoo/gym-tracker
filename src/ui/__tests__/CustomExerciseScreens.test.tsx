@@ -159,6 +159,7 @@ describe("custom exercise ordinary create and custom copy origins", () => {
       origin: {
         kind: "custom_copy",
         sourceExerciseId: "builtin-squat",
+        sourceExerciseRevision: 1,
         sourceName: "Barbell Back Squat",
         draft: {
           name: "Barbell Back Squat Copy",
@@ -213,9 +214,9 @@ describe("custom exercise ordinary create and custom copy origins", () => {
     expect(screen.getByTestId("exercise-editor-primary-muscles"))
       .toBeOnTheScreen();
     expect(screen.getByTestId("exercise-editor-equipment")).toBeOnTheScreen();
-    expect(screen.getByTestId("exercise-editor-save")).toBeOnTheScreen();
+    expect(screen.getByTestId("exercise-editor-save-create")).toBeOnTheScreen();
     expect(screen.getByTestId("adaptive-dock")).toContainElement(
-      screen.getByTestId("exercise-editor-save"),
+      screen.getByTestId("exercise-editor-save-create"),
     );
     for (const option of metricOptions) {
       expect(option).toHaveProp(
@@ -446,6 +447,8 @@ function detailSnapshot(
     primaryMuscles: ["core"],
     secondaryMuscles: ["shoulders"],
     equipment: ["bodyweight"],
+    instructions: [],
+    instructionSource: null,
     metricIdentity: {
       profile: "timed_hold",
       contractVersion: 1,
@@ -557,6 +560,17 @@ describe("exercise detail authority and lifecycle", () => {
         attribution:
           "Copyright (c) 2026 Kinetic.place with long attribution that remains readable.",
       },
+      instructions: [
+        "Set the bar at upper-chest height and brace before lifting.",
+        "Press overhead with control, then return to the start.",
+      ],
+      instructionSource: {
+        namespace: "kinetic-place.exercises-db",
+        revision: "1783421f145e546fa168c591a0e4d11cae6f23df",
+        upstreamId: "built-in-source",
+        license: "MIT",
+        attribution: "Copyright (c) 2026 Kinetic.place",
+      },
       references: [],
     });
     const { props } = await renderDetail(builtIn);
@@ -570,8 +584,12 @@ describe("exercise detail authority and lifecycle", () => {
     expect(screen.getByText(/1783421f145e546fa168c591a0e4d11cae6f23df/u))
       .toBeOnTheScreen();
     expect(screen.getByText("MIT")).toBeOnTheScreen();
-    expect(screen.getByText(/Copyright \(c\) 2026 Kinetic\.place/u))
+    expect(screen.getAllByText(/Copyright \(c\) 2026 Kinetic\.place/u).length)
+      .toBeGreaterThanOrEqual(2);
+    expect(screen.getByTestId("exercise-detail-instructions-card"))
       .toBeOnTheScreen();
+    expect(screen.getByText(/^1\. Set the bar/u)).toBeOnTheScreen();
+    expect(screen.getByText(/^2\. Press overhead/u)).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "View exercise history" }))
       .toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Create custom copy" }))
@@ -638,6 +656,18 @@ describe("exercise detail authority and lifecycle", () => {
     }));
     expect(await screen.findByRole("button", { name: "Archive exercise" }))
       .toBeOnTheScreen();
+  });
+
+  it("does not invent bundled instruction content for a user-owned exercise", async () => {
+    await renderDetail(detailSnapshot({
+      instructions: [],
+      instructionSource: null,
+    }));
+
+    expect(await screen.findByRole("button", { name: "Edit exercise" }))
+      .toBeOnTheScreen();
+    expect(screen.queryByTestId("exercise-detail-instructions-card"))
+      .not.toBeOnTheScreen();
   });
 
   it("runs favorite, hide, plan navigation, edit, migration, cancel, and action-error callbacks", async () => {

@@ -41,6 +41,16 @@ const phase2FtsCaseBlock = phase2FtsContractSource.match(
 const PHASE2_FTS_CASE_IDS = [
   ...phase2FtsCaseBlock.matchAll(/"([a-z0-9-]+)"/gu),
 ].map((match) => match[1]);
+const migrationsEffectsContractSource = readFileSync(
+  path.join(projectRoot, 'src/testing/contracts/migrationsEffects.contract.ts'),
+  'utf8',
+);
+const migrationsEffectsCaseBlock = migrationsEffectsContractSource.match(
+  /export const MIGRATIONS_EFFECTS_CONTRACT_CASES = \[([\s\S]*?)\] as const;/u,
+)?[1] ?? '';
+const MIGRATIONS_EFFECTS_CASE_IDS = [
+  ...migrationsEffectsCaseBlock.matchAll(/"([a-z0-9-]+)"/gu),
+].map((match) => match[1]);
 
 function fail(message) {
   failures.push(message);
@@ -142,6 +152,10 @@ const manifest = await readJson(manifestPath, 'build manifest');
 const expectedCaseIds = new Set(
   manifest.suite === 'phase2-fts'
     ? PHASE2_FTS_CASE_IDS
+    : manifest.suite === 'phase10'
+      || manifest.suite === 'phase11'
+      || manifest.suite === 'migrations-effects'
+      ? MIGRATIONS_EFFECTS_CASE_IDS
     : SQLITE_KERNEL_CASE_IDS,
 );
 const expectedCount = expectedCaseIds.size;
@@ -153,6 +167,17 @@ if (
   )
 ) {
   fail('PHASE2_FTS_CASE_IDS could not be derived from source.');
+}
+if (
+  (manifest.suite === 'phase10'
+    || manifest.suite === 'phase11'
+    || manifest.suite === 'migrations-effects')
+  && (
+    expectedCount < 1
+    || expectedCount !== MIGRATIONS_EFFECTS_CASE_IDS.length
+  )
+) {
+  fail('MIGRATIONS_EFFECTS_CONTRACT_CASES could not be derived from source.');
 }
 
 same('schema version', result.schema_version, 1);

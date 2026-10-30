@@ -19,10 +19,11 @@ import {
 import {
   LOGICAL_BACKUP_FORMAT_VERSION,
   LOGICAL_BACKUP_TABLES,
+  logicalBackupTablesForVersion,
   type LogicalBackupSnapshot,
 } from "../../src/domains/portability/backupContracts";
 import {
-  createLogicalBackupRepository,
+  collectLogicalBackupSnapshot,
 } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
 import {
   createLogicalRestoreRepository,
@@ -110,14 +111,15 @@ async function open(): Promise<SqliteKernel> {
 }
 
 async function snapshot(kernel: SqliteKernel): Promise<LogicalBackupSnapshot> {
-  return createLogicalBackupRepository(kernel).collect({
-    createdAtMs: 1, snapshotId: "restore-fixture",
-  });
+  return kernel.write((transaction) => collectLogicalBackupSnapshot(transaction, {
+    createdAtMs: 1,
+    snapshotId: "restore-fixture",
+  }));
 }
 
 function emptySnapshot(): LogicalBackupSnapshot {
   return {
-    version: LOGICAL_BACKUP_FORMAT_VERSION,
+    version: 1,
     snapshotId: "empty-restore-fixture",
     createdAtMs: 1,
     schemaVersion: 16,
@@ -237,8 +239,43 @@ async function seed(kernel: SqliteKernel, suffix: string): Promise<void> {
       [`occurrence-${suffix}`, `day-${suffix}`, `exercise-${suffix}`],
     );
     await transaction.execute(
+      "INSERT INTO owned_plan_day_exercises (id, plan_day_id, exercise_id, ordinal, between_exercise_rest_seconds, metric_profile, metric_contract_version, exercise_metric_generation, revision) VALUES (?, ?, ?, 0, 90, 'load_reps', 1, 1, 1)",
+      [`owned-occurrence-${suffix}`, `day-${suffix}`, `exercise-${suffix}`],
+    );
+    await transaction.execute(
+      "INSERT INTO plan_exercise_replacement_receipts (request_id, request_sha256, plan_id, source_occurrence_id, replacement_exercise_id, expected_plan_revision, result_plan_revision, result_json, committed_at_ms) VALUES (?, ?, ?, ?, ?, 1, 2, ?, 3)",
+      [
+        `replacement-${suffix}`,
+        "b".repeat(64),
+        `plan-${suffix}`,
+        `owned-occurrence-${suffix}`,
+        `exercise-${suffix}`,
+        JSON.stringify({ planId: `plan-${suffix}`, outcome: "committed" }),
+      ],
+    );
+    await transaction.execute(
       "INSERT INTO plan_working_set_targets (id, plan_day_exercise_id, ordinal, load_grams, min_reps, max_reps, target_json, unit_json, metric_profile, metric_contract_version, exercise_metric_generation, revision) VALUES (?, ?, 0, 10000, 8, 10, '{}', '{}', 'load_reps', 1, 1, 1)",
       [`target-${suffix}`, `occurrence-${suffix}`],
+    );
+    await transaction.execute(
+      "INSERT INTO workout_sessions (id, plan_id, plan_day_id, source, status, local_date, timezone, started_at_ms, completed_at_ms, revision) VALUES (?, ?, ?, 'scheduled_day', 'completed', '2026-09-16', 'Asia/Singapore', 1, 2, 1)",
+      [`session-${suffix}`, `plan-${suffix}`, `day-${suffix}`],
+    );
+    await transaction.execute(
+      "INSERT INTO session_exercises (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal, origin, display_ordinal, exercise_name, metric_profile, metric_contract_version, exercise_metric_generation, advanced_timing_default_json, default_rest_seconds, target_revision, status, revision) VALUES (?, ?, ?, ?, 0, 'planned', 0, ?, 'load_reps', 1, 1, '{\"version\":1,\"mode\":\"off\"}', 90, 1, 'completed', 1)",
+      [`session-exercise-${suffix}`, `session-${suffix}`, `occurrence-${suffix}`, `exercise-${suffix}`, `Exercise ${suffix}`],
+    );
+    await transaction.execute(
+      "INSERT INTO workout_session_exercise_rest_default_receipts (request_id, request_sha256, session_id, session_exercise_id, default_rest_seconds, expected_session_revision, expected_session_exercise_revision, result_session_revision, result_session_exercise_revision, result_json, committed_at_ms) VALUES (?, ?, ?, ?, 75, 1, 1, 2, 2, ?, 3)",
+      [`rest-default-${suffix}`, "a".repeat(64), `session-${suffix}`, `session-exercise-${suffix}`, JSON.stringify({ version: 1, sessionId: `session-${suffix}`, sessionExerciseId: `session-exercise-${suffix}`, defaultRestSeconds: 75 })],
+    );
+    await transaction.execute(
+      "INSERT INTO session_sets (id, session_exercise_id, set_kind, ordinal, source_plan_working_set_target_id, source_owned_plan_working_set_target_id, advanced_timing_override_json, advanced_timing_resolved_json, target_load_grams, target_min_reps, target_max_reps, target_json, unit_json, rule_type, rule_version, metric_profile, metric_contract_version, exercise_metric_generation, status, completed_at_ms, revision) VALUES (?, ?, 'working', 0, ?, NULL, NULL, '{\"version\":1,\"mode\":\"per_rep\",\"intervalMs\":1000,\"cueChannels\":\"haptic\"}', 10000, 8, 10, '{}', '{}', 'load_reps', 1, 'load_reps', 1, 1, 'completed', 2, 1)",
+      [`set-${suffix}`, `session-exercise-${suffix}`, `target-${suffix}`],
+    );
+    await transaction.execute(
+      "INSERT INTO session_advanced_timing_states (session_id, session_set_id, state_version, revision, status, mode, config_json, progress_json, started_at_ms, next_boundary_at_ms, remaining_ms, stopped_at_ms) VALUES (?, ?, 1, 2, 'stopped', 'per_rep', '{\"version\":1,\"mode\":\"per_rep\",\"intervalMs\":1000,\"cueChannels\":\"haptic\"}', '{\"nextRepetitionIndex\":3}', NULL, NULL, NULL, 2)",
+      [`session-${suffix}`, `set-${suffix}`],
     );
     await transaction.execute(
       "INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, '{}', 1, 1)",
@@ -260,6 +297,36 @@ describe("logical restore repository", () => {
     expect(restored).toEqual({ state: "rebuild_pending" });
 
     expect(await snapshot(kernel)).toEqual(archive);
+    await expect(kernel.queryAll(
+      "SELECT session_id, session_set_id, revision, status, mode, config_json, progress_json FROM session_advanced_timing_states",
+    )).resolves.toEqual([{
+      session_id: "session-archive",
+      session_set_id: "set-archive",
+      revision: 2,
+      status: "stopped",
+      mode: "per_rep",
+      config_json: '{"version":1,"mode":"per_rep","intervalMs":1000,"cueChannels":"haptic"}',
+      progress_json: '{"nextRepetitionIndex":3}',
+    }]);
+    await expect(kernel.queryAll(
+      "SELECT request_id, request_sha256, session_id, session_exercise_id, default_rest_seconds, result_json FROM workout_session_exercise_rest_default_receipts",
+    )).resolves.toEqual([{
+      request_id: "rest-default-archive",
+      request_sha256: "a".repeat(64),
+      session_id: "session-archive",
+      session_exercise_id: "session-exercise-archive",
+      default_rest_seconds: 75,
+      result_json: JSON.stringify({ version: 1, sessionId: "session-archive", sessionExerciseId: "session-exercise-archive", defaultRestSeconds: 75 }),
+    }]);
+    await expect(kernel.queryAll(
+      "SELECT request_id, plan_id, source_occurrence_id, replacement_exercise_id, result_plan_revision FROM plan_exercise_replacement_receipts",
+    )).resolves.toEqual([{
+      request_id: "replacement-archive",
+      plan_id: "plan-archive",
+      source_occurrence_id: "owned-occurrence-archive",
+      replacement_exercise_id: "exercise-archive",
+      result_plan_revision: 2,
+    }]);
     await expect(kernel.queryAll("SELECT state, updated_at_ms FROM portability_restore_state"))
       .resolves.toEqual([{ state: "rebuild_pending", updated_at_ms: 99 }]);
     await expect(kernel.queryAll("PRAGMA foreign_keys"))
@@ -372,12 +439,47 @@ describe("logical restore repository", () => {
       .resolves.toEqual([]);
   });
 
+  it("keeps legacy v1 taxonomy and source rows untouched when the snapshot omits those tables", async () => {
+    const kernel = await open();
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        "INSERT INTO taxonomy_terms (kind, slug, display_name) VALUES ('equipment', 'legacy-term', 'Legacy term')",
+      );
+      await transaction.execute(
+        `INSERT INTO exercises
+          (id, content_pack_id, origin, source_namespace, upstream_id, name,
+           metric_profile, metric_contract_version, exercise_metric_generation,
+           equipment, default_rest_seconds, revision)
+         VALUES ('legacy-custom', NULL, 'custom', NULL, NULL, 'Legacy custom',
+                 'load_reps', 1, 1, 'Unspecified', 90, 1)`,
+      );
+    });
+    const legacy = {
+      ...emptySnapshot(),
+      tables: { app_settings: [] },
+      manifest: {
+        catalogReferenceCount: 0,
+        rowCounts: { app_settings: 0 },
+        totalRows: 0,
+      },
+    } as LogicalBackupSnapshot;
+
+    await expect(createLogicalRestoreRepository(kernel).restore(legacy))
+      .resolves.toEqual({ state: "rebuild_pending" });
+    await expect(kernel.queryAll(
+      "SELECT slug FROM taxonomy_terms WHERE slug = 'legacy-term'",
+    )).resolves.toEqual([{ slug: "legacy-term" }]);
+    await expect(kernel.queryAll(
+      "SELECT id FROM exercises WHERE id = 'legacy-custom'",
+    )).resolves.toEqual([{ id: "legacy-custom" }]);
+  });
+
   it("rolls back canonical facts and schema after every named transactional fault stage", async () => {
     const stages: readonly LogicalRestoreFaultStage[] = [
       "captured_current_ownership",
       ...LOGICAL_RESTORE_DELETE_TRIGGER_NAMES.map((name) => `trigger_drop:${name}` as const),
-      ...LOGICAL_BACKUP_TABLES.map((table) => `delete:${table}` as LogicalRestoreFaultStage),
-      ...LOGICAL_BACKUP_TABLES.map((table) => `insert:${table}` as LogicalRestoreFaultStage),
+      ...logicalBackupTablesForVersion(LOGICAL_BACKUP_FORMAT_VERSION).map((table) => `delete:${table}` as LogicalRestoreFaultStage),
+      ...logicalBackupTablesForVersion(LOGICAL_BACKUP_FORMAT_VERSION).map((table) => `insert:${table}` as LogicalRestoreFaultStage),
       ...LOGICAL_RESTORE_DELETE_TRIGGER_NAMES.map((name) => `trigger_recreate:${name}` as const),
       "verified",
       "state_updated",
@@ -398,7 +500,19 @@ describe("logical restore repository", () => {
 
   it("keeps the complete logical table registry under restore coverage", () => {
     expect(LOGICAL_BACKUP_TABLES).toContain("history_audit_events");
-    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(1);
+    expect(LOGICAL_BACKUP_TABLES).toContain("session_advanced_timing_states");
+    expect(LOGICAL_BACKUP_TABLES).toContain("bodyweight_entries");
+    expect(LOGICAL_BACKUP_TABLES).toContain("bodyweight_entry_events");
+    expect(LOGICAL_BACKUP_TABLES).toContain("bodyweight_command_receipts");
+    expect(LOGICAL_BACKUP_TABLES).toContain("progression_recommendation_decision_receipts");
+    expect(LOGICAL_BACKUP_TABLES).toContain("owned_progression_recommendation_decision_receipts");
+    expect(LOGICAL_BACKUP_TABLES).toContain("custom_exercise_mutation_receipts");
+    expect(LOGICAL_BACKUP_TABLES).toContain("workout_session_exercise_rest_default_receipts");
+    expect(LOGICAL_BACKUP_TABLES).toContain("plan_exercise_replacement_receipts");
+    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(11);
+    expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).toContain("portable_owner_identity_adoption_only");
+    expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).toContain("workout_session_exercise_rest_default_receipts_immutable_delete");
+    expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).toContain("plan_exercise_replacement_receipts_immutable_delete");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("starter_plan_sources_immutable_delete");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("session_sets_target_graph_insert");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("progression_recommendations_actionable_evidence_insert");

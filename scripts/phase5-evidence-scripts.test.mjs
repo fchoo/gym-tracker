@@ -1687,7 +1687,7 @@ test("production Android contract validates multiline backup and D2D sections", 
   ].join("\n");
   const values = {
     gradle: 'applicationId "com.fchoo.gymtracker"',
-    gradleProperties: "reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64",
+    gradleProperties: "reactNativeArchitectures=arm64-v8a",
     manifest: '<application android:fullBackupContent="@xml/backup_rules" android:dataExtractionRules="@xml/data_extraction_rules"><data android:scheme="gymtracker" /></application>',
     strings: '<string name="app_name">Gym Tracker</string>',
     backup: `<full-backup-content>\n${exclusions}\n</full-backup-content>`,
@@ -1697,9 +1697,11 @@ test("production Android contract validates multiline backup and D2D sections", 
   assert.match(validateGeneratedProductionAndroidSources({
     ...values, extraction: values.extraction.replace(exclusions, ""),
   }).join(" "), /cloud-backup.*omit/iu);
-  assert.match(validateGeneratedProductionAndroidSources({
-    ...values, gradleProperties: "reactNativeArchitectures=x86_64",
-  }).join(" "), /architectures.*full|full.*architectures/iu);
+  for (const architectures of ["x86_64", "armeabi-v7a,arm64-v8a,x86,x86_64", ""]) {
+    assert.match(validateGeneratedProductionAndroidSources({
+      ...values, gradleProperties: `reactNativeArchitectures=${architectures}`,
+    }).join(" "), /architectures.*ARM64/iu);
+  }
 });
 
 test("Phase 5 benchmark resolves an explicit launcher and parses Android timing", async () => {

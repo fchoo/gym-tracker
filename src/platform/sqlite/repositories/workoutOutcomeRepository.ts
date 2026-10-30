@@ -31,6 +31,14 @@ import {
   type RecordExerciseEffortInput,
 } from "../../../domains/progression";
 import {
+  canonicalRecommendationDecisionRequest,
+  validateRecommendationDecisionInput,
+  type RecommendationDecision,
+} from "../../../domains/progression/recommendationCommands";
+import {
+  runtimeSha256,
+} from "../../crypto/runtimeSha256";
+import {
   nextWorkoutStatus,
   sessionIsResumable,
   sessionStatusLabel,
@@ -39,6 +47,7 @@ import {
   type FinishCompletedInput,
   type FinishOutcomeResult,
   type FinishPartialInput,
+  type FinishPartialResult,
   type ResumePartialWorkoutInput,
   type SaveZeroSetInput,
   type SessionDetail,
@@ -76,6 +85,7 @@ type SessionRow = Readonly<{
   started_at_ms: number;
   completed_at_ms: number | null;
   revision: number;
+  modified_from_plan: number;
   plan_name: string | null;
   day_name: string | null;
   effective_revision: number | null;
@@ -182,6 +192,24 @@ type RecommendationTargetIdentityRow = RecommendationTargetScopeRow & Readonly<{
 type RecommendationSourceSessionRow = Readonly<{
   revision: number;
   status: WorkoutSessionStatus;
+}>;
+
+type RecommendationDecisionReceiptRow = Readonly<{
+  request_id: string;
+  request_sha256: string;
+  recommendation_id: string;
+  decision: RecommendationDecision;
+  result_json: string;
+}>;
+
+type CompleteRecommendationDecisionInput = Readonly<{
+  recommendationId: string;
+  decidedAtMs: number;
+  requestId: string;
+  decision: RecommendationDecision;
+  expectedEvidenceVersion: number;
+  expectedSourceRevision: number;
+  expectedTargetRevision: number;
 }>;
 
 async function supportsOwnedRecommendations(
@@ -389,6 +417,172 @@ async function pendingRecommendation(
   return owned === undefined ? null : { ...owned, target_graph: "owned" };
 }
 
+function receiptTable(graph: RecommendationRow["target_graph"]): string {
+  return graph === "owned"
+    ? "owned_progression_recommendation_decision_receipts"
+    : "progression_recommendation_decision_receipts";
+}
+
+async function supportsRecommendationDecisionReceipts(
+  executor: QueryExecutor,
+): Promise<boolean> {
+  const [row] = await executor.queryAll<{ count: number }>(
+    `SELECT COUNT(*) AS count FROM sqlite_master
+      WHERE type = 'table' AND name IN (
+        'progression_recommendation_decision_receipts',
+        'owned_progression_recommendation_decision_receipts'
+      )`,
+  );
+  return row?.count === 2;
+}
+
+async function readRecommendationDecisionReceipt(
+  executor: QueryExecutor,
+  requestId: string,
+): Promise<RecommendationDecisionReceiptRow | null> {
+  const [legacy] = await executor.queryAll<RecommendationDecisionReceiptRow>(
+    `SELECT request_id, request_sha256, recommendation_id, decision, result_json
+     FROM progression_recommendation_decision_receipts
+     WHERE request_id = ?`,
+    [requestId],
+  );
+  const [owned] = await executor.queryAll<RecommendationDecisionReceiptRow>(
+    `SELECT request_id, request_sha256, recommendation_id, decision, result_json
+     FROM owned_progression_recommendation_decision_receipts
+     WHERE request_id = ?`,
+    [requestId],
+  );
+  if (legacy !== undefined && owned !== undefined) {
+    throw new WorkoutOutcomeConflictError("recommendation_request_identity_conflict");
+  }
+  return legacy ?? owned ?? null;
+}
+
+async function readRecommendationDecisionReceiptByRecommendation(
+  executor: QueryExecutor,
+  recommendationId: string,
+): Promise<RecommendationDecisionReceiptRow | null> {
+  const legacy = await executor.queryAll<RecommendationDecisionReceiptRow>(
+    `SELECT request_id, request_sha256, recommendation_id, decision, result_json
+       FROM progression_recommendation_decision_receipts
+      WHERE recommendation_id = ?
+      ORDER BY request_id`,
+    [recommendationId],
+  );
+  const owned = await executor.queryAll<RecommendationDecisionReceiptRow>(
+    `SELECT request_id, request_sha256, recommendation_id, decision, result_json
+       FROM owned_progression_recommendation_decision_receipts
+      WHERE recommendation_id = ?
+      ORDER BY request_id`,
+    [recommendationId],
+  );
+  const receipts = [...legacy, ...owned];
+  if (receipts.length > 1) {
+    throw new WorkoutOutcomeConflictError("recommendation_request_identity_conflict");
+  }
+  return receipts[0] ?? null;
+}
+
+function resultFromReceipt(value: string): RecommendationDecisionResult {
+  const parsed = JSON.parse(value) as Partial<RecommendationDecisionResult>;
+  if (
+    typeof parsed.recommendationId !== "string"
+    || (parsed.status !== "accepted" && parsed.status !== "rejected" && parsed.status !== "superseded")
+  ) {
+    throw new WorkoutOutcomeConflictError("recommendation_receipt_invalid");
+  }
+  return {
+    recommendationId: parsed.recommendationId,
+    status: "already_committed",
+  };
+}
+
+function requestIdFor(input: CompleteRecommendationDecisionInput): string {
+  return input.requestId;
+}
+
+async function recommendationIdFor(
+  sessionExerciseId: string,
+  sessionRevision: number,
+): Promise<string> {
+  const digest = await runtimeSha256(JSON.stringify({
+    sessionExerciseId,
+    sessionRevision,
+  }));
+  return `recommendation_${digest}`;
+}
+
+async function requestHashFor(
+  input: CompleteRecommendationDecisionInput,
+): Promise<string> {
+  return runtimeSha256(canonicalRecommendationDecisionRequest({
+    recommendationId: input.recommendationId,
+    requestId: requestIdFor(input),
+    decision: input.decision,
+    expectedEvidenceVersion: input.expectedEvidenceVersion,
+    expectedSourceRevision: input.expectedSourceRevision,
+    expectedTargetRevision: input.expectedTargetRevision,
+    decidedAtMs: input.decidedAtMs,
+  }));
+}
+
+async function completeDecisionInput(
+  input: RecommendationDecisionInput,
+  decision: RecommendationDecision,
+  recommendation: RecommendationRow,
+): Promise<CompleteRecommendationDecisionInput> {
+  const requestId = input.requestId ?? `recommendation_decision_${await runtimeSha256(JSON.stringify({
+    decision,
+    evidenceVersion: recommendation.evidence_version,
+    recommendationId: recommendation.id,
+    sourceRevision: recommendation.source_revision,
+    targetRevision: recommendation.target_revision,
+  }))}`;
+  const completed = Object.freeze({
+    recommendationId: input.recommendationId,
+    decidedAtMs: input.decidedAtMs,
+    requestId,
+    decision,
+    expectedEvidenceVersion: input.expectedEvidenceVersion ?? recommendation.evidence_version,
+    expectedSourceRevision: input.expectedSourceRevision ?? recommendation.source_revision,
+    expectedTargetRevision: input.expectedTargetRevision ?? recommendation.target_revision,
+  });
+  validateRecommendationDecisionInput(completed, decision);
+  return completed;
+}
+
+function requestFencesMatch(
+  input: CompleteRecommendationDecisionInput,
+  recommendation: RecommendationRow,
+): boolean {
+  return input.expectedEvidenceVersion === recommendation.evidence_version
+    && input.expectedSourceRevision === recommendation.source_revision
+    && input.expectedTargetRevision === recommendation.target_revision;
+}
+
+async function persistRecommendationDecisionReceipt(
+  transaction: SqliteTransactionExecutor,
+  recommendation: RecommendationRow,
+  input: CompleteRecommendationDecisionInput,
+  requestSha256: string,
+  result: RecommendationDecisionResult,
+): Promise<RecommendationDecisionResult> {
+  await transaction.execute(
+    `INSERT INTO ${receiptTable(recommendation.target_graph)}
+      (request_id, request_sha256, recommendation_id, decision, result_json, committed_at_ms)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      requestIdFor(input),
+      requestSha256,
+      recommendation.id,
+      input.decision,
+      JSON.stringify(result),
+      input.decidedAtMs,
+    ],
+  );
+  return result;
+}
+
 function percentage(completed: number, planned: number): SessionProgress {
   return {
     completed,
@@ -546,6 +740,59 @@ function parseSetObservation(
   }
 }
 
+async function loadPreviousObservation(
+  executor: QueryExecutor,
+  session: Pick<SessionRow, "id" | "started_at_ms">,
+  exerciseId: string,
+  identity: MetricIdentity,
+  ordinal: number,
+): Promise<MetricObservation | null> {
+  const [row] = await executor.queryAll<{ observed_json: string }>(
+    `SELECT set_row.observed_json
+       FROM workout_sessions prior_session
+       JOIN session_exercises prior_exercise
+         ON prior_exercise.session_id = prior_session.id
+       JOIN session_sets set_row
+         ON set_row.session_exercise_id = prior_exercise.id
+      WHERE prior_session.id <> ?
+        AND prior_session.status IN ('completed', 'partial')
+        AND (COALESCE(prior_session.completed_at_ms, prior_session.started_at_ms) < ?
+          OR (COALESCE(prior_session.completed_at_ms, prior_session.started_at_ms) = ?
+            AND prior_session.id < ?))
+        AND prior_exercise.exercise_id = ?
+        AND prior_exercise.metric_profile = ?
+        AND prior_exercise.metric_contract_version = ?
+        AND prior_exercise.exercise_metric_generation = ?
+        AND set_row.metric_profile = prior_exercise.metric_profile
+        AND set_row.metric_contract_version = prior_exercise.metric_contract_version
+        AND set_row.exercise_metric_generation = prior_exercise.exercise_metric_generation
+        AND set_row.set_kind = 'working'
+        AND set_row.status = 'completed'
+        AND set_row.observed_json IS NOT NULL
+      ORDER BY COALESCE(prior_session.completed_at_ms, prior_session.started_at_ms) DESC,
+               CASE WHEN set_row.ordinal = ? THEN 0 ELSE 1 END,
+               set_row.ordinal, set_row.id
+      LIMIT 1`,
+    [
+      session.id,
+      session.started_at_ms,
+      session.started_at_ms,
+      session.id,
+      exerciseId,
+      identity.profile,
+      identity.contractVersion,
+      identity.exerciseMetricGeneration,
+      ordinal,
+    ],
+  );
+  if (row === undefined) return null;
+  try {
+    return parseMetricObservationJson(identity, row.observed_json);
+  } catch {
+    return null;
+  }
+}
+
 function formatDurationMs(durationMs: number): string {
   return `${durationMs / 1_000} sec`;
 }
@@ -618,12 +865,9 @@ function topWorkingSet(
     target,
     candidates,
   });
-  if (best === null) {
-    return null;
-  }
   return setValue(
-    completed.find(({ id }) => id === best.setId)!,
-    best.observation,
+    completed.find(({ id }) => id === best!.setId)!,
+    best!.observation,
   );
 }
 
@@ -652,6 +896,7 @@ async function sessionRows(
     `SELECT ws.id, ws.source, ws.status, ws.plan_id, ws.plan_day_id,
             ws.local_date, ws.timezone,
             ws.started_at_ms, ws.completed_at_ms, ws.revision,
+            ws.modified_from_plan,
             p.name AS plan_name, pd.name AS day_name,
             overlay.effective_revision, overlay.lifecycle, overlay.snapshot_json
      FROM workout_sessions ws
@@ -1028,22 +1273,8 @@ function nonLoadOutcome(
     currentTarget: input.target,
     sourceFacts: input.sourceFacts,
   });
-  if (
-    evaluation.review.actionable
-    || evaluation.proposedTarget !== null
-    || (evaluation.policy.kind !== "manual_hold"
-      && evaluation.policy.kind !== "plan_authored")
-  ) {
-    return null;
-  }
-  if (
-    evaluation.policy.kind !== "manual_hold"
-    && evaluation.policy.kind !== "plan_authored"
-  ) {
-    return null;
-  }
   const policyKind: SessionNonLoadOutcome["rule"]["kind"] =
-    evaluation.policy.kind === "manual_hold" ? "manual_hold" : "plan_authored";
+    input.policy.policy_kind;
   return Object.freeze({
     version: 1,
     exerciseId: input.exerciseId,
@@ -1125,8 +1356,8 @@ function policyMatchesRawSet(
   const rowIdentity = rawMetricIdentity(row);
   return row.rule_type === expectedRawRuleType(policy)
     && row.rule_version === policy.policy_version
-    && sameMetricIdentity(identity, rowIdentity ?? identity)
     && rowIdentity !== null
+    && sameMetricIdentity(identity, rowIdentity)
     && policy.metric_profile === identity.profile
     && policy.metric_contract_version === identity.contractVersion
     && policy.exercise_metric_generation === identity.exerciseMetricGeneration;
@@ -1252,7 +1483,10 @@ async function rawNonLoadOutcomes(
     const exerciseSets = sets.filter(
       ({ session_exercise_id }) => session_exercise_id === exercise.id,
     );
-    const completed = completeRawWorkingSets(exerciseSets, identity);
+    const completed = completeRawWorkingSets(
+      exerciseSets.filter((set) => targetReference(set) !== null),
+      identity,
+    );
     if (completed === null) {
       continue;
     }
@@ -1429,29 +1663,27 @@ function topEffectiveWorkingSet(
     return null;
   }
   const target = parseMetricTarget(identity, completed[0]!.target);
-  const best = selectBestMetricCandidate({ identity, target, candidates });
-  if (best === null) {
-    return null;
-  }
+  const best = selectBestMetricCandidate({ identity, target, candidates })!;
   const set = completed.find(({ id }) => id === best.setId)!;
   return setValue(set, best.observation);
 }
 
-function detailFromEffectiveOverlay(
+async function detailFromEffectiveOverlay(
+  executor: QueryExecutor,
   session: SessionRow,
   snapshot: HistoryCorrectionSnapshot,
   recommendations: readonly SessionRecommendation[],
   nonLoadOutcomes: readonly SessionNonLoadOutcome[],
-): SessionDetail {
+): Promise<SessionDetail> {
   const effectiveRevision = session.effective_revision;
   if (effectiveRevision === null) {
     throw new WorkoutOutcomeConflictError(
       "session_detail_effective_revision_missing",
     );
   }
-  const exercises: SessionExerciseDetail[] = snapshot.exercises.map((exercise) => {
+  const exercises: SessionExerciseDetail[] = await Promise.all(snapshot.exercises.map(async (exercise) => {
     const identity = parseMetricIdentity(exercise.metricIdentity);
-    const setDetails = exercise.sets.map((set): SessionSetDetail => {
+    const setDetails = await Promise.all(exercise.sets.map(async (set): Promise<SessionSetDetail> => {
       const target = parseMetricTarget(identity, set.target);
       const observation = set.observation === undefined
         ? null
@@ -1464,9 +1696,18 @@ function detailFromEffectiveOverlay(
         metricIdentity: identity,
         target,
         observation,
+        previousObservation: set.kind === "working"
+          ? await loadPreviousObservation(
+              executor,
+              session,
+              exercise.exerciseId,
+              identity,
+              set.ordinal,
+            )
+          : null,
         value: setValue(set, observation),
       };
-    });
+    }));
     const workingSets = setDetails.filter(({ kind }) => kind === "working");
     const totalWorkingReps = identity.profile === "load_reps"
       ? workingSets
@@ -1474,7 +1715,7 @@ function detailFromEffectiveOverlay(
             status === "completed" && observation?.profile === "load_reps",
           )
           .reduce((total, { observation }) =>
-            total + (observation?.profile === "load_reps" ? observation.reps : 0), 0)
+            total + (observation as Extract<MetricObservation, { profile: "load_reps" }>).reps, 0)
       : null;
     return {
       id: exercise.id,
@@ -1491,7 +1732,7 @@ function detailFromEffectiveOverlay(
       warmups: setDetails.filter(({ kind }) => kind === "warmup"),
       workingSets,
     };
-  });
+  }));
   const workingSets = snapshot.exercises.flatMap(({ sets }) => sets).filter(
     ({ kind }) => kind === "working",
   );
@@ -1509,6 +1750,7 @@ function detailFromEffectiveOverlay(
     endedAtMs,
     durationMs: endedAtMs === null ? null : endedAtMs - snapshot.session.startedAtMs,
     revision: effectiveRevision,
+    modifiedFromPlan: session.modified_from_plan === 1,
     corrected: true,
     ownerNote: snapshot.session.ownerNote,
     exerciseProgress: percentage(
@@ -1646,6 +1888,7 @@ async function loadSessionDetail(
   const overlay = effectiveOverlaySnapshot(session);
   if (session.lifecycle === "voided" && session.status !== "in_progress") {
     return detailFromEffectiveOverlay(
+      executor,
       session,
       overlay ?? {
         version: 1,
@@ -1671,6 +1914,7 @@ async function loadSessionDetail(
   }
   if (overlay !== null && session.lifecycle !== "voided") {
     return detailFromEffectiveOverlay(
+      executor,
       session,
       overlay,
       recommendations,
@@ -1683,12 +1927,12 @@ async function loadSessionDetail(
     exercises,
     sets,
   );
-  const exerciseDetails: SessionExerciseDetail[] = exercises.map((exercise) => {
+  const exerciseDetails: SessionExerciseDetail[] = await Promise.all(exercises.map(async (exercise) => {
     const identity = exerciseIdentity(exercise);
     const exerciseSets = sets.filter(
       ({ session_exercise_id: exerciseId }) => exerciseId === exercise.id,
     );
-    const toDetail = (row: SetRow): SessionSetDetail => {
+    const toDetail = async (row: SetRow): Promise<SessionSetDetail> => {
       const rowIdentity = setIdentity(row, exercise);
       const target = parseSetTarget(row, rowIdentity);
       const observation = parseSetObservation(row, rowIdentity);
@@ -1700,6 +1944,15 @@ async function loadSessionDetail(
         metricIdentity: rowIdentity,
         target,
         observation,
+        previousObservation: row.set_kind === "working"
+          ? await loadPreviousObservation(
+              executor,
+              session,
+              exercise.exercise_id,
+              rowIdentity,
+              row.ordinal,
+            )
+          : null,
         value: setValue(row, observation),
       };
     };
@@ -1727,14 +1980,14 @@ async function loadSessionDetail(
         exerciseSets,
       ),
       totalWorkingReps,
-      warmups: exerciseSets
+      warmups: await Promise.all(exerciseSets
         .filter(({ set_kind }) => set_kind === "warmup")
-        .map(toDetail),
-      workingSets: exerciseSets
+        .map(toDetail)),
+      workingSets: await Promise.all(exerciseSets
         .filter(({ set_kind }) => set_kind === "working")
-        .map(toDetail),
+        .map(toDetail)),
     };
-  });
+  }));
   const workingSets = sets.filter(({ set_kind }) => set_kind === "working");
   const endedAtMs = session.completed_at_ms;
   return {
@@ -1750,6 +2003,7 @@ async function loadSessionDetail(
     endedAtMs,
     durationMs: endedAtMs === null ? null : endedAtMs - session.started_at_ms,
     revision: session.revision,
+    modifiedFromPlan: session.modified_from_plan === 1,
     exerciseProgress: percentage(
       exercises.filter(({ status }) => status === "completed").length,
       exercises.length,
@@ -1765,6 +2019,29 @@ async function loadSessionDetail(
     resumable: sessionIsResumable(session.status),
     readOnly: true,
   };
+}
+
+async function loadCalendarSessionDetail(
+  executor: QueryExecutor,
+  sessionId: string,
+): Promise<SessionDetail | null> {
+  const [history] = await executor.queryAll<{
+    status: string;
+    lifecycle: string;
+  }>(
+    `SELECT session.status, COALESCE(overlay.lifecycle, 'active') AS lifecycle
+       FROM workout_sessions session
+       LEFT JOIN history_session_overlays overlay ON overlay.session_id = session.id
+      WHERE session.id = ?`,
+    [sessionId],
+  );
+  if (history === undefined
+    || history.lifecycle !== "active"
+    || (history.status !== "completed" && history.status !== "partial")) {
+    return null;
+  }
+  const detail = await loadSessionDetail(executor, sessionId);
+  return detail.status === "completed" || detail.status === "partial" ? detail : null;
 }
 
 async function idleRest(
@@ -2111,21 +2388,199 @@ async function copiedLegacyPolicy(
   };
 }
 
+/**
+ * Source-owned behavioral seams used by the whole-file integrity contract.
+ * These are implementation details, not an application mutation authority.
+ */
+export const workoutOutcomeRepositoryInternalContract = Object.freeze({
+  completeDecisionInput,
+  completeRawWorkingSets,
+  copiedLegacyPolicy,
+  copiedOwnedPolicy,
+  detailFromEffectiveOverlay,
+  effectiveNonLoadOutcomes,
+  effectiveOverlaySnapshot,
+  enqueueFinishEffects,
+  exerciseIdentity,
+  expectedRawRuleType,
+  finish,
+  formatDurationMs,
+  formatKilograms,
+  historySubjectSnapshot,
+  historySubjectSnapshotFromCorrectionSnapshot,
+  idleRest,
+  integerArray,
+  isCopiedAutomaticLoadRepsPolicy,
+  legacyTarget,
+  lifecycleAuditId,
+  loadPreviousObservation,
+  loadSessionDetail,
+  nonLoadOutcome,
+  nonLoadOutcomeFromCompletedSets,
+  parsePolicyRule,
+  parseSetObservation,
+  parseSetTarget,
+  parseTarget,
+  pendingRecommendation,
+  percentage,
+  persistRecommendationDecisionReceipt,
+  policyForRawSet,
+  policyForReference,
+  policyIdentityKey,
+  policyMatchesRawSet,
+  rawMetricIdentity,
+  rawNonLoadOutcomes,
+  reactivateHistoryOverlayAfterResume,
+  readRecommendationDecisionReceipt,
+  readRecommendationDecisionReceiptByRecommendation,
+  recommendationIdFor,
+  recommendationStatus,
+  recommendationsForSession,
+  recommendationTable,
+  recommendationTarget,
+  recommendationTargetColumn,
+  recommendationTargetScope,
+  requestFencesMatch,
+  requestHashFor,
+  resultFromReceipt,
+  sameMetricIdentity,
+  sameTarget,
+  sameTargetReference,
+  sessionRows,
+  setIdentity,
+  setValue,
+  snapshotTargetReference,
+  sourceHistoryCorrectionSnapshot,
+  sourceLabel,
+  sourceSnapshotAuditId,
+  supportsCompleteMetricIdentity,
+  supportsOwnedRecommendations,
+  supportsRecommendationDecisionReceipts,
+  targetReference,
+  targetTable,
+  terminalizationAuditId,
+  terminalizeVoidedHistoryOverlay,
+  topEffectiveWorkingSet,
+  topWorkingSet,
+  uniqueTargetReferences,
+  voidActiveHistoryOverlayForResume,
+});
+
 export function createWorkoutOutcomeRepository(
   kernel: SqliteKernel,
-): WorkoutOutcomeRepository & ProgressionRepository {
-  const repository: WorkoutOutcomeRepository & ProgressionRepository = {
+): WorkoutOutcomeRepository & ProgressionRepository & Readonly<{
+  getCalendarSessionDetail(sessionId: string): Promise<SessionDetail | null>;
+  finishPartial(input: FinishPartialInput): Promise<FinishPartialResult>;
+}> {
+  const repository: WorkoutOutcomeRepository & ProgressionRepository & Readonly<{
+    getCalendarSessionDetail(sessionId: string): Promise<SessionDetail | null>;
+    finishPartial(input: FinishPartialInput): Promise<FinishPartialResult>;
+  }> = {
     getSessionDetail: (sessionId) => loadSessionDetail(kernel, sessionId),
+    getSessionDetailAtRevision: async (sessionId, sourceRevision) => {
+      if (!Number.isSafeInteger(sourceRevision) || sourceRevision <= 0) {
+        throw new WorkoutOutcomeConflictError("workout_source_revision_invalid");
+      }
+      const load = async (executor: QueryExecutor) => {
+        const [source] = await executor.queryAll<{
+          effective_revision: number;
+          lifecycle: string;
+        }>(
+          `SELECT COALESCE(overlay.effective_revision, session.revision) AS effective_revision,
+                  CASE WHEN overlay.lifecycle IS NOT NULL THEN overlay.lifecycle
+                       WHEN session.status = 'voided' THEN 'voided'
+                       ELSE 'active' END AS lifecycle
+             FROM workout_sessions session
+             LEFT JOIN history_session_overlays overlay ON overlay.session_id = session.id
+            WHERE session.id = ?`,
+          [sessionId],
+        );
+        if (source === undefined) {
+          throw new WorkoutOutcomeConflictError("workout_session_not_found");
+        }
+        if (source.lifecycle !== "active") {
+          throw new WorkoutOutcomeConflictError("workout_source_removed");
+        }
+        if (source.effective_revision !== sourceRevision) {
+          throw new WorkoutOutcomeConflictError("workout_source_revision_mismatch");
+        }
+        const detail = await loadSessionDetail(executor, sessionId);
+        if (detail.revision !== sourceRevision) {
+          throw new WorkoutOutcomeConflictError("workout_source_revision_mismatch");
+        }
+        return detail;
+      };
+      return kernel.readSnapshot === undefined
+        ? load(kernel)
+        : kernel.readSnapshot((executor) => load(executor));
+    },
+    getCalendarSessionDetail: (sessionId) => kernel.readSnapshot === undefined
+      ? loadCalendarSessionDetail(kernel, sessionId)
+      : kernel.readSnapshot((transaction) => loadCalendarSessionDetail(transaction, sessionId)),
 
     finishCompleted: (input) =>
       kernel.write((transaction) =>
         finish(transaction, input, "finish_completed"),
       ),
 
-    finishPartial: (input: FinishPartialInput) =>
-      kernel.write((transaction) =>
-        finish(transaction, input, "finish_partial"),
-      ),
+    async finishPartial(input: FinishPartialInput): Promise<FinishPartialResult> {
+      const requestSha256 = await runtimeSha256(JSON.stringify({
+        operation: "finish_partial",
+        sessionId: input.sessionId,
+        expectedSessionRevision: input.expectedSessionRevision,
+        confirmation: input.confirmation,
+        endedAtMs: input.endedAtMs,
+      }));
+      const requestId = `finish-partial:${input.expectedSessionRevision}:${await runtimeSha256(input.sessionId)}`;
+      if (!/^[A-Za-z0-9:_-]{8,160}$/u.test(requestId)
+        || !/^[a-f0-9]{64}$/u.test(requestSha256)) {
+        throw new WorkoutOutcomeConflictError("finish_partial_receipt_input_invalid");
+      }
+      return kernel.write(async (transaction) => {
+        const [receipt] = await transaction.queryAll<Readonly<{
+          id: string;
+          workout_session_id: string;
+          request_sha256: string;
+        }>>(
+          `SELECT id, workout_session_id, request_sha256
+           FROM workout_receipts
+           WHERE id = ?`,
+          [requestId],
+        );
+        if (receipt !== undefined) {
+          if (receipt.workout_session_id !== input.sessionId
+            || receipt.request_sha256 !== requestSha256) {
+            throw new WorkoutOutcomeConflictError("finish_partial_receipt_identity_conflict");
+          }
+          const detail = await loadSessionDetail(transaction, input.sessionId);
+          if (detail.status !== "partial") {
+            throw new WorkoutOutcomeConflictError("finish_partial_receipt_state_invalid");
+          }
+          return Object.freeze({
+            outcome: "already_committed" as const,
+            receipt: Object.freeze({ requestId, requestSha256 }),
+            detail,
+            invalidationScopes: Object.freeze([
+              ["today"],
+              ["session-detail", input.sessionId],
+              ["workout-completion", input.sessionId],
+            ] as const),
+          });
+        }
+        const result = await finish(transaction, input, "finish_partial");
+        await transaction.execute(
+          `INSERT INTO workout_receipts
+            (id, workout_session_id, request_sha256, committed_at_ms)
+           VALUES (?, ?, ?, ?)`,
+          [requestId, input.sessionId, requestSha256, input.endedAtMs],
+        );
+        return Object.freeze({
+          outcome: "committed" as const,
+          receipt: Object.freeze({ requestId, requestSha256 }),
+          ...result,
+        });
+      });
+    },
 
     saveZeroSetWorkout: (input: SaveZeroSetInput) =>
       kernel.write((transaction) =>
@@ -2374,7 +2829,40 @@ export function createWorkoutOutcomeRepository(
     },
 
     async acceptRecommendation(input: RecommendationDecisionInput) {
+      const decision = "use_target" as const;
+      validateRecommendationDecisionInput(input, decision);
       return kernel.write(async (transaction) => {
+        const receiptSupport = await supportsRecommendationDecisionReceipts(transaction);
+        if (receiptSupport && input.requestId !== undefined) {
+          const requestId = input.requestId;
+          const receipt = await readRecommendationDecisionReceipt(transaction, requestId);
+          if (receipt !== null) {
+            const requestSha256 = await runtimeSha256(
+              canonicalRecommendationDecisionRequest({
+                recommendationId: input.recommendationId,
+                requestId,
+                decision,
+                expectedEvidenceVersion: input.expectedEvidenceVersion!,
+                expectedSourceRevision: input.expectedSourceRevision!,
+                expectedTargetRevision: input.expectedTargetRevision!,
+                decidedAtMs: input.decidedAtMs,
+              }),
+            );
+            if (receipt.request_sha256 !== requestSha256) {
+              throw new WorkoutOutcomeConflictError("recommendation_request_identity_conflict");
+            }
+            return resultFromReceipt(receipt.result_json);
+          }
+        }
+        const priorDecision = receiptSupport
+          ? await readRecommendationDecisionReceiptByRecommendation(transaction, input.recommendationId)
+          : null;
+        if (priorDecision !== null) {
+          if (priorDecision.decision !== decision) {
+            throw new WorkoutOutcomeConflictError("recommendation_request_identity_conflict");
+          }
+          return resultFromReceipt(priorDecision.result_json);
+        }
         const recommendation = await pendingRecommendation(
           transaction,
           input.recommendationId,
@@ -2384,6 +2872,17 @@ export function createWorkoutOutcomeRepository(
             "recommendation_decision_conflict",
           );
         }
+        const command = await completeDecisionInput(input, decision, recommendation);
+        const requestSha256 = await requestHashFor(command);
+        const commit = (result: RecommendationDecisionResult) => receiptSupport
+          ? persistRecommendationDecisionReceipt(
+            transaction,
+            recommendation,
+            command,
+            requestSha256,
+            result,
+          )
+          : Promise.resolve(result);
         const graph = recommendation.target_graph;
         const recommendationTableName = recommendationTable(graph);
         const targetScope = await recommendationTargetScope(
@@ -2399,12 +2898,14 @@ export function createWorkoutOutcomeRepository(
              WHERE id = ? AND status = 'pending'`,
             [input.decidedAtMs, input.recommendationId],
           );
-          return {
+          return commit({
             recommendationId: input.recommendationId,
             status: "superseded" as const,
-          };
+          });
         };
         if (
+          !requestFencesMatch(command, recommendation)
+          ||
           recommendation.evidence_version !== ACTIONABLE_RECOMMENDATION_EVIDENCE_VERSION
           || recommendation.rule_type !== "load_reps"
           || target === undefined
@@ -2483,12 +2984,9 @@ export function createWorkoutOutcomeRepository(
         ) {
           return supersede();
         }
-        const loadGrams = proposed.profile === "load_reps"
-          ? proposed.loadGrams
-          : null;
-        const targetReps = proposed.profile === "load_reps"
-          ? proposed.targetReps
-          : null;
+        const loadRepsProposed = proposed as Extract<MetricTarget, { profile: "load_reps" }>;
+        const loadGrams = loadRepsProposed.loadGrams;
+        const targetReps = loadRepsProposed.targetReps;
         if (
           !Number.isSafeInteger(loadGrams)
           || (loadGrams as number) < 0
@@ -2530,29 +3028,62 @@ export function createWorkoutOutcomeRepository(
             );
           }
         }
-        const decision = await transaction.execute(
+        const lifecycleUpdate = await transaction.execute(
           `UPDATE ${recommendationTableName}
            SET status = 'accepted', decided_at_ms = ?,
                target_revision = target_revision + 1
            WHERE id = ? AND status = 'pending'`,
           [input.decidedAtMs, input.recommendationId],
         );
-        if (decision.changes !== 1) {
+        if (lifecycleUpdate.changes !== 1) {
           throw new WorkoutOutcomeConflictError(
             "recommendation_decision_conflict",
           );
         }
-        return {
+        return commit({
           recommendationId: input.recommendationId,
           status: "accepted" as const,
-        };
+        });
       });
     },
 
     async keepCurrentTarget(
       input: RecommendationDecisionInput,
     ): Promise<RecommendationDecisionResult> {
+      const decision = "keep_current_target" as const;
+      validateRecommendationDecisionInput(input, decision);
       return kernel.write(async (transaction) => {
+        const receiptSupport = await supportsRecommendationDecisionReceipts(transaction);
+        if (receiptSupport && input.requestId !== undefined) {
+          const requestId = input.requestId;
+          const receipt = await readRecommendationDecisionReceipt(transaction, requestId);
+          if (receipt !== null) {
+            const requestSha256 = await runtimeSha256(
+              canonicalRecommendationDecisionRequest({
+                recommendationId: input.recommendationId,
+                requestId,
+                decision,
+                expectedEvidenceVersion: input.expectedEvidenceVersion!,
+                expectedSourceRevision: input.expectedSourceRevision!,
+                expectedTargetRevision: input.expectedTargetRevision!,
+                decidedAtMs: input.decidedAtMs,
+              }),
+            );
+            if (receipt.request_sha256 !== requestSha256) {
+              throw new WorkoutOutcomeConflictError("recommendation_request_identity_conflict");
+            }
+            return resultFromReceipt(receipt.result_json);
+          }
+        }
+        const priorDecision = receiptSupport
+          ? await readRecommendationDecisionReceiptByRecommendation(transaction, input.recommendationId)
+          : null;
+        if (priorDecision !== null) {
+          if (priorDecision.decision !== decision) {
+            throw new WorkoutOutcomeConflictError("recommendation_request_identity_conflict");
+          }
+          return resultFromReceipt(priorDecision.result_json);
+        }
         const recommendation = await pendingRecommendation(
           transaction,
           input.recommendationId,
@@ -2561,6 +3092,32 @@ export function createWorkoutOutcomeRepository(
           throw new WorkoutOutcomeConflictError(
             "recommendation_decision_conflict",
           );
+        }
+        const command = await completeDecisionInput(input, decision, recommendation);
+        const requestSha256 = await requestHashFor(command);
+        const commit = (result: RecommendationDecisionResult) => receiptSupport
+          ? persistRecommendationDecisionReceipt(
+            transaction,
+            recommendation,
+            command,
+            requestSha256,
+            result,
+          )
+          : Promise.resolve(result);
+        if (!requestFencesMatch(command, recommendation)) {
+          const superseded = await transaction.execute(
+            `UPDATE ${recommendationTable(recommendation.target_graph)}
+             SET status = 'superseded', decided_at_ms = ?
+             WHERE id = ? AND status = 'pending'`,
+            [input.decidedAtMs, input.recommendationId],
+          );
+          if (superseded.changes !== 1) {
+            throw new WorkoutOutcomeConflictError("recommendation_decision_conflict");
+          }
+          return commit({
+            recommendationId: input.recommendationId,
+            status: "superseded",
+          });
         }
         const result = await transaction.execute(
           `UPDATE ${recommendationTable(recommendation.target_graph)}
@@ -2573,10 +3130,10 @@ export function createWorkoutOutcomeRepository(
             "recommendation_decision_conflict",
           );
         }
-        return {
+        return commit({
           recommendationId: input.recommendationId,
           status: "rejected" as const,
-        };
+        });
       });
     },
 
@@ -2607,15 +3164,20 @@ export function createWorkoutOutcomeRepository(
             ({ session_exercise_id: exerciseId }) =>
               exerciseId === exercise.id,
           );
-          const reference = exerciseSets
-            .filter(({ set_kind }) => set_kind === "working")
+          const working = exerciseSets.filter(
+            ({ set_kind }) => set_kind === "working",
+          );
+          const reference = working
+            .filter(({ status }) => status === "completed")
             .map(targetReference)
             .find((value): value is TargetReference => value !== null);
           if (reference === undefined) {
             continue;
           }
-          const recommendationId =
-            `recommendation_${exercise.id}_${expectedSessionRevision}`;
+          const recommendationId = await recommendationIdFor(
+            exercise.id,
+            expectedSessionRevision,
+          );
           const [existing] = await transaction.queryAll<{
             exercise_id: string;
             target_id: string;
@@ -2659,62 +3221,6 @@ export function createWorkoutOutcomeRepository(
           if (target === undefined) {
             continue;
           }
-          const currentTarget = parseTarget(target.target_json);
-          const working = exerciseSets.filter(
-            ({ set_kind }) => set_kind === "working",
-          );
-          if (!working.some(({ status }) => status === "completed")) {
-            continue;
-          }
-          const policy = reference.graph === "owned"
-            ? await copiedOwnedPolicy(transaction, target.id)
-            : null;
-          if (reference.graph === "owned" && policy === null) {
-            continue;
-          }
-          if (exercise.metric_profile !== "load_reps") {
-            continue;
-          }
-          if (
-            reference.graph === "owned"
-            && (
-              policy === null
-              || !isCopiedAutomaticLoadRepsPolicy(
-                policy,
-                exerciseIdentity(exercise),
-              )
-            )
-          ) {
-            continue;
-          }
-          const progressionInput: LoadRepsProgressionInput = {
-            version: 1,
-            rule: LOAD_REPS_RULE,
-            target: {
-              version: 1,
-              profile: "load_reps",
-              loadGrams: Number(currentTarget.loadGrams),
-              minReps: Number(currentTarget.minReps),
-              maxReps: Number(currentTarget.maxReps),
-              incrementGrams: Number(currentTarget.incrementGrams),
-              plannedSets: working.length,
-            },
-            sets: exerciseSets.map((set): LoadRepsEvidenceSet => ({
-              id: set.id,
-              kind: set.set_kind,
-              status: set.status,
-              profile: set.rule_type === "load_reps"
-                ? "load_reps"
-                : "timed_hold",
-              version: set.rule_version,
-              loadGrams: set.observed_load_grams ?? 0,
-              reps: set.observed_reps,
-            })),
-            effort: exercise.effort,
-          };
-          const recommendation = evaluateLoadRepsV1(progressionInput);
-          const table = recommendationTable(reference.graph);
-          const targetColumn = recommendationTargetColumn(reference.graph);
           const targetScope = await transaction.queryAll<RecommendationTargetScopeRow>(
             `SELECT id, target_json, revision
              FROM ${targetTable(reference.graph)}
@@ -2730,6 +3236,63 @@ export function createWorkoutOutcomeRepository(
               "recommendation_target_scope_stale",
             );
           }
+          const targetScopeIds = new Set(targetScope.map(({ id }) => id));
+          const eligibleWorking = working.filter((set) => {
+            const setReference = targetReference(set);
+            return setReference !== null
+              && setReference.graph === reference.graph
+              && targetScopeIds.has(setReference.id);
+          });
+          if (!eligibleWorking.some(({ status }) => status === "completed")) {
+            continue;
+          }
+          const currentTarget = parseTarget(target.target_json);
+          const policy = reference.graph === "owned"
+            ? await copiedOwnedPolicy(transaction, target.id)
+            : null;
+          if (reference.graph === "owned" && policy === null) {
+            continue;
+          }
+          if (exercise.metric_profile !== "load_reps") {
+            continue;
+          }
+          if (
+            reference.graph === "owned"
+            && !isCopiedAutomaticLoadRepsPolicy(
+              policy!,
+              exerciseIdentity(exercise),
+            )
+          ) {
+            continue;
+          }
+          const progressionInput: LoadRepsProgressionInput = {
+            version: 1,
+            rule: LOAD_REPS_RULE,
+            target: {
+              version: 1,
+              profile: "load_reps",
+              loadGrams: Number(currentTarget.loadGrams),
+              minReps: Number(currentTarget.minReps),
+              maxReps: Number(currentTarget.maxReps),
+              incrementGrams: Number(currentTarget.incrementGrams),
+              plannedSets: targetScope.length,
+            },
+            sets: eligibleWorking.map((set): LoadRepsEvidenceSet => ({
+              id: set.id,
+              kind: set.set_kind,
+              status: set.status,
+              profile: set.rule_type === "load_reps"
+                ? "load_reps"
+                : "timed_hold",
+              version: set.rule_version,
+              loadGrams: set.observed_load_grams ?? 0,
+              reps: set.observed_reps,
+            })),
+            effort: exercise.effort,
+          };
+          const recommendation = evaluateLoadRepsV1(progressionInput);
+          const table = recommendationTable(reference.graph);
+          const targetColumn = recommendationTargetColumn(reference.graph);
           const proposedTarget = recommendationTarget(
             recommendation,
             currentTarget,
@@ -2742,7 +3305,7 @@ export function createWorkoutOutcomeRepository(
               sessionId,
               sessionExerciseId: exercise.id,
               sessionRevision: expectedSessionRevision,
-              setIds: working.map(({ id }) => id),
+              setIds: eligibleWorking.map(({ id }) => id),
             },
             revisions: {
               source: expectedSessionRevision,

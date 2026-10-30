@@ -306,6 +306,11 @@ try {
   fail(`expo-notifications Android manifest is missing: ${notificationManifestPath}`);
 }
 
+assertMatch(
+  manifest.match(/<application\b[^>]*>/)?.[0] ?? '',
+  /\bandroid:debuggable="true"/,
+  'development-test main application must be explicitly debuggable for run-as',
+);
 assertMatch(manifest, /android:allowBackup="true"/, 'Android backup must be explicitly enabled with exclusions');
 assertMatch(
   manifest,

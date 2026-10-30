@@ -21,6 +21,7 @@ import {
 import type {
   RestStateV1,
 } from "../../domains/rest";
+import type { RestCountdownCuePort } from "../../domains/rest/restCountdownCuePort";
 import {
   RestDock,
 } from "../components/RestDock";
@@ -44,6 +45,7 @@ async function renderDock(
   const props = {
     state,
     nowMs: () => 40_000,
+    exerciseName: "Back Squat",
     nextSetIndex: 2,
     nextTarget: "60 kg × 8",
     notificationPermission: "granted" as const,
@@ -105,51 +107,121 @@ afterEach(() => {
 });
 
 describe("Plan 02-29 RestDock", () => {
-  it("keeps running time visible when collapsed and expands ordered controls", async () => {
+  it("accepts every adjustment tap while committed rest changes are queued", async () => {
+    const { props } = await renderDock(running, { busy: true });
+    const subtract = screen.getByRole("button", { name: "Subtract 15 seconds from rest" });
+    expect(subtract).not.toBeDisabled();
+    await fireEvent.press(subtract);
+    await fireEvent.press(subtract);
+    await fireEvent.press(subtract);
+    expect(props.onAdjust).toHaveBeenCalledTimes(3);
+    expect(screen.getByRole("button", { name: "Pause rest" })).toBeDisabled();
+  });
+  it("waits for the scheduler final callback before claiming foreground expiry", async () => {
+    jest.useFakeTimers();
+    try {
+      jest.setSystemTime(99_500);
+      let scheduled: Parameters<NonNullable<RestCountdownCuePort["scheduleCountdown"]>>[0] | undefined;
+      const countdownCue: RestCountdownCuePort = {
+        playShortCue: jest.fn(async () => undefined), playLongCue: jest.fn(async () => undefined),
+        cancelPendingCues: jest.fn(),
+        scheduleCountdown: (input) => { scheduled = input; return jest.fn(); },
+      };
+      const onExpired = jest.fn();
+      await renderDock(running, { nowMs: () => Date.now(), countdownCue, restSoundEnabled: true, onExpired });
+      await act(async () => { jest.advanceTimersByTime(500); });
+      expect(screen.getByText("00:00")).toBeOnTheScreen();
+      expect(onExpired).not.toHaveBeenCalled();
+      await act(async () => { scheduled?.onCue(0); });
+      expect(onExpired).toHaveBeenCalledTimes(1);
+      expect(onExpired).toHaveBeenCalledWith({ foregroundCountdownTone: true });
+      await act(async () => { scheduled?.onCue(0); jest.advanceTimersByTime(2_000); });
+      expect(onExpired).toHaveBeenCalledTimes(1);
+    } finally { jest.useRealTimers(); }
+  });
+
+  it.each(["throw", "error"] as const)("expires through fallback when the scheduler fails by %s before its final cue", async (failure) => {
+    jest.useFakeTimers();
+    try {
+      jest.setSystemTime(99_000);
+      let scheduled: Parameters<NonNullable<RestCountdownCuePort["scheduleCountdown"]>>[0] | undefined;
+      const countdownCue: RestCountdownCuePort = {
+        playShortCue: jest.fn(async () => undefined), playLongCue: jest.fn(async () => undefined),
+        cancelPendingCues: jest.fn(),
+        scheduleCountdown: (input) => {
+          if (failure === "throw") throw new Error("scheduler_unavailable");
+          scheduled = input;
+          return jest.fn();
+        },
+      };
+      const onExpired = jest.fn();
+      await renderDock(running, { nowMs: () => Date.now(), countdownCue, restSoundEnabled: true, onExpired });
+      if (failure === "error") await act(async () => { scheduled?.onError(); });
+      await act(async () => { jest.advanceTimersByTime(1_000); });
+      expect(onExpired).toHaveBeenCalledTimes(1);
+      expect(onExpired.mock.calls).toEqual([[]]);
+      expect(countdownCue.cancelPendingCues).toHaveBeenCalled();
+    } finally { jest.useRealTimers(); }
+  });
+
+  it("stops display polling in background and refreshes timestamp truth on foreground return", async () => {
+    jest.useFakeTimers();
+    try {
+      jest.setSystemTime(40_000);
+      let change: ((state: AppStateStatus) => void) | undefined;
+      addEventListener.mockImplementation((_event, listener) => { change = listener; return { remove: jest.fn() }; });
+      const clock = jest.fn(() => Date.now());
+      const onExpired = jest.fn();
+      await renderDock(running, { nowMs: clock, onExpired });
+      await act(async () => { change?.("background"); });
+      clock.mockClear();
+      await act(async () => { jest.advanceTimersByTime(70_000); });
+      expect(clock).not.toHaveBeenCalled();
+      expect(onExpired).not.toHaveBeenCalled();
+      await act(async () => { change?.("active"); });
+      expect(screen.getByText("00:00")).toBeOnTheScreen();
+      expect(onExpired).toHaveBeenCalledTimes(1);
+    } finally { jest.useRealTimers(); }
+  });
+
+  it("keeps the full durable dock reachable with exercise-aware context and ordered controls", async () => {
     const { rendered } = await renderDock(running);
 
-    expect(screen.getByText("RESTING · NEXT: SET 2 AT 60 kg × 8"))
+    expect(screen.getByText("RESTING")).toBeOnTheScreen();
+    expect(screen.getByText("Back Squat · working set 2 next"))
       .toBeOnTheScreen();
     expect(screen.getByText("01:00")).toBeOnTheScreen();
     expect(screen.getByText("01:00")).toHaveProp(
       "accessibilityLiveRegion",
       "none",
     );
-    expect(screen.getByRole("button", {
-      name: "Expand rest controls",
-    })).toHaveStyle({ minHeight: 48, minWidth: 48 });
-    expect(screen.queryByTestId("rest-controls")).not.toBeOnTheScreen();
-
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Expand rest controls",
-    }));
-
-    expect(screen.getByText("01:00")).toBeOnTheScreen();
-    expect(screen.getByRole("button", {
-      name: "Collapse rest controls",
-    })).toHaveStyle({ minHeight: 48, minWidth: 48 });
     const tree = JSON.stringify(rendered.toJSON());
-    expect(tree.indexOf("Skip rest")).toBeLessThan(tree.indexOf("Pause rest"));
-    expect(tree.indexOf("Pause rest")).toBeLessThan(tree.indexOf("−15"));
-    expect(tree.indexOf("−15")).toBeLessThan(tree.indexOf("+15"));
+    expect(tree.indexOf("Subtract 15 seconds from rest"))
+      .toBeLessThan(tree.indexOf("Pause rest"));
+    expect(tree.indexOf("Pause rest"))
+      .toBeLessThan(tree.indexOf("Add 15 seconds to rest"));
+    expect(tree.indexOf("Add 15 seconds to rest"))
+      .toBeLessThan(tree.indexOf("Skip rest"));
     expect(screen.getByTestId("rest-controls")).toHaveStyle({
       flexDirection: "row",
-      flexWrap: "wrap",
+      flexWrap: "nowrap",
+      gap: 8,
     });
     for (const label of [
-      "Skip rest",
+      "Subtract 15 seconds from rest",
       "Pause rest",
-      "Subtract 15 seconds",
-      "Add 15 seconds",
+      "Add 15 seconds to rest",
+      "Skip rest",
     ]) {
       expect(screen.getByRole("button", { name: label }))
         .toHaveStyle({ minHeight: 48, minWidth: 48 });
-      expect(screen.getByTestId(`rest-control-${label}`)).toHaveStyle({
-        flexGrow: 1,
-      });
     }
     expect(screen.getByRole("button", { name: "Skip rest" }))
       .toHaveProp("focusable", true);
+    for (const label of ["−15", "+15"]) {
+      expect(screen.getByText(label)).toHaveProp("numberOfLines", 1);
+      expect(screen.getByText(label)).toHaveProp("adjustsFontSizeToFit", true);
+    }
   });
 
   it("invokes pause, adjust, skip, and resume through explicit controls", async () => {
@@ -165,14 +237,11 @@ describe("Plan 02-29 RestDock", () => {
     });
 
     await fireEvent.press(screen.getByRole("button", {
-      name: "Expand rest controls",
-    }));
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Subtract 15 seconds",
+      name: "Subtract 15 seconds from rest",
     }));
     await fireEvent.press(screen.getByRole("button", { name: "Pause rest" }));
     await fireEvent.press(screen.getByRole("button", {
-      name: "Add 15 seconds",
+      name: "Add 15 seconds to rest",
     }));
     await fireEvent.press(screen.getByRole("button", { name: "Skip rest" }));
     expect(onAdjust).toHaveBeenNthCalledWith(1, -15_000);
@@ -203,7 +272,7 @@ describe("Plan 02-29 RestDock", () => {
         />
       </AppearanceProvider>,
     );
-    expect(screen.getByText("REST PAUSED · NEXT: SET 2 AT 60 kg × 8"))
+    expect(screen.getByText("REST PAUSED"))
       .toBeOnTheScreen();
     expect(screen.getByText("01:00")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Resume rest" }));
@@ -278,8 +347,12 @@ describe("Plan 02-29 RestDock", () => {
           jest.advanceTimersByTime(1_000);
         });
       }
-      expect(countdownCue.playShortCue).toHaveBeenCalledTimes(3);
+      expect(countdownCue.playShortCue).toHaveBeenCalledTimes(2);
       expect(countdownCue.playLongCue).toHaveBeenCalledTimes(1);
+      expect(countdownCue.playShortCue.mock.invocationCallOrder[0])
+        .toBeLessThan(countdownCue.playShortCue.mock.invocationCallOrder[1]!);
+      expect(countdownCue.playShortCue.mock.invocationCallOrder[1])
+        .toBeLessThan(countdownCue.playLongCue.mock.invocationCallOrder[0]!);
 
       nowMs = 196_000;
       await rendered.rerender(
@@ -314,10 +387,102 @@ describe("Plan 02-29 RestDock", () => {
         });
       }
 
-      expect(countdownCue.playShortCue).toHaveBeenCalledTimes(6);
+      expect(countdownCue.playShortCue).toHaveBeenCalledTimes(4);
       expect(countdownCue.playLongCue).toHaveBeenCalledTimes(2);
     } finally {
       rendered?.unmount();
+      jest.useRealTimers();
+    }
+  });
+
+  it("dispatches one long cue before natural expiry even when a delayed tick skips the last seconds", async () => {
+    jest.useFakeTimers();
+    try {
+      let nowMs = 97_000;
+      const calls: string[] = [];
+      const countdownCue = {
+        playLongCue: jest.fn(async () => { calls.push("long"); }),
+        playShortCue: jest.fn(async () => { calls.push("short"); }),
+      };
+      const onExpired = jest.fn(() => { calls.push("expired"); });
+      await renderDock(running, { nowMs: () => nowMs, countdownCue, restSoundEnabled: true, onExpired });
+      nowMs = 101_500;
+      await act(async () => { jest.advanceTimersByTime(1_000); });
+      expect(calls).toEqual(["long", "expired"]);
+      expect(onExpired).toHaveBeenCalledWith({ foregroundCountdownTone: true });
+      await act(async () => { jest.advanceTimersByTime(2_000); });
+      expect(countdownCue.playLongCue).toHaveBeenCalledTimes(1);
+      expect(countdownCue.playShortCue).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("retains natural expiry observation when the same durable rest is refreshed", async () => {
+    jest.useFakeTimers();
+    try {
+      let nowMs = 99_000;
+      const countdownCue = {
+        playLongCue: jest.fn(async () => undefined),
+        playShortCue: jest.fn(async () => undefined),
+      };
+      const { rendered, props } = await renderDock(running, { nowMs: () => nowMs, countdownCue, restSoundEnabled: true });
+      await rendered.rerender(<AppearanceProvider><RestDock {...props} state={{ ...running }} /></AppearanceProvider>);
+      nowMs = 100_000;
+      await act(async () => { jest.advanceTimersByTime(1_000); });
+      expect(countdownCue.playLongCue).toHaveBeenCalledTimes(1);
+      expect(props.onExpired).toHaveBeenCalledWith({ foregroundCountdownTone: true });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("uses the exact deadline independently of the visual interval", async () => {
+    jest.useFakeTimers();
+    try {
+      jest.setSystemTime(99_600);
+      const countdownCue = {
+        playLongCue: jest.fn(async () => undefined),
+        playShortCue: jest.fn(async () => undefined),
+      };
+      const onExpired = jest.fn();
+      await renderDock(running, { nowMs: () => Date.now(), countdownCue, restSoundEnabled: true, onExpired });
+      await act(async () => { jest.advanceTimersByTime(400); });
+      expect(countdownCue.playLongCue).toHaveBeenCalledTimes(1);
+      expect(onExpired).toHaveBeenCalledWith({ foregroundCountdownTone: true });
+      expect(countdownCue.playShortCue).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("does not turn a manual adjustment or foreground catch-up into a countdown cue", async () => {
+    jest.useFakeTimers();
+    try {
+      let nowMs = 98_000;
+      let onAppStateChange: ((nextState: AppStateStatus) => void) | undefined;
+      addEventListener.mockImplementation((_event, listener) => {
+        onAppStateChange = listener;
+        return { remove: jest.fn() };
+      });
+      const countdownCue = {
+        playLongCue: jest.fn(async () => undefined),
+        playShortCue: jest.fn(async () => undefined),
+        cancelPendingCues: jest.fn(),
+      };
+      const { rendered, props } = await renderDock(running, { nowMs: () => nowMs, countdownCue, restSoundEnabled: true });
+      await rendered.rerender(<AppearanceProvider><RestDock {...props} state={{ ...running, revision: 4, endsAtMs: 98_000 }} /></AppearanceProvider>);
+      expect(countdownCue.playLongCue).not.toHaveBeenCalled();
+      expect(countdownCue.playShortCue).not.toHaveBeenCalled();
+      expect(props.onExpired).toHaveBeenCalledWith();
+      await rendered.rerender(<AppearanceProvider><RestDock {...props} state={{ ...running, revision: 5, startedAtMs: 98_000, endsAtMs: 101_000 }} /></AppearanceProvider>);
+      await act(async () => { onAppStateChange?.("background"); });
+      nowMs = 102_000;
+      await act(async () => { onAppStateChange?.("active"); jest.advanceTimersByTime(1_000); });
+      expect(countdownCue.playLongCue).not.toHaveBeenCalled();
+      expect(countdownCue.playShortCue).not.toHaveBeenCalled();
+      expect(countdownCue.cancelPendingCues).toHaveBeenCalled();
+    } finally {
       jest.useRealTimers();
     }
   });
@@ -347,7 +512,7 @@ describe("Plan 02-29 RestDock", () => {
         countdownCue,
       }));
 
-      for (nowMs of [96_000, 97_000]) {
+      for (nowMs of [96_000, 97_000, 98_000]) {
         await act(async () => {
           jest.advanceTimersByTime(1_000);
         });
@@ -406,7 +571,7 @@ describe("Plan 02-29 RestDock", () => {
           />
         </AppearanceProvider>,
       );
-      nowMs = 121_000;
+      nowMs = 122_000;
       await act(async () => {
         jest.advanceTimersByTime(1_000);
       });
@@ -452,7 +617,7 @@ describe("Plan 02-29 RestDock", () => {
         countdownCue,
       }));
 
-      nowMs = 97_000;
+      nowMs = 98_000;
       await act(async () => {
         jest.advanceTimersByTime(1_000);
       });
@@ -487,7 +652,7 @@ describe("Plan 02-29 RestDock", () => {
       );
       expect(screen.queryByText("Countdown sound unavailable")).not.toBeOnTheScreen();
 
-      nowMs = 197_000;
+      nowMs = 198_000;
       await act(async () => {
         jest.advanceTimersByTime(1_000);
       });
@@ -521,7 +686,7 @@ describe("Plan 02-29 RestDock", () => {
         countdownCue,
       }));
 
-      nowMs = 97_000;
+      nowMs = 98_000;
       await act(async () => {
         jest.advanceTimersByTime(1_000);
       });
@@ -567,16 +732,12 @@ describe("Plan 02-29 RestDock", () => {
     }
   });
 
-  it("shows denied notification guidance without covering rest controls", async () => {
+  it("prioritizes rest controls before denied notification guidance", async () => {
     const onOpenSettings = jest.fn();
-    await renderDock(running, {
+    const { rendered } = await renderDock(running, {
       notificationPermission: "denied",
       onOpenSettings,
     });
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Expand rest controls",
-    }));
-
     expect(screen.getByText("Background rest alerts are off"))
       .toBeOnTheScreen();
     expect(screen.getByText(
@@ -584,13 +745,18 @@ describe("Plan 02-29 RestDock", () => {
     )).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Pause rest" }))
       .toBeOnTheScreen();
+    const tree = JSON.stringify(rendered.toJSON());
+    expect(tree.indexOf("RESTING"))
+      .toBeLessThan(tree.indexOf("Background rest alerts are off"));
+    expect(tree.indexOf("Skip rest"))
+      .toBeLessThan(tree.indexOf("Background rest alerts are off"));
     await fireEvent.press(
       screen.getByRole("button", { name: "Open notification settings" }),
     );
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps undo after the four rest controls", async () => {
+  it("does not render contextual Undo as a persistent fifth rest control", async () => {
     const onUndo = jest.fn();
     const { rendered } = await renderDock(running, {
       undo: {
@@ -600,18 +766,10 @@ describe("Plan 02-29 RestDock", () => {
       },
     });
 
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Expand rest controls",
-    }));
-    expect(screen.getByText("Set 1 saved · Undo set (7 sec)"))
-      .toBeOnTheScreen();
-    const tree = JSON.stringify(rendered.toJSON());
-    expect(tree.indexOf("Skip rest")).toBeLessThan(
-      tree.indexOf("Undo completed set"),
-    );
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Undo completed set" }),
-    );
-    expect(onUndo).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Set 1 saved · Undo set (7 sec)"))
+      .not.toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Undo completed set" }))
+      .not.toBeOnTheScreen();
+    expect(onUndo).not.toHaveBeenCalled();
   });
 });

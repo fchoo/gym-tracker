@@ -1,285 +1,150 @@
-import React, {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-  type TextStyle,
-} from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { StyleSheet, Text, useWindowDimensions, View, type NativeScrollEvent, type NativeSyntheticEvent, type TextStyle } from "react-native";
 
-import type {
-  ProgressPeriod,
-  ProgressPeriodProjection,
-  ProgressExerciseReference,
-  ProgressProjectionDiagnostic,
-  ProgressProjectionFreshness,
-  ProgressRecommendationReview,
-  ProgressRecord,
-  ProgressSourceReference,
-} from "../../domains/progress";
-import {
-  parseMetricIdentity,
-  parseMetricObservationJson,
-} from "../../domains/metrics";
-import {
-  ContentCard,
-  EmptyState,
-  FocusablePressable,
-  InlineNotice,
-  M3SearchField,
-  PrimaryAction,
-  ScreenHeader,
-  SectionHeader,
-  SkeletonBlock,
-} from "../components";
-import {
-  RecommendationSurface,
-} from "../components/RecommendationSurface";
-import {
-  ProgressTrend,
-} from "../components/ProgressTrend";
-import {
-  formatObservation,
-} from "../components/SetRow";
-import {
-  AdaptiveScreen,
-} from "../layout/AdaptiveScreen";
-import {
-  radius,
-  space,
-  typeScale,
-  useAppTheme,
-} from "../theme";
+import type { ProgressPeriod, ProgressPeriodProjection, ProgressProjectionDiagnostic, ProgressProjectionFreshness, ProgressRecommendationReview } from "../../domains/progress";
+import type { RecommendationDecisionResult } from "../../domains/progression";
+import type { ProgressAllGoal, ProgressDashboardProjection, ProgressPlannedNext, ProgressRefreshMetadata, ProgressRunningGoal, ProgressSport, ProgressStrengthGoal, ProgressStrengthValueFormat } from "../../domains/progress/contracts";
+import { runningTargetForDistance, type RunningPlanAggregate } from "../../domains/running/contracts";
+import type { RunningPlanRuntimePort } from "../../bootstrap/runningPlanRuntime";
+import type { ProgressBodyweightEntry, ProgressBodyweightSaveInput } from "../../bootstrap/workoutAppRuntime";
+import { EmptyState, FocusablePressable, FocusClearanceProvider, IconAction, InlineNotice, PrimaryAction, ScreenHeader, SkeletonBlock } from "../components";
+import { BodyweightEditorSheet } from "../components/BodyweightEditorSheet";
+import { BodyweightHistorySheet } from "../components/BodyweightHistorySheet";
+import { ProgressSettingsSheet } from "../components/ProgressSettingsSheet";
+import { RecommendationSurface, recommendationTargetText } from "../components/RecommendationSurface";
+import { RunningHistorySheet, runningGoalToFactualSeries } from "../components/RunningHistorySheet";
+import { RunningTargetSheet } from "../components/RunningTargetSheet";
+import { FactualHistoryChart, formatFactualDuration, type FactualHistorySource, type ProgressFactualSeries } from "../components/FactualHistoryChart";
+import { useOptionalSemanticToast } from "../components/SemanticToast";
+import { AdaptiveScreen } from "../layout/AdaptiveScreen";
+import type { RootFocusTarget } from "../shell/rootFocus";
+import { radius, sizes, space, typeScale, useAppTheme } from "../theme";
 
 type ProgressSnapshot = Readonly<{
   period: ProgressPeriod;
   freshness: ProgressProjectionFreshness;
-  projection: ProgressPeriodProjection | null;
+  sport?: ProgressSport;
+  dashboard?: ProgressDashboardProjection | null;
+  projection?: ProgressPeriodProjection | null;
   diagnostic?: ProgressProjectionDiagnostic;
+  refresh?: ProgressRefreshMetadata;
+  runningTargetSources?: readonly RunningPlanAggregate[];
 }>;
-
-type OpenExercise = (exerciseId: string, exerciseName: string) => void;
-type ExerciseDisplayLabel = (exercise: ProgressExerciseReference) => string;
 
 export type ProgressScreenProps = Readonly<{
   nowLocalDate: string;
   workoutRefreshGeneration?: number;
-  loadProgress(input: Readonly<{
-    period: ProgressPeriod;
-    nowLocalDate: string;
-  }>): Promise<ProgressSnapshot>;
-  onOpenExercise: OpenExercise;
-  onOpenSession(sessionId: string): void;
-  onAcceptRecommendation?(recommendationId: string): Promise<unknown>;
-  onKeepCurrentTarget?(recommendationId: string): Promise<unknown>;
+  loadProgress(input: Readonly<{ sport: ProgressSport; period: ProgressPeriod; nowLocalDate: string }>): Promise<ProgressSnapshot>;
+  onOpenExercise(exerciseId: string, exerciseName: string, returnFocusToken?: string): void;
+  onOpenSession(sessionId: string, returnFocusToken?: string, sourceRevision?: number): void;
+  onOpenRunningSource?(source: FactualHistorySource, returnFocusToken: string): void;
+  onOpenSettings?(): void;
+  runningTargetRuntime?: Pick<RunningPlanRuntimePort, "createId" | "loadPlan" | "saveRunningTarget">;
+  progressRecommendationRuntime?: Readonly<{
+    decide(recommendation: ProgressRecommendationReview, decision: "use_target" | "keep_current_target"): Promise<RecommendationDecisionResult>;
+  }>;
+  progressBodyweightRuntime?: Readonly<{
+    createId(kind: string): string;
+    loadHistory(): Promise<readonly ProgressBodyweightEntry[]>;
+    save(input: ProgressBodyweightSaveInput): Promise<readonly ProgressBodyweightEntry[]>;
+    delete(entry: ProgressBodyweightEntry, requestId: string): Promise<readonly ProgressBodyweightEntry[]>;
+  }>;
+  returnFocusVersion?: number;
+  returnFocusToken?: string;
   width?: number;
+  fontScale?: number;
+  initialPeriod?: ProgressPeriod;
+  initialSport?: ProgressSport;
+  headingRef?: React.RefObject<RootFocusTarget | null>;
+  settingsActionRef?: React.RefObject<RootFocusTarget | null>;
+  settingsActionNativeID?: string;
+  onUsefulContent?: (state: "current" | "updating") => void;
+  onReviewVisible?: () => void;
 }>;
 
-const PERIODS: readonly Readonly<{
-  value: ProgressPeriod;
-  label: string;
-}>[] = [
+const SPORTS: readonly Readonly<{ value: ProgressSport; label: ProgressSport }>[] = [
+  { value: "All", label: "All" },
+  { value: "Strength", label: "Strength" },
+  { value: "Running", label: "Running" },
+];
+const PERIODS: readonly Readonly<{ value: ProgressPeriod; label: string }>[] = [
   { value: "4_weeks", label: "4 weeks" },
   { value: "12_weeks", label: "12 weeks" },
   { value: "all_time", label: "All time" },
 ];
 
-function longDate(localDate: string): string {
-  const [year, month, day] = localDate.split("-").map(Number);
-  if (year === undefined || month === undefined || day === undefined) {
-    return localDate;
-  }
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(Date.UTC(year, month - 1, day)));
+function rebuildText(diagnostic?: ProgressProjectionDiagnostic): string {
+  void diagnostic;
+  return "Saved history is being recalculated. Results refresh automatically.";
 }
 
-function observationText(record: ProgressRecord): string {
-  try {
-    const [profile, contractVersion, exerciseMetricGeneration] = record.identityKey.split(":");
-    const identity = parseMetricIdentity({
-      profile,
-      contractVersion: Number(contractVersion),
-      exerciseMetricGeneration: Number(exerciseMetricGeneration),
-    });
-    return formatObservation(parseMetricObservationJson(identity, record.observationJson));
-  } catch {
-    return "Recorded result";
-  }
+function ProgressUnavailable({ onRetry }: Readonly<{ onRetry(): void }>) {
+  return <EmptyState
+    body="Your saved workouts and targets were not changed. Retry loading progress."
+    heading="Progress could not be loaded"
+    primaryAction={<PrimaryAction label="Retry loading progress" onPress={onRetry} />}
+  />;
 }
 
-function createExerciseDisplayLabel(
-  projection: ProgressPeriodProjection,
-): ExerciseDisplayLabel {
-  const references: ProgressExerciseReference[] = [
-    ...projection.records,
-    ...projection.exercises,
-    ...projection.trend.flatMap(({ exercises }) => exercises),
-    ...Object.values(projection.summary.sourceReferences)
-      .flatMap(({ exercises }) => exercises),
-    ...projection.stateSourceReferences.exercises,
-    ...projection.attention,
-    ...projection.recommendations,
-  ];
-  const idsByName = new Map<string, Set<string>>();
-  for (const { exerciseId, exerciseName } of references) {
-    const key = exerciseName.trim().toLocaleLowerCase();
-    const ids = idsByName.get(key) ?? new Set<string>();
-    ids.add(exerciseId);
-    idsByName.set(key, ids);
-  }
-  return ({ exerciseId, exerciseName }) => {
-    const ids = [...(idsByName.get(exerciseName.trim().toLocaleLowerCase()) ?? [])]
-      .sort((left, right) => left.localeCompare(right));
-    return ids.length < 2
-      ? exerciseName
-      : `${exerciseName} (${ids.indexOf(exerciseId) + 1} of ${ids.length})`;
-  };
-}
-
-function hasFactualEvidence(projection: ProgressPeriodProjection): boolean {
-  return projection.trend.length > 0
-    || projection.exercises.length > 0
-    || projection.records.length > 0
-    || projection.recommendations.length > 0
-    || projection.summary.scheduledOpportunities.planned > 0
-    || projection.summary.workingSets.planned > 0;
-}
-
-function stateText(state: ProgressPeriodProjection["state"]): string | null {
-  if (state === "baseline") {
-    return "Baseline";
-  }
-  if (state === "hold") {
-    return "Hold";
-  }
-  return null;
-}
-
-function SourceActions({
+function SegmentedControls<T extends string>({
+  focusRequest,
   label,
-  source,
-  exerciseDisplayLabel,
-  onOpenExercise,
-  onOpenSession,
-}: Readonly<{
-  label: string;
-  source: ProgressSourceReference;
-  exerciseDisplayLabel: ExerciseDisplayLabel;
-  onOpenExercise: OpenExercise;
-  onOpenSession(sessionId: string): void;
-}>) {
-  const { colors } = useAppTheme();
-  if (source.sessionIds.length === 0 && source.exercises.length === 0) {
-    return (
-      <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
-        {"No source workout or exercise is available for " + label + "."}
-      </Text>
-    );
-  }
-  return (
-    <View style={styles.sourceActions}>
-      {source.sessionIds.map((sessionId) => (
-        <FocusablePressable
-          accessibilityLabel={"Open source workout for " + label}
-          accessibilityRole="button"
-          focusable
-          key={sessionId}
-          onPress={() => onOpenSession(sessionId)}
-          style={({ pressed }: { pressed: boolean }) => [
-            styles.textAction,
-            { borderColor: colors.contentCardBorder, opacity: pressed ? 0.76 : 1 },
-          ]}
-        >
-          <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardText }]}>
-            {"Workout source " + sessionId}
-          </Text>
-        </FocusablePressable>
-      ))}
-      {source.exercises.map(({ exerciseId, exerciseName }) => {
-        const displayLabel = exerciseDisplayLabel({ exerciseId, exerciseName });
-        return (
-        <FocusablePressable
-          accessibilityLabel={"Open " + displayLabel + " exercise history for " + label}
-          accessibilityRole="button"
-          focusable
-          key={exerciseId}
-          onPress={() => onOpenExercise(exerciseId, displayLabel)}
-          style={({ pressed }: { pressed: boolean }) => [
-            styles.textAction,
-            { borderColor: colors.contentCardBorder, opacity: pressed ? 0.76 : 1 },
-          ]}
-        >
-          <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardText }]}>
-            {"Exercise source " + displayLabel}
-          </Text>
-        </FocusablePressable>
-        );
-      })}
-    </View>
-  );
-}
-
-function rebuildDiagnosticText(
-  diagnostic: ProgressProjectionDiagnostic | undefined,
-): string | null {
-  if (diagnostic === undefined) {
-    return null;
-  }
-  const affected = diagnostic.affectedSubjects;
-  const scope = affected.length === 0
-    ? "saved progress history"
-    : affected.length === 2
-      ? "overall and exercise progress history"
-      : affected[0] === "all_period"
-        ? "overall progress history"
-        : "exercise progress history";
-  return diagnostic.code === "history_projection_unavailable"
-    ? `${scope.slice(0, 1).toUpperCase() + scope.slice(1)} is temporarily unavailable. Reload to try again.`
-    : `Rebuilding ${scope}. Results refresh automatically.`;
-}
-
-function PeriodControls({
+  role,
+  values,
   selected,
   onChange,
 }: Readonly<{
-  selected: ProgressPeriod;
-  onChange(period: ProgressPeriod): void;
+  focusRequest?: Readonly<{ value: T; version: number }> | undefined;
+  label: string;
+  role: "tab" | "button";
+  values: readonly Readonly<{ value: T; label: string }>[];
+  selected: T;
+  onChange(value: T): void;
 }>) {
   const { colors } = useAppTheme();
+  const itemRefs = useRef(new Map<T, View>());
+  useEffect(() => {
+    if (focusRequest?.value !== selected) return;
+    requestAnimationFrame(() => itemRefs.current.get(focusRequest.value)?.focus?.());
+  }, [focusRequest, selected]);
+  const move = (index: number, key: string) => {
+    const next = key === "Home" ? 0 : key === "End" ? values.length - 1 : key === "ArrowLeft" ? Math.max(0, index - 1) : key === "ArrowRight" ? Math.min(values.length - 1, index + 1) : index;
+    if (next !== index || key === "Home" || key === "End") {
+      const value = values[next]!.value;
+      onChange(value);
+      requestAnimationFrame(() => itemRefs.current.get(value)?.focus?.());
+    }
+  };
   return (
-    <View accessibilityLabel="Progress period" style={styles.periodControls}>
-      {PERIODS.map((period) => {
-        const isSelected = selected === period.value;
+    <View accessibilityLabel={label} accessibilityRole={role === "tab" ? "tablist" : "radiogroup"} style={[styles.segmented, { backgroundColor: colors.surface, borderColor: colors.divider }]}>
+      {values.map((item, index) => {
+        const isSelected = item.value === selected;
         return (
           <FocusablePressable
-            accessibilityLabel={period.label}
-            accessibilityRole="button"
-            accessibilityState={{ selected: isSelected }}
+            {...({ onKeyDown: (event: { nativeEvent: { key: string; preventDefault?: () => void } }) => {
+              const key = event.nativeEvent.key;
+              if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(key)) {
+                event.nativeEvent.preventDefault?.();
+                move(index, key);
+              } else if (key === "Enter" || key === " ") {
+                event.nativeEvent.preventDefault?.();
+                onChange(item.value);
+              }
+            } } as object)}
+            accessibilityLabel={item.label}
+            accessibilityRole={role}
+            accessibilityState={role === "tab" ? { selected: isSelected } : { selected: isSelected, checked: isSelected }}
             focusable
-            key={period.value}
-            onPress={() => onChange(period.value)}
+            hasTVPreferredFocus={focusRequest?.value === item.value && isSelected}
+            key={item.value}
+            onPress={() => onChange(item.value)}
+            ref={(node) => { if (node === null) itemRefs.current.delete(item.value); else itemRefs.current.set(item.value, node); }}
             style={({ pressed }: { pressed: boolean }) => [
-              styles.periodControl,
-              {
-                backgroundColor: isSelected
-                  ? colors.action
-                  : pressed ? colors.surfaceSubtle : colors.surface,
-                borderColor: isSelected ? colors.action : colors.divider,
-              },
+              styles.segment,
+              { backgroundColor: isSelected ? colors.textPrimary : "transparent", opacity: pressed ? 0.78 : 1 },
             ]}
           >
-            <Text style={[typeScale.bodyStrong as TextStyle, {
-              color: isSelected ? colors.onAction : colors.textPrimary,
-            }]}>
-              {period.label}
-            </Text>
+            <Text style={[typeScale.bodyStrong as TextStyle, { color: isSelected ? colors.paper : colors.textPrimary }]}>{item.label}</Text>
           </FocusablePressable>
         );
       })}
@@ -287,565 +152,739 @@ function PeriodControls({
   );
 }
 
-function OverallProgress({
-  projection,
-  exerciseDisplayLabel,
-  onOpenExercise,
-  onOpenSession,
-}: Readonly<{
-  projection: ProgressPeriodProjection;
-  exerciseDisplayLabel: ExerciseDisplayLabel;
-  onOpenExercise: OpenExercise;
-  onOpenSession(sessionId: string): void;
-}>) {
-  const { colors } = useAppTheme();
-  const improvingRecords = projection.records.filter((record) =>
-    projection.exercises.some((exercise) =>
-      exercise.exerciseId === record.exerciseId && exercise.status === "improving"
-    )
-  );
-  const state = stateText(projection.state);
-
-  return (
-    <View style={styles.section}>
-      <SectionHeader
-        supportingText={longDate(projection.window.start) + " to " + longDate(projection.window.end)}
-        title="Overall Progress"
-      />
-      <ContentCard testID="progress-overall-card">
-        <View style={styles.summaryRows}>
-          <View style={styles.summaryRow}>
-            <Text style={[typeScale.body as TextStyle, { color: colors.contentCardText }]}>
-              {"Scheduled opportunities · " + projection.summary.scheduledOpportunities.completed + " of " + projection.summary.scheduledOpportunities.planned + " completed"}
-            </Text>
-            <SourceActions
-              exerciseDisplayLabel={exerciseDisplayLabel}
-              label="Scheduled opportunities"
-              onOpenExercise={onOpenExercise}
-              onOpenSession={onOpenSession}
-              source={projection.summary.sourceReferences.scheduledOpportunities}
-            />
-          </View>
-          <View style={styles.summaryRow}>
-            <Text style={[typeScale.body as TextStyle, { color: colors.contentCardText }]}>
-              {"Working sets · " + projection.summary.workingSets.completed + " of " + projection.summary.workingSets.planned + " completed"}
-            </Text>
-            <SourceActions
-              exerciseDisplayLabel={exerciseDisplayLabel}
-              label="Working sets"
-              onOpenExercise={onOpenExercise}
-              onOpenSession={onOpenSession}
-              source={projection.summary.sourceReferences.workingSets}
-            />
-          </View>
-          <View style={styles.summaryRow}>
-            <Text style={[typeScale.body as TextStyle, { color: colors.contentCardText }]}>
-              {projection.summary.improvingCount + " improving · " + projection.summary.holdingCount + " holding · " + projection.summary.baselineCount + " baseline"}
-            </Text>
-            <SourceActions
-              exerciseDisplayLabel={exerciseDisplayLabel}
-              label="Progress status"
-              onOpenExercise={onOpenExercise}
-              onOpenSession={onOpenSession}
-              source={projection.summary.sourceReferences.exerciseStatuses}
-            />
-          </View>
-          {projection.summary.attentionCount === 0 ? null : (
-            <View style={styles.summaryRow}>
-              <Text style={[typeScale.body as TextStyle, { color: colors.contentCardText }]}>
-                {projection.summary.attentionCount + " review " + (projection.summary.attentionCount === 1 ? "available" : "items available")}
-              </Text>
-              <SourceActions
-                exerciseDisplayLabel={exerciseDisplayLabel}
-                label="Review available"
-                onOpenExercise={onOpenExercise}
-                onOpenSession={onOpenSession}
-                source={projection.summary.sourceReferences.attention}
-              />
-            </View>
-          )}
-        </View>
-        {state === null ? null : (
-          <View style={styles.summaryRow}>
-            <InlineNotice
-              body={state === "Baseline"
-                ? "More comparable working sets are needed before a change is shown."
-                : "Comparable evidence is unchanged for this period."}
-              card
-              heading={state}
-              tone="neutral"
-            />
-            <SourceActions
-              exerciseDisplayLabel={exerciseDisplayLabel}
-              label={state}
-              onOpenExercise={onOpenExercise}
-              onOpenSession={onOpenSession}
-              source={projection.stateSourceReferences}
-            />
-          </View>
-        )}
-        {improvingRecords.length === 0 ? null : (
-          <View style={styles.records}>
-            <Text accessibilityRole="header" style={[typeScale.label as TextStyle, { color: colors.contentCardText }]}>Recent improvements</Text>
-            {improvingRecords.map((record) => (
-              <FocusablePressable
-                accessibilityLabel={"Open workout details for record on " + longDate(record.localDate)}
-                accessibilityRole="button"
-                focusable
-                key={record.exerciseId + ":" + record.setId}
-                onPress={() => onOpenSession(record.sessionId)}
-                style={({ pressed }: { pressed: boolean }) => [
-                  styles.recordRow,
-                  { borderColor: colors.contentCardBorder, opacity: pressed ? 0.76 : 1 },
-                ]}
-              >
-                <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>
-                  {record.exerciseName + " · " + observationText(record)}
-                </Text>
-                <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
-                  {"Record · " + longDate(record.localDate) + " · " + record.identityKey}
-                </Text>
-              </FocusablePressable>
-            ))}
-          </View>
-        )}
-      </ContentCard>
-    </View>
-  );
+function distanceLabel(distanceMeters: number): string {
+  if (distanceMeters === 2_400) return "2.4 km";
+  if (distanceMeters === 10_000) return "10 km";
+  if (distanceMeters === 21_097) return "Half Marathon";
+  return `${distanceMeters} m`;
 }
 
-function NeedsAttention({
-  projection,
-  exerciseDisplayLabel,
-  onOpenExercise,
-  onOpenSession,
-  onAcceptRecommendation,
-  onKeepCurrentTarget,
-  onRecommendationDecisionComplete,
-  onRecommendationDecisionNotice,
-}: Readonly<{
-  projection: ProgressPeriodProjection;
-  exerciseDisplayLabel: ExerciseDisplayLabel;
-  onOpenExercise: OpenExercise;
-  onOpenSession(sessionId: string): void;
-  onAcceptRecommendation?(recommendationId: string): Promise<unknown>;
-  onKeepCurrentTarget?(recommendationId: string): Promise<unknown>;
-  onRecommendationDecisionComplete(): void;
-  onRecommendationDecisionNotice(
-    notice: "superseded" | "failed",
-  ): void;
+function PlannedNext({ value }: Readonly<{ value: ProgressPlannedNext | null | undefined }>) {
+  const { colors } = useAppTheme();
+  if (value === null || value === undefined) return null;
+  return <View style={styles.goalRows} testID="progress-planned-next">
+    <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Planned next</Text>
+    <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{`${value.sport} · ${value.activityName} · ${value.localDate}`}</Text>
+    <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{value.planName}</Text>
+  </View>;
+}
+
+function HeroFactRow({ facts, stacked }: Readonly<{
+  facts: readonly Readonly<{ label: "Latest" | "Best" | "Target"; value: string }>[];
+  stacked: boolean;
 }>) {
   const { colors } = useAppTheme();
-  const [busyRecommendationId, setBusyRecommendationId] = useState<string | null>(null);
-  const recommendations = projection.recommendations.filter(
-    ({ lifecycle }) => lifecycle === "pending",
-  );
-  if (recommendations.length === 0) {
-    return null;
-  }
-  const decide = async (
-    recommendation: ProgressRecommendationReview,
-    decision: "accept" | "keep",
-  ) => {
-    const command = decision === "accept"
-      ? onAcceptRecommendation
-      : onKeepCurrentTarget;
-    if (command === undefined || busyRecommendationId !== null) {
-      return;
-    }
-    setBusyRecommendationId(recommendation.id);
-    try {
-      const result = await command(recommendation.id);
-      if (
-        result !== null
-        && typeof result === "object"
-        && "status" in result
-        && result.status === "superseded"
-      ) {
-        onRecommendationDecisionNotice("superseded");
-      }
-    } catch {
-      onRecommendationDecisionNotice("failed");
-    } finally {
-      setBusyRecommendationId(null);
-      onRecommendationDecisionComplete();
-    }
+  return <View
+    style={[styles.factRow, stacked ? styles.factRowStacked : null, { borderColor: colors.divider }]}
+    testID="progress-hero-facts"
+  >
+    {facts.map(({ label, value }, index) => <View
+      key={label}
+      style={[
+        styles.factCell,
+        index === 0 ? null : stacked ? styles.factCellStackedDivider : styles.factCellRowDivider,
+        { borderColor: colors.divider },
+      ]}
+      testID={`progress-hero-fact-${label.toLowerCase()}`}
+    >
+      <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]} testID={`progress-hero-label-${label.toLowerCase()}`}>{label}</Text>
+      <Text style={[typeScale.bodyNumeric as TextStyle, { color: colors.textPrimary }]} testID={`progress-hero-value-${label.toLowerCase()}`}>{value}</Text>
+    </View>)}
+  </View>;
+}
+
+function runningGoalForDistance(
+  dashboard: Extract<ProgressDashboardProjection, { sport: "Running" }>,
+  distanceMeters: number,
+): ProgressRunningGoal {
+  return dashboard.goals.find((goal) => goal.distanceMeters === distanceMeters)
+    ?? Object.freeze({
+      distanceMeters,
+      timeBasis: "elapsed" as const,
+      latest: null,
+      best: null,
+      target: null,
+      targetAtDate: null,
+      history: Object.freeze([]),
+      evidenceCount: 0,
+      gap: "Gap · Target unset",
+      pacing: null,
+    });
+}
+
+function ActiveGoalRows({ goals, onSelectSport }: Readonly<{
+  goals: readonly ProgressAllGoal[];
+  onSelectSport(sport: ProgressSport): void;
+}>) {
+  const { colors } = useAppTheme();
+  return <View style={styles.goalRows}>
+    <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Active goals</Text>
+    {goals.map((entry) => {
+      const identity = entry.sport === "Strength"
+        ? entry.goal.exerciseName
+        : distanceLabel(entry.goal.distanceMeters);
+      const detail = entry.sport === "Strength"
+        ? `${entry.goal.target?.label ?? "Target unset"} · ${entry.goal.status}`
+        : `${entry.goal.target === null ? "Target unset" : formatFactualDuration(entry.goal.target.durationSeconds)} · ${entry.goal.gap}`;
+      return <FocusablePressable
+        accessibilityLabel={`Open ${entry.sport} active goal ${identity}`}
+        accessibilityRole="button"
+        focusable
+        key={`${entry.sport}:${entry.sport === "Strength" ? entry.goal.goalId : `${String(entry.goal.distanceMeters)}:${entry.goal.timeBasis}`}`}
+        onPress={() => onSelectSport(entry.sport)}
+        style={[styles.goalAction, { borderColor: entry.sport === "Strength" ? colors.orange : colors.action }]}
+      >
+        <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{`${entry.sport} · ${identity}`}</Text>
+        <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{detail}</Text>
+      </FocusablePressable>;
+    })}
+  </View>;
+}
+
+function RunningEvidenceNotice() {
+  const { colors } = useAppTheme();
+  return <View style={[styles.runningEvidence, { borderLeftColor: colors.action }]} testID="progress-running-evidence">
+    <InlineNotice body="Running facts and best efforts come from accepted imported Garmin activities. Exact-distance efforts require sufficient source-reported summary/lap evidence; sampled charts are not evidence. Matching never completes a scheduled workout without confirmation." heading="Garmin imported" tone="neutral" />
+  </View>;
+}
+
+function RunningRoot({ dashboard, historyActionRefs, onOpenHistory, onOpenTarget, onRetry, period, rangeLabel, stackHeroFacts, targetSources, targetTriggerRefs }: Readonly<{
+  dashboard: Extract<ProgressDashboardProjection, { sport: "Running" }>;
+  historyActionRefs: React.MutableRefObject<Map<string, View>>;
+  onOpenHistory(goal: ProgressRunningGoal, invokerToken: string): void;
+  onOpenTarget(distanceMeters: number): void;
+  onRetry(): void;
+  period: ProgressPeriod;
+  rangeLabel: string;
+  stackHeroFacts: boolean;
+  targetSources: readonly RunningPlanAggregate[];
+  targetTriggerRefs: React.MutableRefObject<Map<number, View>>;
+}>) {
+  const { colors } = useAppTheme();
+  const goalRow = (distanceMeters: number) => {
+    const label = distanceLabel(distanceMeters);
+    const effort = dashboard.goals.find((candidate) => candidate.distanceMeters === distanceMeters);
+    const source = targetSources[0];
+    const target = effort?.target === null || effort?.target === undefined
+      ? "Target unset"
+      : formatFactualDuration(effort.target.durationSeconds);
+    const evidence = effort?.best === null || effort?.best === undefined
+      ? "No effort recorded"
+      : `Best ${formatFactualDuration(effort.best.durationSeconds)}`;
+    const copy = `${label} · ${target} · ${evidence} · Set target`;
+    if (source === undefined) return <Text key={distanceMeters} style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>{copy}</Text>;
+    return <FocusablePressable
+      accessibilityLabel={`Set target for ${label}`}
+      accessibilityRole="button"
+      focusable
+      key={distanceMeters}
+      onPress={() => onOpenTarget(distanceMeters)}
+      ref={(node) => { if (node === null) targetTriggerRefs.current.delete(distanceMeters); else targetTriggerRefs.current.set(distanceMeters, node); }}
+      style={[styles.goalAction, { borderColor: colors.divider }]}
+    ><Text style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>{copy}</Text></FocusablePressable>;
   };
+  const goal = dashboard.goals.find((candidate) => candidate.distanceMeters === 2400) ?? dashboard.goals[0];
+  if (goal === undefined) return <View style={styles.content}>
+    <RunningEvidenceNotice />
+    <EmptyState body="Goals can remain saved, but no zero chart or direction is shown until a Garmin activity is imported." heading="No imported running efforts yet" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />
+    <View style={styles.goalRows}><Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Running goals</Text>{goalRow(2_400)}{goalRow(10_000)}{goalRow(21_097)}</View>
+    <PlannedNext value={dashboard.plannedNext} />
+  </View>;
+  const target = goal.target === null ? "Target unset" : formatFactualDuration(goal.target.durationSeconds);
+  const latest = goal.latest === null ? "—" : `${formatFactualDuration(goal.latest.durationSeconds)} elapsed`;
+  const best = goal.best === null ? "—" : `${formatFactualDuration(goal.best.durationSeconds)} elapsed`;
+  const heroHistoryToken = `progress:Running:${period}:hero-history:${String(goal.distanceMeters)}`;
   return (
-    <View style={styles.section}>
-      <SectionHeader
-        supportingText="A review is available for this target."
-        title="Needs attention"
-      />
-      <ContentCard>
-        <View style={styles.attentionRows}>
-          {recommendations.map((recommendation) => (
-            <View key={recommendation.id} style={styles.recommendationReview}>
-              <RecommendationSurface
-                busy={busyRecommendationId === recommendation.id}
-                onAccept={() => { void decide(recommendation, "accept"); }}
-                onKeepCurrent={() => { void decide(recommendation, "keep"); }}
-                recommendation={recommendation}
-                {...(recommendation.sourceSessionId === null
-                  ? {}
-                  : { onOpenSource: onOpenSession })}
-              />
-              <FocusablePressable
-                accessibilityLabel={"Open exercise history for " + exerciseDisplayLabel(recommendation)}
-                accessibilityRole="button"
-                focusable
-                onPress={() => onOpenExercise(
-                  recommendation.exerciseId,
-                  exerciseDisplayLabel(recommendation),
-                )}
-                style={({ pressed }: { pressed: boolean }) => [
-                  styles.textAction,
-                  { borderColor: colors.contentCardBorder, opacity: pressed ? 0.76 : 1 },
-                ]}
-              >
-                <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardText }]}>
-                  Exercise history
-                </Text>
-              </FocusablePressable>
-            </View>
-          ))}
+    <View style={styles.content}>
+      <RunningEvidenceNotice />
+      {dashboard.state === "sparse" ? <InlineNotice body={goal.evidenceCount === 0 ? "Complete or import a comparable result to calculate Best and Gap." : "One comparable result is not enough to call a trend."} heading={goal.evidenceCount === 0 ? "Target saved" : "More data needed"} tone="attention" /> : null}
+      <View style={[styles.hero, { borderTopColor: colors.textPrimary }]}>
+        <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>{`${distanceLabel(goal.distanceMeters)} goal`}</Text>
+        <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Best efforts compare elapsed time at the same distance. Faster is lower on the clock.</Text>
+        <HeroFactRow facts={[
+          { label: "Latest", value: latest },
+          { label: "Best", value: best },
+          { label: "Target", value: target },
+        ]} stacked={stackHeroFacts} />
+        <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{goal.gap}</Text>
+        {goal.pacing === null ? null : <View style={styles.pacing}>
+          <Text style={[typeScale.targetValue as TextStyle, { color: colors.textPrimary }]}>{`Pace · ${goal.pacing.pacePerKm}`}</Text>
+          <Text style={[typeScale.targetValue as TextStyle, { color: colors.textPrimary }]}>{`400 m · ${goal.pacing.per400m.replace("/400 m", "")}`}</Text>
+          <Text style={[typeScale.targetValue as TextStyle, { color: colors.textPrimary }]}>{`200 m · ${goal.pacing.per200m.replace("/200 m", "")}`}</Text>
+        </View>}
+        <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`Evidence · ${goal.evidenceCount} accepted imported ${goal.evidenceCount === 1 ? "activity" : "activities"}`}</Text>
+        <FactualHistoryChart series={runningGoalToFactualSeries(goal, rangeLabel)} showSummaryFacts={false} />
+        <View style={styles.actions}>
+          <FocusablePressable accessibilityLabel={`Open history for ${distanceLabel(goal.distanceMeters)}`} accessibilityRole="button" focusable onPress={() => onOpenHistory(goal, heroHistoryToken)} ref={(node) => { if (node === null) historyActionRefs.current.delete(heroHistoryToken); else historyActionRefs.current.set(heroHistoryToken, node); }} style={[styles.goalAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Open history</Text></FocusablePressable>
+          {targetSources.length > 0 ? <FocusablePressable accessibilityLabel={`Edit target for ${distanceLabel(goal.distanceMeters)}`} accessibilityRole="button" focusable onPress={() => onOpenTarget(goal.distanceMeters)} ref={(node) => { if (node === null) targetTriggerRefs.current.delete(goal.distanceMeters); else targetTriggerRefs.current.set(goal.distanceMeters, node); }} style={[styles.goalAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Set target</Text></FocusablePressable> : null}
         </View>
-      </ContentCard>
+      </View>
+      <View style={styles.goalRows}>
+        <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Running goals</Text>
+        {goalRow(2_400)}{goalRow(10_000)}{goalRow(21_097)}
+      </View>
+      <View style={styles.goalRows}>
+        <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Best efforts</Text>
+        {[2_400, 10_000, 21_097].map((distance) => {
+          const candidate = runningGoalForDistance(dashboard, distance);
+          const token = `progress:Running:${period}:best-effort:${String(distance)}`;
+          return <FocusablePressable accessibilityLabel={`Open best efforts for ${distanceLabel(distance)}`} accessibilityRole="button" focusable key={distance} onPress={() => onOpenHistory(candidate, token)} ref={(node) => { if (node === null) historyActionRefs.current.delete(token); else historyActionRefs.current.set(token, node); }} style={[styles.goalAction, { borderColor: colors.divider }]}><Text style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>{`${distanceLabel(distance)} · ${candidate.best === null ? "No effort recorded" : formatFactualDuration(candidate.best.durationSeconds)}`}</Text></FocusablePressable>;
+        })}
+      </View>
+      <PlannedNext value={dashboard.plannedNext} />
     </View>
   );
 }
 
-function ReviewHistory({
-  projection,
-  onOpenSession,
-}: Readonly<{
-  projection: ProgressPeriodProjection;
-  onOpenSession(sessionId: string): void;
-}>) {
-  const reviews = projection.recommendations.filter(
-    ({ lifecycle }) => lifecycle !== "pending",
-  );
-  if (reviews.length === 0) {
-    return null;
+function formatStrengthValue(format: ProgressStrengthValueFormat, value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "—";
+  const exact = Number(value.toFixed(3));
+  switch (format) {
+    case "kilograms": return `${exact} kg`;
+    case "repetitions": return `${exact} reps`;
+    case "seconds": return `${exact} sec`;
+    case "duration": return formatFactualDuration(value);
+    case "meters": return `${exact} m`;
+    case "rounds": return `${exact} rounds`;
+    case "completion": return value >= 1 ? "Completed" : "Not completed";
   }
-  return (
-    <View style={styles.section}>
-      <SectionHeader
-        supportingText="Saved target review history. These records do not change your target."
-        title="Target review history"
-      />
-      <ContentCard>
-        <View style={styles.attentionRows}>
-          {reviews.map((recommendation) => (
-            <RecommendationSurface
-              busy={false}
-              key={recommendation.id}
-              onAccept={() => undefined}
-              onKeepCurrent={() => undefined}
-              recommendation={recommendation}
-              {...(recommendation.sourceSessionId === null
-                ? {}
-                : { onOpenSource: onOpenSession })}
-            />
-          ))}
-        </View>
-      </ContentCard>
-    </View>
-  );
 }
 
-function ExerciseProgress({
-  projection,
-  exerciseDisplayLabel,
-  onOpenExercise,
-}: Readonly<{
-  projection: ProgressPeriodProjection;
-  exerciseDisplayLabel: ExerciseDisplayLabel;
-  onOpenExercise: OpenExercise;
+function strengthSeries(goal: ProgressStrengthGoal, rangeLabel: string): ProgressFactualSeries {
+  return Object.freeze({
+    distanceMeters: 0,
+    fasterIsLower: goal.fasterIsLower,
+    metricLabel: `${goal.exerciseName} personal history`,
+    directionLabel: goal.directionLabel,
+    rangeLabel,
+    unitLabel: goal.unitLabel,
+    currentTargetSeconds: goal.target?.value ?? null,
+    points: Object.freeze(goal.history.map((point) => Object.freeze({
+      activityId: null,
+      workoutSessionId: point.sessionId,
+      evidence: "workout_session" as const,
+      localDate: point.localDate,
+      sourceRevision: point.sourceRevision,
+      status: "accepted_current" as const,
+      targetAtDateSeconds: point.targetAtDate,
+      timeBasis: "elapsed" as const,
+      valueSeconds: point.value,
+    }))),
+  });
+}
+
+function StrengthGoalHero({ goal, heading, historyActionRef, onOpenHistory, onOpenSource, rangeLabel, registerSourceAction, stackHeroFacts }: Readonly<{
+  goal: ProgressStrengthGoal;
+  heading: string;
+  historyActionRef(node: View | null): void;
+  onOpenHistory(): void;
+  onOpenSource(source: FactualHistorySource): void;
+  rangeLabel: string;
+  registerSourceAction(source: FactualHistorySource, node: View | null): void;
+  stackHeroFacts: boolean;
 }>) {
   const { colors } = useAppTheme();
-  const [query, setQuery] = useState("");
-  const exercises = useMemo(() => projection.exercises
-    .slice().sort((left, right) => right.localDate.localeCompare(left.localDate))
-    .filter((exercise) => exercise.exerciseName.toLocaleLowerCase()
-      .includes(query.trim().toLocaleLowerCase())), [projection.exercises, query]);
-
-  return (
-    <View style={styles.section}>
-      <SectionHeader
-        supportingText="Comparable working-set evidence, ordered by recent training."
-        title="Exercise progress"
-      />
-      <M3SearchField
-        label="Search exercises"
-        onChangeText={setQuery}
-        onSearch={() => setQuery((value) => value.trim())}
-        resultCount={exercises.length}
-        state={query.trim().length === 0 ? "results" : exercises.length === 0 ? "empty" : "results"}
-        stateSlots={{
-          empty: null,
-          results: null,
-        }}
-        testID="progress-exercise-search"
-        value={query}
-      />
-      {exercises.length === 0 ? (
-        <EmptyState
-          body="Try a different exercise name."
-          heading="No matching exercises"
-          primaryAction={<PrimaryAction label="Clear search" onPress={() => setQuery("")} />}
-        />
-      ) : (
-        <View style={styles.exerciseRows}>
-          {exercises.map((exercise) => (
-            <FocusablePressable
-              accessibilityLabel={"Open exercise history for " + exerciseDisplayLabel(exercise)}
-              accessibilityRole="button"
-              focusable
-              key={exercise.exerciseId + ":" + exercise.identityKey + ":" + exercise.comparatorKey}
-              onPress={() => onOpenExercise(
-                exercise.exerciseId,
-                exerciseDisplayLabel(exercise),
-              )}
-              style={({ pressed }: { pressed: boolean }) => [
-                styles.exerciseRow,
-                {
-                  backgroundColor: colors.contentCard,
-                  borderColor: colors.contentCardBorder,
-                  opacity: pressed ? 0.76 : 1,
-                },
-              ]}
-              testID={[
-                "progress-exercise-row",
-                exercise.exerciseId,
-                exercise.identityKey,
-                exercise.comparatorKey,
-              ].join("-")}
-            >
-              <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>{exerciseDisplayLabel(exercise)}</Text>
-              <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
-                {(exercise.status === "improving" ? "Improving" : exercise.status === "holding" ? "Hold" : "Baseline") + " · " + longDate(exercise.localDate) + " · " + exercise.identityKey}
-              </Text>
-            </FocusablePressable>
-          ))}
-        </View>
-      )}
-    </View>
-  );
+  return <View style={[styles.hero, { borderTopColor: colors.orange }]} testID="progress-strength-hero">
+    <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>{heading}</Text>
+    <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{`${goal.exerciseName} · ${goal.directionLabel}`}</Text>
+    <HeroFactRow facts={[
+      { label: "Latest", value: goal.latest.label },
+      { label: "Best", value: goal.best.label },
+      { label: "Target", value: goal.target?.label ?? "Target unset" },
+    ]} stacked={stackHeroFacts} />
+    <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{goal.gap}</Text>
+    <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`Evidence · ${goal.evidenceCount} completed working ${goal.evidenceCount === 1 ? "set" : "sets"} · ${goal.status}`}</Text>
+    <FactualHistoryChart
+      formatValue={(value) => formatStrengthValue(goal.valueFormat, value)}
+      onOpenSource={onOpenSource}
+      registerSourceAction={registerSourceAction}
+      series={strengthSeries(goal, rangeLabel)}
+      showSummaryFacts={false}
+    />
+    <FocusablePressable accessibilityLabel={`Open exercise history for ${goal.exerciseName}`} accessibilityRole="button" focusable onPress={onOpenHistory} ref={historyActionRef} style={[styles.goalAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Open history</Text></FocusablePressable>
+  </View>;
 }
 
-export function ProgressScreen({
-  nowLocalDate,
-  workoutRefreshGeneration = 0,
-  loadProgress,
-  onOpenExercise,
-  onOpenSession,
-  onAcceptRecommendation,
-  onKeepCurrentTarget,
-  width,
-}: ProgressScreenProps) {
-  const [period, setPeriod] = useState<ProgressPeriod>("4_weeks");
+function DashboardContent({ dashboard, exerciseActionRefs, historyActionRefs, onDecideRecommendation, onOpenExercise, onOpenRunningHistory, onOpenRunningSource, onOpenSession, onRetry, onSelectSport, period, rangeLabel, recommendationSourceRefs, recommendations, returnActionRefs, stackHeroFacts, staleRecommendation }: Readonly<{
+  dashboard: Exclude<ProgressDashboardProjection, { sport: "Running" }>;
+  exerciseActionRefs: React.MutableRefObject<Map<string, View>>;
+  historyActionRefs: React.MutableRefObject<Map<string, View>>;
+  onDecideRecommendation?: ((recommendation: ProgressRecommendationReview, decision: "use_target" | "keep_current_target") => Promise<unknown>) | undefined;
+  onOpenExercise(exerciseId: string, exerciseName: string, returnFocusToken?: string): void;
+  onOpenRunningHistory(goal: ProgressRunningGoal, invokerToken: string): void;
+  onOpenRunningSource?: ((source: FactualHistorySource, returnFocusToken: string) => void) | undefined;
+  onOpenSession(sessionId: string, returnFocusToken?: string, sourceRevision?: number): void;
+  onRetry(): void;
+  onSelectSport(sport: ProgressSport): void;
+  period: ProgressPeriod;
+  rangeLabel: string;
+  recommendationSourceRefs: React.MutableRefObject<Map<string, View>>;
+  recommendations: readonly ProgressRecommendationReview[];
+  returnActionRefs: React.MutableRefObject<Map<string, View>>;
+  stackHeroFacts: boolean;
+  staleRecommendation: ProgressRecommendationReview | null;
+}>) {
+  const { colors } = useAppTheme();
+  if (dashboard.state === "empty") {
+    return <View style={styles.content}>
+      {dashboard.sport === "Strength"
+        ? <EmptyState body="Complete comparable working sets to establish personal history." heading="No comparable Strength history yet" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />
+        : <EmptyState body="Completed Strength history and accepted Running efforts will appear here after you train or import an activity." heading="No progress history yet" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />}
+      <PlannedNext value={dashboard.plannedNext} />
+    </View>;
+  }
+  if (dashboard.state === "unavailable") {
+    return <ProgressUnavailable onRetry={onRetry} />;
+  }
+  if (dashboard.sport === "All") {
+    const primaryGoal = dashboard.primaryGoal;
+    if (primaryGoal === null) return <EmptyState body="Add a persisted goal and comparable completed history to show the nearest active goal." heading="No active goal yet" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />;
+    if (primaryGoal.sport === "Strength") {
+      const goal = primaryGoal.goal;
+      const historyToken = `progress:All:${period}:hero-history:${goal.exerciseId}:${goal.latest.sourceRevision ?? 0}`;
+      return <View style={styles.content}>
+        {dashboard.state === "sparse" ? <InlineNotice body="One comparable result is not enough to call a trend." heading="More data needed" tone="attention" /> : null}
+        <StrengthGoalHero
+          goal={goal}
+          heading="Nearest active goal"
+          historyActionRef={(node) => { if (node === null) returnActionRefs.current.delete(historyToken); else returnActionRefs.current.set(historyToken, node); }}
+          onOpenHistory={() => onOpenExercise(goal.exerciseId, goal.exerciseName, historyToken)}
+          onOpenSource={(source) => { if ("sessionId" in source) onOpenSession(source.sessionId, `progress:All:${period}:hero-source:${source.sessionId}:${source.sourceRevision ?? 0}`, source.sourceRevision ?? undefined); }}
+          rangeLabel={rangeLabel}
+          registerSourceAction={(source, node) => {
+            if (!("sessionId" in source)) return;
+            const token = `progress:All:${period}:hero-source:${source.sessionId}:${source.sourceRevision ?? 0}`;
+            if (node === null) returnActionRefs.current.delete(token); else returnActionRefs.current.set(token, node);
+          }}
+          stackHeroFacts={stackHeroFacts}
+        />
+        <ActiveGoalRows goals={dashboard.activeGoals} onSelectSport={onSelectSport} />
+        <PlannedNext value={dashboard.plannedNext} />
+      </View>;
+    }
+    const goal = primaryGoal.goal;
+    const historyToken = `progress:All:${period}:hero-running-history:${String(goal.distanceMeters)}`;
+    return <View style={styles.content}>
+      {dashboard.state === "sparse" ? <InlineNotice body={goal.evidenceCount === 0 ? "Complete or import a comparable result to calculate Best and Gap." : "One comparable result is not enough to call a trend."} heading={goal.evidenceCount === 0 ? "Target saved" : "More data needed"} tone="attention" /> : null}
+      <View style={[styles.hero, { borderTopColor: colors.textPrimary }]}><Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Nearest active goal</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{`Running · ${distanceLabel(goal.distanceMeters)}`}</Text><HeroFactRow facts={[{ label: "Latest", value: goal.latest === null ? "—" : formatFactualDuration(goal.latest.durationSeconds) }, { label: "Best", value: goal.best === null ? "—" : formatFactualDuration(goal.best.durationSeconds) }, { label: "Target", value: goal.target === null ? "Target unset" : formatFactualDuration(goal.target.durationSeconds) }]} stacked={stackHeroFacts} /><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{goal.gap}</Text><Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`Evidence · ${goal.evidenceCount} accepted imported ${goal.evidenceCount === 1 ? "activity" : "activities"}`}</Text><FactualHistoryChart
+        {...(onOpenRunningSource === undefined ? {} : { onOpenSource: (source: FactualHistorySource) => {
+          if (!("activityId" in source)) return;
+          onOpenRunningSource(source, `progress:All:${period}:hero-running-source:${source.activityId}:${String(source.sourceRevision)}`);
+        } })}
+        registerSourceAction={(source, node) => {
+          if (!("activityId" in source)) return;
+          const token = `progress:All:${period}:hero-running-source:${source.activityId}:${String(source.sourceRevision)}`;
+          if (node === null) returnActionRefs.current.delete(token); else returnActionRefs.current.set(token, node);
+        }}
+        series={runningGoalToFactualSeries(goal, rangeLabel)}
+        showSummaryFacts={false}
+      /><FocusablePressable accessibilityLabel={`Open history for nearest Running ${distanceLabel(goal.distanceMeters)}`} accessibilityRole="button" focusable onPress={() => onOpenRunningHistory(goal, historyToken)} ref={(node) => { if (node === null) historyActionRefs.current.delete(historyToken); else historyActionRefs.current.set(historyToken, node); }} style={[styles.goalAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Open history</Text></FocusablePressable></View>
+      <ActiveGoalRows goals={dashboard.activeGoals} onSelectSport={onSelectSport} />
+      <PlannedNext value={dashboard.plannedNext} />
+    </View>;
+  }
+  const primary = dashboard.goals[0];
+  const primaryHistoryToken = primary === undefined
+    ? null
+    : `progress:Strength:${period}:hero-history:${primary.exerciseId}:${primary.latest.sourceRevision ?? 0}`;
+  return <View style={styles.content}>
+    {dashboard.state === "sparse" ? <InlineNotice body="One comparable result is not enough to call a trend." heading="More data needed" tone="attention" /> : null}
+    {staleRecommendation === null ? null : <InlineNotice body="The current target was not changed. Progress was reloaded from saved facts." heading="Recommendation no longer applies" tone="attention" />}
+    {primary === undefined || primaryHistoryToken === null ? null : <StrengthGoalHero goal={primary} heading="Strength progress" historyActionRef={(node) => { if (node === null) returnActionRefs.current.delete(primaryHistoryToken); else returnActionRefs.current.set(primaryHistoryToken, node); }} onOpenHistory={() => onOpenExercise(primary.exerciseId, primary.exerciseName, primaryHistoryToken)} onOpenSource={(source) => { if ("sessionId" in source) onOpenSession(source.sessionId, `progress:Strength:${period}:hero-source:${source.sessionId}:${source.sourceRevision ?? 0}`, source.sourceRevision ?? undefined); }} rangeLabel={rangeLabel} registerSourceAction={(source, node) => {
+      if (!("sessionId" in source)) return;
+      const token = `progress:Strength:${period}:hero-source:${source.sessionId}:${source.sourceRevision ?? 0}`;
+      if (node === null) returnActionRefs.current.delete(token); else returnActionRefs.current.set(token, node);
+    }} stackHeroFacts={stackHeroFacts} />}
+    {recommendations.length === 0 ? null : <View style={styles.goalRows}>
+      <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Needs review</Text>
+      {recommendations.map((recommendation) => <RecommendationSurface
+        key={recommendation.id}
+        recommendation={recommendation}
+        onAccept={() => onDecideRecommendation?.(recommendation, "use_target")}
+        onKeepCurrent={() => onDecideRecommendation?.(recommendation, "keep_current_target")}
+        onOpenSource={(sessionId) => onOpenSession(sessionId, `progress:Strength:${period}:recommendation:${recommendation.id}`)}
+        sourceActionRef={(node) => {
+          if (node === null) recommendationSourceRefs.current.delete(recommendation.id);
+          else recommendationSourceRefs.current.set(recommendation.id, node);
+        }}
+      />)}
+    </View>}
+    <View style={styles.goalRows}>
+      <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Exercise progress</Text>
+      {dashboard.goals.map((goal) => <FocusablePressable accessibilityLabel={`Open exercise history for ${goal.exerciseName}`} accessibilityRole="button" focusable key={goal.goalId} onPress={() => onOpenExercise(goal.exerciseId, goal.exerciseName, `progress:Strength:${period}:exercise:${goal.exerciseId}`)} ref={(node) => { if (node === null) exerciseActionRefs.current.delete(goal.exerciseId); else exerciseActionRefs.current.set(goal.exerciseId, node); }} style={[styles.goalAction, { borderColor: colors.divider }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{goal.exerciseName}</Text><Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`Latest ${goal.latest.label} · ${goal.target?.label ?? "Target unset"} · ${goal.status}`}</Text></FocusablePressable>)}
+    </View>
+    <PlannedNext value={dashboard.plannedNext} />
+  </View>;
+}
+
+export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loadProgress, onOpenExercise, onOpenSession, onOpenRunningSource, onOpenSettings = () => undefined, runningTargetRuntime, progressRecommendationRuntime, progressBodyweightRuntime, returnFocusToken, returnFocusVersion = 0, width, fontScale, initialPeriod = "4_weeks", initialSport = "All", headingRef, settingsActionRef, settingsActionNativeID, onUsefulContent, onReviewVisible }: ProgressScreenProps) {
+  const { colors } = useAppTheme();
+  const windowDimensions = useWindowDimensions();
+  const [sport, setSport] = useState<ProgressSport>(initialSport);
+  const [sportFocusRequest, setSportFocusRequest] = useState<Readonly<{
+    value: ProgressSport;
+    version: number;
+  }> | null>(null);
+  const [period, setPeriod] = useState<ProgressPeriod>(initialPeriod);
   const [snapshot, setSnapshot] = useState<ProgressSnapshot | null>(null);
   const [failed, setFailed] = useState(false);
-  const [requestGeneration, setRequestGeneration] = useState(0);
-  const [recommendationDecisionNotice, setRecommendationDecisionNotice] = useState<
-    "superseded" | "failed" | null
-  >(null);
+  const [retry, setRetry] = useState(0);
+  const requestRef = useRef(0);
+  const automaticRefreshAttemptRef = useRef(0);
+  const historyActionRefs = useRef(new Map<string, View>());
+  const targetTriggerRefs = useRef(new Map<number, View>());
+  const bodyMetricsTriggerRef = useRef<View>(null);
+  const progressSettingsTriggerRef = useRef<View>(null);
+  const bodyweightSettingsActionRef = useRef<View>(null);
+  const bodyweightEditorRestoreFocusRef = useRef<View>(null);
+  const exerciseActionRefs = useRef(new Map<string, View>());
+  const recommendationSourceRefs = useRef(new Map<string, View>());
+  const runningSourceActionRefs = useRef(new Map<string, View>());
+  const returnActionRefs = useRef(new Map<string, View>());
+  const scrollOffsetRef = useRef(0);
+  const [historyGoal, setHistoryGoal] = useState<ProgressRunningGoal | null>(null);
+  const [historyInvokerToken, setHistoryInvokerToken] = useState<string | null>(null);
+  const [targetDistanceMeters, setTargetDistanceMeters] = useState<number | null>(null);
+  const [progressSettingsVisible, setProgressSettingsVisible] = useState(false);
+  const [bodyweightVisible, setBodyweightVisible] = useState(false);
+  const [bodyweightInvoker, setBodyweightInvoker] = useState<"body_metrics" | "settings">("body_metrics");
+  const [bodyweightEntries, setBodyweightEntries] = useState<readonly ProgressBodyweightEntry[]>([]);
+  const [bodyweightEditor, setBodyweightEditor] = useState<Readonly<{ mode: "add" | "edit"; entry?: ProgressBodyweightEntry }> | null>(null);
+  const [staleRecommendation, setStaleRecommendation] = useState<ProgressRecommendationReview | null>(null);
+  const bodyweightRequestRef = useRef<string | null>(null);
+  const bodyweightDeleteRequestsRef = useRef(new Map<string, string>());
+  const semanticToast = useOptionalSemanticToast();
   const adaptiveWidth = width === undefined ? {} : { width };
+  const stackHeroFacts = (fontScale ?? windowDimensions.fontScale) >= 2
+    || (width ?? windowDimensions.width) < 360;
 
-  useEffect(() => {
-    let active = true;
+  const readProgress = useCallback(async (showLoading: boolean) => {
+    const request = requestRef.current + 1;
+    requestRef.current = request;
+    if (showLoading) setSnapshot(null);
     setFailed(false);
-    setSnapshot(null);
-    void loadProgress({ period, nowLocalDate }).then((next) => {
-      if (active) {
-        setSnapshot(next);
-      }
-    }).catch(() => {
-      if (active) {
-        setFailed(true);
-      }
-    });
-    return () => { active = false; };
-  }, [loadProgress, nowLocalDate, period, requestGeneration, workoutRefreshGeneration]);
+    try {
+      const next = await loadProgress({ sport, period, nowLocalDate });
+      if (request !== requestRef.current || (next.dashboard !== null && next.dashboard !== undefined && next.dashboard.sport !== sport)) return null;
+      setSnapshot(next);
+      return next;
+    } catch (error) {
+      if (request === requestRef.current) setFailed(true);
+      throw error;
+    }
+  }, [loadProgress, nowLocalDate, period, sport]);
 
   useEffect(() => {
-    if (snapshot?.freshness !== "updating") {
-      return;
-    }
+    automaticRefreshAttemptRef.current = 0;
+    void readProgress(true).catch(() => undefined);
+    return () => {
+      requestRef.current += 1;
+    };
+  }, [readProgress, retry, workoutRefreshGeneration]);
+
+  useEffect(() => {
+    if (snapshot === null || snapshot.freshness === "unavailable") return;
+    const state = snapshot.freshness === "current" && snapshot.dashboard !== null
+      && snapshot.dashboard !== undefined ? "current" : "updating";
+    const frame = requestAnimationFrame(() => onUsefulContent?.(state));
+    return () => cancelAnimationFrame(frame);
+  }, [onUsefulContent, snapshot]);
+
+  useEffect(() => {
+    if (historyGoal === null && targetDistanceMeters === null
+      && !progressSettingsVisible && !bodyweightVisible && staleRecommendation === null) return;
+    const frame = requestAnimationFrame(() => onReviewVisible?.());
+    return () => cancelAnimationFrame(frame);
+  }, [bodyweightVisible, historyGoal, onReviewVisible, progressSettingsVisible, staleRecommendation, targetDistanceMeters]);
+
+  useEffect(() => {
+    if (snapshot?.freshness !== "updating" || snapshot.refresh === undefined) return;
+    const attempt = automaticRefreshAttemptRef.current;
+    const { automaticRefresh } = snapshot.refresh;
+    if (attempt >= automaticRefresh.maxAttempts || automaticRefresh.backoffMs.length === 0) return;
+    const delay = automaticRefresh.backoffMs[
+      Math.min(attempt, automaticRefresh.backoffMs.length - 1)
+    ]!;
+    const activeRequest = requestRef.current;
     const timer = setTimeout(() => {
-      setRequestGeneration((value) => value + 1);
-    }, 250);
+      if (requestRef.current !== activeRequest) return;
+      automaticRefreshAttemptRef.current = attempt + 1;
+      void readProgress(false).catch(() => undefined);
+    }, delay);
     return () => clearTimeout(timer);
-  }, [snapshot]);
+  }, [readProgress, snapshot]);
 
-  const header = (
-    <>
-      <ScreenHeader title="Progress" />
-      <PeriodControls onChange={setPeriod} selected={period} />
-      {recommendationDecisionNotice === null ? null : (
-        <View accessibilityRole="alert">
-          <InlineNotice
-            body={recommendationDecisionNotice === "superseded"
-              ? "The current target was not changed. Progress was reloaded from saved facts."
-              : "The saved target was not changed. It may already have changed or no longer be available. Progress was reloaded from saved facts."}
-            heading={recommendationDecisionNotice === "superseded"
-              ? "Recommendation no longer applies"
-              : "Recommendation decision needs review"}
-            tone={recommendationDecisionNotice === "superseded"
-              ? "attention"
-              : "error"}
-          />
-        </View>
-      )}
-    </>
-  );
+  useEffect(() => {
+    if (returnFocusVersion === 0 || returnFocusToken === undefined) return;
+    const exerciseMatch = /^progress:Strength:[A-Za-z0-9_]+:exercise:([A-Za-z0-9._:-]{1,128})$/u.exec(returnFocusToken);
+    const recommendationMatch = /^progress:Strength:[A-Za-z0-9_]+:recommendation:([A-Za-z0-9._:-]{1,128})$/u.exec(returnFocusToken);
+    const runningSourceMatch = /^running-history:\d+:([A-Za-z0-9._:-]{1,128}):(\d+)$/u.exec(returnFocusToken);
+    const target = returnActionRefs.current.get(returnFocusToken) ?? (exerciseMatch === null
+      ? recommendationMatch !== null
+        ? recommendationSourceRefs.current.get(recommendationMatch[1]!) ?? null
+        : runningSourceMatch !== null
+          ? runningSourceActionRefs.current.get(`${runningSourceMatch[1]}:${runningSourceMatch[2]}`) ?? null
+          : returnFocusToken.startsWith("running-target:")
+            ? targetTriggerRefs.current.get(Number(returnFocusToken.split(":").at(-1))) ?? null
+            : returnFocusToken.startsWith("running-history:")
+              ? historyInvokerToken === null ? null : historyActionRefs.current.get(historyInvokerToken) ?? null
+              : null
+      : exerciseActionRefs.current.get(exerciseMatch[1]!) ?? null);
+    requestAnimationFrame(() => target?.focus?.());
+  }, [historyInvokerToken, returnFocusToken, returnFocusVersion]);
 
-  if (failed) {
-    return (
-      <AdaptiveScreen
-        {...adaptiveWidth}
-        primary={(
-          <View style={styles.screen}>
-            {header}
-            <EmptyState
-              body="Your saved workouts and targets were not changed. Retry loading progress."
-              heading="Progress could not be loaded"
-              primaryAction={<PrimaryAction label="Retry loading progress" onPress={() => setRequestGeneration((value) => value + 1)} />}
-            />
-          </View>
-        )}
-        testID="progress-screen"
-      />
-    );
-  }
+  const closeLocalSurfaces = () => {
+    setHistoryGoal(null);
+    setHistoryInvokerToken(null);
+    setTargetDistanceMeters(null);
+    setProgressSettingsVisible(false);
+    setBodyweightVisible(false);
+    setBodyweightEditor(null);
+  };
 
-  if (snapshot === null) {
-    return (
-      <AdaptiveScreen
-        {...adaptiveWidth}
-        primary={(
-          <View style={styles.screen}>
-            {header}
-            <SkeletonBlock height={180} testID="progress-skeleton-overall" />
-            <SkeletonBlock height={184} testID="progress-skeleton-consistency" />
-          </View>
-        )}
-        testID="progress-screen"
-      />
-    );
-  }
+  const openBodyweight = async (invoker: "body_metrics" | "settings") => {
+    if (progressBodyweightRuntime === undefined) return;
+    const entries = await progressBodyweightRuntime.loadHistory();
+    setBodyweightEntries(entries);
+    setProgressSettingsVisible(false);
+    setBodyweightInvoker(invoker);
+    setBodyweightEditor(null);
+    setBodyweightVisible(true);
+  };
 
-  if (snapshot.freshness !== "current" || snapshot.projection === null) {
-    const diagnosticBody = rebuildDiagnosticText(snapshot.diagnostic);
-    return (
-      <AdaptiveScreen
-        {...adaptiveWidth}
-        primary={(
-          <View style={styles.screen}>
-            {header}
-            <InlineNotice
-              body={diagnosticBody ?? "Saved history is being recalculated. Results refresh automatically."}
-              heading="Updating progress"
-              tone="neutral"
-            />
-            <PrimaryAction
-              label="Refresh progress"
-              onPress={() => setRequestGeneration((value) => value + 1)}
-            />
-          </View>
-        )}
-        testID="progress-screen"
-      />
-    );
-  }
+  const decideRecommendation = async (
+    recommendation: ProgressRecommendationReview,
+    decision: "use_target" | "keep_current_target",
+  ) => {
+    if (progressRecommendationRuntime === undefined) throw new Error("progress_recommendation_runtime_unavailable");
+    const result = await progressRecommendationRuntime.decide(recommendation, decision);
+    const readBack = await readProgress(false);
+    if (readBack === null) throw new Error("progress_recommendation_readback_obsolete");
+    const committed = readBack.projection?.recommendations.find(({ id }) => id === recommendation.id);
+    if (result.status === "superseded" || committed?.lifecycle === "superseded") {
+      setStaleRecommendation(recommendation);
+      return result;
+    }
+    const expectedLifecycle = decision === "use_target" ? "accepted" : "rejected";
+    if (committed?.lifecycle !== expectedLifecycle) {
+      throw new Error("progress_recommendation_readback_missing");
+    }
+    setStaleRecommendation(null);
+    semanticToast?.enqueue({
+      message: decision === "use_target"
+        ? `${recommendation.exerciseName} target updated to ${recommendationTargetText(recommendation.proposedTarget)}.`
+        : `Current ${recommendation.exerciseName} target kept.`,
+    });
+    return result;
+  };
 
-  const projection = snapshot.projection;
-  if (!hasFactualEvidence(projection)) {
-    return (
-      <AdaptiveScreen
-        {...adaptiveWidth}
-        primary={(
-          <View style={styles.screen}>
-            {header}
-            <EmptyState
-              body="Completed working sets and planned opportunities will appear here after you train."
-              heading="No progress history yet"
-              primaryAction={<PrimaryAction label="Refresh progress" onPress={() => setRequestGeneration((value) => value + 1)} />}
-            />
-          </View>
-        )}
-        testID="progress-screen"
-      />
-    );
-  }
-  const exerciseDisplayLabel = createExerciseDisplayLabel(projection);
+  const header = <>
+    <ScreenHeader {...(headingRef === undefined ? {} : { ref: headingRef as React.Ref<View> })} action={<IconAction accessibilityHint="Opens App Settings" accessibilityLabel="Open App Settings" icon="settings" nativeID={settingsActionNativeID} onPress={onOpenSettings} ref={settingsActionRef as React.Ref<View>} />} title="Progress" />
+    {progressBodyweightRuntime === undefined ? null : <View style={styles.supplementaryActions}>
+      <FocusablePressable accessibilityLabel="Body metrics" accessibilityRole="button" focusable onPress={() => { closeLocalSurfaces(); void openBodyweight("body_metrics"); }} ref={bodyMetricsTriggerRef} style={styles.supplementaryAction}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>Body metrics</Text></FocusablePressable>
+      <FocusablePressable accessibilityLabel="Settings" accessibilityRole="button" focusable onPress={() => { closeLocalSurfaces(); setProgressSettingsVisible(true); }} ref={progressSettingsTriggerRef} style={styles.supplementaryAction}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>Settings</Text></FocusablePressable>
+    </View>}
+    <SegmentedControls<ProgressSport>
+      focusRequest={sportFocusRequest ?? undefined}
+      label="Progress sport"
+      onChange={(next) => { closeLocalSurfaces(); setSportFocusRequest(null); setSport(next); }}
+      role="tab"
+      selected={sport}
+      values={SPORTS}
+    />
+    <SegmentedControls<ProgressPeriod> label="Progress range" onChange={(next) => { closeLocalSurfaces(); setPeriod(next); }} role="button" selected={period} values={PERIODS} />
+  </>;
+  const retryAction = <PrimaryAction label="Refresh progress" onPress={() => setRetry((current) => current + 1)} />;
+  const rangeLabel = PERIODS.find(({ value }) => value === period)?.label ?? period;
+  let content: React.ReactNode;
+  if (failed) content = <EmptyState body="Your saved workouts and targets were not changed. Retry loading progress." heading="Progress could not be loaded" primaryAction={<PrimaryAction label="Retry loading progress" onPress={() => setRetry((current) => current + 1)} />} />;
+  else if (snapshot === null) content = <View accessibilityLabel="Loading progress" accessibilityRole="progressbar" style={styles.content}><SkeletonBlock height={180} testID="progress-skeleton" /></View>;
+  else if (snapshot.freshness === "unavailable" || snapshot.diagnostic?.code === "history_projection_unavailable") content = <ProgressUnavailable onRetry={() => setRetry((current) => current + 1)} />;
+  else if (snapshot.freshness !== "current" || snapshot.dashboard === null || snapshot.dashboard === undefined) content = <View style={styles.content}><InlineNotice body={rebuildText(snapshot.diagnostic)} heading="Updating progress" tone="neutral" />{retryAction}</View>;
+  else if (snapshot.dashboard.sport === "Running") {
+    const runningDashboard = snapshot.dashboard;
+    content = <RunningRoot
+      dashboard={runningDashboard}
+      historyActionRefs={historyActionRefs}
+      onOpenHistory={(goal, invokerToken) => { setTargetDistanceMeters(null); setHistoryInvokerToken(invokerToken); setHistoryGoal(goal); }}
+      onOpenTarget={(distanceMeters) => { setHistoryGoal(null); setHistoryInvokerToken(null); setTargetDistanceMeters(distanceMeters); }}
+      onRetry={() => setRetry((current) => current + 1)}
+      period={period}
+      rangeLabel={rangeLabel}
+      stackHeroFacts={stackHeroFacts}
+      targetSources={runningTargetRuntime === undefined ? [] : snapshot.runningTargetSources ?? []}
+      targetTriggerRefs={targetTriggerRefs}
+    />;
+  } else content = <DashboardContent
+    dashboard={snapshot.dashboard}
+    exerciseActionRefs={exerciseActionRefs}
+    historyActionRefs={historyActionRefs}
+    {...(progressRecommendationRuntime === undefined ? {} : { onDecideRecommendation: decideRecommendation })}
+    onOpenExercise={onOpenExercise}
+    onOpenRunningHistory={(goal, invokerToken) => { setTargetDistanceMeters(null); setHistoryInvokerToken(invokerToken); setHistoryGoal(goal); }}
+    {...(onOpenRunningSource === undefined ? {} : { onOpenRunningSource })}
+    onOpenSession={onOpenSession}
+    onRetry={() => setRetry((current) => current + 1)}
+    onSelectSport={(next) => {
+      closeLocalSurfaces();
+      setSportFocusRequest((current) => Object.freeze({
+        value: next,
+        version: (current?.version ?? 0) + 1,
+      }));
+      setSport(next);
+    }}
+    period={period}
+    rangeLabel={rangeLabel}
+    recommendationSourceRefs={recommendationSourceRefs}
+    recommendations={snapshot.projection?.recommendations ?? []}
+    returnActionRefs={returnActionRefs}
+    stackHeroFacts={stackHeroFacts}
+    staleRecommendation={staleRecommendation}
+  />;
 
-  return (
+  const targetSources = targetDistanceMeters === null
+    ? []
+    : (snapshot?.runningTargetSources ?? []);
+
+  return <FocusClearanceProvider clearance={3}><>
     <AdaptiveScreen
       {...adaptiveWidth}
-      primary={(
-        <View style={styles.screen}>
-          {header}
-          <OverallProgress
-            exerciseDisplayLabel={exerciseDisplayLabel}
-            onOpenExercise={onOpenExercise}
-            onOpenSession={onOpenSession}
-            projection={projection}
-          />
-          <ProgressTrend
-            exerciseDisplayLabel={exerciseDisplayLabel}
-            onOpenExercise={onOpenExercise}
-            onOpenSession={onOpenSession}
-            rows={projection.trend}
-          />
-          <NeedsAttention
-              {...(onAcceptRecommendation === undefined
-                ? {}
-                : { onAcceptRecommendation })}
-              {...(onKeepCurrentTarget === undefined
-                ? {}
-                : { onKeepCurrentTarget })}
-            onOpenExercise={onOpenExercise}
-            exerciseDisplayLabel={exerciseDisplayLabel}
-            onOpenSession={onOpenSession}
-            onRecommendationDecisionComplete={() => {
-              setRequestGeneration((value) => value + 1);
-            }}
-            onRecommendationDecisionNotice={setRecommendationDecisionNotice}
-            projection={projection}
-          />
-          <ReviewHistory
-            onOpenSession={onOpenSession}
-            projection={projection}
-          />
-          <ExerciseProgress
-            exerciseDisplayLabel={exerciseDisplayLabel}
-            onOpenExercise={onOpenExercise}
-            projection={projection}
-          />
-        </View>
-      )}
+      onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => { scrollOffsetRef.current = event.nativeEvent.contentOffset.y; }}
+      primary={<View style={styles.screen}>{header}{content}</View>}
+      scrollOffset={scrollOffsetRef.current}
+      {...(returnFocusVersion === 0 ? {} : { scrollRestoreKey: `${returnFocusToken ?? "progress"}:${returnFocusVersion}` })}
       testID="progress-screen"
     />
-  );
+    <RunningHistorySheet
+      goal={historyGoal}
+      onClose={() => { setHistoryGoal(null); setHistoryInvokerToken(null); }}
+      registerSourceAction={(source, node) => {
+        if (!("activityId" in source)) return;
+        const key = `${source.activityId}:${source.sourceRevision}`;
+        if (node === null) runningSourceActionRefs.current.delete(key);
+        else runningSourceActionRefs.current.set(key, node);
+      }}
+      {...(onOpenRunningSource === undefined ? {} : {
+        onOpenSource: (source: FactualHistorySource) => {
+          if (!("activityId" in source)) return;
+          onOpenRunningSource(
+            source,
+            `running-history:${historyGoal?.distanceMeters ?? 0}:${source.activityId}:${source.sourceRevision}`,
+          );
+        },
+      })}
+      rangeLabel={rangeLabel}
+      restoreFocusRef={{ current: historyInvokerToken === null ? null : historyActionRefs.current.get(historyInvokerToken) ?? null }}
+      visible={historyGoal !== null}
+    />
+    {runningTargetRuntime === undefined ? null : <RunningTargetSheet
+      initialDistanceMeters={targetDistanceMeters ?? 2_400}
+      key={`running-target-${targetDistanceMeters ?? "closed"}`}
+      onClose={() => setTargetDistanceMeters(null)}
+      onSaved={async (saved) => {
+        const readBack = await readProgress(false);
+        const targetSource = readBack?.runningTargetSources?.find(({ id }) => id === saved.id);
+        const savedTarget = runningTargetForDistance(saved, targetDistanceMeters ?? 2_400);
+        const sourceTarget = targetSource === undefined
+          ? undefined
+          : runningTargetForDistance(targetSource, targetDistanceMeters ?? 2_400);
+        if (readBack === null
+          || targetSource === undefined
+          || targetSource.revision !== saved.revision
+          || savedTarget === undefined
+          || sourceTarget?.revision !== savedTarget.revision) {
+          throw new Error("running_target_root_readback_obsolete");
+        }
+        semanticToast?.enqueue({ message: `${distanceLabel(savedTarget.goalDistanceMeters)} target saved.` });
+      }}
+      restoreFocusRef={{ current: targetDistanceMeters === null ? null : targetTriggerRefs.current.get(targetDistanceMeters) ?? null }}
+      runtime={runningTargetRuntime}
+      sources={targetSources}
+      todayLocalDate={nowLocalDate}
+      visible={targetDistanceMeters !== null && targetSources.length > 0}
+    />}
+    <ProgressSettingsSheet
+      bodyweightActionRef={bodyweightSettingsActionRef}
+      onClose={() => setProgressSettingsVisible(false)}
+      onOpenBodyweightHistory={() => { void openBodyweight("settings"); }}
+      restoreFocusRef={progressSettingsTriggerRef}
+      visible={progressSettingsVisible}
+    />
+    {progressBodyweightRuntime === undefined ? null : <BodyweightHistorySheet
+      editorRestoreFocusRef={bodyweightEditorRestoreFocusRef}
+      entries={bodyweightEntries}
+      onAdd={() => {
+        bodyweightRequestRef.current = progressBodyweightRuntime.createId("bodyweight-save");
+        setBodyweightVisible(false);
+        setBodyweightEditor({ mode: "add" });
+      }}
+      onClose={() => {
+        setBodyweightVisible(false);
+        if (bodyweightInvoker === "settings") setProgressSettingsVisible(true);
+      }}
+      onDelete={async (entry) => {
+        const requestId = bodyweightDeleteRequestsRef.current.get(entry.entryId)
+          ?? progressBodyweightRuntime.createId("bodyweight-delete");
+        bodyweightDeleteRequestsRef.current.set(entry.entryId, requestId);
+        const entries = await progressBodyweightRuntime.delete(entry, requestId);
+        bodyweightDeleteRequestsRef.current.delete(entry.entryId);
+        setBodyweightEntries(entries);
+        semanticToast?.enqueue({ message: "Bodyweight entry deleted." });
+        return entries;
+      }}
+      onEdit={(entry) => {
+        bodyweightRequestRef.current = progressBodyweightRuntime.createId("bodyweight-save");
+        setBodyweightVisible(false);
+        setBodyweightEditor({ mode: "edit", entry });
+      }}
+      restoreFocusRef={bodyweightInvoker === "settings" ? bodyweightSettingsActionRef : bodyMetricsTriggerRef}
+      visible={bodyweightVisible}
+    />}
+    {progressBodyweightRuntime === undefined ? null : <BodyweightEditorSheet
+      expectedRevision={bodyweightEditor?.entry?.revision ?? 0}
+      {...(bodyweightEditor?.entry === undefined ? {} : {
+        initialGrams: bodyweightEditor.entry.grams,
+        initialLocalDate: bodyweightEditor.entry.localDate,
+      })}
+      mode={bodyweightEditor?.mode ?? "add"}
+      onClose={() => { bodyweightRequestRef.current = null; setBodyweightEditor(null); setBodyweightVisible(true); }}
+      onSave={async (input) => {
+        const requestId = bodyweightRequestRef.current ?? progressBodyweightRuntime.createId("bodyweight-save");
+        bodyweightRequestRef.current = requestId;
+        const entries = await progressBodyweightRuntime.save({
+          ...input,
+          entryId: bodyweightEditor?.entry?.entryId ?? progressBodyweightRuntime.createId("bodyweight-entry"),
+          requestId,
+        });
+        bodyweightRequestRef.current = null;
+        setBodyweightEntries(entries);
+        setBodyweightEditor(null);
+        setBodyweightVisible(true);
+        semanticToast?.enqueue({ message: "Bodyweight entry saved." });
+      }}
+      restoreFocusRef={bodyweightEditorRestoreFocusRef}
+      todayLocalDate={nowLocalDate}
+      visible={bodyweightEditor !== null}
+    />}
+  </></FocusClearanceProvider>;
 }
 
 const styles = StyleSheet.create({
-  attentionActions: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
-  attentionRow: { borderBottomWidth: StyleSheet.hairlineWidth, gap: space[1], paddingBottom: space[4] },
-  attentionRows: { gap: space[4] },
-  exerciseRow: { borderRadius: radius.standard, borderWidth: StyleSheet.hairlineWidth, gap: space[1], minHeight: 72, padding: space[4] },
-  exerciseRows: { gap: space[2] },
-  periodControl: { alignItems: "center", borderRadius: radius.standard, borderWidth: StyleSheet.hairlineWidth, justifyContent: "center", minHeight: 48, paddingHorizontal: space[4] },
-  periodControls: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
-  recommendationReview: { gap: space[2] },
-  recordRow: { borderRadius: radius.standard, borderWidth: StyleSheet.hairlineWidth, gap: space[1], minHeight: 56, padding: space[2] },
-  records: { gap: space[2] },
+  content: { gap: space[4] },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  factCell: { flex: 1, justifyContent: "center", minHeight: sizes.minimumTarget, paddingHorizontal: space[2], paddingVertical: space[2] },
+  factCellRowDivider: { borderLeftWidth: 1 },
+  factCellStackedDivider: { borderLeftWidth: 0, borderTopWidth: 1 },
+  factRow: { borderBottomWidth: StyleSheet.hairlineWidth, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row" },
+  factRowStacked: { flexDirection: "column" },
+  goalAction: { borderRadius: radius.standard, borderWidth: StyleSheet.hairlineWidth, gap: space[1], minHeight: sizes.minimumTarget, padding: space[2] },
+  goalRows: { gap: space[2] },
+  hero: { borderTopWidth: 2, gap: space[2], marginTop: 18, paddingTop: space[4] },
+  pacing: { gap: space[1] },
+  runningEvidence: { borderLeftWidth: 4, paddingLeft: space[2] },
   screen: { gap: space[4], maxWidth: 960, width: "100%" },
-  section: { gap: space[2] },
-  sourceActions: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
-  summaryRow: { gap: space[2] },
-  summaryRows: { gap: space[4] },
-  textAction: { borderRadius: radius.standard, borderWidth: StyleSheet.hairlineWidth, justifyContent: "center", minHeight: 48, paddingHorizontal: space[2] },
+  segment: { alignItems: "center", borderRadius: 9, borderWidth: 0, flex: 1, justifyContent: "center", minHeight: sizes.minimumTarget, paddingHorizontal: space[1] },
+  segmented: { borderRadius: 13, borderWidth: 1, flexDirection: "row", gap: 3, padding: 3 },
+  supplementaryAction: { alignItems: "center", justifyContent: "center", minHeight: sizes.minimumTarget, paddingHorizontal: space[2] },
+  supplementaryActions: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
 });

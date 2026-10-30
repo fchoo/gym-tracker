@@ -12,6 +12,7 @@ import {
 } from "./backupFormat";
 import {
   BACKUP_LIMITS,
+  LOGICAL_BACKUP_FORMAT_VERSION,
   type LogicalBackupSnapshot,
 } from "./backupContracts";
 
@@ -108,7 +109,37 @@ function archiveWithPayload(archive: Uint8Array, payload: Uint8Array): Uint8Arra
   return replacement;
 }
 
-describe("GTBK v1 backup envelope", () => {
+describe("GTBK backup envelope", () => {
+  it("writes v2 only when the logical snapshot carries its identity namespace", async () => {
+    const v2: LogicalBackupSnapshot = {
+      ...snapshot,
+      version: 2,
+      schemaVersion: 22,
+      manifest: { catalogReferenceCount: 0, rowCounts: { portable_owner_identity: 1 }, totalRows: 1 },
+      tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+    };
+    const archive = await createBackupEnvelopeCodec(cryptoPort()).seal({
+      snapshot: v2, password, salt, nonce,
+    });
+    expect(archive[4]).toBe(2);
+    await expect(createBackupEnvelopeCodec(cryptoPort()).open({ archive, password }))
+      .resolves.toEqual(v2);
+  });
+  it("round-trips the v3 successor envelope with its portable identity", async () => {
+    const v3: LogicalBackupSnapshot = {
+      ...snapshot,
+      version: 3,
+      schemaVersion: 28,
+      manifest: { catalogReferenceCount: 0, rowCounts: { portable_owner_identity: 1 }, totalRows: 1 },
+      tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+    };
+    const archive = await createBackupEnvelopeCodec(cryptoPort()).seal({
+      snapshot: v3, password, salt, nonce,
+    });
+    expect(archive[4]).toBe(3);
+    await expect(createBackupEnvelopeCodec(cryptoPort()).open({ archive, password }))
+      .resolves.toEqual(v3);
+  });
   it("emits deterministic canonical header bytes that are authenticated as AAD", async () => {
     const codec = createBackupEnvelopeCodec(cryptoPort());
 
@@ -136,7 +167,7 @@ describe("GTBK v1 backup envelope", () => {
 
   it.each([
     ["the magic", (archive: Uint8Array) => { archive[0] = (archive[0] ?? 0) ^ 1; }],
-    ["the format version", (archive: Uint8Array) => { archive[4] = 2; }],
+    ["the format version", (archive: Uint8Array) => { archive[4] = 255; }],
     ["one canonical header byte", (archive: Uint8Array) => { archive[9] = (archive[9] ?? 0) ^ 1; }],
     ["one ciphertext byte", (archive: Uint8Array) => { const index = archive.length - 17; archive[index] = (archive[index] ?? 0) ^ 1; }],
     ["the authentication tag", (archive: Uint8Array) => { const index = archive.length - 1; archive[index] = (archive[index] ?? 0) ^ 1; }],
@@ -174,6 +205,16 @@ describe("GTBK v1 backup envelope", () => {
       expect.objectContaining({ code: "backup_archive_invalid" }),
     );
     expect(derived).toEqual([]);
+  });
+
+  it("rejects an archive prefix whose supported version disagrees with its header", async () => {
+    const codec = createBackupEnvelopeCodec(cryptoPort());
+    const archive = await codec.seal({ snapshot, password, salt, nonce });
+    archive[4] = 2;
+
+    await expect(codec.open({ archive, password })).rejects.toEqual(
+      expect.objectContaining({ code: "backup_archive_invalid" }),
+    );
   });
 
   it("wipes caller-owned temporary password/key/plaintext copies on every path", async () => {
@@ -245,21 +286,30 @@ describe("GTBK v1 backup envelope", () => {
     expect(decrypt).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ["a wrong compression setting", (header: Record<string, unknown>) => { header.compression = "gzip"; }],
+  it.each<readonly [
+    label: string,
+    mutateHeader: (header: Record<string, unknown>) => void,
+    expectedCode: "backup_archive_invalid" | "backup_archive_unsupported_version",
+  ]>([
+    ["a wrong compression setting", (header: Record<string, unknown>) => { header.compression = "gzip"; }, "backup_archive_invalid"],
     ["a mismatched cipher descriptor", (header: Record<string, unknown>) => {
       header.cipher = { algorithm: "aes-128-gcm", tagBytes: 16 };
-    }],
+    }, "backup_archive_invalid"],
     ["a wrong KDF parameter", (header: Record<string, unknown>) => {
       header.kdf = { ...(header.kdf as Record<string, unknown>), iterations: 1 };
-    }],
+    }, "backup_archive_invalid"],
     ["malformed base64 salt padding", (header: Record<string, unknown>) => {
       header.kdf = { ...(header.kdf as Record<string, unknown>), salt: "AA=A" };
-    }],
-    ["a short nonce", (header: Record<string, unknown>) => { header.nonce = "AA=="; }],
-    ["a negative payload size", (header: Record<string, unknown>) => { header.payloadBytes = -1; }],
-    ["an unsupported header version", (header: Record<string, unknown>) => { header.version = 2; }],
-  ])("rejects %s before key derivation", async (_label, mutateHeader) => {
+    }, "backup_archive_invalid"],
+    ["a short nonce", (header: Record<string, unknown>) => { header.nonce = "AA=="; }, "backup_archive_invalid"],
+    ["a negative payload size", (header: Record<string, unknown>) => { header.payloadBytes = -1; }, "backup_archive_invalid"],
+    ["a current v9 header that disagrees with the archive prefix", (header: Record<string, unknown>) => {
+      header.version = LOGICAL_BACKUP_FORMAT_VERSION;
+    }, "backup_archive_invalid"],
+    ["an unsupported future header version", (header: Record<string, unknown>) => {
+      header.version = LOGICAL_BACKUP_FORMAT_VERSION + 1;
+    }, "backup_archive_unsupported_version"],
+  ])("rejects %s before key derivation", async (_label, mutateHeader, expectedCode) => {
     const archive = await createBackupEnvelopeCodec(cryptoPort()).seal({ snapshot, password, salt, nonce });
     const header = headerFrom(archive);
     mutateHeader(header);
@@ -268,9 +318,7 @@ describe("GTBK v1 backup envelope", () => {
 
     await expect(codec.open({ archive: archiveWithHeader(archive, header), password })).rejects.toEqual(
       expect.objectContaining({
-        code: header.version === 2
-          ? "backup_archive_unsupported_version"
-          : "backup_archive_invalid",
+        code: expectedCode,
       }),
     );
     expect(deriveKey).not.toHaveBeenCalled();

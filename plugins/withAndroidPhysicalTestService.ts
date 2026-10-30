@@ -37,7 +37,9 @@ class GymTrackerPhysicalTestService : HeadlessJsTaskService() {
 `;
 
 const withAndroidPhysicalTestService: ConfigPlugin = (config) => {
-  const enabled = config.extra?.nativeContractsEnabled === true;
+  const enabled = config.extra?.buildProfile === 'development-test'
+    && config.extra?.nativeContractsEnabled === true
+    && config.android?.package === 'com.fchoo.gymtracker.devtest';
   if (!enabled) {
     return config;
   }
@@ -46,6 +48,15 @@ const withAndroidPhysicalTestService: ConfigPlugin = (config) => {
     const application = AndroidConfig.Manifest.getMainApplicationOrThrow(
       manifestConfig.modResults,
     );
+    // run-as needs this test-only manifest capability; release BuildConfig.DEBUG stays false.
+    application.$['android:debuggable'] = 'true';
+    // The lint rule flags every debuggable attribute, even placeholders. This one
+    // intentional capability is scoped by the exact identity guard above; all
+    // other lint checks remain enabled and production rejects this annotation.
+    manifestConfig.modResults.manifest.$['xmlns:tools'] = 'http://schemas.android.com/tools';
+    const existingLintAnnotations = (application.$['tools:ignore'] ?? '')
+      .split(',').map(value => value.trim()).filter(Boolean);
+    application.$['tools:ignore'] = [...new Set([...existingLintAnnotations, 'HardcodedDebugMode'])].join(',');
     application.service ??= [];
     application.service = application.service.filter(
       (service) => service.$['android:name'] !== serviceClass,

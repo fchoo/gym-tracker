@@ -131,6 +131,60 @@ export function parseLocalDate(value: string): LocalDate {
   return value as LocalDate;
 }
 
+/** Returns the first valid civil date in the value's month. */
+export function startOfLocalMonth(value: LocalDate): LocalDate {
+  const { year, month } = componentsOf(value);
+  return formatComponents({ year, month, day: 1 });
+}
+
+/** Returns the number of civil days in the value's month. */
+export function daysInLocalMonth(value: LocalDate): number {
+  const { year, month } = componentsOf(value);
+  return daysInMonth(year, month);
+}
+
+/** Adds whole civil months and clamps the day to the destination month's final day. */
+export function addLocalMonthsClamped(value: LocalDate, monthCount: number): LocalDate {
+  if (!Number.isSafeInteger(monthCount)) {
+    throw new LocalDateValidationError("local_date_month_count_invalid");
+  }
+  const { year, month, day } = componentsOf(value);
+  const ordinalMonth = year * 12 + month - 1 + monthCount;
+  const nextYear = Math.floor(ordinalMonth / 12);
+  const nextMonth = ordinalMonth - nextYear * 12 + 1;
+  if (nextYear < 1 || nextYear > 9_999) {
+    throw new LocalDateValidationError("local_date_out_of_range");
+  }
+  return formatComponents({
+    year: nextYear,
+    month: nextMonth,
+    day: Math.min(day, daysInMonth(nextYear, nextMonth)),
+  });
+}
+
+/** Returns the Monday at the beginning of the civil week containing value. */
+export function startOfLocalWeek(value: LocalDate): LocalDate {
+  const weekday = weekdayForLocalDate(value);
+  const offset = weekday === "Sunday" ? 6 : WEEKDAYS.indexOf(weekday) - 1;
+  return addLocalDays(value, -offset);
+}
+
+/**
+ * Produces a Monday-first complete month grid with only the four, five, or six
+ * rows required by the represented civil month.
+ */
+export function calendarGridForMonth(value: LocalDate): readonly (readonly LocalDate[])[] {
+  const month = startOfLocalMonth(value);
+  const start = startOfLocalWeek(month);
+  const count = daysInLocalMonth(month);
+  const weekday = weekdayForLocalDate(month);
+  const beforeMonth = weekday === "Sunday" ? 6 : WEEKDAYS.indexOf(weekday) - 1;
+  const rowCount = Math.ceil((beforeMonth + count) / 7);
+  return Object.freeze(Array.from({ length: rowCount }, (_, week) => Object.freeze(
+    Array.from({ length: 7 }, (_, day) => addLocalDays(start, week * 7 + day)),
+  )));
+}
+
 export function compareLocalDates(
   left: LocalDate,
   right: LocalDate,

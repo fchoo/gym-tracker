@@ -25,6 +25,7 @@ import {
   dirname,
   resolve,
 } from "node:path";
+import * as ts from "typescript";
 
 type PackageJson = {
   scripts?: Record<string, string>;
@@ -102,13 +103,11 @@ describe("Plan 01-03 test and boundary tooling", () => {
     );
   });
 
-  it("does not retain sheet and dock modules replaced by inline set rows", () => {
-    for (const obsoleteFile of [
+  it("does not retain the ValueEditorSheet module replaced by inline set rows", () => {
+    expect(existsSync(join(
+      repositoryRoot,
       "src/ui/components/ValueEditorSheet.tsx",
-      "src/ui/components/WorkoutActionDock.tsx",
-    ]) {
-      expect(existsSync(join(repositoryRoot, obsoleteFile))).toBe(false);
-    }
+    ))).toBe(false);
   });
 
   it("builds the development-test APK as an embedded release artifact", () => {
@@ -129,6 +128,9 @@ describe("Plan 01-03 test and boundary tooling", () => {
     expect(
       buildScript.match(/GYM_TRACKER_BUILD_PROFILE=development-test/gu),
     ).toHaveLength(2);
+    expect(
+      buildScript.match(/EXPO_PUBLIC_NATIVE_CONTRACT_SUITE="\$suite"/gu),
+    ).toHaveLength(3);
     expect(configValidator).toContain("assets/app.config");
     expect(buildScript).toContain(
       "scripts/validate-development-test-app-config.mjs",
@@ -139,6 +141,11 @@ describe("Plan 01-03 test and boundary tooling", () => {
     expect(buildScript).toContain("build_variant: 'release'");
     expect(buildScript).toContain("embedded: true");
     expect(buildScript).not.toContain(":app:assembleDebug");
+    expect(buildScript).toContain('scripts/validate-development-test-native-access.mjs');
+    const capabilityGate = buildScript.indexOf('scripts/validate-development-test-native-access.mjs');
+    expect(capabilityGate).toBeGreaterThan(buildScript.indexOf(':app:assembleRelease'));
+    expect(capabilityGate).toBeLessThan(buildScript.indexOf('adb -s "$device_serial" install -r'));
+    expect(buildScript).not.toMatch(/release\.debuggable|debuggableVariants/u);
   });
 
   it("fails closed when the embedded development-test app config drifts", () => {
@@ -152,6 +159,17 @@ describe("Plan 01-03 test and boundary tooling", () => {
       extra: {
         buildProfile: "development-test",
         nativeContractsEnabled: true,
+        nativeContractSuite: "phase14-font-proof",
+        googleOAuth: {
+          projectNumber: "359232211920",
+          webClientId: "359232211920-gqfkasvsr8r5qbmprc6ukh9fofu246r9.apps.googleusercontent.com",
+          androidClientId: "359232211920-q20m2u1e8019eb626rt8alosr0j2262p.apps.googleusercontent.com",
+          packageName: "com.fchoo.gymtracker.devtest",
+          signingCertificate: {
+            sha1: "5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25",
+            sha256: "FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C",
+          },
+        },
       },
     };
     const invalidMessage =
@@ -180,6 +198,7 @@ describe("Plan 01-03 test and boundary tooling", () => {
               FAKE_UNZIP_ENTRIES:
                 "assets/index.android.bundle\nassets/app.config\n",
               FAKE_UNZIP_PAYLOAD: payload,
+              EXPO_PUBLIC_NATIVE_CONTRACT_SUITE: "phase14-font-proof",
               FAKE_UNZIP_EXTRACT_STATUS: statuses.extract ?? "0",
               FAKE_UNZIP_LIST_STATUS: statuses.list ?? "0",
               PATH: `${directory}:${process.env.PATH ?? ""}`,
@@ -212,6 +231,7 @@ describe("Plan 01-03 test and boundary tooling", () => {
             ...process.env,
             FAKE_UNZIP_ENTRIES: entries,
             FAKE_UNZIP_PAYLOAD: JSON.stringify(validConfig),
+            EXPO_PUBLIC_NATIVE_CONTRACT_SUITE: "phase14-font-proof",
             PATH: `${directory}:${process.env.PATH ?? ""}`,
           },
         })).toEqual(expect.objectContaining({
@@ -656,9 +676,36 @@ describe("Plan 01-03 test and boundary tooling", () => {
     expect(packageJson.scripts?.["test:coverage"]).toContain(
       "run-coverage-gate.mjs",
     );
-    expect(coverageRunner).toContain(
-      '"unit",\n    "components",\n    "sqlite-host",\n    "integration"',
+    const coverageSource = ts.createSourceFile(
+      "run-coverage-gate.mjs",
+      coverageRunner,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
     );
+    const selectedProjectsDeclaration = coverageSource.statements
+      .filter(ts.isVariableStatement)
+      .flatMap((statement) => statement.declarationList.declarations)
+      .find((declaration) => ts.isIdentifier(declaration.name)
+        && declaration.name.text === "selectedProjects");
+    const selectedProjectsInitializer = selectedProjectsDeclaration?.initializer;
+    if (selectedProjectsInitializer === undefined
+      || !ts.isConditionalExpression(selectedProjectsInitializer)
+      || !ts.isArrayLiteralExpression(selectedProjectsInitializer.whenFalse)) {
+      throw new Error("global coverage project selection is not an explicit array");
+    }
+    const globalCoverageProjects = selectedProjectsInitializer.whenFalse.elements.map((element) => {
+      if (!ts.isStringLiteralLike(element)) {
+        throw new Error("global coverage project selection contains a non-string value");
+      }
+      return element.text;
+    });
+    expect([...globalCoverageProjects].sort()).toEqual([
+      "components",
+      "integration",
+      "sqlite-host",
+      "unit",
+    ]);
     expect(coverageRunner).toContain(
       'for (const metric of ["statements", "branches", "functions", "lines"])',
     );
@@ -716,6 +763,7 @@ describe("Plan 01-03 test and boundary tooling", () => {
       "src/platform/sqlite/migrations/0009_owned_plans.ts",
       "src/platform/sqlite/migrations/0010_owned_recommendations.ts",
       "src/platform/sqlite/migrations/0015_progression_evidence.ts",
+      "src/platform/sqlite/migrations/0037_exercise_instruction_sets.ts",
       "src/platform/sqlite/migrations/index.ts",
       "src/platform/sqlite/recoveryBackup.ts",
       "src/platform/sqlite/repositories/contentRepository.ts",
@@ -725,6 +773,7 @@ describe("Plan 01-03 test and boundary tooling", () => {
       "src/platform/sqlite/repositories/metricRepository.ts",
       "src/platform/sqlite/repositories/ownedPlanRepository.ts",
       "src/platform/sqlite/repositories/planImpactRepository.ts",
+      "src/platform/sqlite/repositories/automaticSnapshotCapture.ts",
       "src/platform/sqlite/repositories/starterPlanRepository.ts",
       "src/platform/sqlite/serializedWriter.ts",
       "src/platform/sqlite/sqliteKernel.ts",
@@ -746,10 +795,10 @@ describe("Plan 01-03 test and boundary tooling", () => {
       "test:sqlite:device",
       "test:integration",
       "test:coverage",
-      "test:maestro:phase2",
-      "benchmark:phase2",
-      "verify:native:phase2",
-      "ci:phase2",
+      "test:maestro:phase12",
+      "benchmark:phase12:backup",
+      "verify:phase12:evidence",
+      "test:evidence:phase12",
       "benchmark:phase1",
       "verify:artifact-roundtrip",
       "test:all",
@@ -781,24 +830,24 @@ describe("Plan 01-03 test and boundary tooling", () => {
       previousIndex = commandIndex;
     }
 
-    const phase2Commands = [
+    const phase12Commands = [
       "npm run verify:cng",
-      "npm run android:devtest:fresh -- --suite phase2",
-      "npm run test:sqlite:device -- --suite phase2",
-      "npm run test:maestro:phase2",
-      "npm run benchmark:phase2",
-      "--roundtrip-temp",
-      "--roundtrip-downloaded-dir",
-      "--automated-only --require-roundtrip",
+      "npm run android:devtest:fresh -- --suite phase12",
+      "npm run test:sqlite:device -- --suite migrations-effects",
+      "npm run test:sqlite:device -- --suite google-drive-backup",
+      "npm run test:maestro:phase12",
+      "npm run benchmark:phase12:backup",
+      "npm run verify:phase12:evidence",
+      "--automated-only",
     ];
     previousIndex = -1;
-    for (const command of phase2Commands) {
+    for (const command of phase12Commands) {
       const commandIndex = workflow.indexOf(command, previousIndex + 1);
       expect(commandIndex).toBeGreaterThan(previousIndex);
       previousIndex = commandIndex;
     }
-    expect(workflow).toContain("name: phase2-evidence");
-    expect(workflow).toContain("name: phase2-evidence-downloaded");
+    expect(workflow).toContain("name: phase12-evidence");
+    expect(workflow).toContain("name: phase12-evidence-downloaded");
   });
 
   it("rejects every prohibited architecture boundary", () => {

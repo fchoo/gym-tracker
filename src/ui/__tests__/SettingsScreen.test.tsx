@@ -12,14 +12,20 @@ import {
   jest,
 } from "@jest/globals";
 import React from "react";
+import { useExactRestAlarmAccess } from "../../bootstrap/useExactRestAlarmAccess";
+
+jest.mock("../../bootstrap/useExactRestAlarmAccess", () => ({ useExactRestAlarmAccess: jest.fn() }));
+const preciseAlerts = jest.mocked(useExactRestAlarmAccess);
 
 import {
+  AppSettingsContent,
   SettingsScreen,
   type SettingsScreenProps,
 } from "../screens/SettingsScreen";
 import {
   AppearanceProvider,
   createMemoryAppearanceStore,
+  sizes,
 } from "../theme";
 
 function createProps(
@@ -62,22 +68,84 @@ function renderScreen(
 describe("SettingsScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    preciseAlerts.mockReturnValue({ access: "not_required", opening: false, openFailed: false, refreshFailed: false, retryRefresh: jest.fn(async () => undefined), openSettings: jest.fn(async () => undefined) });
+  });
+
+  it("offers precise alarm access explicitly without changing sound or vibration preferences", async () => {
+    const openSettings = jest.fn(async () => undefined);
+    preciseAlerts.mockReturnValue({ access: "denied", opening: false, openFailed: false, refreshFailed: false, retryRefresh: jest.fn(async () => undefined), openSettings });
+    const refresh = jest.fn(async () => undefined);
+    const props = createProps({ onRefreshPreciseRestAlarms: refresh });
+    await renderScreen(props);
+    expect(screen.getByText("Precise background alerts")).toBeOnTheScreen();
+    expect(openSettings).not.toHaveBeenCalled();
+    const action = screen.getByRole("button", { name: "Allow precise rest alerts" });
+    expect(action).toHaveStyle({ minHeight: 48 });
+    await fireEvent.press(action);
+    expect(openSettings).toHaveBeenCalledTimes(1);
+    expect(props.onChangeRestAlertPreferences).not.toHaveBeenCalled();
+    expect(preciseAlerts).toHaveBeenCalledWith(undefined, refresh);
+  });
+
+  it("shows granted precise access without another permission action", async () => {
+    preciseAlerts.mockReturnValue({ access: "allowed", opening: false, openFailed: false, refreshFailed: false, retryRefresh: jest.fn(async () => undefined), openSettings: jest.fn(async () => undefined) });
+    await renderScreen(createProps());
+    expect(screen.getByText("Allowed. Rest completion alerts can use Android's precise alarms.")).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Allow precise rest alerts" })).not.toBeOnTheScreen();
+  });
+
+  it("offers retry when pending precise alarms could not be refreshed", async () => {
+    const retryRefresh = jest.fn(async () => undefined);
+    preciseAlerts.mockReturnValue({ access: "allowed", opening: false, openFailed: false, refreshFailed: true, retryRefresh, openSettings: jest.fn(async () => undefined) });
+    await renderScreen(createProps());
+    expect(screen.getByText("Pending rest alerts could not be updated. Your timer stays accurate.")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Retry precise rest alerts" }));
+    expect(retryRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("shares the App Settings content tree between its route wrapper and sheet host", async () => {
+    const props = createProps();
+    await render(
+      <AppearanceProvider>
+        <AppSettingsContent {...props} />
+      </AppearanceProvider>,
+    );
+
+    expect(screen.getByText(
+      "Appearance applies to all four destinations, Active Workout, Garmin, sheets, dialogs, and recovery routes.",
+    )).toBeOnTheScreen();
+    const headings = screen.getAllByRole("header").map((node) => (
+      node.props.accessibilityLabel ?? node.props.children
+    ));
+    expect(headings).toEqual([
+      "Appearance",
+      "Dates and times",
+      "Rest alerts",
+      "History and data",
+      "Data and recovery",
+    ]);
+    expect(screen.queryByRole("button", { name: "Go back" }))
+      .not.toBeOnTheScreen();
   });
 
   it("renders the locked hierarchy with persisted top-level appearance radios and accessible rows", async () => {
     const appearanceStore = createMemoryAppearanceStore();
     await renderScreen(createProps(), appearanceStore);
 
-    expect(screen.getByRole("header", { name: "Settings" }))
+    expect(screen.getByRole("header", { name: "App Settings" }))
       .toBeOnTheScreen();
-    expect(screen.getAllByRole("header").map((node) => node.props.children))
-      .toEqual([
-        "Settings",
-        "Appearance",
-        "Rest alerts",
-        "History and data",
-        "Data and recovery",
-      ]);
+    const expectedHeadings = [
+      "App Settings",
+      "Appearance",
+      "Dates and times",
+      "Rest alerts",
+      "History and data",
+      "Data and recovery",
+    ];
+    expect(screen.getAllByRole("header")).toHaveLength(expectedHeadings.length);
+    for (const heading of expectedHeadings) {
+      expect(screen.getByRole("header", { name: heading })).toBeOnTheScreen();
+    }
     expect(screen.getByTestId("settings-appearance-group"))
       .toHaveProp("accessibilityRole", "radiogroup");
     expect(screen.getByRole("radio", { name: "System" }))
@@ -92,7 +160,7 @@ describe("SettingsScreen", () => {
 
     await fireEvent(screen.getByRole("radio", { name: "System" }), "focus");
     expect(screen.getByRole("radio", { name: "System" }))
-      .toHaveStyle({ outlineWidth: 2 });
+      .toHaveStyle({ outlineWidth: sizes.focusRing });
 
     await fireEvent.press(screen.getByRole("radio", { name: "Dark" }));
     expect(appearanceStore.read()).toBe("Dark");
@@ -103,13 +171,13 @@ describe("SettingsScreen", () => {
       );
 
     expect(screen.getByText(
-      "Plays short beeps at 3, 2, and 1 seconds and a longer beep when rest ends.",
+      "Plays two short beeps at 2 and 1 seconds, then a longer beep when rest ends.",
     )).toBeOnTheScreen();
     expect(screen.getByText(
       "Restore a completed workout that was removed from ordinary history.",
     )).toBeOnTheScreen();
     expect(screen.getByText(
-      "Create a secure backup, restore a previous backup, or export readable CSV data.",
+      "Automatic Google Drive backup and manual recovery tools are available here.",
     )).toBeOnTheScreen();
 
     for (const name of [
@@ -127,6 +195,13 @@ describe("SettingsScreen", () => {
       .not.toBeOnTheScreen();
     expect(screen.queryByRole("button", { name: "Close rest alerts" }))
       .not.toBeOnTheScreen();
+  });
+
+  it("explains the two-short-then-long rest sound sequence", async () => {
+    await renderScreen(createProps());
+    expect(screen.getByText(
+      "Plays two short beeps at 2 and 1 seconds, then a longer beep when rest ends.",
+    )).toBeOnTheScreen();
   });
 
   it("keeps the saved row shape and values while rest settings load", async () => {

@@ -1,0 +1,63 @@
+{
+  "kind": "cli",
+  "startedAt": "2026-10-24T16:57:36.042Z",
+  "endedAt": "2026-10-24T16:57:39.568Z",
+  "leaderPid": 47315,
+  "ownershipSha256": "983df2fe21f4318df42bae259e6215db35bc0ab27fce2dbbd57854bbc0e32adf",
+  "observedProcessBirths": [
+    {
+      "pid": 47315,
+      "group": 47315,
+      "birth": "Sun Oct 25 00:57:36 2026",
+      "state": "Ss",
+      "commandSha256": "6c3709630e162e107e14bca620d199dc376ced11509a53ed78c9b1c199edad1c"
+    },
+    {
+      "pid": 48178,
+      "group": 47315,
+      "birth": "Sun Oct 25 00:57:37 2026",
+      "state": "R",
+      "commandSha256": "c338c23c0920214ee049ec7c76e6e0c775f9c81ad71c355d55388e024e1ee5dc"
+    },
+    {
+      "pid": 48255,
+      "group": 47315,
+      "birth": "Sun Oct 25 00:57:37 2026",
+      "state": "R",
+      "commandSha256": "c338c23c0920214ee049ec7c76e6e0c775f9c81ad71c355d55388e024e1ee5dc"
+    },
+    {
+      "pid": 48446,
+      "group": 47315,
+      "birth": "Sun Oct 25 00:57:37 2026",
+      "state": "R",
+      "commandSha256": "c338c23c0920214ee049ec7c76e6e0c775f9c81ad71c355d55388e024e1ee5dc"
+    },
+    {
+      "pid": 48510,
+      "group": 47315,
+      "birth": "Sun Oct 25 00:57:37 2026",
+      "state": "R",
+      "commandSha256": "0c16a0f2516e08630f83312c35b0b785ef5e86235ec5f5c6359f67c2aafd7aae"
+    },
+    {
+      "pid": 48565,
+      "group": 47315,
+      "birth": "Sun Oct 25 00:57:38 2026",
+      "state": "R",
+      "commandSha256": "0c16a0f2516e08630f83312c35b0b785ef5e86235ec5f5c6359f67c2aafd7aae"
+    },
+    {
+      "pid": 49357,
+      "group": 47315,
+      "birth": "Sun Oct 25 00:57:39 2026",
+      "state": "R",
+      "commandSha256": "c338c23c0920214ee049ec7c76e6e0c775f9c81ad71c355d55388e024e1ee5dc"
+    }
+  ],
+  "snapshots": 33,
+  "markerProbes": 4,
+  "finalGroupRows": [],
+  "boundedSupervisorResolved": true,
+  "cleanup": "verified-empty"
+}

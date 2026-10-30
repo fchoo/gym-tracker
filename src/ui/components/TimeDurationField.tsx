@@ -1,24 +1,19 @@
-import React, {
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import React, { useRef, useState } from "react";
 import {
-  AccessibilityInfo,
-  Modal,
   StyleSheet,
   Text,
   TextInput,
   View,
-  findNodeHandle,
   type TextStyle,
 } from "react-native";
 
 import {
+  ActionRow,
   FocusablePressable,
   PrimaryAction,
   SecondaryAction,
 } from "./index";
+import { BottomSheet, useBottomSheetCancel } from "./BottomSheet";
 import {
   radius,
   sizes,
@@ -91,9 +86,16 @@ export type TimeDurationFieldProps = Readonly<{
   onChangeText(value: string): void;
   disabled?: boolean;
   help?: string;
-  error?: string;
+  error?: string | undefined;
   tone?: "default" | "card";
+  triggerRef?: React.RefObject<View | null>;
 }>;
+
+function DurationCancelAction({ label }: Readonly<{ label: string }>) {
+  const cancelSheet = useBottomSheetCancel();
+
+  return <SecondaryAction label={label} onPress={() => cancelSheet?.()} />;
+}
 
 /**
  * Presentation-only duration selection. The caller retains the canonical
@@ -106,6 +108,7 @@ export function TimeDurationField({
   label,
   onChangeText,
   tone = "default",
+  triggerRef: suppliedTriggerRef,
   value,
 }: TimeDurationFieldProps) {
   const { colors } = useAppTheme();
@@ -115,25 +118,11 @@ export function TimeDurationField({
   const helpColor = tone === "card"
     ? colors.contentCardTextSecondary
     : colors.textSecondary;
-  const triggerRef = useRef<View>(null);
-  const dialogRef = useRef<View>(null);
-  const wasOpenRef = useRef(false);
+  const localTriggerRef = useRef<View>(null);
+  const triggerRef = suppliedTriggerRef ?? localTriggerRef;
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<DurationParts>(() => durationParts(value));
   const [draftError, setDraftError] = useState<string | undefined>();
-
-  useEffect(() => {
-    if (open) {
-      wasOpenRef.current = true;
-      dialogRef.current?.focus();
-      return;
-    }
-    if (wasOpenRef.current) {
-      wasOpenRef.current = false;
-      triggerRef.current?.focus();
-      AccessibilityInfo.setAccessibilityFocus(findNodeHandle(triggerRef.current) ?? 0);
-    }
-  }, [open]);
 
   const close = () => setOpen(false);
   const confirm = () => {
@@ -191,21 +180,12 @@ export function TimeDurationField({
           {error}
         </Text>
       )}
-      <Modal animationType="none" onRequestClose={close} transparent visible={open}>
-        <View accessibilityViewIsModal style={styles.backdrop}>
-          <View
-            accessibilityLabel={`${label} duration dialog`}
-            accessibilityViewIsModal
-            focusable
-            ref={dialogRef}
-            style={[styles.dialog, { backgroundColor: colors.surface, borderColor: colors.divider }]}
-          >
-            <Text accessibilityRole="header" style={[
-              typeScale.sectionTitle as TextStyle,
-              { color: colors.textPrimary },
-            ]}>
-              {label}
-            </Text>
+      <BottomSheet
+        heading={label}
+        onCancel={close}
+        restoreFocusRef={triggerRef}
+        visible={open}
+      >
             <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
               Set hours, minutes, and seconds. Leave every segment blank to clear this duration.
             </Text>
@@ -244,13 +224,11 @@ export function TimeDurationField({
                 {draftError}
               </Text>
             )}
-            <View style={styles.actions}>
-              <SecondaryAction label={`Cancel ${label.toLocaleLowerCase("en")}`} onPress={close} />
+            <ActionRow>
+              <DurationCancelAction label={`Cancel ${label.toLocaleLowerCase("en")}`} />
               <PrimaryAction label={`Confirm ${label.toLocaleLowerCase("en")}`} onPress={confirm} />
-            </View>
-          </View>
-        </View>
-      </Modal>
+            </ActionRow>
+      </BottomSheet>
     </View>
   );
 }
@@ -263,21 +241,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     minHeight: sizes.minimumTarget,
     paddingHorizontal: space[4],
-  },
-  backdrop: {
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.48)",
-    flex: 1,
-    justifyContent: "center",
-    padding: space[4],
-  },
-  dialog: {
-    borderRadius: radius.emphasized,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: space[4],
-    maxWidth: 560,
-    padding: space[4],
-    width: "100%",
   },
   segments: {
     flexDirection: "row",

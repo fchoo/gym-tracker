@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "suite": "phase18-garmin-acceptance",
+  "profile": "physical-arm64",
+  "metrics": {
+    "apk_size_bytes": { "maximum": 250000000, "minimum_samples": 1, "mode": "artifact" },
+    "garmin_module_size_bytes": { "maximum": 80000000, "minimum_samples": 1, "mode": "artifact" },
+    "python_cold_start_ms": { "maximum": 5000, "minimum_samples": 5, "mode": "cold" },
+    "python_warm_start_ms": { "maximum": 1000, "minimum_samples": 10, "mode": "warm" },
+    "bounded_sync_ms": { "maximum": 30000, "minimum_samples": 5, "mode": "network-bounded" },
+    "route_render_ms": { "maximum": 1000, "minimum_samples": 10, "mode": "warm" },
+    "lap_render_ms": { "maximum": 1000, "minimum_samples": 10, "mode": "warm" },
+    "memory_rss_bytes": { "maximum": 536870912, "minimum_samples": 5, "mode": "steady-state" },
+    "js_task_ms": { "maximum": 50, "minimum_samples": 30, "mode": "frame" },
+    "frame_time_ms": { "maximum": 34, "minimum_samples": 30, "mode": "frame" },
+    "offline_workout_commit_ms": { "maximum": 250, "minimum_samples": 10, "mode": "offline" }
+  }
+}

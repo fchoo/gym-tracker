@@ -1,0 +1,195 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 20 real Calendar native observation
+tags: [calendar, native-only, development-test, phase-20, observe-only]
+---
+- assertTrue: ${V12_CALENDAR_STAGE != null}
+- assertTrue: ${V12_CALENDAR_NONCE != null}
+- assertTrue: ${V12_CALENDAR_FLOW_SHA256 != null}
+- assertTrue: ${V12_CALENDAR_FLOW_REVISION == 'calendar-flow-r35-real-v1'}
+- assertTrue: ${V12_CALENDAR_POINTER_DRIVER == 'adb-input-motionevent-v1'}
+- launchApp: { clearState: false, stopApp: true }
+- openLink: "gymtracker-devtest://calendar?phase20CalendarStage=${V12_CALENDAR_STAGE}&phase20CalendarNonce=${V12_CALENDAR_NONCE}&phase20CalendarFlowSha256=${V12_CALENDAR_FLOW_SHA256}&phase20CalendarFlowRevision=${V12_CALENDAR_FLOW_REVISION}"
+- extendedWaitUntil: { visible: "Calendar", timeout: 30000 }
+- assertVisible: { id: "calendar-month-viewport" }
+# The host owns precise viewport-relative gestures. Legacy branches use the
+# configured 780x1688 display and integer points accepted by Maestro 2.8.0.
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-forward-10' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.8)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.709231)}, ${Math.round(1688 * 0.45)}", duration: 500 }
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-forward-24_9' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.8)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.573985)}, ${Math.round(1688 * 0.45)}", duration: 500 }
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-forward-25' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.8)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.573077)}, ${Math.round(1688 * 0.45)}", duration: 500 }
+      - assertVisible: "November 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-forward-25_1' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.8)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.572169)}, ${Math.round(1688 * 0.45)}", duration: 500 }
+      - assertVisible: "November 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-forward-release-below' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.8)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.573985)}, ${Math.round(1688 * 0.45)}", duration: 180 }
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-forward-release-exact' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.8)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.573077)}, ${Math.round(1688 * 0.45)}", duration: 180 }
+      - assertVisible: "November 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-forward-release-above' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.8)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.572169)}, ${Math.round(1688 * 0.45)}", duration: 180 }
+      - assertVisible: "November 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-backward-10' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.2)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.290769)}, ${Math.round(1688 * 0.45)}", duration: 500 }
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-backward-24_9' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.2)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.426015)}, ${Math.round(1688 * 0.45)}", duration: 500 }
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-backward-25' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.2)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.426923)}, ${Math.round(1688 * 0.45)}", duration: 500 }
+      - assertVisible: "September 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-backward-25_1' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.2)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.427831)}, ${Math.round(1688 * 0.45)}", duration: 500 }
+      - assertVisible: "September 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-backward-release-below' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.2)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.426015)}, ${Math.round(1688 * 0.45)}", duration: 180 }
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-backward-release-exact' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.2)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.426923)}, ${Math.round(1688 * 0.45)}", duration: 180 }
+      - assertVisible: "September 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-backward-release-above' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.2)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.427831)}, ${Math.round(1688 * 0.45)}", duration: 180 }
+      - assertVisible: "September 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-fast-subthreshold' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.8)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.709231)}, ${Math.round(1688 * 0.45)}", duration: 60 }
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-retreat' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.8)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.572169)}, ${Math.round(1688 * 0.45)}", duration: 180, waitToSettleTimeoutMs: 0 }
+      - swipe: { start: "${Math.round(780 * 0.572169)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.709231)}, ${Math.round(1688 * 0.45)}", duration: 180 }
+      - assertVisible: { id: "calendar-month-title" }
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-cancel' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "70%, 45%", end: "65%, 70%", duration: 180 }
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-vertical' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "50%, 70%", end: "50%, 30%", duration: 300 }
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'drag-diagonal' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.5)}, ${Math.round(1688 * 0.5)}", end: "${Math.round(780 * 0.4)}, ${Math.round(1688 * 0.546)}", duration: 300 }
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'week-collapse-middle-row'}" }
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-15" }
+      - assertVisible: "Collapse day and return to month"
+      - tapOn: "Collapse day and return to month"
+      - assertVisible: { id: "calendar-month-viewport" }
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'week-expand-first-row'}" }
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-01" }
+      - assertVisible: "Collapse day and return to month"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'week-expand-middle-row'}" }
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-15" }
+      - assertVisible: "Collapse day and return to month"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'week-expand-last-row'}" }
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-31" }
+      - assertVisible: "Collapse day and return to month"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'adjacent-week'}" }
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-15" }
+      - assertVisible: "Collapse day and return to month"
+      - tapOn: { id: "calendar-day-2026-10-22" }
+      - assertVisible: "22 October 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'month-year-boundary'}" }
+    commands:
+      - tapOn: "Show January 2027"
+      - assertVisible: "January 2027"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'leap-february'}" }
+    commands:
+      - assertVisible: { id: "calendar-day-2028-02-29" }
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'four-row-month'}" }
+    commands:
+      - assertVisible: "February 2021"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'five-row-month'}" }
+    commands:
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'six-row-month'}" }
+    commands:
+      - assertVisible: "August 2026"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'rapid-reverse-input' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.8)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.572169)}, ${Math.round(1688 * 0.45)}", duration: 80, waitToSettleTimeoutMs: 0 }
+      - swipe: { start: "${Math.round(780 * 0.2)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.427831)}, ${Math.round(1688 * 0.45)}", duration: 80 }
+      - assertVisible: { id: "calendar-month-title" }
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'rotation-during-transition'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.8)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.572169)}, ${Math.round(1688 * 0.45)}", duration: 80, waitToSettleTimeoutMs: 0 }
+      - setOrientation: LANDSCAPE_LEFT
+      - assertVisible: "Calendar"
+      - setOrientation: PORTRAIT
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'background-during-transition'}" }
+    commands:
+      - swipe: { start: "${Math.round(780 * 0.8)}, ${Math.round(1688 * 0.45)}", end: "${Math.round(780 * 0.572169)}, ${Math.round(1688 * 0.45)}", duration: 80, waitToSettleTimeoutMs: 0 }
+      - pressKey: HOME
+      - launchApp: { clearState: false, stopApp: false }
+      - extendedWaitUntil: { visible: "Calendar", timeout: 30000 }
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'reduced-motion'}" }
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-15" }
+      - assertVisible: "Collapse day and return to month"
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'dev-01-padding'}" }
+    commands:
+      - assertVisible: { id: "calendar-month-viewport" }
+- runFlow:
+    when: { true: "${V12_CALENDAR_STAGE == 'dev-02-light-title'}" }
+    commands:
+      - assertVisible: { id: "calendar-month-title" }
+- takeScreenshot: "calendar-${V12_CALENDAR_STAGE}"

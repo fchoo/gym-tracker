@@ -1,4 +1,28 @@
 import type { ConfigContext, ExpoConfig } from 'expo/config';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+
+import { GOOGLE_OAUTH_REGISTRATIONS, validateGoogleOAuthConfig } from './scripts/google-oauth-config.mjs';
+
+function phase18GarminAdversarialBuildIdentity(enabled: boolean) {
+  if (!enabled) return null;
+  const currentHead = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const currentSourceTreeSha256 = execFileSync(
+    process.execPath,
+    ['scripts/source-tree-digest.mjs', '--head', currentHead, '--assert-clean'],
+    { encoding: 'utf8' },
+  ).trim();
+  const currentPythonLockSha256 = createHash('sha256')
+    .update(readFileSync('modules/garmin-connect/python/garmin-python-lock.json'))
+    .digest('hex');
+  if (!/^[a-f0-9]{40}$/u.test(currentHead)
+    || !/^[a-f0-9]{64}$/u.test(currentSourceTreeSha256)
+    || !/^[a-f0-9]{64}$/u.test(currentPythonLockSha256)) {
+    throw new Error('phase18_garmin_adversarial_build_identity_invalid');
+  }
+  return Object.freeze({ currentHead, currentSourceTreeSha256, currentPythonLockSha256 });
+}
 
 export default ({ config }: ConfigContext): ExpoConfig => {
   const buildProfile =
@@ -10,6 +34,25 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       `Unsupported GYM_TRACKER_BUILD_PROFILE "${buildProfile}". Use development-test or production.`,
     );
   }
+  const googleOAuth = validateGoogleOAuthConfig({
+    buildProfile,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  });
+  const nativeContractSuite = developmentTest
+    ? process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE ?? null
+    : null;
+  if (nativeContractSuite !== null && [
+    'phase18-garmin-proof',
+    'phase18-garmin-acceptance',
+    'phase18-garmin-adversarial',
+  ].includes(nativeContractSuite)) {
+    throw new Error(
+      `Phase 18 suite-specific profile "${nativeContractSuite}" is retired. Use v1.2-acceptance.`,
+    );
+  }
+  const adversarialBuildIdentity = phase18GarminAdversarialBuildIdentity(
+    nativeContractSuite === 'v1.2-acceptance',
+  );
 
   return {
     ...config,
@@ -32,9 +75,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         monochromeImage: './assets/images/android-icon-monochrome.png',
       },
       predictiveBackGestureEnabled: false,
-      permissions: [],
+      permissions: ['android.permission.SCHEDULE_EXACT_ALARM'],
       blockedPermissions: [
-        'android.permission.SCHEDULE_EXACT_ALARM',
         'android.permission.USE_EXACT_ALARM',
       ],
     },
@@ -57,11 +99,16 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       [
         'expo-notifications',
         {
-          defaultChannel: 'workout-rest-v2-sound-vibration',
+          defaultChannel: 'workout-rest-v3-sound-vibration',
+          // Expo copies these files into Android res/raw during native prebuild.
+          // https://docs.expo.dev/versions/latest/sdk/notifications/#set-custom-notification-sounds
+          sounds: ['./assets/audio/rest_complete.wav'],
         },
       ],
       './plugins/withAndroidBackupRules.ts',
       './plugins/withAndroidPhysicalTestService.ts',
+      './plugins/withGarminConnectModule.ts',
+      './plugins/withPhase20QualityInstrumentation.ts',
     ],
     experiments: {
       typedRoutes: true,
@@ -69,6 +116,20 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     extra: {
       buildProfile,
       nativeContractsEnabled: developmentTest,
+      nativeContractSuite,
+      ...(adversarialBuildIdentity === null
+        ? {}
+        : { phase18GarminAdversarialBuildIdentity: adversarialBuildIdentity }),
+      googleOAuth: {
+        projectNumber: GOOGLE_OAUTH_REGISTRATIONS.projectNumber,
+        webClientId: googleOAuth.webClientId,
+        androidClientId: googleOAuth.registration.androidClientId,
+        packageName: googleOAuth.registration.packageName,
+        signingCertificate: {
+          sha1: googleOAuth.registration.sha1,
+          sha256: googleOAuth.registration.sha256,
+        },
+      },
     },
   };
 };

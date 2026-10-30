@@ -45,6 +45,7 @@ const mockLoadProgress = jest.fn<() => Promise<Readonly<{
   freshness: "current",
   projection: { recommendations: [] },
 }));
+const mockOpenRootSettings = jest.fn();
 const mockPush = jest.fn();
 const mockStartEmptyWorkout = jest.fn<() => Promise<string>>();
 const mockStartPlanDay = jest.fn<(
@@ -91,6 +92,13 @@ jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
   }),
 }));
 
+jest.mock("../../../src/ui/shell/AppRootShell", () => ({
+  useRootSettingsController: () => ({
+    closeRootSettings: jest.fn(),
+    openRootSettings: (...args: readonly unknown[]) => mockOpenRootSettings(...args),
+  }),
+}));
+
 jest.mock("../../../src/ui/screens/TodayScreen", () => {
   const { Pressable, Text, View } = require("react-native") as typeof import("react-native");
   return {
@@ -98,6 +106,7 @@ jest.mock("../../../src/ui/screens/TodayScreen", () => {
       launchState,
       onOpenSettings,
       onReviewSuggestion,
+      onSyncGarmin,
       onStartEmpty,
       onStartPlanDay,
       pendingRecommendations,
@@ -107,6 +116,7 @@ jest.mock("../../../src/ui/screens/TodayScreen", () => {
       launchState: string;
       onOpenSettings(): void;
       onReviewSuggestion(exerciseId: string): void;
+      onSyncGarmin(): void;
       onStartEmpty(): void;
       onStartPlanDay(
         dayId: string,
@@ -133,6 +143,11 @@ jest.mock("../../../src/ui/screens/TodayScreen", () => {
           accessibilityLabel="Review pending target"
           accessibilityRole="button"
           onPress={() => onReviewSuggestion("bench")}
+        />
+        <Pressable
+          accessibilityLabel="Sync Garmin from Workout"
+          accessibilityRole="button"
+          onPress={() => onSyncGarmin()}
         />
         <Pressable
           accessibilityLabel="Start empty workout"
@@ -165,6 +180,7 @@ describe("TodayRoute readiness", () => {
   beforeEach(() => {
     mockLaunchState = "booting";
     mockWorkoutRefreshGeneration = 0;
+    mockOpenRootSettings.mockReset();
     mockPush.mockReset();
     mockStartEmptyWorkout.mockReset();
     mockStartEmptyWorkout.mockResolvedValue("session-empty");
@@ -218,7 +234,22 @@ describe("TodayRoute readiness", () => {
     expect(mockPush).toHaveBeenCalledWith("/progress");
   });
 
-  it("opens Settings from Today", async () => {
+  it("pushes the one Garmin root with only the Workout origin", async () => {
+    mockLaunchState = "trusted";
+
+    await render(<TodayRoute />);
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Sync Garmin from Workout",
+    }));
+
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/garmin",
+      params: { origin: "workout" },
+    });
+  });
+
+  it("delegates Workout settings requests to the shared root settings controller", async () => {
     mockLaunchState = "trusted";
 
     await render(<TodayRoute />);
@@ -226,7 +257,10 @@ describe("TodayRoute readiness", () => {
       name: "Open Settings",
     }));
 
-    expect(mockPush).toHaveBeenCalledWith("/more");
+    expect(mockOpenRootSettings).toHaveBeenCalledWith(expect.objectContaining({
+      root: "index",
+      triggerRef: expect.any(Object),
+    }));
   });
 
   it("clears a prior pending review indicator when the next progress read is stale", async () => {
@@ -269,9 +303,10 @@ describe("TodayRoute readiness", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: "Start empty workout",
     }));
-    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith(
-      "/workout/session-empty",
-    ));
+    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith({
+      pathname: "/workout/[sessionId]",
+      params: { sessionId: "session-empty", returnTo: "/(tabs)" },
+    }));
     expect(mockRecordTrainAnyway).toHaveBeenLastCalledWith({
       workout: { kind: "empty", planDayId: null },
       advanceRotation: false,
@@ -280,17 +315,25 @@ describe("TodayRoute readiness", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: "Start scheduled workout",
     }));
-    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith(
-      "/workout/session-scheduled-day-scheduled",
-    ));
+    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith({
+      pathname: "/workout/[sessionId]",
+      params: {
+        sessionId: "session-scheduled-day-scheduled",
+        returnTo: "/(tabs)",
+      },
+    }));
     expect(mockRecordTrainAnyway).toHaveBeenCalledTimes(1);
 
     await fireEvent.press(screen.getByRole("button", {
       name: "Start alternate workout",
     }));
-    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith(
-      "/workout/session-alternate-day-alternate",
-    ));
+    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith({
+      pathname: "/workout/[sessionId]",
+      params: {
+        sessionId: "session-alternate-day-alternate",
+        returnTo: "/(tabs)",
+      },
+    }));
     expect(mockRecordTrainAnyway).toHaveBeenLastCalledWith({
       workout: { kind: "plan_day", planDayId: "day-alternate" },
       advanceRotation: false,
@@ -299,9 +342,13 @@ describe("TodayRoute readiness", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: "Start rest-day workout",
     }));
-    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith(
-      "/workout/session-rest_day-day-rest",
-    ));
+    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith({
+      pathname: "/workout/[sessionId]",
+      params: {
+        sessionId: "session-rest_day-day-rest",
+        returnTo: "/(tabs)",
+      },
+    }));
     expect(mockRecordTrainAnyway).toHaveBeenLastCalledWith({
       workout: { kind: "plan_day", planDayId: "day-rest" },
       advanceRotation: false,

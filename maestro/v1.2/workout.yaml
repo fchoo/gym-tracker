@@ -1,0 +1,251 @@
+appId: com.fchoo.gymtracker.devtest
+name: V1.2 source-owned full workout lifecycle flow
+tags: [v1.2, phase-20, source-owned, production-ui, case-registry]
+---
+- assertTrue: ${V12_CASE_ID != null}
+- assertTrue: ${V12_EVIDENCE_NONCE != null}
+- assertTrue: ${V12_FIXTURE_ID == 'v12-synthetic-fixtures-r18'}
+- assertTrue: ${V12_PRODUCT_URL != null}
+- assertTrue: ${V12_PRODUCT_INTERACTION != null}
+- assertTrue: ${V12_PRODUCT_READY_KIND != null}
+- assertTrue: ${V12_PRODUCT_READY_VALUE != null}
+- assertTrue: ${V12_PRODUCT_ACTION_KIND != null}
+- assertTrue: ${V12_PRODUCT_ACTION_VALUE != null}
+- assertTrue: ${V12_PRODUCT_INPUT_VALUE != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_1_INTERACTION != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_1_KIND != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_1_VALUE != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_1_INPUT_VALUE != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_2_INTERACTION != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_2_KIND != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_2_VALUE != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_2_INPUT_VALUE != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_3_INTERACTION != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_3_KIND != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_3_VALUE != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_3_INPUT_VALUE != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_4_INTERACTION != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_4_KIND != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_4_VALUE != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_4_INPUT_VALUE != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_5_INTERACTION != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_5_KIND != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_5_VALUE != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_5_INPUT_VALUE != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_6_INTERACTION != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_6_KIND != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_6_VALUE != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_6_INPUT_VALUE != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_7_INTERACTION != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_7_KIND != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_7_VALUE != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_7_INPUT_VALUE != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_8_INTERACTION != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_8_KIND != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_8_VALUE != null}
+- assertTrue: ${V12_PRODUCT_PREREQ_8_INPUT_VALUE != null}
+- assertTrue: ${V12_PRODUCT_RESULT_KIND != null}
+- assertTrue: ${V12_PRODUCT_RESULT_VALUE != null}
+- launchApp: { clearState: false, stopApp: true, permissions: { notifications: deny } }
+- openLink: "${V12_PRODUCT_URL}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_READY_KIND == 'id'}" }
+    commands:
+      - extendedWaitUntil: { visible: { id: "${V12_PRODUCT_READY_VALUE}" }, timeout: 30000 }
+- runFlow:
+    when: { true: "${V12_PRODUCT_READY_KIND == 'text'}" }
+    commands:
+      - extendedWaitUntil: { visible: "${V12_PRODUCT_READY_VALUE}", timeout: 30000 }
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_1_INTERACTION == 'tap' && V12_PRODUCT_PREREQ_1_KIND == 'id'}" }
+    commands:
+      - tapOn: { id: "${V12_PRODUCT_PREREQ_1_VALUE}" }
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_1_INTERACTION == 'tap' && V12_PRODUCT_PREREQ_1_KIND == 'text'}" }
+    commands:
+      - tapOn: "${V12_PRODUCT_PREREQ_1_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_1_INTERACTION == 'input' && V12_PRODUCT_PREREQ_1_KIND == 'id'}" }
+    commands:
+      - tapOn: { id: "${V12_PRODUCT_PREREQ_1_VALUE}" }
+      - eraseText
+      - inputText: "${V12_PRODUCT_PREREQ_1_INPUT_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_1_INTERACTION == 'input' && V12_PRODUCT_PREREQ_1_KIND == 'text'}" }
+    commands:
+      - tapOn: "${V12_PRODUCT_PREREQ_1_VALUE}"
+      - eraseText
+      - inputText: "${V12_PRODUCT_PREREQ_1_INPUT_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_2_INTERACTION == 'tap' && V12_PRODUCT_PREREQ_2_KIND == 'id'}" }
+    commands:
+      - tapOn: { id: "${V12_PRODUCT_PREREQ_2_VALUE}" }
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_2_INTERACTION == 'tap' && V12_PRODUCT_PREREQ_2_KIND == 'text'}" }
+    commands:
+      - tapOn: "${V12_PRODUCT_PREREQ_2_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_2_INTERACTION == 'input' && V12_PRODUCT_PREREQ_2_KIND == 'id'}" }
+    commands:
+      - tapOn: { id: "${V12_PRODUCT_PREREQ_2_VALUE}" }
+      - eraseText
+      - inputText: "${V12_PRODUCT_PREREQ_2_INPUT_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_2_INTERACTION == 'input' && V12_PRODUCT_PREREQ_2_KIND == 'text'}" }
+    commands:
+      - tapOn: "${V12_PRODUCT_PREREQ_2_VALUE}"
+      - eraseText
+      - inputText: "${V12_PRODUCT_PREREQ_2_INPUT_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_3_INTERACTION == 'tap' && V12_PRODUCT_PREREQ_3_KIND == 'id'}" }
+    commands:
+      - tapOn: { id: "${V12_PRODUCT_PREREQ_3_VALUE}" }
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_3_INTERACTION == 'tap' && V12_PRODUCT_PREREQ_3_KIND == 'text'}" }
+    commands:
+      - tapOn: "${V12_PRODUCT_PREREQ_3_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_3_INTERACTION == 'input' && V12_PRODUCT_PREREQ_3_KIND == 'id'}" }
+    commands:
+      - tapOn: { id: "${V12_PRODUCT_PREREQ_3_VALUE}" }
+      - eraseText
+      - inputText: "${V12_PRODUCT_PREREQ_3_INPUT_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_3_INTERACTION == 'input' && V12_PRODUCT_PREREQ_3_KIND == 'text'}" }
+    commands:
+      - tapOn: "${V12_PRODUCT_PREREQ_3_VALUE}"
+      - eraseText
+      - inputText: "${V12_PRODUCT_PREREQ_3_INPUT_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_4_INTERACTION == 'tap' && V12_PRODUCT_PREREQ_4_KIND == 'id'}" }
+    commands:
+      - tapOn: { id: "${V12_PRODUCT_PREREQ_4_VALUE}" }
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_4_INTERACTION == 'tap' && V12_PRODUCT_PREREQ_4_KIND == 'text'}" }
+    commands:
+      - tapOn: "${V12_PRODUCT_PREREQ_4_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_4_INTERACTION == 'input' && V12_PRODUCT_PREREQ_4_KIND == 'id'}" }
+    commands:
+      - tapOn: { id: "${V12_PRODUCT_PREREQ_4_VALUE}" }
+      - eraseText
+      - inputText: "${V12_PRODUCT_PREREQ_4_INPUT_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_4_INTERACTION == 'input' && V12_PRODUCT_PREREQ_4_KIND == 'text'}" }
+    commands:
+      - tapOn: "${V12_PRODUCT_PREREQ_4_VALUE}"
+      - eraseText
+      - inputText: "${V12_PRODUCT_PREREQ_4_INPUT_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_5_INTERACTION == 'tap' && V12_PRODUCT_PREREQ_5_KIND == 'id'}" }
+    commands:
+      - tapOn: { id: "${V12_PRODUCT_PREREQ_5_VALUE}" }
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_5_INTERACTION == 'tap' && V12_PRODUCT_PREREQ_5_KIND == 'text'}" }
+    commands:
+      - tapOn: "${V12_PRODUCT_PREREQ_5_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_5_INTERACTION == 'input' && V12_PRODUCT_PREREQ_5_KIND == 'id'}" }
+    commands:
+      - tapOn: { id: "${V12_PRODUCT_PREREQ_5_VALUE}" }
+      - eraseText
+      - inputText: "${V12_PRODUCT_PREREQ_5_INPUT_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_5_INTERACTION == 'input' && V12_PRODUCT_PREREQ_5_KIND == 'text'}" }
+    commands:
+      - tapOn: "${V12_PRODUCT_PREREQ_5_VALUE}"
+      - eraseText
+      - inputText: "${V12_PRODUCT_PREREQ_5_INPUT_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_6_INTERACTION == 'tap' && V12_PRODUCT_PREREQ_6_KIND == 'id'}" }
+    commands:
+      - tapOn: { id: "${V12_PRODUCT_PREREQ_6_VALUE}" }
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_6_INTERACTION == 'tap' && V12_PRODUCT_PREREQ_6_KIND == 'text'}" }
+    commands:
+      - tapOn: "${V12_PRODUCT_PREREQ_6_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_6_INTERACTION == 'input' && V12_PRODUCT_PREREQ_6_KIND == 'id'}" }
+    commands:
+      - tapOn: { id: "${V12_PRODUCT_PREREQ_6_VALUE}" }
+      - eraseText
+      - inputText: "${V12_PRODUCT_PREREQ_6_INPUT_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_6_INTERACTION == 'input' && V12_PRODUCT_PREREQ_6_KIND == 'text'}" }
+    commands:
+      - tapOn: "${V12_PRODUCT_PREREQ_6_VALUE}"
+      - eraseText
+      - inputText: "${V12_PRODUCT_PREREQ_6_INPUT_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_7_INTERACTION == 'tap' && V12_PRODUCT_PREREQ_7_KIND == 'id'}" }
+    commands:
+      - tapOn: { id: "${V12_PRODUCT_PREREQ_7_VALUE}" }
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_7_INTERACTION == 'tap' && V12_PRODUCT_PREREQ_7_KIND == 'text'}" }
+    commands:
+      - tapOn: "${V12_PRODUCT_PREREQ_7_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_7_INTERACTION == 'input' && V12_PRODUCT_PREREQ_7_KIND == 'id'}" }
+    commands:
+      - tapOn: { id: "${V12_PRODUCT_PREREQ_7_VALUE}" }
+      - eraseText
+      - inputText: "${V12_PRODUCT_PREREQ_7_INPUT_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_7_INTERACTION == 'input' && V12_PRODUCT_PREREQ_7_KIND == 'text'}" }
+    commands:
+      - tapOn: "${V12_PRODUCT_PREREQ_7_VALUE}"
+      - eraseText
+      - inputText: "${V12_PRODUCT_PREREQ_7_INPUT_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_8_INTERACTION == 'tap' && V12_PRODUCT_PREREQ_8_KIND == 'id'}" }
+    commands:
+      - tapOn: { id: "${V12_PRODUCT_PREREQ_8_VALUE}" }
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_8_INTERACTION == 'tap' && V12_PRODUCT_PREREQ_8_KIND == 'text'}" }
+    commands:
+      - tapOn: "${V12_PRODUCT_PREREQ_8_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_8_INTERACTION == 'input' && V12_PRODUCT_PREREQ_8_KIND == 'id'}" }
+    commands:
+      - tapOn: { id: "${V12_PRODUCT_PREREQ_8_VALUE}" }
+      - eraseText
+      - inputText: "${V12_PRODUCT_PREREQ_8_INPUT_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_PREREQ_8_INTERACTION == 'input' && V12_PRODUCT_PREREQ_8_KIND == 'text'}" }
+    commands:
+      - tapOn: "${V12_PRODUCT_PREREQ_8_VALUE}"
+      - eraseText
+      - inputText: "${V12_PRODUCT_PREREQ_8_INPUT_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_INTERACTION == 'tap' && V12_PRODUCT_ACTION_KIND == 'id'}" }
+    commands:
+      - tapOn: { id: "${V12_PRODUCT_ACTION_VALUE}" }
+- runFlow:
+    when: { true: "${V12_PRODUCT_INTERACTION == 'tap' && V12_PRODUCT_ACTION_KIND == 'text'}" }
+    commands:
+      - tapOn: "${V12_PRODUCT_ACTION_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_INTERACTION == 'input' && V12_PRODUCT_ACTION_KIND == 'id'}" }
+    commands:
+      - tapOn: { id: "${V12_PRODUCT_ACTION_VALUE}" }
+      - eraseText
+      - inputText: "${V12_PRODUCT_INPUT_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_INTERACTION == 'input' && V12_PRODUCT_ACTION_KIND == 'text'}" }
+    commands:
+      - tapOn: "${V12_PRODUCT_ACTION_VALUE}"
+      - eraseText
+      - inputText: "${V12_PRODUCT_INPUT_VALUE}"
+- runFlow:
+    when: { true: "${V12_PRODUCT_RESULT_KIND == 'id'}" }
+    commands:
+      - extendedWaitUntil: { visible: { id: "${V12_PRODUCT_RESULT_VALUE}" }, timeout: 30000 }
+- runFlow:
+    when: { true: "${V12_PRODUCT_RESULT_KIND == 'text'}" }
+    commands:
+      - extendedWaitUntil: { visible: "${V12_PRODUCT_RESULT_VALUE}", timeout: 30000 }
+- openLink: "gymtracker-devtest:///native-acceptance/workout?case=${V12_CASE_ID}&fixture=${V12_FIXTURE_ID}&nonce=${V12_EVIDENCE_NONCE}&mode=receipt"
+- extendedWaitUntil: { visible: "Case verified", timeout: 30000 }
+- assertVisible: { id: "native-acceptance-source-receipt" }
+- assertVisible: { id: "native-acceptance-readback" }
+- takeScreenshot: "v12-${V12_CASE_ID}-${V12_CONFIG_ID}"

@@ -1,0 +1,61 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 14 accessibility, sheets, toast, and startup proof
+tags:
+  - phase-14
+  - native-only
+  - development-test
+---
+- assertTrue: ${PHASE14_STAGE == 'phase14-sheets' || PHASE14_STAGE == 'phase14-toasts' || PHASE14_STAGE == 'phase14-launch'}
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- extendedWaitUntil:
+    visible: "Workout"
+    timeout: 90000
+- runFlow:
+    when:
+      true: ${PHASE14_THEME_PRESELECTED != 'true'}
+    file: select-theme.yaml
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-sheets'}
+    commands:
+      - tapOn: "Library"
+      - assertVisible: "Library section"
+      - tapOn: "Open App Settings"
+      - extendedWaitUntil:
+          visible: "App Settings"
+          timeout: 30000
+      - assertVisible: "Appearance"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-toasts'}
+    commands:
+      - openLink: "gymtracker-devtest://__phase14-toast-proof"
+      - extendedWaitUntil:
+          visible: "Phase 14 toast proof"
+          timeout: 30000
+      - extendedWaitUntil:
+          visible: "Toast host mounted"
+          timeout: 30000
+      - extendedWaitUntil:
+          visible:
+            id: "semantic-toast"
+          timeout: 30000
+      - assertVisible: "Background control idle"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-toasts' && PHASE14_ACTION == 'toast-background-enter'}
+    commands:
+      - assertVisible: "Toast proof active"
+      - assertVisible: "Background control idle"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-launch'}
+    commands:
+      - assertVisible: "Workout"
+      - assertVisible: "Calendar"
+      - assertVisible: "Library"
+      - assertVisible: "Progress"

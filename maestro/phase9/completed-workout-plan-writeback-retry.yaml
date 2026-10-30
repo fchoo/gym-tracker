@@ -1,0 +1,162 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 9 completed planned workout retries a failed plan write-back
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- extendedWaitUntil:
+    visible: "Choose your starting plan"
+    timeout: 180000
+- tapOn: "Use Full Body Foundation"
+- tapOn: "Activate Full Body Foundation"
+- runFlow:
+    when:
+      visible: "Retry Today action"
+    commands:
+      - tapOn: "Retry Today action"
+- extendedWaitUntil:
+    visible: "Start Full Body A"
+    timeout: 90000
+- tapOn: "Start Full Body A"
+- extendedWaitUntil:
+    visible: "WORKOUT OVERVIEW"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000002"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000002"
+    retryTapIfNoChange: true
+- tapOn: "Remove exercise"
+- tapOn:
+    id: "remove-exercise-confirm"
+- extendedWaitUntil:
+    notVisible:
+      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000002"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000003"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000003"
+    retryTapIfNoChange: true
+- tapOn: "Remove exercise"
+- tapOn:
+    id: "remove-exercise-confirm"
+- extendedWaitUntil:
+    notVisible:
+      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000003"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000004"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000004"
+    retryTapIfNoChange: true
+- tapOn: "Remove exercise"
+- tapOn:
+    id: "remove-exercise-confirm"
+- extendedWaitUntil:
+    notVisible:
+      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000004"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000005"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000005"
+    retryTapIfNoChange: true
+- tapOn: "Remove exercise"
+- tapOn:
+    id: "remove-exercise-confirm"
+- extendedWaitUntil:
+    notVisible:
+      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000005"
+    timeout: 30000
+- repeat:
+    times: 32
+    while:
+      notVisible: "Complete Set 1"
+    commands:
+      - swipe:
+          start: 95%, 25%
+          end: 95%, 75%
+          duration: 500
+- assertVisible: "Complete Set 1"
+- tapOn:
+    text: "Complete Set 1"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "Expand rest controls"
+    timeout: 30000
+- tapOn: "Expand rest controls"
+- tapOn: "Skip rest"
+- assertVisible: "Complete Set 2"
+- tapOn:
+    text: "Complete Set 2"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "Expand rest controls"
+    timeout: 30000
+- tapOn: "Expand rest controls"
+- tapOn: "Skip rest"
+- assertVisible: "Complete Set 3"
+- tapOn:
+    text: "Complete Set 3"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "Finish workout"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Finish workout"
+    direction: UP
+    centerElement: true
+    timeout: 30000
+- assertVisible: "Finish workout"
+- openLink: "gymtracker-devtest://__notification-test-controls?action=arm_plan_write_back_failure"
+- extendedWaitUntil:
+    visible: "Plan write-back failure armed"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Return to Today"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+- tapOn: "Return to Today"
+- extendedWaitUntil:
+    visible: "Workout in progress"
+    timeout: 30000
+- tapOn: "Resume workout"
+- scrollUntilVisible:
+    element:
+      text: "Finish workout"
+    direction: UP
+    centerElement: true
+    timeout: 30000
+- assertVisible: "Finish workout"
+- tapOn: "Finish workout"
+- extendedWaitUntil:
+    visible: "Save these changes to the plan?"
+    timeout: 60000
+- tapOn: "Save changes to plan"
+- extendedWaitUntil:
+    visible: "Changes were not saved to the plan"
+    timeout: 30000
+- assertVisible: "Your completed workout is safe. Try again or keep the plan as-is."
+- assertVisible: "Retry saving changes"
+- assertVisible: "Keep plan as-is"
+- tapOn: "Retry saving changes"
+- extendedWaitUntil:
+    visible: "Today"
+    timeout: 30000

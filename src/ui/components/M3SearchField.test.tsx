@@ -12,7 +12,10 @@ import {
 import React from "react";
 import { TextInput } from "react-native";
 
-import { M3SearchField } from "./M3SearchField";
+import {
+  M3SearchField,
+  type M3SearchFieldHandle,
+} from "./M3SearchField";
 import { AppearanceProvider, createMemoryAppearanceStore } from "../theme";
 
 const stateCases: Array<[
@@ -92,6 +95,24 @@ describe("M3SearchField", () => {
       .toHaveProp("value", "");
     expect(focus).toHaveBeenCalled();
     focus.mockRestore();
+  });
+
+  it("exposes an imperative blur handle for sheet selections", async () => {
+    const blur = jest.spyOn(TextInput.prototype, "blur");
+    const ref = React.createRef<M3SearchFieldHandle>();
+    await renderSearchField(
+      <M3SearchField
+        label="Search exercises"
+        onChangeText={() => undefined}
+        ref={ref}
+        value="squat"
+      />,
+    );
+
+    ref.current?.blur();
+
+    expect(blur).toHaveBeenCalledTimes(1);
+    blur.mockRestore();
   });
 
   it.each(stateCases)(

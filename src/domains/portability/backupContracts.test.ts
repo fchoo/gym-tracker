@@ -7,7 +7,9 @@ import {
 import {
   BACKUP_LIMITS,
   BackupContractError,
+  LOGICAL_BACKUP_FORMAT_VERSION,
   LOGICAL_BACKUP_TABLES,
+  logicalBackupTablesForVersion,
   parseLogicalBackupSnapshot,
 } from "./backupContracts";
 
@@ -58,9 +60,11 @@ describe("logical backup contract", () => {
     expect(LOGICAL_BACKUP_TABLES).toContain("workout_sessions");
     expect(LOGICAL_BACKUP_TABLES).toContain("history_audit_events");
     expect(LOGICAL_BACKUP_TABLES).toContain("session_rest_states");
+    expect(LOGICAL_BACKUP_TABLES).toContain("session_advanced_timing_states");
     expect(LOGICAL_BACKUP_TABLES).toContain("progression_recommendations");
     expect(LOGICAL_BACKUP_TABLES).toContain("owned_progression_recommendations");
     expect(LOGICAL_BACKUP_TABLES).toContain("exercise_metric_baselines");
+    expect(LOGICAL_BACKUP_TABLES).toContain("custom_exercise_mutation_receipts");
     expect(LOGICAL_BACKUP_TABLES).toContain("exercise_library_entries");
     expect(LOGICAL_BACKUP_TABLES).toContain("exercise_aliases");
     expect(LOGICAL_BACKUP_TABLES).toContain("exercise_taxonomy");
@@ -71,8 +75,254 @@ describe("logical backup contract", () => {
     expect(LOGICAL_BACKUP_TABLES).not.toContain("sqlite_master");
   });
 
+  it("freezes prior formats while v11 adds plan-exercise replacement receipts", () => {
+    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(11);
+    expect(logicalBackupTablesForVersion(5)).not.toContain("imported_activity_identities");
+    expect(logicalBackupTablesForVersion(5)).not.toContain("running_activity_match_events");
+    expect(logicalBackupTablesForVersion(5)).not.toContain("workout_session_schedule_links");
+    expect(logicalBackupTablesForVersion(6)).toEqual(expect.arrayContaining([
+      "imported_activity_identities",
+      "imported_activity_events",
+      "imported_activity_match_invalidations",
+      "workout_session_schedule_links",
+      "workout_schedule_reconciliation_receipts",
+      "workout_completed_set_correction_receipts",
+      "running_activity_match_events",
+      "running_activity_match_receipts",
+      "workout_session_exercise_rest_default_receipts",
+    ]));
+    expect(logicalBackupTablesForVersion(6)).not.toEqual(expect.arrayContaining([
+      "schedule_collision_outcomes",
+      "schedule_collision_receipts",
+      "schedule_collision_projections",
+    ]));
+    expect(logicalBackupTablesForVersion(7)).toEqual(expect.arrayContaining([
+      "schedule_collision_outcomes",
+      "schedule_collision_receipts",
+      "schedule_collision_projections",
+    ]));
+    expect(logicalBackupTablesForVersion(7)).not.toContain("custom_exercise_mutation_receipts");
+    expect(logicalBackupTablesForVersion(8)).toContain("custom_exercise_mutation_receipts");
+    for (const version of [1, 2, 3, 4, 5, 6, 7, 8] as const) {
+      expect(logicalBackupTablesForVersion(version)).not.toEqual(expect.arrayContaining([
+        "imported_activity_revision_proposals",
+        "imported_activity_revision_decisions",
+      ]));
+    }
+    expect(logicalBackupTablesForVersion(9)).toEqual(expect.arrayContaining([
+      "imported_activity_revision_proposals",
+      "imported_activity_revision_decisions",
+    ]));
+    expect(logicalBackupTablesForVersion(9)).not.toEqual(expect.arrayContaining([
+      "progression_recommendation_decision_receipts",
+      "owned_progression_recommendation_decision_receipts",
+    ]));
+    expect(logicalBackupTablesForVersion(10)).toEqual(expect.arrayContaining([
+      "progression_recommendation_decision_receipts",
+      "owned_progression_recommendation_decision_receipts",
+    ]));
+    expect(logicalBackupTablesForVersion(10)).not.toContain("plan_exercise_replacement_receipts");
+    expect(logicalBackupTablesForVersion(11)).toContain("plan_exercise_replacement_receipts");
+    expect(logicalBackupTablesForVersion(6)).not.toContain("running_activity_current_matches");
+    expect(logicalBackupTablesForVersion(6)).not.toContain("imported_activity_current_lifecycle");
+  });
+
   it("parses a bounded versioned user-owned snapshot", () => {
     expect(parseLogicalBackupSnapshot(snapshot())).toEqual(snapshot());
+  });
+
+  it("rejects an archive version outside the frozen compatibility registry", () => {
+    expect(() => parseLogicalBackupSnapshot(snapshot({ version: 12 })))
+      .toThrow("backup_snapshot_unsupported_version");
+  });
+
+  it("requires exactly one opaque owner namespace in a v2 snapshot", () => {
+    const v2 = snapshot({
+      version: 2,
+      schemaVersion: 22,
+      tables: {
+        portable_owner_identity: [{
+          id: 1,
+          owner_namespace: "0123456789abcdef0123456789abcdef",
+        }],
+      },
+      manifest: {
+        catalogReferenceCount: 1,
+        rowCounts: { portable_owner_identity: 1 },
+        totalRows: 1,
+      },
+    });
+    expect(parseLogicalBackupSnapshot(v2)).toEqual(v2);
+    expect(() => parseLogicalBackupSnapshot({
+      ...v2,
+      tables: { portable_owner_identity: [] },
+      manifest: { ...v2.manifest, rowCounts: { portable_owner_identity: 0 }, totalRows: 0 },
+    })).toThrow("backup_snapshot_invalid");
+    expect(() => parseLogicalBackupSnapshot({
+      ...v2,
+      tables: {
+        portable_owner_identity: [{
+          id: 1,
+          owner_namespace: "0123456789abcdef0123456789abcdef",
+          extra: "rejected",
+        }],
+      },
+    })).toThrow("backup_snapshot_invalid");
+  });
+
+  it("keeps portable owner identity out of legacy v1 payloads", () => {
+    expect(logicalBackupTablesForVersion(1)).not.toContain("portable_owner_identity");
+    expect(logicalBackupTablesForVersion(2)).toContain("portable_owner_identity");
+    const legacy = snapshot();
+    expect(() => parseLogicalBackupSnapshot({
+      ...legacy,
+      tables: {
+        ...legacy.tables,
+        portable_owner_identity: [],
+      },
+      manifest: {
+        ...legacy.manifest,
+        rowCounts: {
+          ...legacy.manifest.rowCounts,
+          portable_owner_identity: 0,
+        },
+      },
+    })).toThrow("backup_snapshot_invalid");
+  });
+
+  it("rejects v2 owner-created roots missing their portable identity or session freshness", () => {
+    const v2 = snapshot({
+      version: 2,
+      schemaVersion: 22,
+      tables: {
+        portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }],
+        exercises: [{ id: "custom", origin: "custom" }],
+      },
+      manifest: {
+        catalogReferenceCount: 1,
+        rowCounts: { portable_owner_identity: 1, exercises: 1 },
+        totalRows: 2,
+      },
+    });
+    expect(() => parseLogicalBackupSnapshot(v2)).toThrow("backup_snapshot_invalid");
+    expect(() => parseLogicalBackupSnapshot({
+      ...v2,
+      tables: {
+        ...v2.tables,
+        exercises: [{
+          id: "custom",
+          origin: "custom",
+          portable_id: "11111111111111111111111111111111",
+        }],
+        workout_sessions: [{
+          id: "session",
+          portable_id: "22222222222222222222222222222222",
+        }],
+      },
+      manifest: {
+        ...v2.manifest,
+        rowCounts: { portable_owner_identity: 1, exercises: 1, workout_sessions: 1 },
+        totalRows: 3,
+      },
+    })).toThrow("backup_snapshot_invalid");
+  });
+
+  it("allows v2 bundled roots without a portable ID but requires copied roots to carry one", () => {
+    const base = {
+      version: 2 as const,
+      schemaVersion: 22,
+      tables: {
+        portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }],
+        exercises: [{ id: "bundled", origin: "bundled" }],
+      },
+      manifest: {
+        catalogReferenceCount: 1,
+        rowCounts: { portable_owner_identity: 1, exercises: 1 },
+        totalRows: 2,
+      },
+    };
+    expect(parseLogicalBackupSnapshot(snapshot(base))).toEqual(expect.objectContaining({
+      version: 2,
+    }));
+    expect(() => parseLogicalBackupSnapshot(snapshot({
+      ...base,
+      tables: {
+        ...base.tables,
+        exercises: [{ id: "copied", origin: "copied" }],
+      },
+    }))).toThrow("backup_snapshot_invalid");
+    expect(parseLogicalBackupSnapshot(snapshot({
+      ...base,
+      tables: {
+        ...base.tables,
+        plans: [{
+          id: "copied-plan",
+          origin: "copied",
+          portable_id: "33333333333333333333333333333333",
+        }],
+      },
+      manifest: {
+        ...base.manifest,
+        rowCounts: { ...base.manifest.rowCounts, plans: 1 },
+        totalRows: 3,
+      },
+    }))).toEqual(expect.objectContaining({ version: 2 }));
+  });
+
+  it("rejects a v2 session with a portable identity but no canonical merge timestamp", () => {
+    expect(() => parseLogicalBackupSnapshot(snapshot({
+      version: 2,
+      schemaVersion: 22,
+      tables: {
+        portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }],
+        workout_sessions: [{
+          id: "session",
+          portable_id: "22222222222222222222222222222222",
+        }],
+      },
+      manifest: {
+        catalogReferenceCount: 1,
+        rowCounts: { portable_owner_identity: 1, workout_sessions: 1 },
+        totalRows: 2,
+      },
+    }))).toThrow("backup_snapshot_invalid");
+  });
+
+  it("rejects a v2 session with a negative canonical merge timestamp", () => {
+    expect(() => parseLogicalBackupSnapshot(snapshot({
+      version: 2,
+      schemaVersion: 22,
+      tables: {
+        portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }],
+        workout_sessions: [{
+          id: "session",
+          portable_id: "22222222222222222222222222222222",
+          merge_modified_at_ms: -1,
+        }],
+      },
+      manifest: {
+        catalogReferenceCount: 1,
+        rowCounts: { portable_owner_identity: 1, workout_sessions: 1 },
+        totalRows: 2,
+      },
+    }))).toThrow("backup_snapshot_invalid");
+  });
+
+  it("ignores malformed non-root rows when deciding whether a v2 root needs an identity", () => {
+    const v2 = snapshot({
+      version: 2,
+      schemaVersion: 22,
+      tables: {
+        portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }],
+        exercises: [null],
+      },
+      manifest: {
+        catalogReferenceCount: 1,
+        rowCounts: { portable_owner_identity: 1, exercises: 1 },
+        totalRows: 2,
+      },
+    });
+    expect(() => parseLogicalBackupSnapshot(v2)).toThrow("backup_snapshot_invalid");
   });
 
   it("rejects inherited object property names rather than treating them as logical tables", () => {
@@ -84,7 +334,7 @@ describe("logical backup contract", () => {
   });
 
   it.each([
-    ["an unsupported snapshot version", snapshot({ version: 2 })],
+    ["an unsupported snapshot version", snapshot({ version: 11 })],
     ["an unknown root field", snapshot({ rawDatabasePath: "/private/data.db" })],
     ["an unknown table", snapshot({
       tables: { sqlite_master: [] },

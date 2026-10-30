@@ -27,6 +27,23 @@ export type ExpoRestoreFileDriver = Readonly<{
   pickSingleArchive(): Promise<SelectedRestoreFile | null>;
 }>;
 
+export type Phase11FixtureRestoreFileDriver = Readonly<{
+  readFileBytes(uri: string): Uint8Array;
+  readTextFile(uri: string): string;
+  fileSize(uri: string): number;
+}>;
+
+export const PHASE11_RESTORE_FIXTURE_DIRECTORY_URI =
+  "file:///sdcard/Android/data/com.fchoo.gymtracker.devtest/files/phase11";
+export const PHASE11_RESTORE_FIXTURE_SELECTOR_FILE =
+  "phase11-fixture-selection.txt";
+export const PHASE11_MERGE_FIXTURE_SELECTOR_FILE =
+  "phase11-merge-fixture-selection.txt";
+const PHASE11_RESTORE_FIXTURE_FILES = new Set([
+  "phase11-restore-base.gtbk",
+  "phase11-merge-fixture.gtbk",
+]);
+
 export class RestoreFilePortError extends Error {
   readonly kind = "storage" as const;
   readonly retryable = true;
@@ -98,6 +115,56 @@ export function createExpoRestoreFilePort(
           }
         }
       }
+    },
+  });
+}
+
+function joinFileUri(directoryUri: string, fileName: string): string {
+  return `${directoryUri.replace(/\/+$/u, "")}/${fileName}`;
+}
+
+function createExpoPhase11FixtureDriver(): Phase11FixtureRestoreFileDriver {
+  const { File } = require("expo-file-system") as typeof import("expo-file-system");
+  return {
+    readFileBytes(uri) {
+      return new File(uri).bytesSync();
+    },
+    readTextFile(uri) {
+      return new File(uri).textSync();
+    },
+    fileSize(uri) {
+      return new File(uri).size;
+    },
+  };
+}
+
+export function createPhase11FixtureRestoreFilePort({
+  directoryUri = PHASE11_RESTORE_FIXTURE_DIRECTORY_URI,
+  selectorFile = PHASE11_RESTORE_FIXTURE_SELECTOR_FILE,
+  driver = createExpoPhase11FixtureDriver(),
+}: Readonly<{
+  directoryUri?: string;
+  selectorFile?: string;
+  driver?: Phase11FixtureRestoreFileDriver;
+}> = {}) {
+  return createExpoRestoreFilePort({
+    async pickSingleArchive() {
+      const selected = driver.readTextFile(joinFileUri(directoryUri, selectorFile)).trim();
+      if (selected === "cancel") return null;
+      if (!PHASE11_RESTORE_FIXTURE_FILES.has(selected)) {
+        throw new Error("phase11_fixture_selector_invalid");
+      }
+      const uri = joinFileUri(directoryUri, selected);
+      return Object.freeze({
+        size: driver.fileSize(uri),
+        open() {
+          const bytes = driver.readFileBytes(uri);
+          return Object.freeze({
+            readBytes: (length: number) => bytes.slice(0, length),
+            close: () => undefined,
+          });
+        },
+      });
     },
   });
 }

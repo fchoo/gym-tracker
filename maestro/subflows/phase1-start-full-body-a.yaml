@@ -19,5 +19,5 @@ name: Phase 1 start Full Body A
     timeout: 30000
 - tapOn: "Start Full Body A"
 - extendedWaitUntil:
-    visible: "FOCUSED WORKOUT"
+    visible: "WORKOUT OVERVIEW"
     timeout: 30000

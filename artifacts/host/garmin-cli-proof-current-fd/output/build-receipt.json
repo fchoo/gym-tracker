@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "manifestSha256": "40c706297872d458021a090d3c84bbcbd401e6e2570d8af86080156ba682d9e0",
+  "output": {
+    "filename": "cffi-2.1.1-cp313-cp313-android_24_arm64_v8a.whl",
+    "sha256": "850ee4664381151d0e10407de861b47e0c9954a06e4b0e8307431472990bd767",
+    "backendSha256": "914bbcc8d16ef427ac5675b81d0662028cc8d35141a3f38a5459ee4d85f3e3f1"
+  },
+  "native": {
+    "name": "_cffi_backend.so",
+    "sha256": "914bbcc8d16ef427ac5675b81d0662028cc8d35141a3f38a5459ee4d85f3e3f1",
+    "elfClass": "ELF64",
+    "machine": "AArch64",
+    "androidApi": 24,
+    "needed": [
+      "libffi.so",
+      "libpython3.13.so",
+      "libdl.so",
+      "libm.so",
+      "libc.so"
+    ],
+    "exports": [
+      "PyInit__cffi_backend"
+    ],
+    "minLoadAlignment": 16384
+  },
+  "flags": [
+    "--target=aarch64-linux-android24",
+    "-shared",
+    "-fPIC",
+    "-O2",
+    "-DFFI_BUILDING=1",
+    "-DUSE__THREAD",
+    "-DHAVE_SYNC_SYNCHRONIZE",
+    "-D__BIONIC_NO_PAGE_SIZE_MACRO",
+    "-ffile-prefix-map=/Users/bytedance/Documents/personal/gym_tracker/.trae/worktrees/p20-calendar-safe-sdk-6b4/artifacts/host/garmin-cli-proof-renewed-8scwDE/new-work=.",
+    "-fdebug-prefix-map=/Users/bytedance/Documents/personal/gym_tracker/.trae/worktrees/p20-calendar-safe-sdk-6b4/artifacts/host/garmin-cli-proof-renewed-8scwDE/new-work=.",
+    "-I/Users/bytedance/Documents/personal/gym_tracker/.trae/worktrees/p20-calendar-safe-sdk-6b4/artifacts/host/garmin-cli-proof-renewed-8scwDE/new-work/python/include/python3.13",
+    "-I/Users/bytedance/Documents/personal/gym_tracker/.trae/worktrees/p20-calendar-safe-sdk-6b4/artifacts/host/garmin-cli-proof-renewed-8scwDE/new-work/ffi/chaquopy/include",
+    "-Wl,--no-undefined",
+    "-Wl,--no-rosegment",
+    "-Wl,-z,max-page-size=16384",
+    "-Wl,--build-id=sha1",
+    "-L/Users/bytedance/Documents/personal/gym_tracker/.trae/worktrees/p20-calendar-safe-sdk-6b4/artifacts/host/garmin-cli-proof-renewed-8scwDE/new-work/python/jniLibs/arm64-v8a",
+    "-L/Users/bytedance/Documents/personal/gym_tracker/.trae/worktrees/p20-calendar-safe-sdk-6b4/artifacts/host/garmin-cli-proof-renewed-8scwDE/new-work/ffi/chaquopy/lib",
+    "/Users/bytedance/Documents/personal/gym_tracker/.trae/worktrees/p20-calendar-safe-sdk-6b4/artifacts/host/garmin-cli-proof-renewed-8scwDE/new-work/cffi-2.1.1/src/c/_cffi_backend.c",
+    "-lffi",
+    "-lpython3.13",
+    "-ldl",
+    "-lm",
+    "-o",
+    "/Users/bytedance/Documents/personal/gym_tracker/.trae/worktrees/p20-calendar-safe-sdk-6b4/artifacts/host/garmin-cli-proof-renewed-8scwDE/new-work/_cffi_backend.so"
+  ]
+}

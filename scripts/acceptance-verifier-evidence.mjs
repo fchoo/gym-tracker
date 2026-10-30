@@ -1,0 +1,442 @@
+#!/usr/bin/env node
+
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
+
+import {
+  PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT,
+  PHASE18_GARMIN_ACCEPTANCE_RAW_REPORT,
+  createPhase18GarminAcceptanceRunnerPlan,
+  validatePhase18GarminAcceptanceManifest,
+} from "./run-phase18-garmin-acceptance.mjs";
+import { sanitizePhase18BuildManifest } from "./phase18-build-manifest.mjs";
+import {
+  PHASE18_AGGREGATE_APK,
+  PHASE18_AGGREGATE_SUITE,
+  PHASE18_MAESTRO_REPORT,
+  PHASE18_PRIVACY_REPORT,
+  validatePhase18AggregateApkIdentity,
+  validatePhase18MaestroReport,
+  validatePhase18PrivacyReport,
+} from "./phase18-aggregate-acceptance.mjs";
+import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+import {
+  executePhase18GarminProofVerifier,
+  validatePhase18GarminProofCurrentIdentity,
+  validatePhase18GarminProofEvidence,
+} from "./verify-phase18-garmin-proof.mjs";
+import {
+  executePhase18GarminAdversarialVerifier,
+  validatePhase18GarminAdversarialCurrentIdentity,
+  validatePhase18GarminAdversarialEvidence,
+} from "./verify-phase18-garmin-adversarial.mjs";
+import { assertPhase18PrivacySafe } from "./phase18-privacy-scan.mjs";
+import {
+  choose,
+  errorMessage,
+  exactKeys,
+  firstDefined,
+  regexMatch,
+  runCliIfMain,
+} from "./node-evidence-utils.mjs";
+import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
+import { pullInstalledApkSha256 } from "./phase18-installed-apk.mjs";
+
+const MANIFEST = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/build.json`;
+const APK = PHASE18_AGGREGATE_APK;
+const PROOF_EVIDENCE = "artifacts/native/phase18-garmin-proof/final-evidence.json";
+const ADVERSARIAL_EVIDENCE = "artifacts/native/phase18-garmin-adversarial/final-evidence.json";
+const MAESTRO_SOURCE = "maestro/phase18/garmin-sync.yaml";
+const MAESTRO_REPORT = PHASE18_MAESTRO_REPORT;
+const PRIVACY_REPORT = PHASE18_PRIVACY_REPORT;
+const HASH = /^[a-f0-9]{64}$/u;
+const RUN_ID = /^phase18-[0-9]{8}-[a-f0-9]{7}$/u;
+const SEMANTIC_STATE = /^[a-z][a-z0-9-]{0,63}$/u;
+const EXPECTED_OBSERVATIONS = Object.freeze({
+  appearance: ["Light", "Dark", "System"],
+  viewports: [
+    { width: 360, height: 800 },
+    { width: 390, height: 844 },
+    { width: 600, height: 960 },
+    { width: 840, height: 1080 },
+  ],
+  orientations: ["portrait", "landscape"],
+  font_scales: [1, 2],
+  input_methods: ["touch", "keyboard", "dpad"],
+  visible_focus: true,
+  minimum_target_dp: 48,
+  reduced_motion: true,
+  process_restart: true,
+});
+
+const fail = (code) => {
+  throw new Error(`phase18_acceptance_evidence_${code}`);
+};
+
+function privacySafe(value) {
+  assertPhase18PrivacySafe(value, {
+    prefix: "phase18_acceptance_evidence_privacy",
+    allowString: (entry, context) => (
+      (context.endsWith(".artifact")
+        && (
+          entry === PROOF_EVIDENCE
+          || entry === ADVERSARIAL_EVIDENCE
+        ))
+      || (context === "native_flow.path" && entry === MAESTRO_SOURCE)
+    ),
+  });
+}
+
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function command(program, args) {
+  return execFileSync(program, args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
+}
+
+export function resolvePhase18GarminAcceptanceCurrentIdentity() {
+  const androidHome = firstDefined(process.env.ANDROID_HOME, process.env.ANDROID_SDK_ROOT);
+  if (androidHome === undefined) fail("android_sdk_missing");
+  const adb = path.join(androidHome, "platform-tools", "adb");
+  const buildTools = path.join(androidHome, "build-tools");
+  const apksigner = existsSync(buildTools)
+    ? readdirSync(buildTools).sort().reverse()
+      .map((version) => path.join(buildTools, version, "apksigner"))
+      .find(existsSync)
+    : undefined;
+  if (apksigner === undefined) fail("apksigner_missing");
+  const devices = command(adb, ["devices"]).split("\n").slice(1)
+    .map((line) => line.trim().split(/\s+/u)).filter(([, state]) => state === "device");
+  if (devices.length !== 1 || devices[0]?.[0] === undefined) fail("device_identity_invalid");
+  const serial = devices[0][0];
+  const getprop = (name) => command(adb, ["-s", serial, "shell", "getprop", name]);
+  const abi = getprop("ro.product.cpu.abi");
+  const apiLevel = getprop("ro.build.version.sdk");
+  const model = getprop("ro.product.model");
+  const deviceIdentitySha256 = phase18DeviceIdentitySha256({ serial, abi, apiLevel, model });
+  const installedPath = command(adb, ["-s", serial, "shell", "pm", "path", "com.fchoo.gymtracker.devtest"])
+    .split("\n").find((line) => line.startsWith("package:"))?.slice("package:".length);
+  if (installedPath === undefined) fail("installed_apk_missing");
+  const retainedApkBytes = readFileSync(APK);
+  let installedApkSha256;
+  try {
+    installedApkSha256 = pullInstalledApkSha256({
+      adb,
+      serial,
+      installedPath,
+      expectedByteCount: retainedApkBytes.length,
+    });
+  } catch {
+    fail("current_identity_invalid");
+  }
+  const signatureOutput = command(apksigner, ["verify", "--print-certs", APK]);
+  const signature = signatureOutput.match(/certificate SHA-256 digest:\s*([A-Fa-f0-9:]{64,95})/u)?.[1]
+    ?.replaceAll(":", "").toLowerCase();
+  if (signature === undefined || !HASH.test(signature)) fail("signature_unreadable");
+  return Object.freeze({
+    currentHead: command("git", ["rev-parse", "HEAD"]),
+    currentSourceTreeSha256: sourceTreeSha256(),
+    currentPythonLockSha256: sha256(readFileSync("modules/garmin-connect/python/garmin-python-lock.json")),
+    retainedApkSha256: sha256(retainedApkBytes),
+    installedApkSha256,
+    retainedSignatureSha256: signature,
+    deviceIdentitySha256,
+  });
+}
+
+function matchingArtifactIdentity(ownerManifest, acceptanceManifest) {
+  for (const key of ["base_head", "source_tree_sha256", "python_lock_sha256", "apk_sha256", "signature_sha256", "device_identity_sha256", "package", "profile", "abi", "suite"]) {
+    if (ownerManifest[key] !== acceptanceManifest[key]) fail("owner_manifest_invalid");
+  }
+}
+
+function selfValidateManifest(manifest) {
+  validatePhase18GarminAcceptanceManifest(manifest, {
+    currentHead: manifest?.base_head,
+    currentSourceTreeSha256: manifest?.source_tree_sha256,
+    currentPythonLockSha256: manifest?.python_lock_sha256,
+    retainedApkSha256: manifest?.apk_sha256,
+    retainedSignatureSha256: manifest?.signature_sha256,
+    deviceIdentitySha256: manifest?.device_identity_sha256,
+  });
+}
+
+function validDuration(value) {
+  return Number.isSafeInteger(value)
+    && value >= 0
+    && value <= 24 * 60 * 60 * 1_000;
+}
+
+function validateHostCase(entry, contract) {
+  const invalid = [
+    !exactKeys(entry, [
+      "duration_ms",
+      "id",
+      "match_digest",
+      "semantic_state",
+      "source_digest",
+      "status",
+    ]),
+    entry.id !== contract.id,
+    entry.status !== "passed",
+    !validDuration(entry.duration_ms),
+    !regexMatch(HASH, entry.source_digest),
+    !regexMatch(HASH, entry.match_digest),
+    !SEMANTIC_STATE.test(entry.semantic_state ?? ""),
+  ].some(Boolean);
+  if (invalid) fail("host_case_invalid");
+}
+
+function validateNativeCase(entry, contract) {
+  const deferred = entry?.status === "deferred";
+  const keys = deferred
+    ? ["artifact", "id", "owner_plan", "status"]
+    : [
+      "artifact",
+      "artifact_sha256",
+      "id",
+      "owner_plan",
+      "proof_kind",
+      "status",
+    ];
+  const invalid = [
+    !exactKeys(entry, keys),
+    entry.id !== contract.id,
+    entry.owner_plan !== contract.ownerPlan,
+    entry.artifact !== contract.artifact,
+    !["deferred", "verified"].includes(entry.status),
+    (
+      !deferred
+      && (
+        entry.proof_kind !== "native-exact-artifact"
+        || !regexMatch(HASH, entry.artifact_sha256)
+      )
+    ),
+  ].some(Boolean);
+  if (invalid) fail("native_case_invalid");
+}
+
+function validateNativeFlow(value) {
+  const invalid = [
+    !exactKeys(value, ["path", "report_sha256", "source_sha256"]),
+    value.path !== "maestro/phase18/garmin-sync.yaml",
+    !regexMatch(HASH, value.source_sha256),
+    !regexMatch(HASH, value.report_sha256),
+  ].some(Boolean);
+  if (invalid) fail("native_flow_invalid");
+}
+
+function validatePrivacyScan(value) {
+  const invalid = [
+    !exactKeys(value, ["report_sha256", "scanned_artifact_count", "status"]),
+    value.status !== "passed",
+    !Number.isSafeInteger(value.scanned_artifact_count),
+    value.scanned_artifact_count < 1,
+    value.scanned_artifact_count > 100,
+    !regexMatch(HASH, value.report_sha256),
+  ].some(Boolean);
+  if (invalid) fail("privacy_scan_invalid");
+}
+
+export function validatePhase18GarminAcceptanceEvidence(evidence) {
+  privacySafe(evidence);
+  const invalidSchema = [
+    !exactKeys(evidence, [
+      "case_ids",
+      "cases",
+      "manifest",
+      "native_flow",
+      "observations",
+      "privacy_scan",
+      "run_identity",
+      "schema_version",
+      "status",
+      "suite",
+    ]),
+    evidence.schema_version !== 1,
+    evidence.suite !== "phase18-garmin-acceptance",
+    !["host-passed-native-deferred", "passed"].includes(evidence.status),
+    !Array.isArray(evidence.case_ids),
+    !Array.isArray(evidence.cases),
+    !exactKeys(evidence.run_identity, ["run_id"]),
+    !RUN_ID.test(evidence.run_identity?.run_id ?? ""),
+  ].some(Boolean);
+  if (invalidSchema) fail("schema_invalid");
+  const plan = createPhase18GarminAcceptanceRunnerPlan();
+  const invalidOrder = [
+    !isDeepStrictEqual(evidence.case_ids, plan.case_ids),
+    evidence.cases.length !== plan.cases.length,
+    !isDeepStrictEqual(evidence.cases.map(({ id }) => id), plan.case_ids),
+  ].some(Boolean);
+  if (invalidOrder) fail("case_order_invalid");
+  selfValidateManifest(evidence.manifest);
+  if (!isDeepStrictEqual(evidence.observations, EXPECTED_OBSERVATIONS)) {
+    fail("observations_invalid");
+  }
+  validateNativeFlow(evidence.native_flow);
+  validatePrivacyScan(evidence.privacy_scan);
+
+  let hostCases = 0;
+  let nativePrerequisites = 0;
+  let nativeVerified = 0;
+  plan.cases.forEach((contract, index) => {
+    const entry = evidence.cases[index];
+    if (contract.disposition === "execute-host") {
+      validateHostCase(entry, contract);
+      hostCases += 1;
+    } else {
+      validateNativeCase(entry, contract);
+      nativePrerequisites += 1;
+      if (entry.status === "verified") nativeVerified += 1;
+    }
+  });
+  const expectedStatus = nativeVerified === nativePrerequisites
+    ? "passed"
+    : "host-passed-native-deferred";
+  if (evidence.status !== expectedStatus) fail("status_invalid");
+  return Object.freeze({
+    status: expectedStatus,
+    host_cases: hostCases,
+    native_prerequisites: nativePrerequisites,
+  });
+}
+
+export function validatePhase18GarminAcceptanceCurrentIdentity(evidence, current) {
+  const manifest = evidence?.manifest;
+  const invalid = [
+    manifest?.base_head !== current.currentHead,
+    manifest?.source_tree_sha256 !== current.currentSourceTreeSha256,
+    manifest?.python_lock_sha256 !== current.currentPythonLockSha256,
+    manifest?.apk_sha256 !== current.retainedApkSha256,
+    manifest?.apk_sha256 !== current.installedApkSha256,
+    manifest?.signature_sha256 !== current.retainedSignatureSha256,
+    manifest?.device_identity_sha256 !== current.deviceIdentitySha256,
+    evidence?.native_flow?.source_sha256 !== current.nativeFlowSourceSha256,
+    evidence?.native_flow?.report_sha256 !== current.nativeFlowReportSha256,
+    evidence?.privacy_scan?.report_sha256 !== current.privacyReportSha256,
+  ].some(Boolean);
+  if (invalid) fail("current_identity_invalid");
+  return true;
+}
+
+export function validatePhase18GarminAcceptanceDerivedEvidence(
+  evidence,
+  maestro,
+  privacy,
+  privacySummary,
+) {
+  if (evidence.privacy_scan.scanned_artifact_count !== privacySummary.scanned_artifact_count
+    || evidence.run_identity.run_id !== maestro.identity.run_id
+    || evidence.run_identity.run_id !== privacy.identity.run_id) {
+    fail("observations_invalid");
+  }
+  return true;
+}
+
+export function executePhase18GarminAcceptanceVerifier(
+  args = process.argv.slice(2),
+  dependencies = {},
+) {
+  if (
+    args.length !== 2
+    || args[0] !== "--manifest"
+    || args[1] !== MANIFEST
+  ) fail("arguments_invalid");
+  const readJson = choose(
+    dependencies.readJson,
+    (path) => JSON.parse(readFileSync(path, "utf8")),
+  );
+  const readBytes = choose(dependencies.readBytes, readFileSync);
+  const current = choose(dependencies.resolveCurrentIdentity, resolvePhase18GarminAcceptanceCurrentIdentity)();
+  const retainedManifest = readJson(MANIFEST);
+  const manifest = sanitizePhase18BuildManifest(retainedManifest, {
+    suite: PHASE18_AGGREGATE_SUITE,
+    pythonLockSha256: current.currentPythonLockSha256,
+    signatureSha256: current.retainedSignatureSha256,
+  });
+  const evidence = readJson(PHASE18_GARMIN_ACCEPTANCE_RAW_REPORT);
+  if (!isDeepStrictEqual(evidence?.manifest, manifest)) {
+    fail("report_identity_invalid");
+  }
+  const validated = validatePhase18GarminAcceptanceEvidence(evidence);
+  validatePhase18GarminAcceptanceCurrentIdentity(evidence, {
+    ...current,
+    nativeFlowSourceSha256: sha256(readBytes(MAESTRO_SOURCE)),
+    nativeFlowReportSha256: sha256(readBytes(MAESTRO_REPORT)),
+    privacyReportSha256: sha256(readBytes(PRIVACY_REPORT)),
+  });
+  const ownerArtifacts = [
+    [
+      PROOF_EVIDENCE,
+      MANIFEST,
+      executePhase18GarminProofVerifier,
+      validatePhase18GarminProofEvidence,
+      validatePhase18GarminProofCurrentIdentity,
+    ],
+    [
+      ADVERSARIAL_EVIDENCE,
+      MANIFEST,
+      executePhase18GarminAdversarialVerifier,
+      validatePhase18GarminAdversarialEvidence,
+      validatePhase18GarminAdversarialCurrentIdentity,
+    ],
+  ];
+  const ownerVerifier = dependencies.verifyOwnerArtifact;
+  const ownerReports = [];
+  for (const [artifactPath, manifestPath, executeVerifier, validateEvidence, validateIdentity] of ownerArtifacts) {
+    const ownerEvidence = readJson(artifactPath);
+    ownerReports.push(ownerEvidence);
+    if (ownerVerifier === undefined) executeVerifier(["--manifest", manifestPath]);
+    else ownerVerifier(artifactPath, ownerEvidence);
+    validateEvidence(ownerEvidence);
+    matchingArtifactIdentity(ownerEvidence.manifest, manifest);
+    const artifactHash = sha256(readBytes(artifactPath));
+    const row = evidence.cases.find(({ artifact }) => artifact === artifactPath);
+    if (row?.status !== "verified" || row.artifact_sha256 !== artifactHash) fail("owner_artifact_invalid");
+    validateIdentity(ownerEvidence, choose(dependencies.ownerCurrentIdentity?.[artifactPath], {
+      ...current,
+      nativeReportSha256: ownerEvidence.native_report?.sha256,
+      privacyReportSha256: ownerEvidence.privacy_scan?.report_sha256,
+      rawReportSha256: ownerEvidence.raw_report_sha256,
+    }));
+  }
+  validatePhase18AggregateApkIdentity({
+    manifest,
+    installedApkSha256: current.installedApkSha256,
+    ownerReports: [...ownerReports, evidence],
+  });
+  const maestro = readJson(MAESTRO_REPORT);
+  const privacy = readJson(PRIVACY_REPORT);
+  validatePhase18MaestroReport(maestro, {
+    manifest,
+    installedApkSha256: current.installedApkSha256,
+    readBytes,
+  });
+  const privacySummary = validatePhase18PrivacyReport(privacy, {
+    manifest,
+    installedApkSha256: current.installedApkSha256,
+    readBytes,
+  });
+  validatePhase18GarminAcceptanceDerivedEvidence(
+    evidence,
+    maestro,
+    privacy,
+    privacySummary,
+  );
+  return validated;
+}
+
+export function executePhase18GarminAcceptanceVerifierCli(dependencies = {}) {
+  try {
+    process.stdout.write(`${JSON.stringify(executePhase18GarminAcceptanceVerifier(process.argv.slice(2), dependencies))}\n`);
+  } catch (error) {
+    process.stderr.write(`${errorMessage(error, "phase18_acceptance_verifier_failed")}\n`);
+    process.exitCode = 1;
+  }
+}
+
+runCliIfMain(import.meta.url, process.argv[1], executePhase18GarminAcceptanceVerifierCli);

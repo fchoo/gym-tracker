@@ -71,6 +71,7 @@ function targetPositionForDrag(
   translationY: number,
   rowHeight: number,
 ): number {
+  "worklet";
   const offset = Math.round(translationY / rowHeight);
   return Math.max(0, Math.min(count - 1, position + offset));
 }
@@ -105,6 +106,7 @@ export function PlanEditorTextField({
   onChangeText,
   error,
   help,
+  inputRef,
   tone = "default",
   ...inputProps
 }: Readonly<{
@@ -113,6 +115,7 @@ export function PlanEditorTextField({
   onChangeText(value: string): void;
   error?: string | undefined;
   help?: string | undefined;
+  inputRef?: React.Ref<TextInput> | undefined;
   tone?: "default" | "card";
 }> & Omit<TextInputProps, "accessibilityLabel" | "onChangeText" | "value">) {
   const { colors } = useAppTheme();
@@ -142,6 +145,7 @@ export function PlanEditorTextField({
       <TextInput
         {...inputProps}
         accessibilityLabel={label}
+        ref={inputRef}
         onChangeText={onChangeText}
         style={[
           typeScale.body as TextStyle,
@@ -179,11 +183,15 @@ export function PlanEditorReorderableRow({
   onMoveDown,
   onMoveTo,
   onDragPreview,
-  preview = null,
+  preview,
+  dragActivationDistance,
+  disabled = false,
   reorderId = label,
   children,
   trailing,
   tone = "default",
+  moveEarlierLabel = "Move earlier",
+  moveLaterLabel = "Move later",
 }: Readonly<{
   label: string;
   position: number;
@@ -193,13 +201,17 @@ export function PlanEditorReorderableRow({
   onMoveTo?(
     targetPosition: number,
     method: PlanEditorReorderMethod,
-  ): void;
+  ): void | Promise<void>;
   onDragPreview?(preview: PlanEditorReorderPreview | null): void;
   preview?: PlanEditorReorderPreview | null;
+  dragActivationDistance?: number | undefined;
+  disabled?: boolean;
   reorderId?: string;
   children: React.ReactNode;
   trailing?: React.ReactNode;
   tone?: "default" | "card";
+  moveEarlierLabel?: string;
+  moveLaterLabel?: string;
 }>) {
   const { fontScale } = useWindowDimensions();
   const { colors, motion } = useAppTheme();
@@ -208,12 +220,20 @@ export function PlanEditorReorderableRow({
   );
   const [localPreview, setLocalPreview] =
     React.useState<PlanEditorReorderPreview | null>(null);
+  const localPreviewRef = React.useRef<PlanEditorReorderPreview | null>(null);
   const translationY = useSharedValue(0);
+  const dragActive = useSharedValue(false);
+  const dropPending = useSharedValue(false);
+  const previewTarget = useSharedValue(position);
+  const pendingMoveRef = React.useRef(false);
   const border = tone === "card" ? colors.contentCardBorder : colors.divider;
   const text = tone === "card" ? colors.contentCardText : colors.textPrimary;
-  const canMoveUp = position > 0;
-  const canMoveDown = position < count - 1;
-  const activePreview = preview ?? localPreview;
+  const canMoveUp = !disabled && position > 0;
+  const canMoveDown = !disabled && position < count - 1;
+  const activePreview = preview === undefined
+    ? (localPreview?.sourcePosition === position ? localPreview : null)
+    : preview;
+  const hasPreview = activePreview !== null;
   const isHeld = activePreview?.sourcePosition === position;
   const targetPosition = isHeld
     ? activePreview.targetPosition
@@ -223,6 +243,12 @@ export function PlanEditorReorderableRow({
   const publishPreview = React.useCallback((
     nextPreview: PlanEditorReorderPreview | null,
   ) => {
+    const current = localPreviewRef.current;
+    if (current === nextPreview || (current !== null && nextPreview !== null
+      && current.sourcePosition === nextPreview.sourcePosition
+      && current.targetPosition === nextPreview.targetPosition
+      && current.rowHeight === nextPreview.rowHeight)) return;
+    localPreviewRef.current = nextPreview;
     setLocalPreview(nextPreview);
     onDragPreview?.(nextPreview);
   }, [onDragPreview]);
@@ -230,12 +256,12 @@ export function PlanEditorReorderableRow({
     nextPosition: number,
     method: PlanEditorReorderMethod = "fallback",
   ) => {
-    if (nextPosition === position) {
+    if (disabled || nextPosition === position
+      || (pendingMoveRef.current && method !== "drag")) {
       return;
     }
     if (onMoveTo !== undefined) {
-      onMoveTo(nextPosition, method);
-      return;
+      return onMoveTo(nextPosition, method);
     }
     if (nextPosition < position && canMoveUp) {
       onMoveUp();
@@ -246,42 +272,58 @@ export function PlanEditorReorderableRow({
   }, [
     canMoveDown,
     canMoveUp,
+    disabled,
     onMoveDown,
     onMoveTo,
     onMoveUp,
     position,
   ]);
-  const updatePreview = React.useCallback((nextTranslationY: number) => {
+  const updatePreview = React.useCallback((nextPosition: number) => {
     publishPreview({
       sourcePosition: position,
-      targetPosition: targetPositionForDrag(
-        position,
-        count,
-        nextTranslationY,
-        rowHeight,
-      ),
-      translationY: nextTranslationY,
+      targetPosition: nextPosition,
+      translationY: (nextPosition - position) * rowHeight,
       rowHeight,
     });
-  }, [count, position, publishPreview, rowHeight]);
-  const finishDrag = React.useCallback((nextTranslationY: number) => {
-    requestMove(targetPositionForDrag(
-      position,
-      count,
-      nextTranslationY,
-      rowHeight,
-    ), "drag");
-  }, [count, position, requestMove, rowHeight]);
-  const dragGesture = React.useMemo(() => Gesture.Pan()
+  }, [position, publishPreview, rowHeight]);
+  const clearDrag = React.useCallback(() => {
+    dragActive.value = false;
+    dropPending.value = false;
+    // Keep the UI-thread offset until React commits the cleared preview.
+    // The old held worklet can still render before that commit; the next drag
+    // resets translation in onStart once the row is available again.
+    publishPreview(null);
+  }, [dragActive, dropPending, publishPreview]);
+  const finishDrag = React.useCallback(async (nextPosition: number) => {
+    if (pendingMoveRef.current) return;
+    pendingMoveRef.current = true;
+    updatePreview(nextPosition);
+    try {
+      // The preview is presentation only. Its owner applies committed state.
+      await requestMove(nextPosition, "drag");
+    } catch {
+      // Command owners report the failure; release the pending presentation.
+    } finally {
+      pendingMoveRef.current = false;
+      clearDrag();
+    }
+  }, [clearDrag, requestMove, updatePreview]);
+  const dragGesture = React.useMemo(() => {
+    const gesture = Gesture.Pan()
+    .enabled(!disabled)
     .activateAfterLongPress(REORDER_HOLD_MS)
     .maxPointers(1)
     .shouldCancelWhenOutside(false)
     .withTestId(`reorder-gesture-${reorderId}`)
     .onStart(() => {
+      if (dropPending.value) return;
+      dragActive.value = true;
+      previewTarget.value = position;
       translationY.value = 0;
-      scheduleOnRN(updatePreview, 0);
+      scheduleOnRN(updatePreview, position);
     })
     .onUpdate((event) => {
+      if (!dragActive.value || dropPending.value) return;
       const minimumTranslation = -position * rowHeight;
       const maximumTranslation = (count - position - 1) * rowHeight;
       const boundedTranslation = Math.max(
@@ -289,21 +331,49 @@ export function PlanEditorReorderableRow({
         Math.min(maximumTranslation, event.translationY),
       );
       translationY.value = boundedTranslation;
-      scheduleOnRN(updatePreview, boundedTranslation);
+      const nextPosition = targetPositionForDrag(
+        position, count, boundedTranslation, rowHeight,
+      );
+      if (nextPosition !== previewTarget.value) {
+        previewTarget.value = nextPosition;
+        scheduleOnRN(updatePreview, nextPosition);
+      }
     })
     .onEnd((event, success) => {
-      if (success) {
-        scheduleOnRN(finishDrag, event.translationY);
+      if (!dragActive.value) return;
+      dragActive.value = false;
+      const nextPosition = targetPositionForDrag(
+        position, count, event.translationY, rowHeight,
+      );
+      if (success && nextPosition !== position) {
+        dropPending.value = true;
+        translationY.value = withTiming(
+          (nextPosition - position) * rowHeight,
+          { duration: motion.setCommitMs },
+        );
+        scheduleOnRN(finishDrag, nextPosition);
       }
     })
     .onFinalize(() => {
-      translationY.value = withTiming(0, { duration: motion.setCommitMs });
+      // A successful drop keeps both source and neighbor offsets until commit.
+      if (dropPending.value) return;
+      dragActive.value = false;
       scheduleOnRN(publishPreview, null);
-    }), [
+    });
+    if (dragActivationDistance !== undefined) {
+      gesture.activeOffsetY([-dragActivationDistance, dragActivationDistance]);
+    }
+    return gesture;
+  }, [
     count,
+    disabled,
+    dragActive,
+    dragActivationDistance,
+    dropPending,
     finishDrag,
     motion.setCommitMs,
     position,
+    previewTarget,
     publishPreview,
     reorderId,
     rowHeight,
@@ -313,19 +383,16 @@ export function PlanEditorReorderableRow({
   const rowStyle = useAnimatedStyle(() => ({
     opacity: isHeld ? 0.92 : 1,
     transform: [{
-      translateY: isHeld
-        ? translationY.value
-        : motion.positionTransitions
-          ? withTiming(neighborDisplacement, { duration: motion.setCommitMs })
-          : neighborDisplacement,
+      translateY: !hasPreview
+        ? 0
+        : isHeld
+          ? translationY.value
+          : motion.positionTransitions
+            ? withTiming(neighborDisplacement, { duration: motion.setCommitMs })
+            : neighborDisplacement,
     }],
     zIndex: isHeld ? 1 : 0,
-  }), [
-    isHeld,
-    motion.positionTransitions,
-    motion.setCommitMs,
-    neighborDisplacement,
-  ]);
+  }), [hasPreview, isHeld, motion.positionTransitions, motion.setCommitMs, neighborDisplacement]);
   const recordRowHeight = React.useCallback((event: LayoutChangeEvent) => {
     const measuredHeight = Math.max(
       sizes.minimumTarget,
@@ -354,16 +421,17 @@ export function PlanEditorReorderableRow({
         <GestureDetector gesture={dragGesture}>
           <FocusablePressable
             accessibilityActions={[
-              ...(canMoveUp ? [{ name: "increment", label: "Move up" }] : []),
+              ...(canMoveUp ? [{ name: "increment", label: moveEarlierLabel }] : []),
               ...(canMoveDown
-                ? [{ name: "decrement", label: "Move down" }]
+                ? [{ name: "decrement", label: moveLaterLabel }]
                 : []),
             ]}
             accessibilityHint="Touch and hold to drag. Use accessibility actions to move this item."
             accessibilityLabel={`Reorder ${label}`}
             accessibilityRole="adjustable"
-            accessibilityState={{ busy: isHeld }}
-            focusable
+            accessibilityState={{ busy: isHeld, disabled }}
+            disabled={disabled}
+            focusable={!disabled && !isHeld}
             onAccessibilityAction={(event) => {
               if (event.nativeEvent.actionName === "increment" && canMoveUp) {
                 requestMove(position - 1);
@@ -379,6 +447,10 @@ export function PlanEditorReorderableRow({
               }>).shiftKey === true;
               if (key === "Enter" || key === " ") {
                 requestMove(position + 1);
+                return;
+              }
+              if (key === "Escape") {
+                if (!pendingMoveRef.current) clearDrag();
                 return;
               }
               if (!shiftKey) {
@@ -432,7 +504,7 @@ const styles = StyleSheet.create({
   input: {
     borderRadius: radius.standard,
     borderWidth: StyleSheet.hairlineWidth,
-    minHeight: sizes.minimumTarget,
+    minHeight: 56,
     paddingHorizontal: space[4],
     paddingVertical: space[2],
   },

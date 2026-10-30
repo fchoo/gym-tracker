@@ -1,0 +1,218 @@
+import {
+  afterEach,
+  expect,
+  it,
+  jest,
+} from "@jest/globals";
+import { DatabaseSync } from "node:sqlite";
+import {
+  mkdtempSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import {
+  PHASE12_MAX_SNAPSHOT_BYTES,
+  PHASE12_MAX_SNAPSHOT_ROWS,
+  phase12EncodedDriveObjectBytes,
+  phase12SqliteVariableLimit,
+  seedMaximumHistory,
+} from "../../src/bootstrap/phase12BackupBenchmark";
+import {
+  buildPortableMergePlan,
+} from "../../src/domains/portability/mergePlan";
+import {
+  canonicalMergeValue,
+} from "../../src/domains/portability/mergeCommands";
+import {
+  configureSqliteConnection,
+  type SqliteConnection,
+  type SqlitePreparedResult,
+  type SqlitePreparedStatement,
+} from "../../src/platform/sqlite/connection";
+import {
+  createMigrationRunner,
+} from "../../src/platform/sqlite/migrationRunner";
+import {
+  CURRENT_SCHEMA_VERSION,
+  migrations,
+} from "../../src/platform/sqlite/migrations";
+import {
+  SESSION_EXERCISE_REST_DEFAULT_RECEIPTS_TABLE,
+} from "../../src/platform/sqlite/migrations/0036_session_exercise_rest_defaults";
+import type {
+  RecoveryBackupPort,
+} from "../../src/platform/sqlite/recoveryBackup";
+import {
+  createLogicalBackupRepository,
+} from "../../src/platform/sqlite/repositories/logicalBackupRepository";
+import {
+  createFullPlanLogicalMergeWriter,
+  LOGICAL_MERGE_BATCH_PARAMETER_LIMIT,
+} from "../../src/platform/sqlite/repositories/logicalMergeRepository";
+import {
+  createSqliteMergeLocalFactsPort,
+} from "../../src/platform/sqlite/repositories/restorePreflightAdapters";
+import {
+  createSqliteKernel,
+  type SqliteKernel,
+} from "../../src/platform/sqlite/sqliteKernel";
+
+jest.mock("expo-sqlite", () => ({
+  deleteDatabaseAsync: jest.fn(),
+}));
+
+class Result<Row extends Record<string, unknown>>
+implements SqlitePreparedResult<Row> {
+  constructor(
+    readonly changes: number,
+    readonly lastInsertRowId: number,
+    private readonly rows: readonly Row[],
+  ) {}
+
+  async getAllAsync(): Promise<readonly Row[]> {
+    return this.rows;
+  }
+}
+
+class Statement implements SqlitePreparedStatement {
+  constructor(private readonly statement: ReturnType<DatabaseSync["prepare"]>) {}
+
+  async executeAsync<Row extends Record<string, unknown>>(
+    parameters: readonly (null | number | string | Uint8Array)[] = [],
+  ): Promise<SqlitePreparedResult<Row>> {
+    if (this.statement.columns().length > 0) {
+      return new Result(0, 0, this.statement.all(...parameters) as Row[]);
+    }
+    const result = this.statement.run(...parameters);
+    return new Result(Number(result.changes), Number(result.lastInsertRowid), []);
+  }
+
+  async finalizeAsync(): Promise<void> {}
+}
+
+class Connection implements SqliteConnection {
+  constructor(private readonly database: DatabaseSync) {}
+
+  async execAsync(sql: string): Promise<void> {
+    this.database.exec(sql);
+  }
+
+  async prepareAsync(sql: string): Promise<SqlitePreparedStatement> {
+    return new Statement(this.database.prepare(sql));
+  }
+
+  async isInTransactionAsync(): Promise<boolean> {
+    return this.database.isTransaction;
+  }
+
+  async closeAsync(): Promise<void> {
+    this.database.close();
+  }
+}
+
+const directories = new Set<string>();
+const kernels: SqliteKernel[] = [];
+
+afterEach(async () => {
+  await Promise.all(kernels.splice(0).map((kernel) => kernel.close()));
+  for (const directory of directories) {
+    rmSync(directory, { force: true, recursive: true });
+  }
+  directories.clear();
+});
+
+async function migratedKernel(): Promise<SqliteKernel> {
+  const directory = mkdtempSync(join(tmpdir(), "phase12-benchmark-"));
+  directories.add(directory);
+  const databasePath = join(directory, "gym-tracker.db");
+  const writer = new Connection(new DatabaseSync(databasePath));
+  const reader = new Connection(new DatabaseSync(databasePath));
+  await configureSqliteConnection(writer, { enableWal: true });
+  await configureSqliteConnection(reader, { enableWal: false });
+  const kernel = createSqliteKernel({ reader, writer });
+  const recoveryBackup: RecoveryBackupPort = {
+    createAndValidate: async (request) => ({
+      backupId: "phase12-benchmark",
+      databaseName: request.databaseName,
+      fromVersion: request.fromVersion,
+      toVersion: request.toVersion,
+      validated: true,
+    }),
+  };
+  const migrationResult = await createMigrationRunner({
+    databaseName: "gym-tracker.db",
+    kernel,
+    migrations,
+    recoveryBackup,
+  }).run();
+  expect(migrationResult).toEqual(expect.objectContaining({
+    currentVersion: 47,
+  }));
+  expect(CURRENT_SCHEMA_VERSION).toBe(47);
+  kernels.push(kernel);
+  return kernel;
+}
+
+it("seeds a maximum fixture accepted by the fully migrated schema", async () => {
+  const kernel = await migratedKernel();
+
+  await expect(kernel.queryAll<{ name: string }>(
+    `SELECT name FROM sqlite_master WHERE type = 'table' AND name = '${SESSION_EXERCISE_REST_DEFAULT_RECEIPTS_TABLE}'`,
+  )).resolves.toEqual([{ name: SESSION_EXERCISE_REST_DEFAULT_RECEIPTS_TABLE }]);
+
+  await expect(phase12SqliteVariableLimit(kernel))
+    .resolves.toBeGreaterThanOrEqual(LOGICAL_MERGE_BATCH_PARAMETER_LIMIT);
+
+  await expect(seedMaximumHistory(kernel)).resolves.toBeUndefined();
+
+  const snapshot = await createLogicalBackupRepository(kernel).collect({
+    snapshotId: "phase12-writer-00",
+    createdAtMs: 100,
+  });
+  expect(snapshot.schemaVersion).toBe(47);
+  expect({
+    rows: snapshot.manifest.totalRows,
+    bytes: phase12EncodedDriveObjectBytes(snapshot),
+  }).toEqual({ rows: PHASE12_MAX_SNAPSHOT_ROWS, bytes: PHASE12_MAX_SNAPSHOT_BYTES });
+
+  const live = await createSqliteMergeLocalFactsPort(kernel).read();
+  const currentSession = live.tables.workout_sessions?.[0];
+  expect(currentSession).toBeDefined();
+  const archive = {
+    version: 2 as const,
+    schemaVersion: live.schemaVersion,
+    tables: {
+      ...live.tables,
+      workout_sessions: [{
+        ...currentSession!,
+        merge_modified_at_ms: Number(currentSession!.merge_modified_at_ms) + 1,
+      }],
+    },
+  };
+  const digest = async (_value: string) => "a".repeat(64);
+  const plan = await buildPortableMergePlan({
+    archive,
+    local: { version: 2, ...live },
+    payloadDigest: digest,
+  });
+  const timingStages: string[] = [];
+  await expect(createFullPlanLogicalMergeWriter(kernel, {
+    sha256: digest,
+    observeTiming: (stage) => { timingStages.push(stage); },
+  })
+    .commitFullPlan({
+      localFingerprint: await digest(canonicalMergeValue(live)),
+      plan,
+    })).resolves.toEqual({ state: "rebuild_pending" });
+  expect(timingStages).toEqual(expect.arrayContaining([
+    "plan_validation",
+    "fingerprint_read",
+    "fingerprint_canonical",
+    "fingerprint_digest",
+    "transaction_plan_validation",
+    "verification_read",
+    "verification_compare",
+  ]));
+}, 120_000);

@@ -1,0 +1,10 @@
+appId: com.fchoo.gymtracker.devtest
+name: V1.2 SQLite native-contract entrypoint
+tags:
+  - phase-20
+  - sqlite
+---
+- launchApp:
+    clearState: false
+    stopApp: true
+- assertVisible: "Today"

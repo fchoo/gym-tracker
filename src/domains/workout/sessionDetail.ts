@@ -19,6 +19,7 @@ export type SessionSetDetail = Readonly<{
   metricIdentity: MetricIdentity;
   target: MetricTarget;
   observation: MetricObservation | null;
+  previousObservation?: MetricObservation | null;
   value: string;
 }>;
 
@@ -113,6 +114,8 @@ export type SessionDetail = Readonly<{
   endedAtMs: number | null;
   durationMs: number | null;
   revision: number;
+  /** Persisted provenance: the completed workout diverged from its starting plan. */
+  modifiedFromPlan: boolean;
   /** Present only when the effective-history overlay differs from source facts. */
   corrected?: boolean;
   /** Owner-entered correction context; never sent to diagnostics or effects. */

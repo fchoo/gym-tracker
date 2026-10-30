@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useDeviceTimeZone } from "../ui/time/useDeviceTimeZone";
 
 import exerciseCatalogAsset from "../../assets/content/exercise-library.v1.json";
 import exerciseCatalogManifestAsset from "../../assets/content/exercise-library.v1.manifest.json";
@@ -26,9 +27,15 @@ import type {
 import type {
   ProgressPeriod,
   ProgressPeriodProjection,
+  ProgressRecommendationReview,
   ProgressProjectionDiagnostic,
   ProgressProjectionFreshness,
 } from "../domains/progress";
+import type {
+  ProgressDashboardProjection,
+  ProgressRefreshMetadata,
+  ProgressSport,
+} from "../domains/progress/contracts";
 import {
   correctHistorySession,
   removeHistorySession,
@@ -48,6 +55,7 @@ import type {
 } from "../domains/library/search";
 import {
   archiveCustomExercise,
+  createCustomCopy,
   createCustomExercise as createCustomExerciseCommand,
   editCustomExercise as editCustomExerciseCommand,
   previewCustomExerciseArchive,
@@ -55,18 +63,9 @@ import {
   setExerciseHidden,
   setExerciseFavorite as setExerciseFavoriteCommand,
   type CreateCustomExerciseInput,
+  type CreateCustomCopyInput,
   type EditCustomExerciseInput,
 } from "../domains/library/customExerciseCommands";
-import {
-  formatMetricDuration,
-} from "../domains/metrics/aggregates";
-import type {
-  MetricIdentity,
-  MetricTarget,
-} from "../domains/metrics";
-import {
-  parseMetricTargetJson,
-} from "../domains/metrics";
 import {
   migrateCustomExerciseMetricProfile,
   type MigrateCustomExerciseMetricProfileInput,
@@ -90,9 +89,17 @@ import {
   acceptRecommendation,
   keepCurrentTarget,
   recordExerciseEffort,
+  type RecommendationDecision,
+  type RecommendationDecisionInput,
   type ExerciseEffort,
+  type ProgressionRepository,
   type RecommendationDecisionResult,
 } from "../domains/progression";
+import {
+  canonicalBodyweightRequestPayload,
+  type BodyweightCommand,
+  type BodyweightEntryState,
+} from "../domains/bodyweight/contracts";
 import {
   adjustRest,
   expireRest,
@@ -110,24 +117,41 @@ import {
 } from "../domains/rest";
 import type {
   ActiveWorkoutView,
+  AddExerciseInput,
+  AddExerciseResult,
+  CompletedWorkoutPlanWriteBackState,
+  CompletedWorkoutPlanWriteBackChoiceState,
   FinishOutcomeResult,
   RemoveSetResult,
   RemoveWarmupInput,
   RemoveWorkingSetInput,
+  ReorderExercisesInput,
   ReviseCompletedSetInput,
+  PlannedStrengthOccurrenceDetail,
+  SelectedStrengthOccurrence,
   SessionDetail,
   TodayView,
+  WorkoutOutcomeRepository,
   WorkoutSessionView,
 } from "../domains/workout";
+import type {
+  WorkoutPreference,
+  WorkoutPreferenceWrite,
+} from "../domains/workout/workoutPreferences";
 import {
   DISCARD_CONFIRMATION,
   PARTIAL_CONFIRMATION,
   WorkoutCommandConflictError,
+  addExercise,
   addWarmup,
   addWorkingSet,
+  applyCompletedWorkoutPlanWriteBack,
+  beginCompletedWorkoutPlanWriteBack,
   discardWorkout,
   finishCompleted,
   finishPartial,
+  keepCompletedWorkoutPlanAsIs,
+  previewCompletedWorkoutPlanWriteBack,
   startWorkout,
   completeSet,
   completeWarmup,
@@ -146,6 +170,7 @@ import {
   type AddWorkingSetInput,
   type CompleteSetInput,
   type CompleteWarmupInput,
+  type UpdateSessionExerciseDefaultRestInput,
   type DiscardWorkoutInput,
   type FinishCompletedInput,
   type FinishPartialInput,
@@ -158,9 +183,48 @@ import {
   type UpdateActiveSetDraftInput,
   type UpdateWarmupDraftInput,
 } from "../domains/workout";
+import {
+  removeExercise,
+  reorderExercises,
+  replaceExercise,
+} from "../domains/workout/sessionExerciseCommands";
+import type {
+  RemoveExerciseInput,
+  RemoveExerciseResult,
+  ReorderExercisesResult,
+  ReplaceExerciseInput,
+  ReplaceExerciseResult,
+} from "../domains/workout/activeWorkout";
 import type {
   AppError,
 } from "../domains/shared";
+import {
+  parseImportedActivityLocalId,
+  projectImportedActivityDetail,
+  type ImportedActivityDetailReadResult,
+} from "../domains/activities/activityDetails";
+import type {
+  ConfirmGarminImportInput,
+  GarminImportResult,
+  GarminRevisionDecisionInput,
+  GarminRevisionDecisionResult,
+  GarminRevisionReview,
+} from "../domains/activities/importCommands";
+import {
+  resolveGarminImportRevision,
+} from "../domains/activities/importCommands";
+import {
+  canonicalJson,
+} from "../domains/activities/importContracts";
+import {
+  confirmRunningActivityMatch,
+  prepareRunningActivityMatchInput,
+  queryRunningActivityMatchCandidates,
+  type RunningActivityMatchCandidate,
+  type RunningActivityMatchInput,
+  type RunningActivityMatchReadResult,
+  type RunningActivityMatchResult,
+} from "../domains/running/activityMatchCommands";
 import {
   createExpoHapticsAdapter,
 } from "../platform/haptics/expoHapticsAdapter";
@@ -177,7 +241,20 @@ import {
   createEffectStore,
 } from "../platform/sqlite/effects/effectStore";
 import {
+  createWorkoutPreferenceRepository,
+} from "../platform/sqlite/repositories/workoutPreferenceRepository";
+import {
+  createRunningActivityMatchRepository,
+} from "../platform/sqlite/repositories/runningActivityMatchRepository";
+import {
+  createImportedActivityRepository,
+} from "../platform/sqlite/repositories/importedActivityRepository";
+import {
+  createGarminSyncSummaryRepository,
+} from "../platform/sqlite/repositories/garminSyncSummaryRepository";
+import {
   createBackupCommands,
+  type SecureBackupArchiveHandle,
   type SecureBackupCommands,
 } from "../domains/portability/backupCommands";
 import {
@@ -185,6 +262,11 @@ import {
   createRestorePreflightStore,
   type RestoreCommands,
 } from "../domains/portability/restoreCommands";
+import {
+  createMergeCommands,
+  createMergePreflightStore,
+  type SecureMergeCommands,
+} from "../domains/portability/mergeCommands";
 import {
   createAesGcmArchivePort,
   createExpoAesGcmArchiveDriver,
@@ -194,9 +276,15 @@ import {
 } from "../platform/crypto/passwordKdf";
 import {
   createProductionExpoBackupFilePort,
+  PHASE11_MERGE_FIXTURE_SELECTOR_FILE,
+  createPhase11FixtureRestoreFilePort,
   createProductionExpoRestoreFilePort,
   type BackupArchiveHandle,
 } from "../platform/files/expoBackupFilePort";
+import {
+  createPhase14RecoveryFixtureRestoreFilePort,
+  phase14RecoveryFixtureFromNativeContract,
+} from "../testing/phase14RecoveryFixture";
 import {
   createProductionExpoCsvFilePort,
   type CsvExportHandle,
@@ -217,7 +305,6 @@ import {
 import {
   createCustomExerciseRepository,
   type CustomExerciseArchivePreview,
-  type ExercisePlanReference,
 } from "../platform/sqlite/repositories/customExerciseRepository";
 import {
   createLibrarySearchRepository,
@@ -257,6 +344,7 @@ import {
 } from "../platform/sqlite/repositories/restRepository";
 import {
   createStarterPlanRepository,
+  installAcceptedStarterPlanSources,
 } from "../platform/sqlite/repositories/starterPlanRepository";
 import {
   createWorkoutRepository,
@@ -268,6 +356,9 @@ import {
   createLogicalRestoreRepository,
 } from "../platform/sqlite/repositories/logicalRestoreRepository";
 import {
+  createFullPlanLogicalMergeWriter,
+} from "../platform/sqlite/repositories/logicalMergeRepository";
+import {
   createRestoreReconciliationRepository,
 } from "../platform/sqlite/repositories/restoreReconciliationRepository";
 import type {
@@ -276,6 +367,7 @@ import type {
 import {
   createSqliteRestoreCandidateProbe,
   createSqliteRestoreCatalogReferenceAvailabilityPort,
+  createSqliteMergeLocalFactsPort,
   createSqliteRestoreRetainedReferencePort,
   createSqliteRestoreSchemaPort,
 } from "../platform/sqlite/repositories/restorePreflightAdapters";
@@ -285,6 +377,7 @@ import {
 import {
   openSqliteKernel,
   type SqliteKernel,
+  type SqliteSnapshotKernel,
 } from "../platform/sqlite";
 import type {
   LaunchFailure,
@@ -292,6 +385,83 @@ import type {
 import {
   createWorkoutLifecycle,
 } from "./workoutLifecycle";
+import type { AutomaticBackupScheduler } from "../domains/backup/automaticBackupScheduler";
+import type { AutomaticRecoveryCandidate, AutomaticRecoveryCommit, AutomaticRecoveryPreparation } from "../domains/backup/automaticBackupCoordinator";
+import { projectAutomaticBackupPresentation, type AutomaticBackupViewModel } from "../domains/backup/automaticBackupPresentation";
+import { phase12BackupFixtureFromNativeContract, phase12BackupFixtureViewModel } from "./phase12BackupTestControls";
+import type { AutomaticBackupRuntime } from "./automaticBackupRuntime";
+import { createProductionAutomaticBackupServices } from "./productionAutomaticBackupRuntime";
+import {
+  collectPhase14SourceStateProof as collectPhase14SourceStateProofFromKernel,
+  type Phase14SourceStateProof,
+} from "./phase14SourceStateProof";
+import {
+  collectPhase20QualityWorkloadProof,
+  type Phase20QualityWorkloadProof,
+} from "../testing/phase20QualityWorkload";
+import {
+  prepareV12NativeAcceptanceProductCase as prepareV12NativeAcceptanceProductCaseFromKernel,
+  prepareV12NativeAcceptanceProductionOperation,
+  readV12NativeAcceptanceReceipt as readV12NativeAcceptanceReceiptFromKernel,
+  v12NativeAcceptanceProductRequestId,
+  type V12NativeAcceptancePreparedProductCase,
+  type V12NativeAcceptanceReadbacks,
+  type V12NativeAcceptanceRequest,
+} from "../testing/v12NativeAcceptanceExecutor";
+import {
+  createPhase17FixtureProtocol,
+  type Phase17Fixture,
+  type Phase17SourceProbe,
+} from "./phase17NativeFixture";
+import {
+  createPhase17ActionEnvelopeSource,
+  createPhase17FixtureSetupIdentityFactory,
+  phase17ActionEnvelopePlan,
+} from "./phase17ActionEnvelope";
+import {
+  cleanupPhase17FamilyAManifest,
+  createPhase17FamilyACleanupManifest,
+  materializePhase17FamilyACleanupManifest,
+} from "./phase17FamilyACleanup";
+import {
+  assertPhase17FamilyARegistry,
+  isPhase17FamilyACaseId,
+  phase17FamilyASelectorSchema,
+} from "./phase17FamilyAFixture";
+import {
+  assertPhase17FamilyBRegistry,
+  createPhase17FamilyBFixtureDriver,
+  createPhase17FamilyFixtureAdapter,
+} from "./phase17FamilyBFixture";
+import {
+  assertPhase17FamilyCRegistry,
+  createPhase17FamilyCFixtureDriver,
+} from "./phase17FamilyCFixture";
+import {
+  createRunningPlanRuntimePort,
+  type RunningPlanRuntimePort,
+  type RunningTargetMutationInput,
+  type RunningTargetMutationResult,
+} from "./runningPlanRuntime";
+import type { RunningPlanAggregate } from "../domains/running/contracts";
+import {
+  createCalendarActivityReadPort,
+  createCalendarRangeReadPort,
+  createCalendarSessionReadPort,
+  createCalendarStrengthOccurrenceReadPort,
+  type CalendarActivityReadPort,
+  type CalendarRangeReadPort,
+  type CalendarSessionReadPort,
+  type CalendarStrengthOccurrenceReadPort,
+} from "./calendarReadPorts";
+import {
+  createTrainingFoundationRuntimePort,
+  type TrainingFoundationRuntimePort,
+} from "./trainingFoundationRuntime";
+import type {
+  TrainingCalendarRange,
+} from "../platform/sqlite/repositories/trainingCalendarRepository";
+import { PHASE17_CASE_ACTION_CONTRACTS } from "../testing/contracts/phase17LibraryRunning.contract";
 import {
   createOwnedPlanRuntimePort,
   type OwnedPlanRuntimeExerciseOption,
@@ -328,125 +498,94 @@ import type {
   ScheduleOverrideSelection,
   ScheduleTimeZoneChoice,
 } from "../domains/scheduling/scheduleState";
+import type {
+  GarminImportApplicationPort,
+} from "./garminImportRuntime";
+import {
+  readCustomExerciseDetail,
+  readCustomExerciseMigration,
+  type CustomExerciseRuntimeDetail,
+  type CustomExerciseRuntimeMigration,
+} from "./customExerciseRuntimeReadPort";
+import {
+  createLibrarySectionPreferencePort,
+  type LibraryRuntimeSection,
+  type LibraryRuntimeSectionPreference,
+} from "./librarySectionPreferencePort";
+import {
+  readLibraryRuntimeSnapshot,
+  type LibraryRuntimePlanSummary,
+  type LibraryRuntimeSnapshot,
+  type LibraryRuntimeStarterPlanSummary,
+} from "./libraryRuntimeReadPort";
+import { createLibraryPlanDeletionPort } from "../platform/sqlite/repositories/libraryPlanDeletionRepository";
+import type { LibraryPlanDeletionPort } from "../domains/library/planDeletion";
+export {
+  createLibrarySectionPreferencePort,
+  type LibraryRuntimeSection,
+  type LibraryRuntimeSectionPreference,
+  type LibrarySectionPreferencePort,
+} from "./librarySectionPreferencePort";
+export {
+  LIBRARY_ACCESSIBILITY_RECOVERY_PROFILE,
+  LIBRARY_ACTION_SHEET_CONFIGURATION,
+  readLibraryRuntimeSnapshot,
+  type LibraryRuntimePlanSummary,
+  type LibraryRuntimeSnapshot,
+  type LibraryRuntimeStarterPlanSummary,
+} from "./libraryRuntimeReadPort";
+export {
+  createCustomExerciseRuntimeReadPort,
+  type CustomExerciseRuntimeDetail,
+  type CustomExerciseRuntimeMigration,
+} from "./customExerciseRuntimeReadPort";
 
 const DATABASE_NAME = "gym-tracker.db";
-const LIBRARY_SECTION_SETTING_KEY = "library.section";
 
-export type LibraryRuntimeSection = "plans" | "exercises";
+/** Production kernels always expose readSnapshot. The narrow test fallback
+ * keeps legacy in-memory runtime doubles usable without ever exposing storage
+ * to the Progress runtime port. */
+function progressSnapshotKernel(kernel: SqliteKernel): SqliteSnapshotKernel {
+  if (kernel.readSnapshot !== undefined) {
+    return kernel as SqliteSnapshotKernel;
+  }
+  return Object.freeze({
+    ...kernel,
+    readSnapshot(query: Parameters<SqliteSnapshotKernel["readSnapshot"]>[0]) {
+      return query({ queryAll: kernel.queryAll.bind(kernel) });
+    },
+  }) as SqliteSnapshotKernel;
+}
+const LATEST_BACKUP_METADATA_SETTING_KEY = "backup.latest";
+const PHASE17_ACTION_ENVELOPE_SETTING_KEY = "development-test.phase17.action-envelope.v1";
+const phase17FixtureActionReceiptId = (caseId: string, fixtureToken: string) => `phase17:${caseId}:${fixtureToken.slice("phase17:".length)}:action`;
 
-export type LibraryRuntimeSectionPreference = Readonly<{
-  section: LibraryRuntimeSection;
-  revision: number;
-}>;
-
-export type LibraryRuntimePlanSummary = Readonly<{
-  id: string;
-  name: string;
-  daysPerWeek: number;
-  status?: "Active" | "Draft" | "Archived" | "Inactive";
-  scheduleSummary?: string;
-  missingRequirement?: string | null;
-  templateUpdateTemplateId?: string;
-}>;
-
-export type LibraryRuntimeStarterPlanSummary = StarterPlanRuntimeSummary;
-export type RuntimeSecureBackupArchive = BackupArchiveHandle;
+export type RuntimeSecureBackupArchive = SecureBackupArchiveHandle;
 export type RuntimeCsvExport = CsvExportHandle;
+
+export type ProgressBodyweightEntry = Pick<
+  BodyweightEntryState,
+  "entryId" | "revision" | "localDate" | "grams"
+>;
+
+export type ProgressBodyweightSaveInput = Readonly<{
+  requestId: string;
+  entryId: string;
+  expectedRevision: number;
+  localDate: string;
+  grams: number;
+}>;
 export type RuntimeRestorePreflightResult = Awaited<ReturnType<RestoreCommands["preflightSecureRestore"]>>;
+export type RuntimeMergePreflightResult = Awaited<ReturnType<SecureMergeCommands["preflightSecureMerge"]>>;
 export type RuntimeRestoreCommitResult = Readonly<{
   state: "ready" | "rebuild_pending";
 }>;
-
-export type LibraryRuntimeSnapshot = Readonly<{
-  sectionPreference: LibraryRuntimeSectionPreference;
-  plans: Readonly<{
-    active: LibraryRuntimePlanSummary | null;
-    owned: readonly LibraryRuntimePlanSummary[];
-    starters: readonly LibraryRuntimeStarterPlanSummary[];
-  }>;
-  exerciseFilterOptions: Readonly<{
-    exerciseTypes: readonly string[];
-    muscles: readonly string[];
-    equipment: readonly string[];
-  }>;
+export type RuntimeBackupMetadata = Readonly<{
+  archiveId: string;
+  createdAtMs: number;
+  displayName: string;
 }>;
 
-export type CustomExerciseRuntimeDetail = Readonly<{
-  exerciseId: string;
-  name: string;
-  origin: "bundled" | "custom" | "copied";
-  originLabel: "Built-in" | "Custom";
-  exerciseType: string;
-  movementClass: string;
-  aliases: readonly string[];
-  primaryMuscles: readonly string[];
-  secondaryMuscles: readonly string[];
-  equipment: readonly string[];
-  metricIdentity: MetricIdentity;
-  defaultRestSeconds: number;
-  availability: "available" | "unavailable";
-  favorite: boolean;
-  hidden: boolean;
-  archived: boolean;
-  exerciseRevision: number;
-  preferenceRevision: number | null;
-  source: Readonly<{
-    namespace: string;
-    revision: string;
-    license: string;
-    attribution: string;
-  }> | null;
-  references: readonly ExercisePlanReference[];
-}>;
-
-export type CustomExerciseRuntimeMigration = Readonly<{
-  exerciseId: string;
-  exerciseName: string;
-  exerciseRevision: number;
-  fromIdentity: MetricIdentity;
-  activeWorkoutSessionId: string | null;
-  occurrences: readonly Readonly<{
-    graph: "legacy" | "owned";
-    planId: string;
-    planName: string;
-    dayId: string;
-    dayName: string;
-    occurrenceId: string;
-    occurrenceRevision: number;
-    policyRevision: number | null;
-    targets: readonly Readonly<{
-      targetId: string;
-      targetRevision: number;
-      ordinal: number;
-      currentTarget: string;
-    }>[];
-  }>[];
-}>;
-
-type LibrarySectionSettingRow = Readonly<{
-  value_version: number;
-  value_json: string;
-  revision: number;
-}>;
-
-type LibraryPlanRow = Readonly<{
-  id: string;
-  name: string;
-  days_per_week: number;
-  is_active: number;
-  lifecycle: "draft" | "ready" | "archived" | null;
-  missing_requirement: string | null;
-  schedule_lifecycle: "active" | "inactive" | null;
-  legacy_schedule_id: string | null;
-  source_namespace: string | null;
-  upstream_id: string | null;
-  source_revision: number | null;
-}>;
-
-type LibraryTaxonomyRow = Readonly<{
-  kind: "exercise_type" | "muscle" | "equipment";
-  slug: string;
-}>;
 
 type StarterCopyRow = Readonly<{
   plan_id: string;
@@ -481,71 +620,13 @@ type TemplateUpdateSourceRow = Readonly<{
   active_schedule_revision: number | null;
 }>;
 
-type CustomExerciseDetailRow = Readonly<{
-  exercise_id: string;
-  origin: "bundled" | "custom" | "copied";
-  canonical_name: string;
-  exercise_type: string;
-  movement_class: string;
-  metric_profile: MetricIdentity["profile"];
-  metric_contract_version: number;
-  exercise_metric_generation: number;
-  availability: "available" | "unavailable";
-  default_rest_seconds: number;
-  exercise_revision: number;
-  library_revision: number;
-  favorite: number | null;
-  hidden: number | null;
-  archived: number | null;
-  preference_revision: number | null;
-  source_namespace: string | null;
-  source_revision: string | null;
-  license: string | null;
-  attribution: string | null;
-}>;
-
-type CustomExerciseTaxonomyRow = Readonly<{
-  kind: "equipment" | "exercise_type" | "movement_class" | "muscle";
-  relation: "equipment" | "movement" | "primary" | "secondary" | "type";
-  slug: string;
-  ordinal: number;
-}>;
-
-type CustomExerciseAliasRow = Readonly<{
-  display_text: string;
-}>;
-
-type CustomExerciseActiveWorkoutRow = Readonly<{
-  session_id: string;
-}>;
-
-type CustomExerciseMigrationOccurrenceRow = Readonly<{
-  graph: "legacy" | "owned";
-  plan_id: string;
-  plan_name: string;
-  day_id: string;
-  day_name: string;
-  occurrence_id: string;
-  occurrence_revision: number;
-  policy_revision: number | null;
-}>;
-
-type CustomExerciseMigrationTargetRow = Readonly<{
-  graph: "legacy" | "owned";
-  occurrence_id: string;
-  target_id: string;
-  target_revision: number;
-  ordinal: number;
-  target_json: string;
-  metric_profile: MetricIdentity["profile"];
-  metric_contract_version: number;
-  exercise_metric_generation: number;
-}>;
-
 type RuntimeState = Readonly<{
   launchState: "booting" | "trusted" | "failed";
   view?: TodayView;
   planDays: readonly ActivatedPlanDay[];
+  selectedStrengthOccurrence?: SelectedStrengthOccurrence | null;
+  latestBackup: RuntimeBackupMetadata | null;
+  automaticBackup: AutomaticBackupViewModel;
   contentUpdateResult?: ContentUpdateResult;
   contentUpdateFailed?: true;
   scheduleToday?: ScheduleTodayPresentation;
@@ -599,9 +680,34 @@ export type CommittedWorkoutRemovalRefreshFailure = Readonly<{
   sessionRevision: number;
 }>;
 
+export type CommittedExerciseEditRefreshFailure = Readonly<{
+  outcome: "committed_refresh_failed";
+  sessionId: string;
+  sessionExerciseId: string;
+  sessionRevision: number;
+}>;
+
+export type CommittedExerciseReorderRefreshFailure = Readonly<{
+  outcome: "committed_refresh_failed";
+  sessionId: string;
+  sessionRevision: number;
+}>;
+
 export type RestAlertPreferenceSaveResult = Readonly<{
   status: "persisted" | "not_persisted" | "failed";
   preferences: RestAlertPreferences;
+}>;
+
+export type GarminRevisionReviewDetail = Readonly<{
+  activityId: string;
+  acceptedRevision: number;
+  proposedRevision: number;
+  expectedProposedSha256: string;
+  changedFields: readonly Readonly<{
+    field: string;
+    accepted: string;
+    proposed: string;
+  }>[];
 }>;
 
 function sameRestAlertPreferences(
@@ -612,43 +718,125 @@ function sameRestAlertPreferences(
     && left.vibrationEnabled === right.vibrationEnabled;
 }
 
+function revisionDisplayValue(value: unknown): string {
+  if (value === undefined) {
+    return "Unavailable";
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return canonicalJson(value);
+}
+
 type RuntimeValue = RuntimeState & Readonly<{
+  nowMs(): number;
+  runningPlanRuntime: RunningPlanRuntimePort | null;
+  garminImport: GarminImportApplicationPort;
+  collectPhase14SourceStateProof(): Promise<Phase14SourceStateProof>;
+  collectPhase20QualitySourceProof(): Promise<Phase20QualityWorkloadProof>;
+  prepareV12NativeAcceptanceProductCase(request: V12NativeAcceptanceRequest): Promise<V12NativeAcceptancePreparedProductCase>;
+  readV12NativeAcceptanceReceipt(request: V12NativeAcceptanceRequest): Promise<V12NativeAcceptanceReadbacks>;
+  triggerPhase20ProgressRebuild(): Promise<void>;
+  collectPhase17SourceStateProof(): Promise<Phase14SourceStateProof>;
+  setupPhase17Fixture(caseId: string): Promise<Phase17Fixture>;
+  probePhase17Fixture(input: Readonly<{ caseId: string; fixtureToken: string; sourceTable: string }>): Promise<Phase17SourceProbe>;
+  cleanupPhase17Fixture(input: Readonly<{ caseId: string; fixtureToken: string }>): Promise<Readonly<{ caseId: string; fixtureToken: string; baselineDigest: string; verdict: "restored" }>>;
+  hydratePhase17ActionEnvelopes(input: Readonly<{ caseId: string; fixtureToken: string }>): Promise<boolean>;
+  createPhase17ActionRequestId(label: string, productionRequestId: string): Promise<string>;
+  connectAutomaticBackup(): Promise<void>;
+  deferAutomaticRestore(): Promise<void>;
+  cancelAutomaticBackupCheck(): Promise<void>;
+  checkAutomaticBackupAgain(): Promise<void>;
+  continueAutomaticRestore(): Promise<void>;
+  reviewAutomaticRecovery(input: Readonly<{ candidate: AutomaticRecoveryCandidate }>): Promise<AutomaticRecoveryPreparation>;
+  commitAutomaticRecovery(input: AutomaticRecoveryCommit): Promise<void>;
+  cancelAutomaticRecovery(attemptId: string): Promise<void>;
+  finishAutomaticBackupSetup(): Promise<void>;
+  requestAutomaticBackupNow(): Promise<void>;
+  retryAutomaticBackup(): Promise<void>;
+  useAutomaticBackupCellularThisTime(): Promise<void>;
+  dismissAutomaticBackupCellularConfirmation(): Promise<void>;
+  setAutomaticBackupDataUsePolicy(policy: "wifi_and_cellular" | "wifi_only"): Promise<void>;
+  takeOverAutomaticBackup(): Promise<void>;
+  disconnectAutomaticBackup(): Promise<void>;
+  deleteAutomaticCloudBackup(): Promise<void>;
+  finishDeletingAutomaticCloudBackup(): Promise<void>;
+  startNewAutomaticCloudBackup(): Promise<void>;
   actOnToday(action: ScheduleTodayAction): ReturnType<
     ReturnType<typeof createScheduleRuntimePort>["actOnToday"]
   >;
   activatePlan(): Promise<void>;
+  addExercise(input: AddExerciseInput): Promise<AddExerciseResult>;
   addWarmup(input: AddWarmupInput): Promise<CommittedWorkoutMutationResult>;
   addWorkingSet(
     input: AddWorkingSetInput,
   ): Promise<CommittedWorkoutMutationResult>;
   completeSet(input: CompleteSetInput): ReturnType<typeof completeSet>;
+  updateSessionExerciseDefaultRest(
+    input: UpdateSessionExerciseDefaultRestInput,
+  ): Promise<ActiveWorkoutView>;
+  readWorkoutPreferences(planId: string): Promise<WorkoutPreference>;
+  setWorkoutPreferences(input: WorkoutPreferenceWrite): Promise<WorkoutPreference>;
   completeWarmup(input: CompleteWarmupInput): Promise<ActiveWorkoutView>;
   createSecureBackup(input: Readonly<{
     password: string;
     signal?: AbortSignal;
-  }>): Promise<BackupArchiveHandle>;
+  }>): Promise<RuntimeSecureBackupArchive>;
   createCsvExport(): Promise<CsvExportHandle>;
   discardSecureBackup(archive: BackupArchiveHandle): Promise<void>;
   discardCsvExport(handle: CsvExportHandle): Promise<void>;
   discardWorkout(input: DiscardWorkoutInput): Promise<FinishOutcomeResult>;
   finishCompleted(input: FinishCompletedInput): Promise<FinishOutcomeResult>;
   finishPartial(input: FinishPartialInput): Promise<FinishOutcomeResult>;
+  previewCompletedWorkoutPlanWriteBack(
+    sessionId: string,
+  ): Promise<CompletedWorkoutPlanWriteBackState>;
+  applyCompletedWorkoutPlanWriteBack(
+    state: CompletedWorkoutPlanWriteBackChoiceState,
+  ): Promise<CompletedWorkoutPlanWriteBackState>;
+  keepCompletedWorkoutPlanAsIs(
+    state: CompletedWorkoutPlanWriteBackChoiceState,
+  ): CompletedWorkoutPlanWriteBackState;
   removeWarmup(
     input: RemoveWarmupInput,
   ): Promise<ActiveWorkoutView | CommittedWorkoutRemovalRefreshFailure>;
   removeWorkingSet(
     input: RemoveWorkingSetInput,
   ): Promise<ActiveWorkoutView | CommittedWorkoutRemovalRefreshFailure>;
+  replaceExercise(
+    input: ReplaceExerciseInput,
+  ): Promise<ActiveWorkoutView | CommittedExerciseEditRefreshFailure>;
+  removeExercise(
+    input: RemoveExerciseInput,
+  ): Promise<ActiveWorkoutView | CommittedExerciseEditRefreshFailure>;
+  reorderExercises(
+    input: ReorderExercisesInput,
+  ): Promise<ActiveWorkoutView | CommittedExerciseReorderRefreshFailure>;
   reviseCompletedSet(
     input: ReviseCompletedSetInput,
   ): Promise<CommittedWorkoutMutationResult>;
   adjustRest(input: AdjustRestInput): Promise<RestCommandResult>;
-  expireRest(input: RestRevisionInput): Promise<RestCommandResult>;
+  expireRest(input: RestRevisionInput & Readonly<{
+    foregroundCountdownTone?: true;
+  }>): Promise<RestCommandResult>;
   exerciseNotificationExpiry(
     mode: NotificationExpiryExerciseMode,
   ): Promise<NotificationExpiryExerciseCode>;
   getActiveWorkout(sessionId: string): Promise<WorkoutSessionView>;
   getSessionDetail(sessionId: string): Promise<SessionDetail>;
+  getSessionDetailAtRevision(sessionId: string, sourceRevision: number): Promise<SessionDetail>;
+  getCalendarSessionDetail(sessionId: string): Promise<SessionDetail | null>;
+  loadGarminRevisionReview(activityId: string): Promise<GarminRevisionReviewDetail | null>;
+  listGarminRevisionReviews(): Promise<readonly GarminRevisionReview[]>;
+  resolveGarminRevision(input: GarminRevisionDecisionInput): Promise<GarminRevisionDecisionResult>;
+  loadImportedActivityDetail(activityId: string, expectedSourceRevision?: number): Promise<ImportedActivityDetailReadResult>;
+  loadRunningActivityMatch(activityId: string): Promise<RunningActivityMatchReadResult>;
+  confirmActivityMatch(candidate: RunningActivityMatchCandidate): Promise<RunningActivityMatchResult>;
+  unmatchActivityMatch(candidate: RunningActivityMatchCandidate): Promise<RunningActivityMatchResult>;
+  reassignActivityMatch(input: Readonly<{
+    current: RunningActivityMatchCandidate;
+    next: RunningActivityMatchCandidate;
+  }>): Promise<RunningActivityMatchResult>;
   loadHistoryCorrectionSession(sessionId: string): Promise<HistoryCorrectionEditorState>;
   listAvailableCorrectionExercises(): Promise<readonly AvailableCorrectionExercise[]>;
   correctHistorySession(
@@ -665,20 +853,51 @@ type RuntimeValue = RuntimeState & Readonly<{
     selectedDate: string;
     today: string;
   }>): Promise<CalendarMonth>;
+  /** Calendar-only source reads delegated to the immutable training foundation port. */
+  loadCalendarRange(input: Readonly<{
+    startLocalDate: string;
+    endLocalDateExclusive: string;
+  }>): Promise<TrainingCalendarRange>;
+  loadPlannedStrengthOccurrence(
+    occurrenceId: string,
+  ): Promise<PlannedStrengthOccurrenceDetail | null>;
   listRemovedHistorySessions(): Promise<readonly RemovedHistorySession[]>;
   loadExerciseMetricHistory(
     exerciseId: string,
   ): Promise<ExerciseMetricHistory>;
   loadProgress(input: Readonly<{
+    sport?: ProgressSport;
     period: ProgressPeriod;
     nowLocalDate: string;
   }>): Promise<Readonly<{
     period: ProgressPeriod;
     freshness: ProgressProjectionFreshness;
     projection: ProgressPeriodProjection | null;
+    sport?: ProgressSport;
+    dashboard?: ProgressDashboardProjection | null;
+    refresh?: ProgressRefreshMetadata;
     diagnostic?: ProgressProjectionDiagnostic;
+    runningTargetSources?: readonly RunningPlanAggregate[];
   }>>;
+  progressRunningTargetRuntime: Readonly<{
+    createId(kind: string): string;
+    loadPlan(planId: string): Promise<RunningPlanAggregate | null>;
+    saveRunningTarget(input: RunningTargetMutationInput): Promise<RunningTargetMutationResult>;
+  }>;
+  progressRecommendationRuntime: Readonly<{
+    decide(
+      recommendation: ProgressRecommendationReview,
+      decision: RecommendationDecision,
+    ): Promise<RecommendationDecisionResult>;
+  }>;
+  progressBodyweightRuntime: Readonly<{
+    createId(kind: string): string;
+    loadHistory(): Promise<readonly ProgressBodyweightEntry[]>;
+    save(input: ProgressBodyweightSaveInput): Promise<readonly ProgressBodyweightEntry[]>;
+    delete(entry: ProgressBodyweightEntry, requestId: string): Promise<readonly ProgressBodyweightEntry[]>;
+  }>;
   openRestNotificationSettings(): Promise<void>;
+  refreshPreciseRestAlarms(): Promise<void>;
   readRestAlertPreferences(): RestAlertPreferences;
   setRestAlertPreferences(
     preferences: RestAlertPreferences,
@@ -726,6 +945,8 @@ type RuntimeValue = RuntimeState & Readonly<{
     ReturnType<typeof createScheduleRuntimePort>["consumeDateOverride"]
   >;
   loadLibrary(): Promise<LibraryRuntimeSnapshot>;
+  retryLibraryLoad(): Promise<LibraryRuntimeSnapshot>;
+  deleteLibraryPlan: LibraryPlanDeletionPort["deletePlan"];
   loadStarterPlan(templateId: string): Promise<AcceptedStarterTemplate | null>;
   loadStarterActivationPreview(
     templateId: string,
@@ -733,6 +954,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   activateAcceptedStarterPlan(
     command: StarterPlanRuntimeActivationCommand,
   ): Promise<AcceptedStarterPlanActivation>;
+  createStarterEditableCopy(templateId: string): Promise<string>;
   finishStarterSwitchWorkout(input: Readonly<{
     sessionId: string;
     sessionRevision: number;
@@ -768,6 +990,9 @@ type RuntimeValue = RuntimeState & Readonly<{
   editCustomExercise(
     input: Omit<EditCustomExerciseInput, "editedAtMs">,
   ): ReturnType<typeof editCustomExerciseCommand>;
+  createCustomCopy(
+    input: Omit<CreateCustomCopyInput, "createdAtMs">,
+  ): ReturnType<typeof createCustomCopy>;
   createCustomExerciseId(kind: string): string;
   loadCustomExercise(
     exerciseId: string,
@@ -878,10 +1103,13 @@ type RuntimeValue = RuntimeState & Readonly<{
   >;
   saveZeroSetWorkout(input: SaveZeroSetInput): Promise<FinishOutcomeResult>;
   preflightSecureRestore(input: Readonly<{ password: string }>): Promise<RuntimeRestorePreflightResult>;
+  preflightSecureMerge(input: Readonly<{ password: string }>): Promise<RuntimeMergePreflightResult>;
+  commitSecureMerge(input: Readonly<{ token: string; confirmation: string }>): Promise<RuntimeRestoreCommitResult>;
+  invalidateSecureMergePreflight(token: string): void;
   invalidateSecureRestorePreflight(token: string): void;
   commitSecureRestore(input: Readonly<{ token: string; confirmation: string }>): Promise<RuntimeRestoreCommitResult>;
   retryRestoreRebuild(): Promise<RuntimeRestoreCommitResult>;
-  shareSecureBackup(archive: BackupArchiveHandle): Promise<void>;
+  shareSecureBackup(archive: RuntimeSecureBackupArchive): Promise<void>;
   shareCsvExport(handle: CsvExportHandle): Promise<void>;
   skipExercise(input: SkipExerciseInput): Promise<Readonly<{
     sessionId: string;
@@ -897,6 +1125,9 @@ type RuntimeValue = RuntimeState & Readonly<{
   startPlanDay(
     dayId: string,
     mode: "scheduled" | "alternate" | "rest_day",
+  ): Promise<string>;
+  startSelectedStrengthOccurrence(
+    occurrence: SelectedStrengthOccurrence,
   ): Promise<string>;
   undoCompletedSet(
     input: UndoCompletedSetInput,
@@ -915,16 +1146,25 @@ type LocalContext = Readonly<{
   weekday: number;
 }>;
 
+type RuntimeOutcomeRepository = WorkoutOutcomeRepository
+  & ProgressionRepository
+  & Pick<ReturnType<typeof createWorkoutOutcomeRepository>, "getCalendarSessionDetail">;
+
 type RuntimeServices = Readonly<{
+  automaticBackupRuntime?: AutomaticBackupRuntime;
   backupCommands: SecureBackupCommands;
   csvExportRepository: CsvExportRepository;
   csvFiles: CsvFilePort;
   restoreCommands: RestoreCommands;
+  mergeCommands: SecureMergeCommands;
   reconcileRestore?: () => Promise<RestoreReconciliationResult>;
   customExerciseRepository: ReturnType<typeof createCustomExerciseRepository>;
   historyCommandRepository: ReturnType<typeof createHistoryCommandRepository>;
   historyRepository: ReturnType<typeof createHistoryRepository>;
+  importedActivities: ReturnType<typeof createImportedActivityRepository>;
+  garminSyncSummaries: ReturnType<typeof createGarminSyncSummaryRepository>;
   progressRepository: ReturnType<typeof createProgressRepository>;
+  runningPlans: RunningPlanRuntimePort;
   kernel: SqliteKernel;
   librarySearchRepository: ReturnType<typeof createLibrarySearchRepository>;
   lifecycle: ReturnType<typeof createWorkoutLifecycle>;
@@ -932,10 +1172,13 @@ type RuntimeServices = Readonly<{
   restAlertPreferenceStore: RestAlertPreferenceStore;
   ownedPlans: ReturnType<typeof createOwnedPlanRuntimePort>;
   schedules: ReturnType<typeof createScheduleRuntimePort>;
+  trainingFoundation: TrainingFoundationRuntimePort;
   repository: ReturnType<typeof createPlansWorkoutRepository>;
   restRepository: ReturnType<typeof createRestRepository>;
-  outcomeRepository: ReturnType<typeof createWorkoutOutcomeRepository>;
+  runningActivityMatches: ReturnType<typeof createRunningActivityMatchRepository>;
+  outcomeRepository: RuntimeOutcomeRepository;
   workoutRepository: ReturnType<typeof createWorkoutRepository>;
+  workoutPreferenceRepository: ReturnType<typeof createWorkoutPreferenceRepository>;
 }>;
 
 type CustomExerciseReadServices = Pick<
@@ -954,11 +1197,15 @@ export type WorkoutAppRuntimeDependencies = Readonly<{
     activatedAtMs: number;
   }>): Promise<void>;
   installLibrary?(kernel: SqliteKernel): Promise<ContentUpdateResult | undefined>;
-  loadStarterPlans?(): Promise<StarterPlanRuntimeCatalog>;
+  loadStarterPlans?(kernel: SqliteKernel): Promise<StarterPlanRuntimeCatalog>;
   createRepository(
     kernel: SqliteKernel,
   ): ReturnType<typeof createPlansWorkoutRepository>;
   createNotifications(): RestNotificationPort;
+  createAutomaticBackupScheduler?(
+    kernel: SqliteKernel,
+  ): AutomaticBackupScheduler;
+  createAutomaticBackupRuntime?(kernel: SqliteKernel): AutomaticBackupRuntime;
   restAlertPreferenceStore?: RestAlertPreferenceStore;
   createLifecycle(
     input: Parameters<typeof createWorkoutLifecycle>[0],
@@ -968,14 +1215,18 @@ export type WorkoutAppRuntimeDependencies = Readonly<{
   ): ReturnType<typeof createRestRepository>;
   createOutcomeRepository(
     kernel: SqliteKernel,
-  ): ReturnType<typeof createWorkoutOutcomeRepository>;
+  ): RuntimeOutcomeRepository;
   createWorkoutRepository(
     kernel: SqliteKernel,
   ): ReturnType<typeof createWorkoutRepository>;
+  createWorkoutPreferenceRepository?(
+    kernel: SqliteKernel,
+  ): ReturnType<typeof createWorkoutPreferenceRepository>;
   createBackupCommands?(kernel: SqliteKernel): SecureBackupCommands;
   createCsvExportRepository?(kernel: SqliteKernel): CsvExportRepository;
   createCsvFiles?(): CsvFilePort;
   createRestoreCommands?(kernel: SqliteKernel): RestoreCommands;
+  createMergeCommands?(kernel: SqliteKernel): SecureMergeCommands;
   reconcileRestore?(kernel: SqliteKernel): Promise<RestoreReconciliationResult>;
   createScheduleRuntime?(
     kernel: SqliteKernel,
@@ -983,6 +1234,14 @@ export type WorkoutAppRuntimeDependencies = Readonly<{
   ): ScheduleRuntimeAdapter;
   now(): Date;
   nowMs(): number;
+  randomUUID?(): string;
+  prepareRuntime?(input: Readonly<{
+    kernel: SqliteKernel;
+    starterPlans?: StarterPlanRuntimeCatalog;
+  }>): Promise<void>;
+  disposeRuntime?(): Promise<void>;
+  strictDisposal?: boolean;
+  reportDisposalFailure?(error: unknown): void;
 }>;
 
 export type WorkoutAppRuntimeAdapters = Readonly<{
@@ -999,11 +1258,15 @@ export type WorkoutAppRuntimeAdapters = Readonly<{
     activatedAtMs: number;
   }>): Promise<void>;
   installLibrary?(kernel: SqliteKernel): Promise<ContentUpdateResult | undefined>;
-  loadStarterPlans?(): Promise<StarterPlanRuntimeCatalog>;
+  loadStarterPlans?(kernel: SqliteKernel): Promise<StarterPlanRuntimeCatalog>;
   createRepository(
     kernel: SqliteKernel,
   ): ReturnType<typeof createPlansWorkoutRepository>;
   createNotifications(): RestNotificationPort;
+  createAutomaticBackupScheduler?(
+    kernel: SqliteKernel,
+  ): AutomaticBackupScheduler;
+  createAutomaticBackupRuntime?(kernel: SqliteKernel): AutomaticBackupRuntime;
   restAlertPreferenceStore?: RestAlertPreferenceStore;
   createLifecycle(
     input: Parameters<typeof createWorkoutLifecycle>[0],
@@ -1013,7 +1276,7 @@ export type WorkoutAppRuntimeAdapters = Readonly<{
   ): ReturnType<typeof createRestRepository>;
   createOutcomeRepository(
     kernel: SqliteKernel,
-  ): ReturnType<typeof createWorkoutOutcomeRepository>;
+  ): RuntimeOutcomeRepository;
   createWorkoutRepository(
     kernel: SqliteKernel,
   ): ReturnType<typeof createWorkoutRepository>;
@@ -1021,6 +1284,7 @@ export type WorkoutAppRuntimeAdapters = Readonly<{
   createCsvExportRepository?(kernel: SqliteKernel): CsvExportRepository;
   createCsvFiles?(): CsvFilePort;
   createRestoreCommands?(kernel: SqliteKernel): RestoreCommands;
+  createMergeCommands?(kernel: SqliteKernel): SecureMergeCommands;
   reconcileRestore?(kernel: SqliteKernel): Promise<RestoreReconciliationResult>;
   createScheduleRuntime?(
     kernel: SqliteKernel,
@@ -1033,6 +1297,8 @@ export type WorkoutAppRuntimeAdapters = Readonly<{
 const initialState: RuntimeState = {
   launchState: "booting",
   planDays: [],
+  latestBackup: null,
+  automaticBackup: projectAutomaticBackupPresentation({ status: "not_connected", mutationGeneration: 0, backedUpGeneration: 0, nowMs: 0 }),
   notificationPermission: "undetermined",
   workoutRefreshGeneration: 0,
 };
@@ -1082,14 +1348,27 @@ export function mapWorkoutMutationFailure(error: unknown): AppError {
 }
 
 const WorkoutAppRuntimeContext = createContext<RuntimeValue | null>(null);
+const CalendarRangeReadContext = createContext<CalendarRangeReadPort | null>(null);
+const CalendarSessionReadContext = createContext<CalendarSessionReadPort | null>(null);
+const CalendarStrengthOccurrenceReadContext = createContext<CalendarStrengthOccurrenceReadPort | null>(null);
+const CalendarActivityReadContext = createContext<CalendarActivityReadPort | null>(null);
+
+/** Transient pre-action evidence may cross a devtest route remount. It never
+ * authorizes replay: the post-action receipt is still re-read from SQLite. */
+const v12NativeAcceptancePreparedProductCases = new Map<
+  string,
+  V12NativeAcceptancePreparedProductCase
+>();
 
 export function createWorkoutAppRuntimeDependencies(
   adapters: WorkoutAppRuntimeAdapters,
+  options: Readonly<{ databaseName?: string }> = {},
 ): WorkoutAppRuntimeDependencies {
+  const databaseName = options.databaseName ?? DATABASE_NAME;
   return {
-    openKernel: () => adapters.openKernel(DATABASE_NAME),
+    openKernel: () => adapters.openKernel(databaseName),
     migrate: (kernel) => adapters.runMigrations({
-      databaseName: DATABASE_NAME,
+      databaseName,
       kernel,
     }),
     activateInitialStarter: adapters.activateInitialStarter,
@@ -1101,6 +1380,12 @@ export function createWorkoutAppRuntimeDependencies(
       : { loadStarterPlans: adapters.loadStarterPlans }),
     createRepository: adapters.createRepository,
     createNotifications: adapters.createNotifications,
+    ...(adapters.createAutomaticBackupScheduler === undefined
+      ? {}
+      : { createAutomaticBackupScheduler: adapters.createAutomaticBackupScheduler }),
+    ...(adapters.createAutomaticBackupRuntime === undefined
+      ? {}
+      : { createAutomaticBackupRuntime: adapters.createAutomaticBackupRuntime }),
     ...(adapters.restAlertPreferenceStore === undefined
       ? {}
       : { restAlertPreferenceStore: adapters.restAlertPreferenceStore }),
@@ -1120,6 +1405,9 @@ export function createWorkoutAppRuntimeDependencies(
     ...(adapters.createRestoreCommands === undefined
       ? {}
       : { createRestoreCommands: adapters.createRestoreCommands }),
+    ...(adapters.createMergeCommands === undefined
+      ? {}
+      : { createMergeCommands: adapters.createMergeCommands }),
     ...(adapters.reconcileRestore === undefined
       ? {}
       : { reconcileRestore: adapters.reconcileRestore }),
@@ -1186,24 +1474,70 @@ export async function activateInitialAcceptedStarter(
   });
 }
 
-export const productionWorkoutAppRuntimeDependencies =
-  createWorkoutAppRuntimeDependencies({
+function phase11NativeFixtureFilesEnabled(): boolean {
+  const {
+    default: Constants,
+  } = require("expo-constants") as typeof import("expo-constants");
+  return Constants.expoConfig?.extra?.buildProfile === "development-test"
+    && Constants.expoConfig.extra.nativeContractsEnabled === true
+    && process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE === "phase11";
+}
+
+function phase14NativeRecoveryFixtureEnabled(): boolean {
+  const {
+    default: Constants,
+  } = require("expo-constants") as typeof import("expo-constants");
+  return phase14RecoveryFixtureFromNativeContract({
+    nativeContractsEnabled: Constants.expoConfig?.extra?.nativeContractsEnabled === true,
+    buildProfile: Constants.expoConfig?.extra?.buildProfile,
+    suite: Constants.expoConfig?.extra?.nativeContractSuite,
+  }) !== null;
+}
+
+function phase17NativeContractEnabled(): boolean {
+  const { default: Constants } = require("expo-constants") as typeof import("expo-constants");
+  return Constants.expoConfig?.extra?.buildProfile === "development-test"
+    && Constants.expoConfig.extra.nativeContractsEnabled === true
+    && Constants.expoConfig.extra.nativeContractSuite === "phase17";
+}
+
+function phase20QualitySourceProofEnabled(): boolean {
+  const { default: Constants } = require("expo-constants") as typeof import("expo-constants");
+  return Constants.expoConfig?.extra?.buildProfile === "development-test"
+    && Constants.expoConfig.extra.nativeContractsEnabled === true
+    && Constants.expoConfig.extra.nativeContractSuite === "v1.2-acceptance";
+}
+
+function phase12NativeFixtureViewModel(): AutomaticBackupViewModel | null {
+  const { default: Constants } = require("expo-constants") as typeof import("expo-constants");
+  const fixture = phase12BackupFixtureFromNativeContract({
+    nativeContractsEnabled: Constants.expoConfig?.extra?.nativeContractsEnabled === true,
+    buildProfile: Constants.expoConfig?.extra?.buildProfile,
+    suite: process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE,
+    fixture: process.env.EXPO_PUBLIC_PHASE12_STAGE ?? process.env.PHASE12_STAGE,
+  });
+  return fixture === null ? null : phase12BackupFixtureViewModel(fixture);
+}
+
+const productionWorkoutAppRuntimeAdapters: WorkoutAppRuntimeAdapters = {
     openKernel: openSqliteKernel,
     runMigrations: async ({ databaseName, kernel }) => {
+      const recoveryOpenOptions = {
+        useNewConnection: true,
+        finalizeUnusedStatementsBeforeClosing: false,
+      } as const;
       const recoveryBackup = createExpoRecoveryBackupPort({
         openSource(sourceName) {
           const {
             openDatabaseAsync,
           } = require("expo-sqlite") as typeof import("expo-sqlite");
-          return openDatabaseAsync(sourceName, { useNewConnection: true });
+          return openDatabaseAsync(sourceName, recoveryOpenOptions);
         },
         openDestination(destinationName) {
           const {
             openDatabaseAsync,
           } = require("expo-sqlite") as typeof import("expo-sqlite");
-          return openDatabaseAsync(destinationName, {
-            useNewConnection: true,
-          });
+          return openDatabaseAsync(destinationName, recoveryOpenOptions);
         },
         backup({ sourceDatabase, destDatabase }) {
           const {
@@ -1278,12 +1612,12 @@ export const productionWorkoutAppRuntimeDependencies =
         .importAcceptedCatalog({ catalog });
       return result.invalidationScopes.length === 0 ? undefined : result;
     },
-    loadStarterPlans: async () => {
+    loadStarterPlans: async (kernel) => {
       const {
         CryptoDigestAlgorithm,
         digestStringAsync,
       } = require("expo-crypto") as typeof import("expo-crypto");
-      return createStarterPlanRuntimeCatalog({
+      const catalog = await createStarterPlanRuntimeCatalog({
         starterPackBytes: `${JSON.stringify(starterPlansAsset, null, 2)}
 `,
         acceptanceBytes: `${JSON.stringify(starterPlansAcceptanceAsset, null, 2)}
@@ -1291,6 +1625,8 @@ export const productionWorkoutAppRuntimeDependencies =
         sha256: (value) =>
           digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
       });
+      await installAcceptedStarterPlanSources(kernel, catalog.pack);
+      return catalog;
     },
     activateInitialStarter: activateInitialAcceptedStarter,
     createBackupCommands: (kernel) => createBackupCommands({
@@ -1314,22 +1650,68 @@ export const productionWorkoutAppRuntimeDependencies =
     }),
     createCsvExportRepository,
     createCsvFiles: createProductionExpoCsvFilePort,
-    createRestoreCommands: (kernel) => createRestoreCommands({
-      crypto: createAesGcmArchivePort(createExpoAesGcmArchiveDriver()),
-      files: createProductionExpoRestoreFilePort(),
-      kdf: createPasswordKdfPort(),
-      schema: createSqliteRestoreSchemaPort(kernel),
-      retainedReferences: createSqliteRestoreRetainedReferencePort(kernel),
-      referenceAvailability: createSqliteRestoreCatalogReferenceAvailabilityPort(kernel),
-      candidateProbe: createSqliteRestoreCandidateProbe(),
-      restorer: createLogicalRestoreRepository(kernel, { nowMs: () => Date.now() }),
-      store: createRestorePreflightStore({
-        tokenFactory() {
-          const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
-          return randomUUID();
+    createRestoreCommands: (kernel) => {
+      const files = phase14NativeRecoveryFixtureEnabled()
+        ? createPhase14RecoveryFixtureRestoreFilePort()
+        : phase11NativeFixtureFilesEnabled()
+        ? createPhase11FixtureRestoreFilePort()
+        : createProductionExpoRestoreFilePort();
+      return createRestoreCommands({
+        crypto: createAesGcmArchivePort(createExpoAesGcmArchiveDriver()),
+        files,
+        kdf: createPasswordKdfPort(),
+        schema: createSqliteRestoreSchemaPort(kernel),
+        retainedReferences: createSqliteRestoreRetainedReferencePort(kernel),
+        referenceAvailability: createSqliteRestoreCatalogReferenceAvailabilityPort(kernel),
+        candidateProbe: createSqliteRestoreCandidateProbe(),
+        restorer: createLogicalRestoreRepository(kernel, { nowMs: () => Date.now() }),
+        store: createRestorePreflightStore({
+          tokenFactory() {
+            const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
+            return randomUUID();
+          },
+        }),
+      });
+    },
+    createMergeCommands: (kernel) => {
+      const files = phase11NativeFixtureFilesEnabled()
+        ? createPhase11FixtureRestoreFilePort({
+            selectorFile: PHASE11_MERGE_FIXTURE_SELECTOR_FILE,
+          })
+        : createProductionExpoRestoreFilePort();
+      return createMergeCommands({
+        crypto: createAesGcmArchivePort(createExpoAesGcmArchiveDriver()),
+        files,
+        kdf: createPasswordKdfPort(),
+        schema: createSqliteRestoreSchemaPort(kernel),
+        retainedReferences: createSqliteRestoreRetainedReferencePort(kernel),
+        candidateProbe: createSqliteRestoreCandidateProbe(),
+        local: createSqliteMergeLocalFactsPort(kernel),
+        sha256: async (value) => {
+          const {
+            CryptoDigestAlgorithm,
+            digestStringAsync,
+          } = require("expo-crypto") as typeof import("expo-crypto");
+          return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
         },
-      }),
-    }),
+        store: createMergePreflightStore({
+          tokenFactory() {
+            const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
+            return randomUUID();
+          },
+        }),
+        writer: createFullPlanLogicalMergeWriter(kernel, {
+          nowMs: () => Date.now(),
+          sha256: async (value) => {
+            const {
+              CryptoDigestAlgorithm,
+              digestStringAsync,
+            } = require("expo-crypto") as typeof import("expo-crypto");
+            return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
+          },
+        }),
+      });
+    },
     reconcileRestore: (kernel) => createRestoreReconciliationRepository(kernel, {
       history: createHistoryProjectionRepository(kernel),
       nowMs: () => Date.now(),
@@ -1337,6 +1719,8 @@ export const productionWorkoutAppRuntimeDependencies =
     }).reconcileAndRebuild(),
     createRepository: createPlansWorkoutRepository,
     createNotifications: createExpoRestNotificationAdapter,
+    createAutomaticBackupScheduler: (kernel) => createProductionAutomaticBackupServices(kernel).scheduler,
+    createAutomaticBackupRuntime: (kernel) => createProductionAutomaticBackupServices(kernel).runtime,
     createLifecycle: createWorkoutLifecycle,
     createRestRepository,
     createOutcomeRepository: createWorkoutOutcomeRepository,
@@ -1361,7 +1745,19 @@ export const productionWorkoutAppRuntimeDependencies =
       }),
     now: () => new Date(),
     nowMs: () => Date.now(),
-  });
+  };
+
+export function createProductionWorkoutAppRuntimeDependencies(
+  databaseName = DATABASE_NAME,
+): WorkoutAppRuntimeDependencies {
+  return createWorkoutAppRuntimeDependencies(
+    productionWorkoutAppRuntimeAdapters,
+    { databaseName },
+  );
+}
+
+export const productionWorkoutAppRuntimeDependencies =
+  createProductionWorkoutAppRuntimeDependencies();
 
 function localContext(now: Date): LocalContext {
   const localDate = [
@@ -1382,6 +1778,8 @@ function failedState(
   return {
     launchState: "failed",
     planDays: [],
+    latestBackup: null,
+    automaticBackup: projectAutomaticBackupPresentation({ status: "not_connected", mutationGeneration: 0, backedUpGeneration: 0, nowMs: 0 }),
     notificationPermission: "undetermined",
     workoutRefreshGeneration: 0,
     failure: {
@@ -1393,216 +1791,77 @@ function failedState(
   };
 }
 
-function parseLibrarySectionPreference(
-  row: LibrarySectionSettingRow | undefined,
-): LibraryRuntimeSectionPreference {
-  if (row === undefined) {
-    return { section: "plans", revision: 0 };
-  }
-  if (row.value_version !== 1 || !Number.isSafeInteger(row.revision)) {
-    throw new Error("library_section_preference_invalid");
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(row.value_json);
-  } catch {
-    throw new Error("library_section_preference_invalid");
-  }
-  if (
-    typeof parsed !== "object"
-    || parsed === null
-    || Array.isArray(parsed)
-    || Object.keys(parsed).length !== 1
-  ) {
-    throw new Error("library_section_preference_invalid");
-  }
-  const section = (parsed as { section?: unknown }).section;
-  if (section !== "plans" && section !== "exercises") {
-    throw new Error("library_section_preference_invalid");
-  }
-  return { section, revision: row.revision };
-}
-
-async function readLibrarySectionPreference(
-  kernel: SqliteKernel,
-): Promise<LibraryRuntimeSectionPreference> {
-  const [row] = await kernel.queryAll<LibrarySectionSettingRow>(
-    `SELECT value_version, value_json, revision
-     FROM app_settings
-     WHERE key = ?`,
-    [LIBRARY_SECTION_SETTING_KEY],
-  );
-  return parseLibrarySectionPreference(row);
-}
-
-export type LibrarySectionPreferencePort = Readonly<{
-  read(): Promise<LibraryRuntimeSectionPreference>;
-  write(
-    section: LibraryRuntimeSection,
-    expectedRevision: number,
-  ): Promise<LibraryRuntimeSectionPreference>;
+type BackupMetadataSettingRow = Readonly<{
+  value_version: number;
+  value_json: string;
 }>;
 
-export function createLibrarySectionPreferencePort(
-  kernel: SqliteKernel,
-  nowMs: () => number,
-): LibrarySectionPreferencePort {
-  return Object.freeze({
-    read: () => readLibrarySectionPreference(kernel),
-    async write(section, expectedRevision) {
-      if (
-        (section !== "plans" && section !== "exercises")
-        || !Number.isSafeInteger(expectedRevision)
-        || expectedRevision < 0
-      ) {
-        throw new Error("library_section_preference_invalid");
-      }
-      return kernel.write(async (transaction) => {
-        const [row] = await transaction.queryAll<LibrarySectionSettingRow>(
-          `SELECT value_version, value_json, revision
-           FROM app_settings
-           WHERE key = ?`,
-          [LIBRARY_SECTION_SETTING_KEY],
-        );
-        const current = parseLibrarySectionPreference(row);
-        if (current.section === section) {
-          return current;
-        }
-        if (current.revision !== expectedRevision) {
-          throw new Error("library_section_preference_conflict");
-        }
-        const next: LibraryRuntimeSectionPreference = {
-          section,
-          revision: current.revision + 1,
-        };
-        if (row === undefined) {
-          await transaction.execute(
-            `INSERT INTO app_settings
-              (key, value_version, value_json, revision, updated_at_ms)
-             VALUES (?, 1, ?, ?, ?)`,
-            [
-              LIBRARY_SECTION_SETTING_KEY,
-              JSON.stringify({ section }),
-              next.revision,
-              nowMs(),
-            ],
-          );
-        } else {
-          const result = await transaction.execute(
-            `UPDATE app_settings
-             SET value_json = ?, revision = ?, updated_at_ms = ?
-             WHERE key = ? AND revision = ?`,
-            [
-              JSON.stringify({ section }),
-              next.revision,
-              nowMs(),
-              LIBRARY_SECTION_SETTING_KEY,
-              expectedRevision,
-            ],
-          );
-          if (result.changes !== 1) {
-            throw new Error("library_section_preference_conflict");
-          }
-        }
-        return Object.freeze(next);
-      });
-    },
-  });
+function validBackupMetadata(
+  value: unknown,
+): value is RuntimeBackupMetadata {
+  return typeof value === "object"
+    && value !== null
+    && !Array.isArray(value)
+    && Object.keys(value).length === 3
+    && typeof (value as RuntimeBackupMetadata).archiveId === "string"
+    && /^[a-z0-9][a-z0-9_-]{0,119}$/u.test((value as RuntimeBackupMetadata).archiveId)
+    && Number.isSafeInteger((value as RuntimeBackupMetadata).createdAtMs)
+    && (value as RuntimeBackupMetadata).createdAtMs >= 0
+    && typeof (value as RuntimeBackupMetadata).displayName === "string"
+    && (value as RuntimeBackupMetadata).displayName.trim().length > 0
+    && !/[\\/]/u.test((value as RuntimeBackupMetadata).displayName);
 }
 
-function libraryPlanStatus(
-  row: LibraryPlanRow,
-): LibraryRuntimePlanSummary["status"] {
-  if (row.is_active === 1 || row.schedule_lifecycle === "active") {
-    return "Active";
+function parseBackupMetadata(
+  row: BackupMetadataSettingRow | undefined,
+): RuntimeBackupMetadata | null {
+  if (row === undefined) return null;
+  if (row.value_version !== 1) return null;
+  try {
+    const parsed: unknown = JSON.parse(row.value_json);
+    return validBackupMetadata(parsed) ? Object.freeze(parsed) : null;
+  } catch {
+    return null;
   }
-  if (row.lifecycle === "archived") {
-    return "Archived";
-  }
-  if (row.lifecycle === "draft") {
-    return "Draft";
-  }
-  return "Inactive";
 }
 
-async function readLibraryPlans(
+async function readLatestBackupMetadata(
   kernel: SqliteKernel,
-  starterPlans: readonly LibraryRuntimeStarterPlanSummary[],
-  templates: readonly AcceptedStarterTemplate[],
-): Promise<LibraryRuntimeSnapshot["plans"]> {
-  const rows = await kernel.queryAll<LibraryPlanRow>(
-    `SELECT plan.id,
-            plan.name,
-            plan.days_per_week,
-            plan.is_active,
-            state.lifecycle,
-            state.missing_requirement,
-            schedule.lifecycle AS schedule_lifecycle,
-            legacy_schedule.id AS legacy_schedule_id,
-            plan.source_namespace,
-            plan.upstream_id,
-            source.source_revision
-     FROM plans plan
-     LEFT JOIN owned_plan_aggregate_states state ON state.plan_id = plan.id
-     LEFT JOIN owned_plan_schedules schedule ON schedule.plan_id = plan.id
-     LEFT JOIN plan_schedules legacy_schedule
-       ON legacy_schedule.plan_id = plan.id
-     LEFT JOIN owned_plan_starter_sources source ON source.plan_id = plan.id
-     WHERE plan.origin IN ('custom', 'copied')
-     ORDER BY plan.name COLLATE NOCASE, plan.id`,
-  );
-  const summaries = rows.map((row) => {
-    const template = templates.find(({ id }) => id === row.upstream_id);
-    const sourceRevision = row.source_revision
-      ?? (row.source_namespace === "gym-tracker.original" ? 1 : null);
-    return Object.freeze({
-      id: row.id,
-      name: row.name,
-      daysPerWeek: row.days_per_week,
-      status: libraryPlanStatus(row)!,
-      scheduleSummary: row.schedule_lifecycle === "active"
-        ? "Active schedule"
-        : row.schedule_lifecycle === "inactive"
-          ? "Inactive schedule"
-          : row.legacy_schedule_id !== null
-            ? row.is_active === 1
-              ? "Active Weekday schedule"
-              : "Inactive Weekday schedule"
-          : "Not scheduled",
-      missingRequirement: row.missing_requirement,
-      ...(template !== undefined
-          && sourceRevision !== null
-          && sourceRevision < template.revision
-        ? { templateUpdateTemplateId: template.id }
-        : {}),
-    });
-  });
-  return Object.freeze({
-    active: summaries.find(({ status }) => status === "Active") ?? null,
-    owned: Object.freeze(summaries),
-    starters: starterPlans,
-  });
+): Promise<RuntimeBackupMetadata | null> {
+  try {
+    const [row] = await kernel.queryAll<BackupMetadataSettingRow>(
+      `SELECT value_version, value_json
+       FROM app_settings
+       WHERE key = ?`,
+      [LATEST_BACKUP_METADATA_SETTING_KEY],
+    );
+    return parseBackupMetadata(row);
+  } catch {
+    return null;
+  }
 }
 
-async function readLibraryFilterOptions(
+async function writeLatestBackupMetadata(
   kernel: SqliteKernel,
-): Promise<LibraryRuntimeSnapshot["exerciseFilterOptions"]> {
-  const rows = await kernel.queryAll<LibraryTaxonomyRow>(
-    `SELECT kind, slug
-     FROM taxonomy_terms
-     WHERE kind IN ('exercise_type', 'muscle', 'equipment')
-     ORDER BY kind, display_name COLLATE NOCASE, slug`,
-  );
-  return Object.freeze({
-    exerciseTypes: Object.freeze(rows
-      .filter(({ kind }) => kind === "exercise_type")
-      .map(({ slug }) => slug)),
-    muscles: Object.freeze(rows
-      .filter(({ kind }) => kind === "muscle")
-      .map(({ slug }) => slug)),
-    equipment: Object.freeze(rows
-      .filter(({ kind }) => kind === "equipment")
-      .map(({ slug }) => slug)),
+  metadata: RuntimeBackupMetadata,
+  nowMs: number,
+): Promise<void> {
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      `INSERT INTO app_settings
+        (key, value_version, value_json, revision, updated_at_ms)
+       VALUES (?, 1, ?, 1, ?)
+       ON CONFLICT(key) DO UPDATE SET
+        value_version = excluded.value_version,
+        value_json = excluded.value_json,
+        revision = app_settings.revision + 1,
+        updated_at_ms = excluded.updated_at_ms`,
+      [
+        LATEST_BACKUP_METADATA_SETTING_KEY,
+        JSON.stringify(metadata),
+        nowMs,
+      ],
+    );
   });
 }
 
@@ -1643,7 +1902,7 @@ async function readStarterActivationPreview(
     kernel.queryAll<ActiveStarterScheduleRow>(
       `SELECT revision
        FROM owned_plan_schedules
-       WHERE lifecycle = 'active'
+       WHERE lifecycle = 'active' AND plan_kind = 'strength'
        ORDER BY id`,
     ),
     kernel.queryAll<StarterCopyRow>(
@@ -1818,266 +2077,6 @@ async function readStarterTemplateUpdate(
   });
 }
 
-function customExerciseIdentity(row: Readonly<{
-  metric_profile: MetricIdentity["profile"];
-  metric_contract_version: number;
-  exercise_metric_generation: number;
-}>): MetricIdentity {
-  return Object.freeze({
-    profile: row.metric_profile,
-    contractVersion: row.metric_contract_version,
-    exerciseMetricGeneration: row.exercise_metric_generation,
-  });
-}
-
-function formatCustomTarget(target: MetricTarget): string {
-  switch (target.profile) {
-    case "load_reps":
-      return `${target.loadGrams / 1_000} kg · ${target.minReps}–${target.maxReps} reps`;
-    case "bodyweight_reps":
-      return `${target.minReps}–${target.maxReps} reps · ${target.variationId}`;
-    case "added_load_reps":
-      return `+${target.addedLoadGrams / 1_000} kg · ${target.minReps}–${target.maxReps} reps`;
-    case "assisted_reps":
-      return `${target.assistanceGrams / 1_000} kg assist · ${target.minReps}–${target.maxReps} reps`;
-    case "timed_hold":
-      return target.version === 1
-        ? `${target.durationSeconds} sec`
-        : formatMetricDuration(target.durationMs);
-    case "fixed_distance":
-      return `${target.plannedDistanceMeters} m`;
-    case "fixed_time":
-      return formatMetricDuration(target.plannedDurationMs);
-    case "intervals":
-      return `${target.plannedRounds} rounds · ${formatMetricDuration(target.workIntervalMs)} work · ${formatMetricDuration(target.restIntervalMs)} rest`;
-    case "unscored":
-      return "Completed";
-  }
-}
-
-async function readCustomExerciseDetail(
-  services: CustomExerciseReadServices,
-  exerciseId: string,
-): Promise<CustomExerciseRuntimeDetail | null> {
-  const [row] = await services.kernel.queryAll<CustomExerciseDetailRow>(
-    `SELECT entry.exercise_id, entry.origin, entry.canonical_name,
-            entry.exercise_type, entry.movement_class,
-            entry.metric_profile, entry.metric_contract_version,
-            entry.exercise_metric_generation, entry.availability,
-            source.default_rest_seconds,
-            source.revision AS exercise_revision,
-            entry.revision AS library_revision,
-            preference.favorite, preference.hidden, preference.archived,
-            preference.revision AS preference_revision,
-            catalog.source_namespace, catalog.source_revision,
-            catalog.license, catalog.attribution
-     FROM exercise_library_entries entry
-     JOIN exercises source ON source.id = entry.exercise_id
-     LEFT JOIN exercise_owner_preferences preference
-       ON preference.exercise_id = entry.exercise_id
-     LEFT JOIN exercise_catalog_sources catalog
-       ON catalog.exercise_id = entry.exercise_id
-     WHERE entry.exercise_id = ?`,
-    [exerciseId],
-  );
-  if (row === undefined) {
-    return null;
-  }
-  if (
-    row.origin === "custom"
-    && row.exercise_revision !== row.library_revision
-  ) {
-    throw new Error("custom_exercise_revision_inconsistent");
-  }
-  const [aliases, taxonomy, references] = await Promise.all([
-    services.kernel.queryAll<CustomExerciseAliasRow>(
-      `SELECT display_text
-       FROM exercise_aliases
-       WHERE exercise_id = ?
-       ORDER BY ordinal, id`,
-      [exerciseId],
-    ),
-    services.kernel.queryAll<CustomExerciseTaxonomyRow>(
-      `SELECT kind, relation, slug, ordinal
-       FROM exercise_taxonomy
-       WHERE exercise_id = ?
-       ORDER BY kind, relation, ordinal, slug`,
-      [exerciseId],
-    ),
-    services.customExerciseRepository.listExercisePlanReferences(exerciseId),
-  ]);
-  return Object.freeze({
-    exerciseId: row.exercise_id,
-    name: row.canonical_name,
-    origin: row.origin,
-    originLabel: row.origin === "bundled" ? "Built-in" : "Custom",
-    exerciseType: row.exercise_type,
-    movementClass: row.movement_class,
-    aliases: Object.freeze(aliases.map(({ display_text }) => display_text)),
-    primaryMuscles: Object.freeze(taxonomy
-      .filter(({ kind, relation }) =>
-        kind === "muscle" && relation === "primary"
-      )
-      .map(({ slug }) => slug)),
-    secondaryMuscles: Object.freeze(taxonomy
-      .filter(({ kind, relation }) =>
-        kind === "muscle" && relation === "secondary"
-      )
-      .map(({ slug }) => slug)),
-    equipment: Object.freeze(taxonomy
-      .filter(({ kind }) => kind === "equipment")
-      .map(({ slug }) => slug)),
-    metricIdentity: customExerciseIdentity(row),
-    defaultRestSeconds: row.default_rest_seconds,
-    availability: row.availability,
-    favorite: row.favorite === 1,
-    hidden: row.hidden === 1,
-    archived: row.archived === 1,
-    exerciseRevision: row.exercise_revision,
-    preferenceRevision: row.preference_revision,
-    source: row.source_namespace === null
-      ? null
-      : Object.freeze({
-          namespace: row.source_namespace,
-          revision: row.source_revision!,
-          license: row.license!,
-          attribution: row.attribution!,
-        }),
-    references: Object.freeze([...references]),
-  });
-}
-
-async function readCustomExerciseMigration(
-  services: CustomExerciseReadServices,
-  exerciseId: string,
-): Promise<CustomExerciseRuntimeMigration | null> {
-  const detail = await readCustomExerciseDetail(services, exerciseId);
-  if (detail === null || detail.origin !== "custom") {
-    return null;
-  }
-  const [[active], occurrences, targets] = await Promise.all([
-    services.kernel.queryAll<CustomExerciseActiveWorkoutRow>(
-      `SELECT session.id AS session_id
-       FROM workout_sessions session
-       JOIN session_exercises exercise
-         ON exercise.session_id = session.id
-       WHERE session.status = 'in_progress'
-         AND exercise.exercise_id = ?
-       ORDER BY session.started_at_ms, session.id
-       LIMIT 1`,
-      [exerciseId],
-    ),
-    services.kernel.queryAll<CustomExerciseMigrationOccurrenceRow>(
-      `SELECT graph, plan_id, plan_name, day_id, day_name,
-              occurrence_id, occurrence_revision, policy_revision
-       FROM (
-         SELECT 'legacy' AS graph, plan.id AS plan_id,
-                plan.name AS plan_name, day.id AS day_id,
-                day.name AS day_name, occurrence.id AS occurrence_id,
-                occurrence.revision AS occurrence_revision,
-                policy.revision AS policy_revision
-         FROM plan_day_exercises occurrence
-         JOIN plan_days day ON day.id = occurrence.plan_day_id
-         JOIN plans plan ON plan.id = day.plan_id
-         LEFT JOIN progression_policies policy
-           ON policy.plan_day_exercise_id = occurrence.id
-          AND policy.status = 'active'
-         WHERE occurrence.exercise_id = ?
-         UNION ALL
-         SELECT 'owned' AS graph, plan.id AS plan_id,
-                plan.name AS plan_name, day.id AS day_id,
-                day.name AS day_name, occurrence.id AS occurrence_id,
-                occurrence.revision AS occurrence_revision,
-                policy.revision AS policy_revision
-         FROM owned_plan_day_exercises occurrence
-         JOIN plan_days day ON day.id = occurrence.plan_day_id
-         JOIN plans plan ON plan.id = day.plan_id
-         LEFT JOIN owned_plan_progression_policies policy
-           ON policy.plan_day_exercise_id = occurrence.id
-          AND policy.status = 'active'
-         WHERE occurrence.exercise_id = ?
-       )
-       ORDER BY plan_name, day_name, occurrence_id, graph`,
-      [exerciseId, exerciseId],
-    ),
-    services.kernel.queryAll<CustomExerciseMigrationTargetRow>(
-      `SELECT graph, occurrence_id, target_id, target_revision, ordinal,
-              target_json, metric_profile, metric_contract_version,
-              exercise_metric_generation
-       FROM (
-         SELECT 'legacy' AS graph, occurrence.id AS occurrence_id,
-                target.id AS target_id,
-                target.revision AS target_revision, target.ordinal,
-                target.target_json, target.metric_profile,
-                target.metric_contract_version,
-                target.exercise_metric_generation
-         FROM plan_working_set_targets target
-         JOIN plan_day_exercises occurrence
-           ON occurrence.id = target.plan_day_exercise_id
-         WHERE occurrence.exercise_id = ?
-         UNION ALL
-         SELECT 'owned' AS graph, occurrence.id AS occurrence_id,
-                target.id AS target_id,
-                target.revision AS target_revision, target.ordinal,
-                target.target_json, target.metric_profile,
-                target.metric_contract_version,
-                target.exercise_metric_generation
-         FROM owned_plan_working_set_targets target
-         JOIN owned_plan_day_exercises occurrence
-           ON occurrence.id = target.plan_day_exercise_id
-         WHERE occurrence.exercise_id = ?
-       )
-       ORDER BY occurrence_id, ordinal, target_id, graph`,
-      [exerciseId, exerciseId],
-    ),
-  ]);
-  return Object.freeze({
-    exerciseId: detail.exerciseId,
-    exerciseName: detail.name,
-    exerciseRevision: detail.exerciseRevision,
-    fromIdentity: detail.metricIdentity,
-    activeWorkoutSessionId: active?.session_id ?? null,
-    occurrences: Object.freeze(occurrences.map((occurrence) =>
-      Object.freeze({
-        graph: occurrence.graph,
-        planId: occurrence.plan_id,
-        planName: occurrence.plan_name,
-        dayId: occurrence.day_id,
-        dayName: occurrence.day_name,
-        occurrenceId: occurrence.occurrence_id,
-        occurrenceRevision: occurrence.occurrence_revision,
-        policyRevision: occurrence.policy_revision,
-        targets: Object.freeze(targets
-          .filter(({ occurrence_id }) =>
-            occurrence_id === occurrence.occurrence_id
-          )
-          .map((target) => {
-            const identity = customExerciseIdentity(target);
-            return Object.freeze({
-              targetId: target.target_id,
-              targetRevision: target.target_revision,
-              ordinal: target.ordinal,
-              currentTarget: formatCustomTarget(
-                parseMetricTargetJson(identity, target.target_json),
-              ),
-            });
-          })),
-      })
-    )),
-  });
-}
-
-export function createCustomExerciseRuntimeReadPort(
-  services: CustomExerciseReadServices,
-) {
-  return Object.freeze({
-    loadExercise: (exerciseId: string) =>
-      readCustomExerciseDetail(services, exerciseId),
-    loadMigration: (exerciseId: string) =>
-      readCustomExerciseMigration(services, exerciseId),
-  });
-}
-
 export function WorkoutAppRuntimeProvider({
   children,
   dependencies,
@@ -2085,10 +2084,47 @@ export function WorkoutAppRuntimeProvider({
   children: React.ReactNode;
   dependencies: WorkoutAppRuntimeDependencies;
 }>) {
+  const displayTimeZone = useDeviceTimeZone();
+  const displayTimeZoneRef = useRef(displayTimeZone);
+  displayTimeZoneRef.current = displayTimeZone;
   const servicesRef = useRef<RuntimeServices | null>(null);
+  const pendingActivityMatchRef = useRef<Readonly<{
+    candidateKey: string;
+    input: RunningActivityMatchInput;
+  }> | null>(null);
+  const progressBodyweightCommandsRef = useRef(new Map<string, BodyweightCommand>());
+  const phase17FixtureProtocolRef = useRef<ReturnType<typeof createPhase17FixtureProtocol> | null>(null);
+  const phase17ActionEnvelopeSourceRef = useRef<ReturnType<typeof createPhase17ActionEnvelopeSource> | null>(null);
+  const v12NativeAcceptanceProductRequestRef = useRef<V12NativeAcceptanceRequest | null>(null);
+  const runtimeRandomUUID = useCallback(() => {
+    if (dependencies.randomUUID !== undefined) return dependencies.randomUUID();
+    const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
+    return randomUUID();
+  }, [dependencies]);
+  const phase17RequestId = useCallback(async (label: string, productionRequestId: string) => {
+    const acceptanceRequest = v12NativeAcceptanceProductRequestRef.current;
+    if (acceptanceRequest !== null) {
+      return v12NativeAcceptanceProductRequestId(acceptanceRequest, label);
+    }
+    if (!phase17NativeContractEnabled()) return productionRequestId;
+    const source = phase17ActionEnvelopeSourceRef.current;
+    if (source === null) throw new Error("phase17_action_envelope_missing");
+    const requestId = await source.reserveCached(label);
+    if (requestId === null) throw new Error("phase17_action_envelope_missing");
+    return requestId;
+  }, []);
   const foregroundUnsubscribeRef = useRef<(() => void) | null>(null);
+  const automaticBackupForegroundUnsubscribeRef = useRef<(() => void) | null>(null);
+  const automaticBackupUnsubscribeRef = useRef<(() => void) | null>(null);
   const generationRef = useRef(0);
   const workoutRefreshGenerationRef = useRef(0);
+  const restCommandQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const postCommitReconciliationQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const restReconciliationGenerationRef = useRef(0);
+  const selectionRefreshGenerationRef = useRef(0);
+  const workoutSummaryGenerationRef = useRef(0);
+  const selectionRefreshQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const committedWorkoutRevisionsRef = useRef(new Map<string, number>());
   const contentUpdateResultRef = useRef<ContentUpdateResult | undefined>(
     undefined,
   );
@@ -2101,17 +2137,43 @@ export function WorkoutAppRuntimeProvider({
   const closeServices = useCallback(async () => {
     foregroundUnsubscribeRef.current?.();
     foregroundUnsubscribeRef.current = null;
+    automaticBackupForegroundUnsubscribeRef.current?.();
+    automaticBackupForegroundUnsubscribeRef.current = null;
+    automaticBackupUnsubscribeRef.current?.();
+    automaticBackupUnsubscribeRef.current = null;
     const services = servicesRef.current;
     servicesRef.current = null;
-    await services?.lifecycle.dispose?.().catch(() => undefined);
-    await services?.kernel.close().catch(() => undefined);
-  }, []);
+    restCommandQueueRef.current = Promise.resolve();
+    postCommitReconciliationQueueRef.current = Promise.resolve();
+    restReconciliationGenerationRef.current += 1;
+    selectionRefreshGenerationRef.current += 1;
+    workoutSummaryGenerationRef.current += 1;
+    selectionRefreshQueueRef.current = Promise.resolve();
+    committedWorkoutRevisionsRef.current.clear();
+    pendingActivityMatchRef.current = null;
+    progressBodyweightCommandsRef.current.clear();
+    try {
+      if (dependencies.strictDisposal) await services?.lifecycle.dispose?.();
+      else await services?.lifecycle.dispose?.().catch(() => undefined);
+      services?.automaticBackupRuntime?.dispose();
+      if (dependencies.strictDisposal) {
+        await services?.kernel.close();
+        await dependencies.disposeRuntime?.();
+      } else {
+        await services?.kernel.close().catch(() => undefined);
+        await dependencies.disposeRuntime?.().catch(() => undefined);
+      }
+    } catch (error) {
+      dependencies.reportDisposalFailure?.(error);
+      throw error;
+    }
+  }, [dependencies]);
 
   const trustedRead = useCallback(async (
     services: RuntimeServices,
   ): Promise<RuntimeState> => {
     const context = localContext(dependencies.now());
-    const [legacyView, scheduledToday, activation, notificationPermission] =
+    const [legacyView, scheduledToday, activation, notificationPermission, latestBackup] =
       await Promise.all([
         services.repository.getTodayView({
           localDate: context.localDate,
@@ -2122,6 +2184,7 @@ export function WorkoutAppRuntimeProvider({
       services.notifications.permission().catch(
         () => "undetermined" as const,
       ),
+      readLatestBackupMetadata(services.kernel),
     ]);
     const preserveWorkoutState = legacyView.state === "active_workout"
       || legacyView.state === "saved_partial";
@@ -2131,6 +2194,19 @@ export function WorkoutAppRuntimeProvider({
         ? legacyView
         : scheduledToday?.view ?? legacyView,
       planDays: scheduledToday?.planDays ?? activation?.days ?? [],
+      ...(scheduledToday?.selectedStrengthOccurrence === undefined
+        ? {}
+        : { selectedStrengthOccurrence: scheduledToday.selectedStrengthOccurrence }),
+      latestBackup,
+      automaticBackup: phase12NativeFixtureViewModel()
+        ?? services.automaticBackupRuntime?.current()
+        ?? projectAutomaticBackupPresentation({
+          status: "not_connected",
+          mutationGeneration: 0,
+          backedUpGeneration: 0,
+          nowMs: dependencies.nowMs(),
+          reason: "unavailable",
+        }),
       ...(scheduledToday === null
         ? {}
         : { scheduleToday: scheduledToday.scheduleToday }),
@@ -2142,6 +2218,95 @@ export function WorkoutAppRuntimeProvider({
       workoutRefreshGeneration: workoutRefreshGenerationRef.current,
     };
   }, [dependencies]);
+
+  // Product mutations refresh only the Today selection they can change. Backup
+  // metadata and OS permission reads belong to launch/settings, not save clicks.
+  const refreshTodaySelection = useCallback(async (
+    services: RuntimeServices,
+    plansChanged = false,
+  ) => {
+    const generation = ++selectionRefreshGenerationRef.current;
+    const summaryGeneration = workoutSummaryGenerationRef.current;
+    const context = localContext(dependencies.now());
+    const [legacyView, scheduledToday, activation] = await Promise.all([
+      services.repository.getTodayView({ localDate: context.localDate, weekday: context.weekday }),
+      services.schedules.loadToday(dependencies.nowMs()),
+      plansChanged ? services.repository.getActivation() : Promise.resolve(undefined),
+    ]);
+    if (servicesRef.current !== services || generation !== selectionRefreshGenerationRef.current) return;
+    setState((current) => {
+      const { scheduleToday: _scheduleToday, ...preserved } = current;
+      return {
+        ...preserved,
+        ...(summaryGeneration !== workoutSummaryGenerationRef.current ? {} : {
+          view: legacyView.state === "active_workout" || legacyView.state === "saved_partial"
+            ? legacyView : scheduledToday?.view ?? legacyView,
+        }),
+        planDays: scheduledToday?.planDays ?? (plansChanged ? activation?.days ?? [] : current.planDays),
+        selectedStrengthOccurrence: scheduledToday?.selectedStrengthOccurrence ?? null,
+        ...(scheduledToday === null ? {} : { scheduleToday: scheduledToday.scheduleToday }),
+        workoutRefreshGeneration: workoutRefreshGenerationRef.current,
+      };
+    });
+  }, [dependencies]);
+
+  const clearCommittedActionFailure = useCallback((services: RuntimeServices) => {
+    if (servicesRef.current !== services) return;
+    setState((current) => {
+      if (current.actionFailure === undefined && current.mutationFailure === undefined) return current;
+      const { actionFailure: _actionFailure, mutationFailure: _mutationFailure, ...preserved } = current;
+      return preserved;
+    });
+  }, []);
+
+  const queueTodaySelectionRefresh = useCallback((services: RuntimeServices) => {
+    clearCommittedActionFailure(services);
+    const generation = ++selectionRefreshGenerationRef.current;
+    selectionRefreshQueueRef.current = selectionRefreshQueueRef.current.then(async () => {
+      if (servicesRef.current !== services || generation !== selectionRefreshGenerationRef.current) return;
+      await refreshTodaySelection(services, true);
+    }).catch(() => undefined);
+  }, [clearCommittedActionFailure, refreshTodaySelection]);
+
+  const publishStartedWorkout = useCallback((services: RuntimeServices, view: TodayView) => {
+    if (servicesRef.current !== services) return;
+    workoutSummaryGenerationRef.current += 1;
+    setState((current) => {
+      const { actionFailure: _actionFailure, mutationFailure: _mutationFailure, ...preserved } = current;
+      return { ...preserved, view, workoutRefreshGeneration: workoutRefreshGenerationRef.current };
+    });
+  }, []);
+
+  const publishCommittedWorkout = useCallback((services: RuntimeServices, view: ActiveWorkoutView) => {
+    if (servicesRef.current !== services) return;
+    const previousRevision = committedWorkoutRevisionsRef.current.get(view.id) ?? -1;
+    if (view.revision < previousRevision) return;
+    committedWorkoutRevisionsRef.current.set(view.id, view.revision);
+    workoutSummaryGenerationRef.current += 1;
+    const exercises = view.exercises.length > 0 ? view.exercises : [view.currentExercise];
+    const exercise = exercises.find(({ id }) => id === view.activeExerciseId);
+    const set = exercise === undefined ? undefined : [...exercise.warmups, ...exercise.workingSets]
+      .find(({ id }) => id === view.activeSetId);
+    setState((current) => {
+      if (current.view?.state === "active_workout"
+        && current.view.sessionId === view.id
+        && current.view.exerciseName === (exercise?.name ?? null)
+        && current.view.setLabel === (set === undefined ? null : `${set.kind === "warmup" ? "Warm-up" : "Working set"} ${set.ordinal + 1}`)
+        && current.view.restStatus === view.rest.state
+        && current.actionFailure === undefined && current.mutationFailure === undefined) return current;
+      const { actionFailure: _actionFailure, mutationFailure: _mutationFailure, ...preserved } = current;
+      return {
+        ...preserved,
+        view: {
+          state: "active_workout",
+          sessionId: view.id,
+          exerciseName: exercise?.name ?? null,
+          setLabel: set === undefined ? null : `${set.kind === "warmup" ? "Warm-up" : "Working set"} ${set.ordinal + 1}`,
+          restStatus: view.rest.state,
+        },
+      };
+    });
+  }, []);
 
   const initialize = useCallback(async () => {
     const generation = generationRef.current + 1;
@@ -2182,20 +2347,26 @@ export function WorkoutAppRuntimeProvider({
       historyProjectionEffectStore: createHistoryProjectionEffectStore(kernel),
       notifications,
       nowMs: dependencies.nowMs,
+      ...(dependencies.createAutomaticBackupScheduler === undefined
+        ? {}
+        : { automaticBackupScheduler: dependencies.createAutomaticBackupScheduler(kernel) }),
     });
     const ownedPlans = createOwnedPlanRuntimePort(kernel, {
       nowMs: dependencies.nowMs,
-      randomUUID: () => {
-        const {
-          randomUUID,
-        } = require("expo-crypto") as typeof import("expo-crypto");
-        return randomUUID();
-      },
+      randomUUID: runtimeRandomUUID,
       sha256: (value) => {
         const {
           CryptoDigestAlgorithm,
           digestStringAsync,
         } = require("expo-crypto") as typeof import("expo-crypto");
+        return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
+      },
+    });
+    const runningPlans = createRunningPlanRuntimePort(kernel, {
+      nowMs: dependencies.nowMs,
+      randomUUID: runtimeRandomUUID,
+      sha256: (value) => {
+        const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
         return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
       },
     });
@@ -2225,6 +2396,9 @@ export function WorkoutAppRuntimeProvider({
         },
       });
     const services: RuntimeServices = {
+      ...(dependencies.createAutomaticBackupRuntime === undefined
+        ? {}
+        : { automaticBackupRuntime: dependencies.createAutomaticBackupRuntime(kernel) }),
       backupCommands: dependencies.createBackupCommands?.(kernel)
         ?? Object.freeze({
           createSecureBackup: async () => {
@@ -2236,15 +2410,18 @@ export function WorkoutAppRuntimeProvider({
           },
         }),
       csvExportRepository: dependencies.createCsvExportRepository?.(kernel)
-        ?? Object.freeze({
-          readRows: async () => { throw new Error("csv_export_unavailable"); },
-          serialize: async () => { throw new Error("csv_export_unavailable"); },
-        }),
-      csvFiles: dependencies.createCsvFiles?.() ?? Object.freeze({
-        writeCsv: async () => { throw new Error("csv_export_unavailable"); },
-        shareCsv: async () => { throw new Error("csv_export_unavailable"); },
-        discardCsv: async () => undefined,
-      }),
+        ?? Object.freeze((() => {
+          const unavailable = async () => { throw new Error("csv_export_unavailable"); };
+          return { readRows: unavailable, serialize: unavailable };
+        })()),
+      csvFiles: dependencies.createCsvFiles?.() ?? Object.freeze((() => {
+        const unavailable = async () => { throw new Error("csv_export_unavailable"); };
+        return {
+          writeCsv: unavailable,
+          shareCsv: unavailable,
+          discardCsv: async () => undefined,
+        };
+      })()),
       restoreCommands: dependencies.createRestoreCommands?.(kernel)
         ?? Object.freeze({
           preflightSecureRestore: async () => {
@@ -2255,13 +2432,26 @@ export function WorkoutAppRuntimeProvider({
             throw new Error("restore_commands_unavailable");
           },
         }),
+      mergeCommands: dependencies.createMergeCommands?.(kernel)
+        ?? Object.freeze({
+          preflightSecureMerge: async () => {
+            throw new Error("merge_commands_unavailable");
+          },
+          commitSecureMerge: async () => {
+            throw new Error("merge_commands_unavailable");
+          },
+          invalidateSecureMergePreflight: () => undefined,
+        }),
       ...(dependencies.reconcileRestore === undefined
         ? {}
         : { reconcileRestore: () => dependencies.reconcileRestore!(kernel) }),
       customExerciseRepository,
       historyCommandRepository: createHistoryCommandRepository(kernel),
-      historyRepository: createHistoryRepository(kernel),
-      progressRepository: createProgressRepository(kernel),
+      historyRepository: createHistoryRepository(kernel, { displayTimeZone: () => displayTimeZoneRef.current }),
+      importedActivities: createImportedActivityRepository(kernel),
+      garminSyncSummaries: createGarminSyncSummaryRepository(kernel),
+      progressRepository: createProgressRepository(progressSnapshotKernel(kernel), { displayTimeZone: () => displayTimeZoneRef.current }),
+      runningPlans,
       kernel,
       librarySearchRepository,
       lifecycle,
@@ -2269,10 +2459,14 @@ export function WorkoutAppRuntimeProvider({
       restAlertPreferenceStore,
       ownedPlans,
       schedules,
+      trainingFoundation: createTrainingFoundationRuntimePort(kernel),
       outcomeRepository,
       repository: dependencies.createRepository(kernel),
       restRepository,
+      runningActivityMatches: createRunningActivityMatchRepository(kernel),
       workoutRepository: dependencies.createWorkoutRepository(kernel),
+      workoutPreferenceRepository: dependencies.createWorkoutPreferenceRepository?.(kernel)
+        ?? createWorkoutPreferenceRepository(kernel),
     };
     servicesRef.current = services;
     try {
@@ -2320,7 +2514,7 @@ export function WorkoutAppRuntimeProvider({
       }
     }
     try {
-      starterPlansRef.current = await dependencies.loadStarterPlans?.();
+      starterPlansRef.current = await dependencies.loadStarterPlans?.(kernel);
     } catch {
       starterPlansRef.current = undefined;
     }
@@ -2331,7 +2525,21 @@ export function WorkoutAppRuntimeProvider({
     }
 
     try {
+      await dependencies.prepareRuntime?.({
+        kernel,
+        ...(starterPlansRef.current === undefined
+          ? {}
+          : { starterPlans: starterPlansRef.current }),
+      });
       await lifecycle.trigger("launch").catch(() => undefined);
+      if (services.automaticBackupRuntime !== undefined) {
+        automaticBackupUnsubscribeRef.current = services.automaticBackupRuntime.subscribe((automaticBackup) => {
+          if (generation === generationRef.current) {
+            setState((current) => ({ ...current, automaticBackup }));
+          }
+        });
+        await services.automaticBackupRuntime.start();
+      }
       foregroundUnsubscribeRef.current = lifecycle.subscribeForeground(
         (result) => {
           if (generation !== generationRef.current) {
@@ -2345,6 +2553,19 @@ export function WorkoutAppRuntimeProvider({
           }));
         },
       );
+      const appState = (require("react-native") as typeof import("react-native"))
+        .AppState;
+      let priorAppState = appState.currentState;
+      const automaticBackupSubscription = appState.addEventListener("change", (next) => {
+        const enteringForeground = priorAppState !== "active" && next === "active";
+        priorAppState = next;
+        if (enteringForeground && generation === generationRef.current) {
+          void services.automaticBackupRuntime?.refresh();
+        }
+      });
+      automaticBackupForegroundUnsubscribeRef.current = () => {
+        automaticBackupSubscription?.remove();
+      };
       const next = await trustedRead(services);
       if (generation !== generationRef.current) {
         await lifecycle.dispose().catch(() => undefined);
@@ -2361,13 +2582,16 @@ export function WorkoutAppRuntimeProvider({
         ));
       }
     }
-  }, [closeServices, dependencies, trustedRead]);
+  }, [closeServices, dependencies, runtimeRandomUUID, trustedRead]);
 
   useEffect(() => {
     void initialize();
     return () => {
       generationRef.current += 1;
-      void closeServices();
+      void closeServices().catch(() => {
+        if (!dependencies.strictDisposal) return;
+        console.error("workout_runtime_strict_disposal_failed");
+      });
     };
   }, [closeServices, initialize]);
 
@@ -2382,7 +2606,8 @@ export function WorkoutAppRuntimeProvider({
   const refresh = useCallback(async () => {
     const services = requireServices();
     try {
-      setState(await trustedRead(services));
+      const next = await trustedRead(services);
+      setState(next);
     } catch {
       setState((current) => ({
         ...current,
@@ -2393,6 +2618,16 @@ export function WorkoutAppRuntimeProvider({
       }));
     }
   }, [requireServices, trustedRead]);
+
+  const runAutomaticBackupCommand = useCallback(async <Result,>(
+    command: (runtime: AutomaticBackupRuntime) => Promise<Result>,
+  ): Promise<Result> => {
+    const runtime = requireServices().automaticBackupRuntime;
+    if (runtime === undefined) throw new Error("automatic_backup_unavailable");
+    const result = await command(runtime);
+    setState((current) => ({ ...current, automaticBackup: runtime.current() }));
+    return result;
+  }, [requireServices]);
 
   const activatePlan = useCallback(async () => {
     const services = requireServices();
@@ -2438,6 +2673,17 @@ export function WorkoutAppRuntimeProvider({
       if (planId === undefined) {
         throw new Error("active_plan_missing");
       }
+      if (mode === "scheduled") {
+        const selected = scheduledToday?.selectedStrengthOccurrence;
+        if (
+          selected === null
+          || selected === undefined
+          || selected.planId !== planId
+          || selected.planDayId !== dayId
+        ) {
+          throw new Error("selected_strength_occurrence_unavailable");
+        }
+      }
       const session = await startWorkout({
         repository: services.repository,
         request: {
@@ -2447,9 +2693,18 @@ export function WorkoutAppRuntimeProvider({
           localDate,
           timezone,
           startedAtMs: dependencies.nowMs(),
+          ...(mode === "scheduled"
+            ? {
+                selectedOccurrence: scheduledToday!.selectedStrengthOccurrence!,
+                commandIdentity: dependencies.nowMs().toString(16)
+                  .padStart(64, "0"),
+              }
+            : {}),
         },
       });
-      setState(await trustedRead(services));
+      const readContext = localContext(dependencies.now());
+      const view = await services.repository.getTodayView({ localDate: readContext.localDate, weekday: readContext.weekday });
+      publishStartedWorkout(services, view);
       return session.id;
     } catch {
       setState((current) => ({
@@ -2461,7 +2716,41 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw new Error("workout_action_failed");
     }
-  }, [dependencies, requireServices, trustedRead]);
+  }, [dependencies, publishStartedWorkout, requireServices]);
+
+  const startSelectedStrengthOccurrence = useCallback(async (
+    occurrence: SelectedStrengthOccurrence,
+  ): Promise<string> => {
+    const services = requireServices();
+    try {
+      const session = await startWorkout({
+        repository: services.repository,
+        request: {
+          mode: "scheduled",
+          planId: occurrence.planId,
+          planDayId: occurrence.planDayId,
+          localDate: occurrence.localDate,
+          timezone: occurrence.timeZone,
+          startedAtMs: dependencies.nowMs(),
+          selectedOccurrence: occurrence,
+          commandIdentity: dependencies.nowMs().toString(16).padStart(64, "0"),
+        },
+      });
+      const readContext = localContext(dependencies.now());
+      const view = await services.repository.getTodayView({ localDate: readContext.localDate, weekday: readContext.weekday });
+      publishStartedWorkout(services, view);
+      return session.id;
+    } catch {
+      setState((current) => ({
+        ...current,
+        actionFailure: {
+          code: "workout_action_failed",
+          correlationCode: "GT-ACTION01",
+        },
+      }));
+      throw new Error("workout_action_failed");
+    }
+  }, [dependencies, publishStartedWorkout, requireServices]);
 
   const startEmptyWorkout = useCallback(async (): Promise<string> => {
     const services = requireServices();
@@ -2476,7 +2765,9 @@ export function WorkoutAppRuntimeProvider({
           startedAtMs: dependencies.nowMs(),
         },
       });
-      setState(await trustedRead(services));
+      const readContext = localContext(dependencies.now());
+      const view = await services.repository.getTodayView({ localDate: readContext.localDate, weekday: readContext.weekday });
+      publishStartedWorkout(services, view);
       return session.id;
     } catch {
       setState((current) => ({
@@ -2488,7 +2779,7 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw new Error("workout_action_failed");
     }
-  }, [dependencies, requireServices, trustedRead]);
+  }, [dependencies, publishStartedWorkout, requireServices]);
 
   const getActiveWorkout = useCallback((sessionId: string) => {
     return requireServices().workoutRepository.getWorkoutSession(sessionId);
@@ -2497,6 +2788,308 @@ export function WorkoutAppRuntimeProvider({
   const getSessionDetail = useCallback((sessionId: string) => {
     return requireServices().outcomeRepository.getSessionDetail(sessionId);
   }, [requireServices]);
+
+  const getSessionDetailAtRevision = useCallback((sessionId: string, sourceRevision: number) => {
+    const read = requireServices().outcomeRepository.getSessionDetailAtRevision;
+    if (read === undefined) throw new Error("workout_source_revision_reader_unavailable");
+    return read(sessionId, sourceRevision);
+  }, [requireServices]);
+
+  const getCalendarSessionDetail = useCallback((sessionId: string) => {
+    return requireServices().outcomeRepository.getCalendarSessionDetail(sessionId);
+  }, [requireServices]);
+
+  const confirmGarminImport = useCallback((input: ConfirmGarminImportInput): Promise<GarminImportResult> =>
+    requireServices().importedActivities.confirmGarminImport(input),
+  [requireServices]);
+
+  const loadGarminActivities = useCallback(async (): ReturnType<GarminImportApplicationPort["loadGarminActivities"]> => {
+    const rows = await requireServices().kernel.queryAll<{
+      activity_id: string;
+      aggregate_json: string;
+      aggregate_revision: number;
+      accepted_normalized_sha256: string;
+      removal_state: "active" | "removed";
+      match_count: number;
+      pending_revision_count: number;
+    }>(
+      `SELECT activity.id AS activity_id, activity.aggregate_json,
+              identity.aggregate_revision, identity.accepted_normalized_sha256,
+              COALESCE(lifecycle.removal_state, identity.removal_state) AS removal_state,
+              (SELECT count(*) FROM running_activity_current_matches current
+                WHERE current.activity_id = activity.id) AS match_count,
+              (SELECT count(*)
+                 FROM imported_activity_revision_proposals proposal
+                 LEFT JOIN imported_activity_revision_decisions decision
+                   ON decision.activity_id = proposal.activity_id
+                  AND decision.proposed_revision = proposal.proposed_revision
+                WHERE proposal.activity_id = activity.id
+                  AND decision.request_id IS NULL) AS pending_revision_count
+         FROM imported_activities activity
+         JOIN imported_activity_identities identity ON identity.activity_id = activity.id
+         LEFT JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = activity.id
+        WHERE COALESCE(lifecycle.removal_state, identity.removal_state) = 'active'
+        ORDER BY activity.started_at_ms DESC, activity.id`,
+    );
+    return Object.freeze(rows.map((row) => {
+      const projected = projectImportedActivityDetail({
+        activityId: row.activity_id,
+        aggregateJson: row.aggregate_json,
+        aggregateRevision: row.aggregate_revision,
+        acceptedNormalizedSha256: row.accepted_normalized_sha256,
+        removalState: row.removal_state,
+      });
+      if (projected.kind !== "ready") {
+        throw new Error("garmin_history_projection_unavailable");
+      }
+      const summary = [projected.detail.distance, projected.detail.elapsed]
+        .filter((value): value is string => value !== undefined)
+        .join(" · ");
+      return Object.freeze({
+        activityId: row.activity_id,
+        title: projected.detail.activityType,
+        activityType: "Running",
+        confirmedLocalDate: projected.detail.confirmedLocalDate,
+        // A ready projection has passed the required normalized timestamp schema.
+        startedAtMs: projected.detail.startedAtMs!,
+        identityCopy: "Accepted source title unavailable.",
+        summary,
+        matchState: row.match_count === 1 ? "matched" as const : "unmatched" as const,
+        revisionState: row.pending_revision_count > 0
+          ? "needs_review" as const
+          : "accepted" as const,
+      });
+    }));
+  }, [requireServices]);
+
+  const loadLastGarminSync = useCallback(async () => (
+    requireServices().garminSyncSummaries.load()
+  ), [requireServices]);
+
+  const saveLastGarminSync = useCallback((summary: Parameters<GarminImportApplicationPort["saveLastGarminSync"]>[0]) => (
+    requireServices().garminSyncSummaries.save(summary)
+  ), [requireServices]);
+
+  const listGarminRevisionReviews = useCallback(async () => (
+    requireServices().importedActivities.listGarminRevisionReviews()
+  ), [requireServices]);
+
+  const loadGarminRevisionReview = useCallback(async (
+    activityId: string,
+  ): Promise<GarminRevisionReviewDetail | null> => {
+    const localActivityId = parseImportedActivityLocalId(activityId);
+    if (localActivityId === null) {
+      return null;
+    }
+    const [row] = await requireServices().kernel.queryAll<{
+      accepted_revision: number;
+      accepted_aggregate_json: string;
+      proposed_revision: number;
+      proposed_sha256: string;
+      proposed_aggregate_json: string;
+    }>(
+      `SELECT identity.aggregate_revision AS accepted_revision,
+              activity.aggregate_json AS accepted_aggregate_json,
+              proposal.proposed_revision,
+              proposal.normalized_sha256 AS proposed_sha256,
+              proposal.envelope_json AS proposed_aggregate_json
+         FROM imported_activity_revision_proposals proposal
+         JOIN imported_activity_identities identity ON identity.activity_id = proposal.activity_id
+         JOIN imported_activities activity ON activity.id = proposal.activity_id
+         LEFT JOIN imported_activity_revision_decisions decision
+           ON decision.activity_id = proposal.activity_id
+          AND decision.proposed_revision = proposal.proposed_revision
+        WHERE proposal.activity_id = ?
+          AND decision.request_id IS NULL
+        ORDER BY proposal.proposed_revision DESC
+        LIMIT 1`,
+      [localActivityId],
+    );
+    if (row === undefined) {
+      return null;
+    }
+    const accepted = JSON.parse(row.accepted_aggregate_json) as Readonly<{ normalized?: Record<string, unknown> }>;
+    const proposed = JSON.parse(row.proposed_aggregate_json) as Readonly<{ normalized?: Record<string, unknown> }>;
+    const acceptedFacts = accepted.normalized ?? {};
+    const proposedFacts = proposed.normalized ?? {};
+    const keys = [...new Set([...Object.keys(acceptedFacts), ...Object.keys(proposedFacts)])]
+      .filter((key) => canonicalJson(acceptedFacts[key]) !== canonicalJson(proposedFacts[key]))
+      .sort();
+    return Object.freeze({
+      activityId: localActivityId,
+      acceptedRevision: row.accepted_revision,
+      proposedRevision: row.proposed_revision,
+      expectedProposedSha256: row.proposed_sha256,
+      changedFields: Object.freeze(keys.map((field) => Object.freeze({
+        field,
+        accepted: revisionDisplayValue(acceptedFacts[field]),
+        proposed: revisionDisplayValue(proposedFacts[field]),
+      }))),
+    });
+  }, [requireServices]);
+
+  const resolveGarminRevision = useCallback(async (input: GarminRevisionDecisionInput) => (
+    resolveGarminImportRevision(requireServices().importedActivities, input)
+  ), [requireServices]);
+
+  const garminImport = useMemo<GarminImportApplicationPort>(() => Object.freeze({
+    confirmGarminImport,
+    loadGarminActivities,
+    loadLastGarminSync,
+    saveLastGarminSync,
+  }), [confirmGarminImport, loadGarminActivities, loadLastGarminSync, saveLastGarminSync]);
+
+  const loadImportedActivityDetail = useCallback(async (
+    activityId: string,
+    expectedSourceRevision?: number,
+  ): Promise<ImportedActivityDetailReadResult> => {
+    const localActivityId = parseImportedActivityLocalId(activityId);
+    if (localActivityId === null) return Object.freeze({ kind: "missing" });
+    const rows = await requireServices().kernel.queryAll<{
+      activity_id: string;
+      aggregate_json: string;
+      aggregate_revision: number;
+      accepted_normalized_sha256: string;
+      removal_state: "active" | "removed";
+      pending_revision_count: number;
+    }>(
+      `SELECT activity.id AS activity_id, activity.aggregate_json,
+              identity.aggregate_revision, identity.accepted_normalized_sha256,
+              COALESCE(lifecycle.removal_state, identity.removal_state) AS removal_state,
+              (SELECT count(*)
+                 FROM imported_activity_revision_proposals proposal
+                 LEFT JOIN imported_activity_revision_decisions decision
+                   ON decision.activity_id = proposal.activity_id
+                  AND decision.proposed_revision = proposal.proposed_revision
+                WHERE proposal.activity_id = activity.id
+                  AND decision.request_id IS NULL) AS pending_revision_count
+         FROM imported_activities activity
+         JOIN imported_activity_identities identity ON identity.activity_id = activity.id
+         LEFT JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = activity.id
+        WHERE activity.id = ?
+        LIMIT 2`,
+      [localActivityId],
+    );
+    if (rows.length === 0) return Object.freeze({ kind: "missing" });
+    if (rows.length !== 1) {
+      return Object.freeze({ kind: "projection_error", code: "accepted_payload_unavailable" });
+    }
+    const row = rows[0]!;
+    if (expectedSourceRevision !== undefined && row.aggregate_revision !== expectedSourceRevision) {
+      return Object.freeze({ kind: "projection_error", code: "accepted_payload_unavailable" });
+    }
+    if (row.pending_revision_count > 0) {
+      return Object.freeze({ kind: "revision_review" });
+    }
+    return projectImportedActivityDetail({
+      activityId: row.activity_id,
+      aggregateJson: row.aggregate_json,
+      aggregateRevision: row.aggregate_revision,
+      acceptedNormalizedSha256: row.accepted_normalized_sha256,
+      removalState: row.removal_state,
+    });
+  }, [requireServices]);
+
+  const loadRunningActivityMatch = useCallback((activityId: string) =>
+    queryRunningActivityMatchCandidates(requireServices().runningActivityMatches, activityId),
+  [requireServices]);
+
+  const prepareActivityMatchCommand = useCallback(async (input: Readonly<{
+    action: "match" | "unmatch" | "reassign";
+    candidate: RunningActivityMatchCandidate;
+    expectedCurrentOpportunityId?: string;
+  }>): Promise<RunningActivityMatchInput> => {
+    const candidateKey = JSON.stringify([
+      input.action,
+      input.candidate.activityId,
+      input.candidate.expectedActivityRevision,
+      input.candidate.expectedAcceptedPayloadSha256,
+      input.candidate.opportunityId,
+      input.candidate.expectedOpportunityRevision,
+      input.candidate.expectedRelationRevision,
+      input.candidate.scheduleId,
+      input.candidate.scheduleVersionId,
+      input.candidate.expectedScheduleRevision,
+      input.candidate.planDayId,
+      input.candidate.expectedPlanDayRevision,
+      input.candidate.slotId,
+      input.candidate.slotRevisionId,
+      input.candidate.expectedSlotRevision,
+      input.candidate.sessionRevisionId,
+      input.candidate.expectedSessionRevision,
+      input.expectedCurrentOpportunityId ?? null,
+    ]);
+    let prepared = pendingActivityMatchRef.current;
+    if (prepared?.candidateKey !== candidateKey) {
+      const {
+        CryptoDigestAlgorithm,
+        digestStringAsync,
+        randomUUID,
+      } = require("expo-crypto") as typeof import("expo-crypto");
+      prepared = Object.freeze({
+        candidateKey,
+        input: await prepareRunningActivityMatchInput({
+          action: input.action,
+          candidate: input.candidate,
+          requestId: `running-match-${input.action}-${randomUUID()}`,
+          occurredAtMs: dependencies.nowMs(),
+          ...(input.expectedCurrentOpportunityId === undefined
+            ? {}
+            : { expectedCurrentOpportunityId: input.expectedCurrentOpportunityId }),
+        }, (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value)),
+      });
+      pendingActivityMatchRef.current = prepared;
+    }
+    return prepared.input;
+  }, [dependencies]);
+
+  const confirmActivityMatch = useCallback(async (
+    candidate: RunningActivityMatchCandidate,
+  ): Promise<RunningActivityMatchResult> => {
+    const result = await confirmRunningActivityMatch(
+      requireServices().runningActivityMatches,
+      await prepareActivityMatchCommand({
+        action: "match",
+        candidate,
+      }),
+    );
+    pendingActivityMatchRef.current = null;
+    return result;
+  }, [prepareActivityMatchCommand, requireServices]);
+
+  const unmatchActivityMatch = useCallback(async (
+    candidate: RunningActivityMatchCandidate,
+  ): Promise<RunningActivityMatchResult> => {
+    const result = await confirmRunningActivityMatch(
+      requireServices().runningActivityMatches,
+      await prepareActivityMatchCommand({
+        action: "unmatch",
+        candidate,
+        expectedCurrentOpportunityId: candidate.opportunityId,
+      }),
+    );
+    pendingActivityMatchRef.current = null;
+    return result;
+  }, [prepareActivityMatchCommand, requireServices]);
+
+  const reassignActivityMatch = useCallback(async (input: Readonly<{
+    current: RunningActivityMatchCandidate;
+    next: RunningActivityMatchCandidate;
+  }>): Promise<RunningActivityMatchResult> => {
+    const result = await confirmRunningActivityMatch(
+      requireServices().runningActivityMatches,
+      await prepareActivityMatchCommand({
+        action: "reassign",
+        candidate: Object.freeze({
+          ...input.next,
+          expectedRelationRevision: input.current.expectedRelationRevision,
+        }),
+        expectedCurrentOpportunityId: input.current.opportunityId,
+      }),
+    );
+    pendingActivityMatchRef.current = null;
+    return result;
+  }, [prepareActivityMatchCommand, requireServices]);
 
   const loadHistoryCorrectionSession = useCallback((sessionId: string) =>
     requireServices().historyCommandRepository.loadCorrectionSession(sessionId),
@@ -2514,10 +3107,11 @@ export function WorkoutAppRuntimeProvider({
       repository: services.historyCommandRepository,
       command: { ...input, nowMs: dependencies.nowMs() },
     });
+    clearCommittedActionFailure(services);
     await services.lifecycle.trigger("post_commit").catch(() => undefined);
     workoutRefreshGenerationRef.current += 1;
     try {
-      setState(await trustedRead(services));
+      await refreshTodaySelection(services);
     } catch {
       setState((current) => ({
         ...current,
@@ -2525,21 +3119,22 @@ export function WorkoutAppRuntimeProvider({
       }));
     }
     return result;
-  }, [dependencies, requireServices, trustedRead]);
+  }, [dependencies, requireServices, refreshTodaySelection, clearCommittedActionFailure]);
 
   const refreshAfterHistoryLifecycleCommit = useCallback(async () => {
     const services = requireServices();
+    clearCommittedActionFailure(services);
     await services.lifecycle.trigger("post_commit").catch(() => undefined);
     workoutRefreshGenerationRef.current += 1;
     try {
-      setState(await trustedRead(services));
+      await refreshTodaySelection(services);
     } catch {
       setState((current) => ({
         ...current,
         workoutRefreshGeneration: workoutRefreshGenerationRef.current,
       }));
     }
-  }, [requireServices, trustedRead]);
+  }, [requireServices, refreshTodaySelection, clearCommittedActionFailure]);
 
   const removeRuntimeHistorySession = useCallback(async (
     input: Omit<VoidHistorySessionInput, "nowMs">,
@@ -2569,40 +3164,167 @@ export function WorkoutAppRuntimeProvider({
     today: string;
   }>) => {
     return requireServices().historyRepository.loadCalendarMonth(input);
-  }, [requireServices]);
+  }, [requireServices, displayTimeZone]);
+
+  const loadCalendarRange = useCallback((input: Readonly<{
+    startLocalDate: string;
+    endLocalDateExclusive: string;
+  }>) => requireServices().trainingFoundation.loadCalendarRange({ ...input, displayTimeZone }), [
+    requireServices,
+    displayTimeZone,
+  ]);
+
+  const loadPlannedStrengthOccurrence = useCallback((occurrenceId: string) =>
+    requireServices().trainingFoundation.loadPlannedStrengthOccurrence(
+      occurrenceId,
+    ), [requireServices]);
 
   const loadExerciseMetricHistory = useCallback((exerciseId: string) => {
     return requireServices().historyRepository.loadExerciseMetricHistory({
       exerciseId,
     });
-  }, [requireServices]);
+  }, [requireServices, displayTimeZone]);
 
-  const loadProgress = useCallback((input: Readonly<{
+  const loadProgress = useCallback(async (input: Readonly<{
+    sport?: ProgressSport;
     period: ProgressPeriod;
     nowLocalDate: string;
-  }>) => requireServices().progressRepository.load(input), [requireServices]);
+  }>) => {
+    return requireServices().progressRepository.load(input);
+  }, [requireServices, displayTimeZone]);
+
+  const progressRunningTargetRuntime = useMemo(() => Object.freeze({
+    createId: (kind: string) => requireServices().runningPlans.createId(kind),
+    loadPlan: (planId: string) => requireServices().runningPlans.loadPlan(planId),
+    saveRunningTarget: (input: RunningTargetMutationInput) =>
+      requireServices().runningPlans.saveRunningTarget(input),
+  }), [requireServices]);
+
+  const createProgressId = useCallback((kind: string) => {
+    const acceptanceRequest = v12NativeAcceptanceProductRequestRef.current;
+    if (acceptanceRequest?.caseId === "workout.plan-increment" && kind === "recommendation-use") {
+      return v12NativeAcceptanceProductRequestId(acceptanceRequest, kind);
+    }
+    return requireServices().runningPlans.createId(kind);
+  }, [requireServices]);
+
+  const loadProgressBodyweightHistory = useCallback(async (): Promise<readonly ProgressBodyweightEntry[]> => {
+    const services = requireServices();
+    const owners = await services.kernel.queryAll<{ owner_namespace: string }>(
+      "SELECT owner_namespace FROM portable_owner_identity WHERE id = 1",
+    );
+    const ownerId = owners.length === 1 ? owners[0]?.owner_namespace : undefined;
+    if (ownerId === undefined || !/^[A-Za-z0-9._:-]{1,128}$/u.test(ownerId)) {
+      throw new Error("progress_bodyweight_owner_unavailable");
+    }
+    const entries = await services.trainingFoundation.loadBodyweightHistory(ownerId);
+    return Object.freeze(entries
+      .filter(({ lifecycle }) => lifecycle === "active")
+      .map(({ entryId, revision, localDate, grams }) => Object.freeze({
+        entryId,
+        revision,
+        localDate,
+        grams,
+      })));
+  }, [requireServices]);
+
+  const commitProgressBodyweight = useCallback(async (
+    operation: "create" | "edit" | "delete",
+    input: ProgressBodyweightSaveInput | Readonly<{ requestId: string; entryId: string; expectedRevision: number }>,
+  ): Promise<readonly ProgressBodyweightEntry[]> => {
+    const services = requireServices();
+    let command = progressBodyweightCommandsRef.current.get(input.requestId);
+    if (command === undefined) {
+      const owners = await services.kernel.queryAll<{ owner_namespace: string }>(
+        "SELECT owner_namespace FROM portable_owner_identity WHERE id = 1",
+      );
+      const ownerId = owners.length === 1 ? owners[0]?.owner_namespace : undefined;
+      if (ownerId === undefined || !/^[A-Za-z0-9._:-]{1,128}$/u.test(ownerId)) {
+        throw new Error("progress_bodyweight_owner_unavailable");
+      }
+      const context = localContext(dependencies.now());
+      const request = {
+        operation,
+        requestId: input.requestId,
+        entryId: input.entryId,
+        ownerId,
+        expectedRevision: input.expectedRevision,
+        revisionId: createProgressId("bodyweight-revision"),
+        eventId: createProgressId("bodyweight-event"),
+        occurredAtMs: dependencies.nowMs(),
+        ...(operation === "delete" ? {} : {
+          localDate: (input as ProgressBodyweightSaveInput).localDate,
+          timezone: context.timezone,
+          grams: (input as ProgressBodyweightSaveInput).grams,
+        }),
+      } as const;
+      const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+      command = Object.freeze({
+        ...request,
+        requestSha256: await digestStringAsync(
+          CryptoDigestAlgorithm.SHA256,
+          canonicalBodyweightRequestPayload(request),
+        ),
+      });
+      progressBodyweightCommandsRef.current.set(input.requestId, command);
+    }
+    const result = await services.trainingFoundation.commitBodyweight(command);
+    if (result.kind === "conflict") throw new Error("bodyweight_revision_conflict");
+    const readBack = await loadProgressBodyweightHistory();
+    const committedEntry = readBack.find(({ entryId }) => entryId === input.entryId);
+    if ((operation === "delete" && committedEntry !== undefined)
+      || (operation !== "delete" && committedEntry === undefined)) {
+      throw new Error("bodyweight_readback_missing");
+    }
+    progressBodyweightCommandsRef.current.delete(input.requestId);
+    return readBack;
+  }, [createProgressId, dependencies, loadProgressBodyweightHistory, requireServices]);
+
+  const progressBodyweightRuntime = useMemo(() => Object.freeze({
+    createId: createProgressId,
+    loadHistory: loadProgressBodyweightHistory,
+    save: (input: ProgressBodyweightSaveInput) => commitProgressBodyweight(
+      input.expectedRevision === 0 ? "create" : "edit",
+      input,
+    ),
+    delete: (entry: ProgressBodyweightEntry, requestId: string) =>
+      commitProgressBodyweight("delete", {
+        requestId,
+        entryId: entry.entryId,
+        expectedRevision: entry.revision,
+      }),
+  }), [commitProgressBodyweight, createProgressId, loadProgressBodyweightHistory]);
 
   const listRemovedHistorySessions = useCallback(() =>
     requireServices().historyRepository.listRemovedSessions(),
-  [requireServices]);
+  [requireServices, displayTimeZone]);
 
   const loadLibrary = useCallback(async (): Promise<LibraryRuntimeSnapshot> => {
     const services = requireServices();
-    const [sectionPreference, plans, exerciseFilterOptions] = await Promise.all([
-      readLibrarySectionPreference(services.kernel),
-      readLibraryPlans(
-        services.kernel,
-        starterPlansRef.current?.summaries ?? [],
-        starterPlansRef.current?.templates ?? [],
-      ),
-      readLibraryFilterOptions(services.kernel),
-    ]);
-    return Object.freeze({
-      sectionPreference,
-      plans,
-      exerciseFilterOptions,
+    return readLibraryRuntimeSnapshot({
+      kernel: services.kernel,
+      nowMs: dependencies.nowMs,
+      starterPlans: starterPlansRef.current?.summaries ?? [],
+      templates: starterPlansRef.current?.templates ?? [],
     });
   }, [requireServices]);
+
+  const retryLibraryLoad = useCallback(async () => {
+    // Retrying a failed Library load reads the same authoritative source rows;
+    // it is not a product mutation and must not claim a fixture envelope.
+    return loadLibrary();
+  }, [loadLibrary]);
+
+  const deleteLibraryPlan = useCallback<LibraryPlanDeletionPort["deletePlan"]>(async (input) => {
+    const services = requireServices();
+    const result = await createLibraryPlanDeletionPort(services.kernel, {
+      nowMs: dependencies.nowMs,
+    }).deletePlan(input);
+    if (result.outcome === "deleted") {
+      queueTodaySelectionRefresh(services);
+    }
+    return result;
+  }, [dependencies, queueTodaySelectionRefresh, requireServices]);
 
   const loadStarterPlan = useCallback(async (
     templateId: string,
@@ -2654,6 +3376,10 @@ export function WorkoutAppRuntimeProvider({
       bindings: command.bindings,
       copyChoice: command.copyChoice,
     });
+    const requestId = await phase17RequestId(
+      "starter-plan-activation",
+      `starter-ui:${command.templateId}:${activatedAtMs}`,
+    );
     const result = await activateStarterPlan({
       kind: "accepted",
       starterPackBytes: prettyBytes(starterPlansAsset),
@@ -2661,7 +3387,7 @@ export function WorkoutAppRuntimeProvider({
       sha256: (value: string) =>
         digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
       repository: createStarterPlanRepository(services.kernel),
-      requestId: `starter-ui:${command.templateId}:${activatedAtMs}`,
+      requestId,
       activatedAtMs,
       expectedActiveScheduleRevision:
         command.expectedActiveScheduleRevision,
@@ -2687,6 +3413,50 @@ export function WorkoutAppRuntimeProvider({
         },
       })),
     });
+  }, [dependencies, phase17RequestId, requireServices, trustedRead]);
+
+  const createStarterEditableCopy = useCallback(async (
+    templateId: string,
+  ): Promise<string> => {
+    const catalog = starterPlansRef.current;
+    if (catalog === undefined) {
+      throw new Error("starter_catalog_unavailable");
+    }
+    const template = findStarterPlan(catalog, templateId);
+    if (template === null) {
+      throw new Error("starter_template_not_found");
+    }
+    const services = requireServices();
+    const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+    const createdAtMs = dependencies.nowMs();
+    const result = await createStarterPlanCopy({
+      starterPackBytes: `${JSON.stringify(starterPlansAsset, null, 2)}\n`,
+      acceptanceBytes: `${JSON.stringify(starterPlansAcceptanceAsset, null, 2)}\n`,
+      sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+      repository: createStarterPlanRepository(services.kernel),
+      requestId: await phase17RequestId(
+        "starter-editable-copy",
+        `starter-editable-copy:${template.id}:${createdAtMs}`,
+      ),
+      createdAtMs,
+      sourceOwnedPlanId: `starter:${template.id}:r${template.revision}`,
+      expectedSourcePlanRevision: template.revision,
+      expectedActiveScheduleRevision: null,
+      templateId: template.id,
+      templateRevision: template.revision,
+      startLocalDate: localContext(dependencies.now()).localDate,
+      timeZone: localContext(dependencies.now()).timezone,
+      ...suggestedTemplateSchedule(template),
+    });
+    return acknowledgeCommittedRuntimeResult({
+      result,
+      refresh: () => trustedRead(services),
+      onRefreshed: setState,
+      onRefreshFailed: () => setState((current) => ({
+        ...current,
+        actionFailure: { code: "workout_action_failed", correlationCode: "GT-ACTION01" },
+      })),
+    }).then(({ plan }) => plan.id);
   }, [dependencies, requireServices, trustedRead]);
 
   const loadStarterTemplateUpdate = useCallback((input: Readonly<{
@@ -2722,8 +3492,10 @@ export function WorkoutAppRuntimeProvider({
       sha256: (value) =>
         digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
       repository: createStarterPlanRepository(services.kernel),
-      requestId:
+      requestId: await phase17RequestId(
+        "starter-template-update-copy",
         `starter-update-copy:${preview.ownedPlanId}:${preview.template.id}:${createdAtMs}`,
+      ),
       createdAtMs,
       sourceOwnedPlanId: preview.ownedPlanId,
       expectedSourcePlanRevision: preview.ownedPlanRevision,
@@ -2775,9 +3547,12 @@ export function WorkoutAppRuntimeProvider({
       [exerciseId],
     );
     const expectedPreferenceRevision = preference?.revision ?? null;
-    const result = await services.customExerciseRepository.setExerciseFavorite({
-      requestId:
+    const requestId = await phase17RequestId(
+        "exercise-favorite",
         `favorite:${exerciseId}:${favorite ? "on" : "off"}:${expectedPreferenceRevision ?? "new"}`,
+      );
+    const result = await services.customExerciseRepository.setExerciseFavorite({
+      requestId,
       exerciseId,
       expectedPreferenceRevision,
       favorite,
@@ -2788,35 +3563,51 @@ export function WorkoutAppRuntimeProvider({
       favorite: result.favorite,
       preferenceRevision: result.preferenceRevision,
     });
-  }, [dependencies, requireServices]);
+  }, [dependencies, phase17RequestId, requireServices]);
 
-  const createRuntimeCustomExercise = useCallback((
+  const createRuntimeCustomExercise = useCallback(async (
     input: Omit<CreateCustomExerciseInput, "createdAtMs">,
   ) => {
     const services = requireServices();
+    const requestId = await phase17RequestId("custom-exercise-create", input.requestId);
     return createCustomExerciseCommand({
       repository: services.customExerciseRepository,
       invalidate: async () => undefined,
       input: {
         ...input,
+        requestId,
         createdAtMs: dependencies.nowMs(),
       },
     });
-  }, [dependencies, requireServices]);
+  }, [dependencies, phase17RequestId, requireServices]);
 
-  const editRuntimeCustomExercise = useCallback((
+  const editRuntimeCustomExercise = useCallback(async (
     input: Omit<EditCustomExerciseInput, "editedAtMs">,
   ) => {
     const services = requireServices();
+    const requestId = await phase17RequestId("custom-exercise-edit", input.requestId);
     return editCustomExerciseCommand({
       repository: services.customExerciseRepository,
       invalidate: async () => undefined,
       input: {
         ...input,
+        requestId,
         editedAtMs: dependencies.nowMs(),
       },
     });
-  }, [dependencies, requireServices]);
+  }, [dependencies, phase17RequestId, requireServices]);
+
+  const createRuntimeCustomCopy = useCallback(async (
+    input: Omit<CreateCustomCopyInput, "createdAtMs">,
+  ) => {
+    const services = requireServices();
+    const requestId = await phase17RequestId("custom-exercise-copy", input.requestId);
+    return createCustomCopy({
+      repository: services.customExerciseRepository,
+      invalidate: async () => undefined,
+      input: { ...input, requestId, createdAtMs: dependencies.nowMs() },
+    });
+  }, [dependencies, phase17RequestId, requireServices]);
 
   const loadRuntimeCustomExercise = useCallback((
     exerciseId: string,
@@ -2842,17 +3633,18 @@ export function WorkoutAppRuntimeProvider({
     }>,
   ) => {
     const services = requireServices();
+    const requestId = await phase17RequestId("exercise-favorite", services.ownedPlans.createId("exercise-favorite"));
     await setExerciseFavoriteCommand({
       repository: services.customExerciseRepository,
       invalidate: async () => undefined,
       input: {
-        requestId: services.ownedPlans.createId("exercise-favorite"),
+        requestId,
         ...input,
         updatedAtMs: dependencies.nowMs(),
       },
     });
     return requireCustomExerciseDetail(services, input.exerciseId);
-  }, [dependencies, requireCustomExerciseDetail, requireServices]);
+  }, [dependencies, phase17RequestId, requireCustomExerciseDetail, requireServices]);
 
   const setRuntimeCustomExerciseHidden = useCallback(async (
     input: Readonly<{
@@ -2862,11 +3654,15 @@ export function WorkoutAppRuntimeProvider({
     }>,
   ) => {
     const services = requireServices();
+    const requestId = await phase17RequestId(
+      "custom-exercise-hide",
+      services.ownedPlans.createId("exercise-hidden"),
+    );
     await setExerciseHidden({
       repository: services.customExerciseRepository,
       invalidate: async () => undefined,
       input: {
-        requestId: services.ownedPlans.createId("exercise-hidden"),
+        requestId,
         ...input,
         updatedAtMs: dependencies.nowMs(),
       },
@@ -2898,13 +3694,14 @@ export function WorkoutAppRuntimeProvider({
     const command = input.archived
       ? archiveCustomExercise
       : restoreCustomExercise;
+    const requestId = input.archived
+      ? await phase17RequestId("custom-exercise-archive", services.ownedPlans.createId("exercise-archive"))
+      : await phase17RequestId("custom-exercise-reactivate", services.ownedPlans.createId("exercise-restore"));
     await command({
       repository: services.customExerciseRepository,
       invalidate: async () => undefined,
       input: {
-        requestId: services.ownedPlans.createId(
-          input.archived ? "exercise-archive" : "exercise-restore",
-        ),
+        requestId,
         exerciseId: input.exerciseId,
         expectedExerciseRevision: input.expectedExerciseRevision,
         expectedPreferenceRevision: input.expectedPreferenceRevision,
@@ -2913,22 +3710,22 @@ export function WorkoutAppRuntimeProvider({
       },
     });
     return requireCustomExerciseDetail(services, input.exerciseId);
-  }, [dependencies, requireCustomExerciseDetail, requireServices]);
+  }, [dependencies, phase17RequestId, requireCustomExerciseDetail, requireServices]);
 
   const loadRuntimeCustomExerciseMigration = useCallback((
     exerciseId: string,
   ) => readCustomExerciseMigration(requireServices(), exerciseId),
   [requireServices]);
 
-  const migrateRuntimeCustomExerciseProfile = useCallback((
+  const migrateRuntimeCustomExerciseProfile = useCallback(async (
     input: Omit<MigrateCustomExerciseMetricProfileInput, "migratedAtMs">,
-  ) => migrateCustomExerciseMetricProfile({
-    repository: createMetricRepository(requireServices().kernel),
-    input: {
-      ...input,
-      migratedAtMs: dependencies.nowMs(),
-    },
-  }), [dependencies, requireServices]);
+  ) => {
+    const idempotencyKey = await phase17RequestId("custom-exercise-metric-migration", input.idempotencyKey);
+    return migrateCustomExerciseMetricProfile({
+      repository: createMetricRepository(requireServices().kernel),
+      input: { ...input, idempotencyKey, migratedAtMs: dependencies.nowMs() },
+    });
+  }, [dependencies, phase17RequestId, requireServices]);
 
   const runOwnedPlanMutation = useCallback(async (
     mutation: (
@@ -2941,23 +3738,29 @@ export function WorkoutAppRuntimeProvider({
       result.outcome === "committed"
       || result.outcome === "already_committed"
     ) {
-      setState(await trustedRead(services));
+      queueTodaySelectionRefresh(services);
     }
     return result;
-  }, [requireServices, trustedRead]);
+  }, [queueTodaySelectionRefresh, requireServices]);
 
-  const createOwnedDraft = useCallback((
+  const createOwnedDraft = useCallback(async (
     input: Readonly<{ name: string; dayName: string }>,
-  ) => runOwnedPlanMutation((ownedPlans) => ownedPlans.createDraft(input)),
-  [runOwnedPlanMutation]);
+  ) => {
+    const services = requireServices();
+    const requestId = await phase17RequestId("owned-plan-create", services.ownedPlans.createId("owned-plan-create"));
+    return runOwnedPlanMutation((ownedPlans) => ownedPlans.createDraft({ ...input, requestId }));
+  }, [phase17RequestId, requireServices, runOwnedPlanMutation]);
 
-  const saveOwnedDraft = useCallback((
+  const saveOwnedDraft = useCallback(async (
     input: Readonly<{
       expectedRevision: number;
       plan: OwnedPlanDraftInput;
     }>,
-  ) => runOwnedPlanMutation((ownedPlans) => ownedPlans.savePlan(input)),
-  [runOwnedPlanMutation]);
+  ) => {
+    const services = requireServices();
+    const requestId = await phase17RequestId("owned-plan-save", services.ownedPlans.createId("owned-plan-save"));
+    return runOwnedPlanMutation((ownedPlans) => ownedPlans.savePlan({ ...input, requestId }));
+  }, [phase17RequestId, requireServices, runOwnedPlanMutation]);
 
   const duplicateOwnedDraft = useCallback((
     input: Readonly<{
@@ -2965,13 +3768,19 @@ export function WorkoutAppRuntimeProvider({
       expectedRevision: number;
       name: string;
     }>,
-  ) => runOwnedPlanMutation((ownedPlans) => ownedPlans.duplicatePlan(input)),
+  ) => runOwnedPlanMutation((ownedPlans) => ownedPlans.duplicatePlan({
+    ...input,
+    requestId: ownedPlans.createId("owned-plan-duplicate"),
+  })),
   [runOwnedPlanMutation]);
 
-  const archiveOwnedDraft = useCallback((
+  const archiveOwnedDraft = useCallback(async (
     input: Readonly<{ planId: string; expectedRevision: number }>,
-  ) => runOwnedPlanMutation((ownedPlans) => ownedPlans.archivePlan(input)),
-  [runOwnedPlanMutation]);
+  ) => {
+    const services = requireServices();
+    const requestId = await phase17RequestId("owned-plan-lifecycle", services.ownedPlans.createId("owned-plan-archive"));
+    return runOwnedPlanMutation((ownedPlans) => ownedPlans.archivePlan({ ...input, requestId }));
+  }, [phase17RequestId, requireServices, runOwnedPlanMutation]);
 
   const restoreOwnedDraft = useCallback((
     input: Readonly<{ planId: string; expectedRevision: number }>,
@@ -2992,10 +3801,10 @@ export function WorkoutAppRuntimeProvider({
       result.outcome === "committed"
       || result.outcome === "already_committed"
     ) {
-      setState(await trustedRead(services));
+      queueTodaySelectionRefresh(services);
     }
     return result;
-  }, [requireServices, trustedRead]);
+  }, [queueTodaySelectionRefresh, requireServices]);
 
   const previewOwnedExerciseReplacement = useCallback((
     input: Readonly<{ planId: string; occurrenceId: string }>,
@@ -3011,16 +3820,25 @@ export function WorkoutAppRuntimeProvider({
       result.outcome === "committed"
       || result.outcome === "already_committed"
     ) {
-      setState(await trustedRead(services));
+      queueTodaySelectionRefresh(services);
     }
     return result;
-  }, [requireServices, trustedRead]);
+  }, [queueTodaySelectionRefresh, requireServices]);
 
   const reconcileAfterCommit = useCallback((
     services: RuntimeServices,
     foregroundExpiry?: Readonly<{ sessionId: string; restRevision: number }>,
   ) => {
-    void (async () => {
+    const restGeneration = foregroundExpiry === undefined
+      ? ++restReconciliationGenerationRef.current
+      : null;
+    const isSuperseded = () => restGeneration !== null
+      && restGeneration !== restReconciliationGenerationRef.current;
+    // Native notification and durable effect work is serialized independently
+    // of command acknowledgement. Every pass reads the latest authoritative
+    // rest state; a failed pass leaves its transactional effects replayable.
+    postCommitReconciliationQueueRef.current = postCommitReconciliationQueueRef.current.then(async () => {
+      if (servicesRef.current !== services || isSuperseded()) return;
       const sessionIds = await services.restRepository.listActiveSessionIds()
         .catch(() => []);
       const hasRunningRest = (
@@ -3036,17 +3854,22 @@ export function WorkoutAppRuntimeProvider({
         permission = await services.notifications.requestPermission()
           .catch(() => "denied" as const);
       }
+      if (servicesRef.current !== services || isSuperseded()) return;
       const lifecycleResult = await services.lifecycle.trigger("post_commit", {
         ...(foregroundExpiry === undefined ? {} : { foregroundExpiry }),
       })
         .catch(() => null);
-      workoutRefreshGenerationRef.current += 1;
-      setState((current) => ({
-        ...current,
-        notificationPermission: lifecycleResult?.permission ?? permission,
-        workoutRefreshGeneration: workoutRefreshGenerationRef.current,
-      }));
-    })();
+      if (servicesRef.current !== services) return;
+      // RestCommandResult already updates the timer and Today rest status.
+      // Reloading the full workout/progress tree here would reintroduce lag.
+      setState((current) => current.notificationPermission === (lifecycleResult?.permission ?? permission)
+        && current.workoutRefreshGeneration === workoutRefreshGenerationRef.current
+        ? current : {
+          ...current,
+          notificationPermission: lifecycleResult?.permission ?? permission,
+          workoutRefreshGeneration: workoutRefreshGenerationRef.current,
+        });
+    }).catch(() => undefined);
   }, []);
 
   const runRestCommand = useCallback((
@@ -3056,28 +3879,58 @@ export function WorkoutAppRuntimeProvider({
     ) => Promise<RestCommandResult>,
   ): Promise<RestCommandResult> => {
     const services = requireServices();
-    return command(services.restRepository).then(async (result) => {
+    const committed = restCommandQueueRef.current.then(async () => {
+      if (servicesRef.current !== services) throw new Error("workout_runtime_not_trusted");
+      const result = await command(services.restRepository);
+      if (servicesRef.current !== services) return result;
+      committedWorkoutRevisionsRef.current.set(sessionId, Math.max(
+        committedWorkoutRevisionsRef.current.get(sessionId) ?? -1,
+        result.sessionRevision,
+      ));
+      workoutSummaryGenerationRef.current += 1;
+      // The repository resolves only after its exclusive transaction commits.
+      // Use that acknowledgement directly, keeping unrelated reads and effect
+      // adapters off the rest-control path. Expected revisions are never rebased.
+      setState((current) => current.view?.state === "active_workout"
+        && current.view.sessionId === sessionId && current.view.restStatus !== result.state.state
+        ? { ...current, view: { ...current.view, restStatus: result.state.state } }
+        : current);
       reconcileAfterCommit(services, result.state.state === "expired"
         ? { sessionId, restRevision: result.state.revision }
         : undefined);
-      try {
-        setState(await trustedRead(services));
-      } catch {
-        setState((current) => ({
-          ...current,
-          actionFailure: {
-            code: "workout_action_failed",
-            correlationCode: "GT-ACTION01",
-          },
-        }));
-      }
       return result;
     });
-  }, [reconcileAfterCommit, requireServices, trustedRead]);
+    restCommandQueueRef.current = committed.then(() => undefined, () => undefined);
+    return committed;
+  }, [reconcileAfterCommit, requireServices]);
 
   const openRestNotificationSettings = useCallback(() => {
     return requireServices().notifications.openSettings();
   }, [requireServices]);
+
+  const refreshPreciseRestAlarms = useCallback((): Promise<void> => {
+    const services = requireServices();
+    const refresh = postCommitReconciliationQueueRef.current.then(async () => {
+      if (servicesRef.current !== services) return;
+      const sessionIds = await services.restRepository.listActiveSessionIds();
+      for (const sessionId of sessionIds) {
+        const context = await services.restRepository.getRestContext(sessionId);
+        if (context?.state.state !== "running"
+          || context.state.endsAtMs <= dependencies.nowMs()) continue;
+        await services.notifications.cancel(`rest:${sessionId}`);
+      }
+      if (servicesRef.current !== services) return;
+      // Reconciliation reads the latest SQLite rest, rather than replaying a
+      // previously captured native notification. Later mutations queue after
+      // this pass and replace its derivative with their newer saved deadline.
+      const result = await services.lifecycle.trigger("post_commit");
+      if (result.outcomes?.some(({ outcome }) => outcome === "platform_failure")) {
+        throw new Error("precise_rest_alarm_refresh_failed");
+      }
+    });
+    postCommitReconciliationQueueRef.current = refresh.catch(() => undefined);
+    return refresh;
+  }, [dependencies, requireServices]);
 
   const readRestAlertPreferences = useCallback(() =>
     requireServices().restAlertPreferenceStore.read(), [requireServices]);
@@ -3175,7 +4028,7 @@ export function WorkoutAppRuntimeProvider({
       const running = (await Promise.all(sessionIds.map(async (sessionId) => {
         const context = await services.restRepository.getRestContext(sessionId);
         return context?.state.state === "running"
-          ? { context, sessionId }
+          ? { context: { ...context, state: context.state }, sessionId }
           : null;
       }))).filter((candidate): candidate is NonNullable<typeof candidate> => (
         candidate !== null
@@ -3183,14 +4036,8 @@ export function WorkoutAppRuntimeProvider({
       if (running.length !== 1) {
         return "runtime_contract_unavailable";
       }
-      const candidate = running[0];
-      if (candidate === undefined) {
-        return "runtime_contract_unavailable";
-      }
+      const candidate = running[0]!;
       const { context, sessionId } = candidate;
-      if (context.state.state !== "running") {
-        return "runtime_contract_unavailable";
-      }
       const expired = await services.restRepository.expireRestWithForegroundFeedback?.({
         sessionId,
         expectedSessionRevision: context.sessionRevision,
@@ -3273,21 +4120,29 @@ export function WorkoutAppRuntimeProvider({
       skipRest({ repository, input })),
   [runRestCommand]);
 
-  const expireWorkoutRest = useCallback((input: RestRevisionInput) => {
-    const services = requireServices();
-    const preferences = services.restAlertPreferenceStore.read();
-    const appState = (require("react-native") as typeof import("react-native"))
-      .AppState.currentState;
-    if (appState === "background" || appState === "inactive") {
-      return runRestCommand(input.sessionId, (repository) =>
-        expireRest({ repository, input }));
-    }
-    return runRestCommand(input.sessionId, (repository) =>
-      expireRestWithForegroundFeedback({
+  const expireWorkoutRest = useCallback((input: RestRevisionInput & Readonly<{
+    foregroundCountdownTone?: true;
+  }>) => runRestCommand(input.sessionId, (repository) => {
+      const { foregroundCountdownTone, ...revisionInput } = input;
+      const appState = (require("react-native") as typeof import("react-native"))
+        .AppState.currentState;
+      if (appState === "background" || appState === "inactive") {
+        return expireRest({ repository, input: revisionInput });
+      }
+      const preferences = requireServices().restAlertPreferenceStore.read();
+      return expireRestWithForegroundFeedback({
         repository,
-        input: { ...input, preferences },
-      }));
-  }, [requireServices, runRestCommand]);
+        input: {
+          ...revisionInput,
+          // The dock dispatched its foreground long-cue attempt before expiry.
+          // Keep the durable feedback/vibration claim, with that tone owned by
+          // the countdown. Background notifications retain saved preferences.
+          preferences: foregroundCountdownTone === true
+            ? { ...preferences, soundEnabled: false }
+            : preferences,
+        },
+      });
+    }), [requireServices, runRestCommand]);
 
   const runWorkoutMutation = useCallback(async (
     mutation: (
@@ -3311,21 +4166,12 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw error;
     }
-    try {
-      setState(await trustedRead(services));
-    } catch {
-      setState((current) => ({
-        ...current,
-        actionFailure: {
-          code: "workout_action_failed",
-          correlationCode: "GT-ACTION01",
-        },
-      }));
-    }
+    publishCommittedWorkout(services, view);
+    reconcileAfterCommit(services);
     return committedSetId === undefined
       ? view
       : Object.freeze({ ...view, committedSetId });
-  }, [requireServices, trustedRead]);
+  }, [publishCommittedWorkout, reconcileAfterCommit, requireServices]);
 
   const runWorkoutRemoval = useCallback(async (
     input: RemoveWarmupInput | RemoveWorkingSetInput,
@@ -3354,8 +4200,7 @@ export function WorkoutAppRuntimeProvider({
     let activeView: ActiveWorkoutView;
     try {
       activeView = await services.workoutRepository.getActiveWorkout(input.sessionId);
-      workoutRefreshGenerationRef.current += 1;
-      setState(await trustedRead(services));
+      publishCommittedWorkout(services, activeView);
     } catch {
       workoutRefreshGenerationRef.current += 1;
       setState((current) => ({
@@ -3374,7 +4219,56 @@ export function WorkoutAppRuntimeProvider({
       });
     }
     return activeView;
-  }, [reconcileAfterCommit, requireServices, trustedRead]);
+  }, [publishCommittedWorkout, reconcileAfterCommit, requireServices]);
+
+  const runExerciseEdit = useCallback(async (
+    input: ReplaceExerciseInput | RemoveExerciseInput,
+    mutation: (
+      repository: ReturnType<typeof createWorkoutRepository>,
+    ) => Promise<ReplaceExerciseResult | RemoveExerciseResult>,
+  ): Promise<ActiveWorkoutView | CommittedExerciseEditRefreshFailure> => {
+    const services = requireServices();
+    let committed: ReplaceExerciseResult | RemoveExerciseResult;
+    try {
+      committed = await mutation(services.workoutRepository);
+    } catch (error) {
+      const failure = mapWorkoutMutationFailure(error);
+      setState((current) => ({
+        ...current,
+        actionFailure: {
+          code: "workout_action_failed",
+          correlationCode: "GT-ACTION01",
+        },
+        mutationFailure: failure,
+      }));
+      throw error;
+    }
+    reconcileAfterCommit(services);
+
+    try {
+      const activeView = await services.workoutRepository.getActiveWorkout(
+        input.sessionId,
+      );
+      publishCommittedWorkout(services, activeView);
+      return activeView;
+    } catch {
+      workoutRefreshGenerationRef.current += 1;
+      setState((current) => ({
+        ...current,
+        actionFailure: {
+          code: "workout_action_failed",
+          correlationCode: "GT-ACTION01",
+        },
+        workoutRefreshGeneration: workoutRefreshGenerationRef.current,
+      }));
+      return Object.freeze({
+        outcome: "committed_refresh_failed",
+        sessionId: committed.sessionId,
+        sessionExerciseId: committed.sessionExerciseId,
+        sessionRevision: committed.sessionRevision,
+      });
+    }
+  }, [publishCommittedWorkout, reconcileAfterCommit, requireServices]);
 
   const updateDraft = useCallback((input: UpdateActiveSetDraftInput) =>
     runWorkoutMutation((repository) =>
@@ -3399,6 +4293,106 @@ export function WorkoutAppRuntimeProvider({
       input.setId,
     ) as Promise<CommittedWorkoutMutationResult>,
   [runWorkoutMutation]);
+
+  const addWorkoutExercise = useCallback(async (input: AddExerciseInput) => {
+    const services = requireServices();
+    let result: AddExerciseResult;
+    try {
+      result = await addExercise({
+        repository: services.workoutRepository,
+        input,
+      });
+    } catch (error) {
+      const failure = mapWorkoutMutationFailure(error);
+      setState((current) => ({
+        ...current,
+        actionFailure: {
+          code: "workout_action_failed",
+          correlationCode: "GT-ACTION01",
+        },
+        mutationFailure: failure,
+      }));
+      throw error;
+    }
+    workoutRefreshGenerationRef.current += 1;
+    try {
+      const context = localContext(dependencies.now());
+      const view = await services.repository.getTodayView({ localDate: context.localDate, weekday: context.weekday });
+      publishStartedWorkout(services, view);
+    } catch {
+      setState((current) => ({
+        ...current,
+        actionFailure: {
+          code: "workout_action_failed",
+          correlationCode: "GT-ACTION01",
+        },
+        workoutRefreshGeneration: workoutRefreshGenerationRef.current,
+      }));
+    }
+    return result;
+  }, [dependencies, publishStartedWorkout, requireServices]);
+
+  const replaceWorkoutExercise = useCallback((input: ReplaceExerciseInput) =>
+    runExerciseEdit(input, (repository) => replaceExercise({
+      repository,
+      input,
+    })),
+  [runExerciseEdit]);
+
+  const removeWorkoutExercise = useCallback((input: RemoveExerciseInput) =>
+    runExerciseEdit(input, (repository) => removeExercise({
+      repository,
+      input,
+    })),
+  [runExerciseEdit]);
+
+  const reorderWorkoutExercises = useCallback(async (
+    input: ReorderExercisesInput,
+  ): Promise<ActiveWorkoutView | CommittedExerciseReorderRefreshFailure> => {
+    const services = requireServices();
+    let committed: ReorderExercisesResult;
+    try {
+      committed = await reorderExercises({
+        repository: services.workoutRepository,
+        input,
+      });
+    } catch (error) {
+      const failure = mapWorkoutMutationFailure(error);
+      setState((current) => ({
+        ...current,
+        actionFailure: {
+          code: "workout_action_failed",
+          correlationCode: "GT-ACTION01",
+        },
+        mutationFailure: failure,
+      }));
+      throw error;
+    }
+    reconcileAfterCommit(services);
+
+    try {
+      const activeView = await services.workoutRepository.getActiveWorkout(
+        input.sessionId,
+      );
+      publishCommittedWorkout(services, activeView);
+      return activeView;
+    } catch {
+      workoutRefreshGenerationRef.current += 1;
+      setState((current) => ({
+        ...current,
+        actionFailure: {
+          code: "workout_action_failed",
+          correlationCode: "GT-ACTION01",
+        },
+        workoutRefreshGeneration: workoutRefreshGenerationRef.current,
+      }));
+      return Object.freeze({
+        outcome: "committed_refresh_failed",
+        sessionId: committed.sessionId,
+        sessionRevision: committed.sessionRevision,
+      });
+    }
+  }, [publishCommittedWorkout, reconcileAfterCommit, requireServices]);
 
   const removeWorkoutWarmup = useCallback((input: RemoveWarmupInput) =>
     runWorkoutRemoval(input, (repository) => removeWarmup({ repository, input })),
@@ -3433,61 +4427,66 @@ export function WorkoutAppRuntimeProvider({
     return completeSet({
       repository: services.workoutRepository,
       haptics: createExpoHapticsAdapter(),
-      invalidate: async () => {
-        try {
-          setState(await trustedRead(services));
-        } catch {
-          setState((current) => ({
-            ...current,
-            actionFailure: {
-              code: "workout_action_failed",
-              correlationCode: "GT-ACTION01",
-            },
-          }));
-        }
-      },
-      drainEffects: async () => {
-        reconcileAfterCommit(services);
-      },
+      invalidate: async () => undefined,
+      drainEffects: async () => { reconcileAfterCommit(services); },
       input,
+    }).then((result) => {
+      publishCommittedWorkout(services, result.view);
+      return result;
     });
-  }, [reconcileAfterCommit, requireServices, trustedRead]);
+  }, [publishCommittedWorkout, reconcileAfterCommit, requireServices]);
+
+  const updateWorkoutSessionExerciseDefaultRest = useCallback(
+    async (input: UpdateSessionExerciseDefaultRestInput) => {
+      const result = await runWorkoutMutation(
+        (repository) => {
+          if (repository.updateSessionExerciseDefaultRest === undefined) {
+            throw new Error("session_exercise_default_rest_unavailable");
+          }
+          return repository.updateSessionExerciseDefaultRest(input);
+        },
+      );
+      return result as ActiveWorkoutView;
+    },
+    [runWorkoutMutation],
+  );
+
+  const readWorkoutPreferences = useCallback((planId: string) =>
+    requireServices().workoutPreferenceRepository.read(planId), [requireServices]);
+
+  const setWorkoutPreferences = useCallback(async (input: WorkoutPreferenceWrite) => {
+    const services = requireServices();
+    const saved = await services.workoutPreferenceRepository.write(input);
+    reconcileAfterCommit(services);
+    return saved;
+  }, [reconcileAfterCommit, requireServices]);
 
   const undoWorkoutSet = useCallback((input: UndoCompletedSetInput) => {
     const services = requireServices();
     return undoCompletedSet({
       repository: services.workoutRepository,
       input,
-    }).then(async (result) => {
+    }).then((result) => {
       if (result.outcome === "undone") {
+        publishCommittedWorkout(services, result.view);
         reconcileAfterCommit(services);
-        try {
-          setState(await trustedRead(services));
-        } catch {
-          setState((current) => ({
-            ...current,
-            actionFailure: {
-              code: "workout_action_failed",
-              correlationCode: "GT-ACTION01",
-            },
-          }));
-        }
       }
       return result;
     });
-  }, [reconcileAfterCommit, requireServices, trustedRead]);
+  }, [publishCommittedWorkout, reconcileAfterCommit, requireServices]);
 
   const runOutcomeMutation = useCallback(async <Result,>(
     mutation: (
-      repository: ReturnType<typeof createWorkoutOutcomeRepository>,
+      repository: RuntimeOutcomeRepository,
     ) => Promise<Result>,
   ): Promise<Result> => {
     const services = requireServices();
     const result = await mutation(services.outcomeRepository);
+    clearCommittedActionFailure(services);
     await services.lifecycle.trigger("post_commit").catch(() => undefined);
     workoutRefreshGenerationRef.current += 1;
     try {
-      setState(await trustedRead(services));
+      await refreshTodaySelection(services);
     } catch {
       setState((current) => ({
         ...current,
@@ -3499,7 +4498,7 @@ export function WorkoutAppRuntimeProvider({
       }));
     }
     return result;
-  }, [requireServices, trustedRead]);
+  }, [requireServices, refreshTodaySelection, clearCommittedActionFailure]);
 
   const finishWorkoutCompleted = useCallback(async (
     input: FinishCompletedInput,
@@ -3512,6 +4511,67 @@ export function WorkoutAppRuntimeProvider({
     ).catch(() => null);
     return result;
   }, [requireServices, runOutcomeMutation]);
+
+  const previewCompletedPlanWriteBack = useCallback((sessionId: string) =>
+    previewCompletedWorkoutPlanWriteBack({
+      port: requireServices().ownedPlans,
+      sessionId,
+    }),
+  [requireServices]);
+
+  const applyCompletedPlanWriteBack = useCallback(async (
+    state: CompletedWorkoutPlanWriteBackChoiceState,
+  ) => {
+    const services = requireServices();
+    let retryState: CompletedWorkoutPlanWriteBackState = state;
+    if (state.state === "save_failed" && state.failure.kind === "stale") {
+      try {
+        retryState = await previewCompletedWorkoutPlanWriteBack({
+          port: services.ownedPlans,
+          sessionId: state.preview.sourceSessionId,
+        });
+      } catch {
+        return {
+          state: "save_failed",
+          preview: state.preview,
+          failure: {
+            kind: "failed",
+            code: "session_write_back_preview_failed",
+          },
+        } satisfies CompletedWorkoutPlanWriteBackState;
+      }
+    }
+    if (retryState.state !== "awaiting_choice"
+      && retryState.state !== "save_failed") {
+      return retryState;
+    }
+    // The domain command translates repository failures into a retryable
+    // save_failed state; do not duplicate that failure boundary here.
+    const result = await applyCompletedWorkoutPlanWriteBack({
+      port: services.ownedPlans,
+      state: beginCompletedWorkoutPlanWriteBack(retryState),
+    });
+    if (result.state === "completed" && result.disposition === "saved") {
+      workoutRefreshGenerationRef.current += 1;
+      try {
+        setState(await trustedRead(services));
+      } catch {
+        setState((current) => ({
+          ...current,
+          actionFailure: {
+            code: "workout_action_failed",
+            correlationCode: "GT-ACTION01",
+          },
+          workoutRefreshGeneration: workoutRefreshGenerationRef.current,
+        }));
+      }
+    }
+    return result;
+  }, [requireServices, trustedRead]);
+
+  const keepCompletedPlanAsIs = useCallback((
+    state: CompletedWorkoutPlanWriteBackChoiceState,
+  ) => keepCompletedWorkoutPlanAsIs(state), []);
 
   const finishWorkoutPartial = useCallback((input: FinishPartialInput) =>
     runOutcomeMutation((repository) =>
@@ -3572,45 +4632,666 @@ export function WorkoutAppRuntimeProvider({
     recordExerciseEffort({ repository, input }),
   ), [runOutcomeMutation]);
 
+  const commitRecommendationDecision = useCallback(async (
+    recommendationId: string,
+    decision: RecommendationDecision,
+  ): Promise<RecommendationDecisionResult> => {
+    const fences = await requireServices().kernel.queryAll<{
+      evidence_version: number;
+      source_revision: number;
+      target_revision: number;
+      status: string;
+    }>(
+      `SELECT evidence_version, source_revision, target_revision, status
+         FROM progression_recommendations WHERE id = ?
+       UNION ALL
+       SELECT evidence_version, source_revision, target_revision, status
+         FROM owned_progression_recommendations WHERE id = ?`,
+      [recommendationId, recommendationId],
+    );
+    const fence = fences.length === 1 ? fences[0] : undefined;
+    if (fence === undefined
+      || !["pending", "accepted", "rejected", "superseded"].includes(fence.status)
+      || !Number.isSafeInteger(fence.evidence_version)
+      || fence.evidence_version < 1
+      || !Number.isSafeInteger(fence.source_revision)
+      || fence.source_revision < 1
+      || !Number.isSafeInteger(fence.target_revision)
+      || fence.target_revision < 1) {
+      throw new Error("recommendation_revision_fence_unavailable");
+    }
+    const command: RecommendationDecisionInput = Object.freeze({
+      recommendationId,
+      requestId: createProgressId(`recommendation-${decision === "use_target" ? "use" : "keep"}`),
+      decision,
+      expectedEvidenceVersion: fence.evidence_version,
+      expectedSourceRevision: fence.source_revision,
+      expectedTargetRevision: fence.target_revision,
+      decidedAtMs: dependencies.nowMs(),
+    });
+    return runOutcomeMutation((repository) => decision === "use_target"
+      ? acceptRecommendation({ repository, input: command })
+      : keepCurrentTarget({ repository, input: command }));
+  }, [createProgressId, dependencies, requireServices, runOutcomeMutation]);
+
   const acceptWorkoutRecommendation = useCallback(
-    (recommendationId: string) => runOutcomeMutation((repository) =>
-      acceptRecommendation({
-        repository,
-        input: {
-          recommendationId,
-          decidedAtMs: dependencies.nowMs(),
-        },
-      }),
-    ),
-    [dependencies, runOutcomeMutation],
+    (recommendationId: string) => commitRecommendationDecision(recommendationId, "use_target"),
+    [commitRecommendationDecision],
   );
 
   const keepWorkoutTarget = useCallback(
-    (recommendationId: string) => runOutcomeMutation((repository) =>
-      keepCurrentTarget({
-        repository,
-        input: {
-          recommendationId,
-          decidedAtMs: dependencies.nowMs(),
+    (recommendationId: string) => commitRecommendationDecision(recommendationId, "keep_current_target"),
+    [commitRecommendationDecision],
+  );
+
+  const decideProgressRecommendation = useCallback(async (
+    recommendation: ProgressRecommendationReview,
+    decision: RecommendationDecision,
+  ): Promise<RecommendationDecisionResult> => {
+    if (recommendation.lifecycle !== "pending") {
+      throw new Error("recommendation_no_longer_actionable");
+    }
+    return commitRecommendationDecision(recommendation.id, decision);
+  }, [commitRecommendationDecision]);
+
+  const progressRecommendationRuntime = useMemo(() => Object.freeze({
+    decide: decideProgressRecommendation,
+  }), [decideProgressRecommendation]);
+
+  const phase17ActionEnvelopeSource = useCallback(() => {
+    if (!phase17NativeContractEnabled()) throw new Error("phase17_action_envelope_unavailable");
+    if (phase17ActionEnvelopeSourceRef.current !== null) return phase17ActionEnvelopeSourceRef.current;
+    const services = requireServices();
+    const { default: Constants } = require("expo-constants") as typeof import("expo-constants");
+    phase17ActionEnvelopeSourceRef.current = createPhase17ActionEnvelopeSource({
+      contracts: PHASE17_CASE_ACTION_CONTRACTS,
+      identity: () => ({
+        packageName: Constants.expoConfig?.android?.package ?? Constants.expoConfig?.ios?.bundleIdentifier,
+        buildProfile: Constants.expoConfig?.extra?.buildProfile,
+        nativeContractsEnabled: Constants.expoConfig?.extra?.nativeContractsEnabled === true,
+        suite: Constants.expoConfig?.extra?.nativeContractSuite,
+      }),
+      store: {
+        read: async () => {
+          const [row] = await services.kernel.queryAll<Readonly<{ value_json: string }>>("SELECT value_json FROM app_settings WHERE key = ?", [PHASE17_ACTION_ENVELOPE_SETTING_KEY]);
+          if (row === undefined) return null;
+          try { return JSON.parse(row.value_json); } catch { throw new Error("phase17_action_envelope_invalid"); }
+        },
+        write: async (context) => {
+          await services.kernel.write((transaction) => transaction.execute(
+            `INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms)
+             VALUES (?, 1, ?, 1, ?)
+             ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json,
+               revision = app_settings.revision + 1, updated_at_ms = excluded.updated_at_ms`,
+            [PHASE17_ACTION_ENVELOPE_SETTING_KEY, JSON.stringify(context), dependencies.nowMs()],
+          ));
+        },
+        clear: async (context) => {
+          const result = await services.kernel.write((transaction) => transaction.execute(
+            "DELETE FROM app_settings WHERE key = ? AND value_json = ?",
+            [PHASE17_ACTION_ENVELOPE_SETTING_KEY, JSON.stringify(context)],
+          ));
+          if (result.changes !== 1) throw new Error("phase17_action_envelope_clear_token_mismatch");
+        },
+      },
+    });
+    return phase17ActionEnvelopeSourceRef.current;
+  }, [dependencies, requireServices]);
+
+  const phase17FixtureProtocol = useCallback(() => {
+    if (!phase17NativeContractEnabled()) throw new Error("phase17_fixture_unavailable");
+    if (phase17FixtureProtocolRef.current !== null) return phase17FixtureProtocolRef.current;
+    const services = requireServices();
+    const { CryptoDigestAlgorithm, digestStringAsync, randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
+    const { default: Constants } = require("expo-constants") as typeof import("expo-constants");
+    const fixtureSetupIds = createPhase17FixtureSetupIdentityFactory({
+      identity: () => ({
+        packageName: Constants.expoConfig?.android?.package ?? Constants.expoConfig?.ios?.bundleIdentifier,
+        buildProfile: Constants.expoConfig?.extra?.buildProfile,
+        nativeContractsEnabled: Constants.expoConfig?.extra?.nativeContractsEnabled === true,
+        suite: Constants.expoConfig?.extra?.nativeContractSuite,
+      }),
+    });
+    assertPhase17FamilyARegistry(PHASE17_CASE_ACTION_CONTRACTS);
+    assertPhase17FamilyBRegistry(PHASE17_CASE_ACTION_CONTRACTS);
+    assertPhase17FamilyCRegistry(PHASE17_CASE_ACTION_CONTRACTS);
+    const physicalTable = (sourceTable: string) => ({
+      library_view_state: "app_settings", library_action_state: "app_settings", plan_create_intent: "plans",
+      owned_plans: "plans",
+      exercise_search_index: "exercise_search_terms", exercise_preferences: "exercise_owner_preferences",
+      owned_plan_lifecycle_receipts: "owned_plan_mutation_requests", owned_plan_revisions: "plans",
+      plan_schedule_slots: "owned_plan_schedules", plan_exercise_replacements: "owned_plan_mutation_requests",
+      plan_day_revisions: "plan_days", custom_exercises: "exercises",
+      custom_exercise_metric_migrations: "metric_profile_migration_events",
+      library_load_receipts: "app_settings", starter_plan_catalog: "starter_plan_sources",
+      starter_plan_activations: "starter_plan_activation_requests", template_update_receipts: "starter_plan_copy_requests",
+      exercise_instruction_sets: "exercise_instruction_sets",
+      running_plan_aggregates: "running_plans", running_plan_revisions: "running_goals",
+      running_session_revisions: "running_session_revisions", running_session_slots: "running_session_slots",
+      running_plan_receipts: "running_plan_receipts",
+    } as Readonly<Record<string, string>>)[sourceTable] ?? sourceTable;
+    phase17FixtureProtocolRef.current = createPhase17FixtureProtocol({
+      contracts: PHASE17_CASE_ACTION_CONTRACTS,
+      createToken: () => `phase17:${randomUUID().replace(/[^a-z0-9-]/gu, "")}`,
+      adapter: createPhase17FamilyFixtureAdapter({
+        baselineDigest: async () => (await collectPhase14SourceStateProofFromKernel({ kernel: services.kernel, sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value) })).digest_sha256,
+        canonicalHash: async (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, JSON.stringify(value, Object.keys(value).sort())),
+        finalizeCleanup: async (input) => {
+          const contract = PHASE17_CASE_ACTION_CONTRACTS.find(({ id }) => id === input.caseId);
+          if (contract === undefined) throw new Error("phase17_fixture_case_invalid");
+          if (contract.proofMode === "mutating") {
+            await phase17ActionEnvelopeSource().clear(input);
+          }
+          // This awaited no-op write drains the kernel's serialized write queue
+          // after family cleanup and test-control deletion before digesting.
+          await services.kernel.write(async () => undefined);
+        },
+        familyB: createPhase17FamilyBFixtureDriver({
+          kernel: services.kernel,
+          running: createRunningPlanRuntimePort(services.kernel, {
+            nowMs: dependencies.nowMs,
+            randomUUID,
+            sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+          }),
+          sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+        }),
+        familyC: createPhase17FamilyCFixtureDriver({
+          kernel: services.kernel,
+          graph: {
+            setupGraph: async (fixtureToken, choice) => {
+              const suffix = `${fixtureToken.slice("phase17:".length)}:${choice}`;
+              const runningPlanId = `phase17:running-plan:${suffix}`;
+              const strength = await services.ownedPlans.createFixtureDraft({
+                requestId: `phase17:fixture:collision-strength:${suffix}:setup`,
+                planId: `phase17:collision-strength-plan:${suffix}`,
+                dayId: `phase17:collision-strength-day:${suffix}`,
+                name: "Phase 17 collision Strength",
+                dayName: "Fixture day",
+              });
+              if (strength.outcome !== "committed") throw new Error("phase17_collision_strength_create_failed");
+              const runningPort = createRunningPlanRuntimePort(services.kernel, { nowMs: dependencies.nowMs, randomUUID, sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value) });
+              const now = dependencies.nowMs();
+              let running = await runningPort.createInactivePlan({ plan: {
+                version: 1, id: runningPlanId, name: "Phase 17 collision Running", revision: 1, createdAtMs: now,
+                goal: { version: 1, id: `phase17:running-goal:${suffix}`, planId: runningPlanId, revision: 1, goalDistanceMeters: 5_000, targetDurationMs: 1_800_000, trainingDays: ["Monday"], runsPerWeek: 1, longRunDay: "Monday", currentWeeklyDistanceMeters: 10_000, createdAtMs: now }, sessions: [],
+              } });
+              running = (await runningPort.saveSession({ planId: running.id, expectedPlanRevision: running.revision, requestId: `phase17:collision-recovery:${suffix}`, session: { sessionKind: "recovery", weekday: "Monday", phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 1_800_000 }] }], advisoryTarget: { rpe: 4 }, contextual: {} } })).plan;
+              const runningScheduleId = `phase17:collision-running-schedule:${suffix}`;
+              const runningVersionId = `phase17:collision-running-version:${suffix}`;
+              const strengthScheduleId = `phase17:collision-strength-schedule:${suffix}`;
+              const strengthVersionId = `phase17:collision-strength-version:${suffix}`;
+              const runningOpportunityId = `phase17:collision-running-opportunity:${suffix}`;
+              const strengthOpportunityId = `phase17:collision-strength-opportunity:${suffix}`;
+              const localDate = "2026-11-09";
+              const slot = running.sessions[0];
+              if (slot === undefined) throw new Error("phase17_collision_running_readback_missing");
+              await services.kernel.write(async (transaction) => {
+                await transaction.execute("INSERT INTO owned_plan_schedules (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms, plan_kind) VALUES (?, ?, 'active', 1, ?, NULL, 'running')", [runningScheduleId, runningPlanId, now]);
+                await transaction.execute("INSERT INTO owned_plan_schedule_versions (id, schedule_id, version_number, effective_local_date, mode, timezone, rotation_pointer, created_at_ms) VALUES (?, ?, 1, ?, 'weekday', 'Asia/Singapore', NULL, ?)", [runningVersionId, runningScheduleId, localDate, now]);
+                await transaction.execute("INSERT INTO owned_plan_schedules (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms, plan_kind) VALUES (?, ?, 'active', 1, ?, NULL, 'strength')", [strengthScheduleId, strength.plan.id, now]);
+                await transaction.execute("INSERT INTO owned_plan_schedule_versions (id, schedule_id, version_number, effective_local_date, mode, timezone, rotation_pointer, created_at_ms) VALUES (?, ?, 1, ?, 'weekday', 'Asia/Singapore', NULL, ?)", [strengthVersionId, strengthScheduleId, localDate, now]);
+                await transaction.execute("INSERT INTO owned_plan_schedule_opportunities (id, schedule_id, schedule_version_id, local_date, source, plan_day_id, state, outcome, session_id, revision, consumed_at_ms) VALUES (?, ?, ?, ?, 'weekday', ?, 'pending', NULL, NULL, 1, NULL)", [strengthOpportunityId, strengthScheduleId, strengthVersionId, localDate, strength.plan.days[0]!.id]);
+                await transaction.execute("INSERT INTO running_opportunities (id, plan_id, schedule_id, schedule_version_id, slot_id, local_date, timezone, session_revision_id, state, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, 'Asia/Singapore', ?, 'planned', ?)", [runningOpportunityId, runningPlanId, runningScheduleId, runningVersionId, slot.slot.id, localDate, slot.session.id, now]);
+              });
+              return Object.freeze({ choice, runningPlanId, strengthPlanId: strength.plan.id, runningOpportunityId, strengthOpportunityId, runningScheduleId, strengthScheduleId, localDate });
+            },
+            cleanupGraph: async (graph) => {
+              await services.kernel.write(async (transaction) => {
+                await transaction.execute("DELETE FROM owned_plan_schedule_opportunities WHERE id = ?", [graph.strengthOpportunityId]);
+                await transaction.execute("DELETE FROM running_opportunities WHERE id = ?", [graph.runningOpportunityId]);
+                await transaction.execute("DELETE FROM owned_plan_schedule_versions WHERE schedule_id IN (?, ?)", [graph.runningScheduleId, graph.strengthScheduleId]);
+                await transaction.execute("DELETE FROM owned_plan_schedules WHERE id IN (?, ?)", [graph.runningScheduleId, graph.strengthScheduleId]);
+                await transaction.execute("DELETE FROM running_plan_events WHERE plan_id = ?", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM running_plan_receipts WHERE plan_id = ?", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM running_goals WHERE plan_id = ?", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM running_session_slot_revisions WHERE slot_root_id IN (SELECT id FROM running_session_slot_roots WHERE plan_id = ?)", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM running_session_slots WHERE plan_id = ?", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM running_session_slot_roots WHERE plan_id = ?", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM running_session_revisions WHERE plan_id = ?", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM running_session_roots WHERE plan_id = ?", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM running_plans WHERE plan_id = ?", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM plans WHERE id = ?", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM owned_plan_aggregate_states WHERE plan_id = ?", [graph.strengthPlanId]);
+                await transaction.execute("DELETE FROM plan_days WHERE plan_id = ?", [graph.strengthPlanId]);
+                await transaction.execute("DELETE FROM plans WHERE id = ?", [graph.strengthPlanId]);
+              });
+            },
+            sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+            nowMs: dependencies.nowMs,
+          },
+        }),
+        familyA: {
+          selectorSchema: (caseId, proofMode) => phase17FamilyASelectorSchema(caseId, proofMode),
+        seed: async (caseId, fixtureToken, sourceTable) => {
+          const contract = PHASE17_CASE_ACTION_CONTRACTS.find(({ id }) => id === caseId);
+          if (contract === undefined) throw new Error("phase17_fixture_case_invalid");
+          fixtureSetupIds.begin(fixtureToken);
+          try {
+          const owned = await services.ownedPlans.createFixtureDraft({
+            requestId: fixtureSetupIds.requestId("owned-plan-create"),
+            planId: fixtureSetupIds.ownedPlanId(),
+            dayId: fixtureSetupIds.ownedPlanDayId(),
+            name: `Phase17 ${caseId}`,
+            dayName: "Fixture day",
+          });
+          if (owned.outcome === "requires_schedule_impact") throw new Error("phase17_fixture_seed_failed");
+          const customId = fixtureSetupIds.customExerciseId();
+          const custom = await createCustomExerciseCommand({
+            repository: services.customExerciseRepository,
+            invalidate: async () => undefined,
+            input: {
+              requestId: fixtureSetupIds.requestId("custom-exercise-create"),
+              exerciseId: customId,
+              name: `Phase17 exercise ${caseId}`, aliases: ["Phase17"], exerciseType: "strength",
+              movementClass: "compound", primaryMuscles: ["quadriceps"], secondaryMuscles: [], equipment: ["barbell"],
+              metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 }, defaultRestSeconds: 60,
+              createdAtMs: dependencies.nowMs(),
+            },
+          });
+          const fixtureDay = owned.plan.days[0];
+          if (fixtureDay === undefined) throw new Error("phase17_fixture_seed_failed");
+          const suffix = fixtureToken.slice("phase17:".length);
+          const enriched = await services.ownedPlans.savePlan({
+            requestId: fixtureSetupIds.requestId("owned-plan-save"),
+            expectedRevision: owned.plan.revision,
+            plan: {
+              id: owned.plan.id,
+              name: owned.plan.name,
+              days: [{
+                id: fixtureDay.id,
+                name: fixtureDay.name,
+                ordinal: fixtureDay.ordinal,
+                occurrences: [{
+                  id: `phase17:owned-plan-occurrence:${suffix}`,
+                  exerciseId: custom.exercise.exerciseId,
+                  ordinal: 0,
+                  restSeconds: 60,
+                  metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 },
+                  warmups: [{ id: `phase17:owned-plan-warmup:${suffix}`, ordinal: 0, loadGrams: 10_000, reps: 5 }],
+                  targets: [{
+                    id: `phase17:owned-plan-target:${suffix}`,
+                    ordinal: 0,
+                    target: { profile: "load_reps", version: 1, loadGrams: 20_000, minReps: 8, maxReps: 12, incrementGrams: 2_500, perSide: false },
+                    units: { version: 1, load: "grams", count: "repetitions" },
+                  }],
+                  policy: {
+                    id: `phase17:owned-plan-policy:${suffix}`,
+                    kind: "manual_hold",
+                    policyId: "manual-hold-v1",
+                    version: 1,
+                    rule: { kind: "manual_hold", id: "manual-hold-v1", version: 1 },
+                  },
+                }],
+              }],
+            },
+          });
+          if (enriched.outcome === "requires_schedule_impact") throw new Error("phase17_fixture_seed_failed");
+          const [row, bundled, starter] = await Promise.all([
+            services.kernel.queryAll<Readonly<{ id: string; revision: number; is_active: number }>>(
+            "SELECT id, revision, is_active FROM plans WHERE id = ? AND name = ?",
+            [owned.plan.id, `Phase17 ${caseId}`],
+            ),
+            services.kernel.queryAll<Readonly<{ exercise_id: string }>>("SELECT exercise_id FROM exercise_library_entries ORDER BY exercise_id LIMIT 1"),
+            services.kernel.queryAll<Readonly<{ template_id: string }>>("SELECT template_id FROM starter_plan_sources ORDER BY template_id LIMIT 1"),
+          ]);
+          const plan = row[0]; const bundledExerciseId = bundled[0]?.exercise_id; const starterTemplateId = starter[0]?.template_id;
+          if (plan === undefined || bundledExerciseId === undefined || starterTemplateId === undefined || custom.exercise.exerciseId !== customId) throw new Error("phase17_fixture_seed_failed");
+          const actionReceiptId = contract.proofMode === "mutating" ? phase17FixtureActionReceiptId(caseId, fixtureToken) : null;
+          const selectors = Object.freeze({ ownedPlanId: plan.id, customExerciseId: custom.exercise.exerciseId, bundledExerciseId, starterTemplateId });
+          const actionInputs = Object.freeze(actionReceiptId === null ? {} : { phase17ActionReceiptId: actionReceiptId });
+          const facts = Object.freeze({ caseId, fixtureToken, ownedPlanId: plan.id, customExerciseId: custom.exercise.exerciseId, bundledExerciseId, starterTemplateId, sourceTable: physicalTable(sourceTable) });
+          const expectedPostState = actionReceiptId === null ? facts : Object.freeze({ caseId, fixtureToken, ownedPlanId: plan.id, customExerciseId: custom.exercise.exerciseId, bundledExerciseId, starterTemplateId, sourceTable: physicalTable(sourceTable), actionReceiptId, action: contract.action });
+          return Object.freeze({ selectors, actionInputs, expectedPreState: facts, expectedPostState, actionReceiptId });
+          } finally {
+            fixtureSetupIds.end(fixtureToken);
+          }
+        },
+        probe: async (caseId, fixtureToken, sourceTable, selectors) => {
+          const contract = PHASE17_CASE_ACTION_CONTRACTS.find(({ id }) => id === caseId);
+          if (contract === undefined) throw new Error("phase17_fixture_case_invalid");
+          const table = physicalTable(sourceTable);
+          const customExerciseId = selectors.customExerciseId;
+          const bundledExerciseId = selectors.bundledExerciseId;
+          const ownedPlanId = selectors.ownedPlanId;
+          const starterTemplateId = selectors.starterTemplateId;
+          if (customExerciseId === undefined || bundledExerciseId === undefined || ownedPlanId === undefined || starterTemplateId === undefined) throw new Error("phase17_fixture_selector_invalid");
+          const actionReceiptId = contract.proofMode === "mutating" ? phase17FixtureActionReceiptId(caseId, fixtureToken) : undefined;
+          const requireCommittedJson = (value: string) => {
+            try {
+              const parsed = JSON.parse(value) as { outcome?: unknown };
+              if (parsed.outcome !== "committed") throw new Error("invalid");
+              return parsed;
+            } catch {
+              throw new Error("phase17_family_a_action_receipt_missing");
+            }
+          };
+          let rowCount = 0;
+          if (contract.proofMode === "read_only") {
+            const rows = await (async () => {
+              switch (table) {
+                case "plans": return services.kernel.queryAll("SELECT id FROM plans WHERE id = ? AND origin IN ('custom', 'copied')", [ownedPlanId]);
+                case "exercises": return services.kernel.queryAll("SELECT id FROM exercises WHERE id = ? AND origin = 'custom'", [customExerciseId]);
+                case "exercise_search_terms": return services.kernel.queryAll("SELECT exercise_id FROM exercise_search_terms WHERE exercise_id = ?", [bundledExerciseId]);
+                case "exercise_owner_preferences": return services.kernel.queryAll("SELECT exercise_id FROM exercise_owner_preferences WHERE exercise_id = ?", [bundledExerciseId]);
+                case "exercise_instruction_sets": return services.kernel.queryAll("SELECT exercise_id FROM exercise_instruction_sets WHERE exercise_id = ?", [bundledExerciseId]);
+                case "starter_plan_sources": return services.kernel.queryAll("SELECT template_id FROM starter_plan_sources WHERE template_id = ?", [starterTemplateId]);
+                default: throw new Error("phase17_fixture_table_unseeded");
+              }
+            })();
+            if (rows.length !== 1) throw new Error("phase17_fixture_probe_failed");
+            rowCount = rows.length;
+          }
+          const customReceiptKind = ({
+            "library.exercise-favorites": "favorite",
+            "library.custom-exercise": "archive",
+            "library.create-exercise": "create",
+          } as Readonly<Record<string, string>>)[caseId];
+          if (customReceiptKind !== undefined && actionReceiptId !== undefined) {
+            const [receipt] = await services.kernel.queryAll<Readonly<{
+              mutation_kind: string;
+              request_json: string;
+              result_json: string;
+            }>>(
+              `SELECT mutation_kind, request_json, result_json
+               FROM custom_exercise_mutation_receipts
+               WHERE request_id = ?`,
+              [actionReceiptId],
+            );
+            if (receipt === undefined || receipt.mutation_kind !== customReceiptKind
+              || !receipt.request_json.includes(actionReceiptId)) {
+              throw new Error("phase17_family_a_action_receipt_missing");
+            }
+            const result = requireCommittedJson(receipt.result_json) as {
+              exercise?: { exerciseId?: unknown; revision?: unknown };
+              exerciseId?: unknown;
+              preferenceRevision?: unknown;
+            };
+            const exerciseId = result.exercise?.exerciseId ?? result.exerciseId;
+            if (typeof exerciseId !== "string") throw new Error("phase17_family_a_action_receipt_missing");
+            const request = JSON.parse(receipt.request_json) as { expectedExerciseRevision?: unknown };
+            const exerciseRevision = result.exercise?.revision
+              ?? (typeof request.expectedExerciseRevision === "number" ? request.expectedExerciseRevision + 1 : undefined);
+            if (customReceiptKind === "favorite" && !Number.isSafeInteger(result.preferenceRevision)) throw new Error("phase17_family_a_action_receipt_missing");
+            if (customReceiptKind !== "favorite" && !Number.isSafeInteger(exerciseRevision)) throw new Error("phase17_family_a_action_receipt_missing");
+            const entities = customReceiptKind === "favorite"
+              ? await services.kernel.queryAll("SELECT exercise_id FROM exercise_owner_preferences WHERE exercise_id = ? AND revision = ?", [exerciseId, result.preferenceRevision as number])
+              : await services.kernel.queryAll("SELECT id FROM exercises WHERE id = ? AND revision = ?", [exerciseId, exerciseRevision as number]);
+            if (entities.length !== 1) throw new Error("phase17_family_a_action_receipt_missing");
+            rowCount = entities.length;
+          }
+          if (caseId === "library.copy-metric-migration" && actionReceiptId !== undefined) {
+            const [receipt] = await services.kernel.queryAll<Readonly<{
+              exercise_id: string;
+              to_exercise_metric_generation: number;
+              exercise_revision: number;
+              result_json: string;
+            }>>(
+              `SELECT exercise_id, to_exercise_metric_generation, exercise_revision, result_json FROM metric_profile_migration_events
+               WHERE idempotency_key = ?`,
+              [actionReceiptId],
+            );
+            if (receipt === undefined) {
+              throw new Error("phase17_family_a_action_receipt_missing");
+            }
+            requireCommittedJson(receipt.result_json);
+            const entities = await services.kernel.queryAll("SELECT id FROM exercises WHERE id = ? AND revision = ? AND exercise_metric_generation = ?", [receipt.exercise_id, receipt.exercise_revision, receipt.to_exercise_metric_generation]);
+            if (entities.length !== 1) throw new Error("phase17_family_a_action_receipt_missing");
+            rowCount = entities.length;
+          }
+          if (["library.true-no-plans", "library.owned-lifecycle", "library.create-strength", "library.plan-editor"].includes(caseId) && actionReceiptId !== undefined) {
+            const [receipt] = await services.kernel.queryAll<Readonly<{ operation: string; result_plan_id: string; result_revision: number; result_json: string }>>(
+              "SELECT operation, result_plan_id, result_revision, result_json FROM owned_plan_mutation_requests WHERE request_id = ?",
+              [actionReceiptId],
+            );
+            const expectedOperation = caseId === "library.owned-lifecycle"
+              ? "archive"
+              : caseId === "library.true-no-plans"
+                ? "create"
+                : "save";
+            if (receipt === undefined || receipt.operation !== expectedOperation) throw new Error("phase17_family_a_action_receipt_missing");
+            requireCommittedJson(receipt.result_json);
+            const entities = await services.kernel.queryAll(
+              caseId === "library.owned-lifecycle"
+                ? "SELECT plan.id FROM plans plan JOIN owned_plan_aggregate_states state ON state.plan_id = plan.id WHERE plan.id = ? AND plan.revision = ? AND plan.origin IN ('custom', 'copied') AND state.lifecycle = 'archived'"
+                : "SELECT id FROM plans WHERE id = ? AND revision = ? AND origin IN ('custom', 'copied')",
+              [receipt.result_plan_id, receipt.result_revision],
+            );
+            if (entities.length !== 1) throw new Error("phase17_family_a_action_receipt_missing");
+            rowCount = entities.length;
+          }
+          if (caseId === "library.starter-activation" && actionReceiptId !== undefined) {
+            const [receipt] = await services.kernel.queryAll<Readonly<{ result_plan_id: string; result_schedule_id: string; result_json: string }>>(
+              "SELECT result_plan_id, result_schedule_id, result_json FROM starter_plan_activation_requests WHERE request_id = ?",
+              [actionReceiptId],
+            );
+            if (receipt === undefined) throw new Error("phase17_family_a_action_receipt_missing");
+            requireCommittedJson(receipt.result_json);
+            const entities = await services.kernel.queryAll("SELECT plan.id FROM plans plan JOIN owned_plan_schedules schedule ON schedule.plan_id = plan.id WHERE plan.id = ? AND plan.is_active = 1 AND schedule.id = ? AND schedule.lifecycle = 'active' AND plan.revision >= 1 AND schedule.revision >= 1", [receipt.result_plan_id, receipt.result_schedule_id]);
+            if (entities.length !== 1) throw new Error("phase17_family_a_action_receipt_missing");
+            rowCount = entities.length;
+          }
+          if (["library.schedule-editor", "library.replacement-impact", "library.day-removal-impact"].includes(caseId) && actionReceiptId !== undefined) {
+            const eventId = caseId === "library.schedule-editor" ? `schedule-command:${actionReceiptId}` : `plan-impact-command:${actionReceiptId}`;
+            const [event] = await services.kernel.queryAll<Readonly<{ schedule_id: string; schedule_revision: number; local_date: string | null; payload_json: string }>>(
+              "SELECT schedule_id, schedule_revision, local_date, payload_json FROM owned_plan_schedule_events WHERE id = ?",
+              [eventId],
+            );
+            if (event === undefined || event.local_date === null) throw new Error("phase17_family_a_action_receipt_missing");
+            const payload = JSON.parse(event.payload_json) as { result?: { outcome?: unknown; planId?: unknown; planRevision?: unknown; scheduleRevision?: unknown } };
+            if (payload.result?.outcome !== "committed" || typeof payload.result.planId !== "string" || typeof payload.result.planRevision !== "number" || !Number.isSafeInteger(payload.result.planRevision) || payload.result.scheduleRevision !== event.schedule_revision) throw new Error("phase17_family_a_action_receipt_missing");
+            const entities = await services.kernel.queryAll("SELECT plan.id FROM plans plan JOIN owned_plan_schedules schedule ON schedule.plan_id = plan.id WHERE plan.id = ? AND plan.revision = ? AND schedule.id = ? AND schedule.revision = ?", [payload.result.planId, payload.result.planRevision, event.schedule_id, event.schedule_revision]);
+            if (entities.length !== 1) throw new Error("phase17_family_a_action_receipt_missing");
+            rowCount = entities.length;
+          }
+          const facts = contract.proofMode === "mutating"
+            ? Object.freeze({ caseId, fixtureToken, ownedPlanId, customExerciseId, bundledExerciseId, starterTemplateId, sourceTable: table, actionReceiptId, action: contract.action })
+            : Object.freeze({ caseId, fixtureToken, ownedPlanId, customExerciseId, bundledExerciseId, starterTemplateId, sourceTable: table });
+          if (rowCount !== 1) throw new Error("phase17_family_a_action_receipt_missing");
+          return Object.freeze({ rowCount, identityHash: await digestStringAsync(CryptoDigestAlgorithm.SHA256, `${fixtureToken}:${table}:${JSON.stringify(facts)}`), facts });
+        },
+        cleanup: async (caseId, fixtureToken, selectors) => {
+          const ownedPlanId = selectors.ownedPlanId;
+          const customExerciseId = selectors.customExerciseId;
+          if (ownedPlanId === undefined || customExerciseId === undefined) throw new Error("phase17_fixture_selector_invalid");
+          const manifest = createPhase17FamilyACleanupManifest(caseId, fixtureToken, { ownedPlanId, customExerciseId });
+          await cleanupPhase17FamilyAManifest(services.kernel, manifest);
+        },
         },
       }),
-    ),
-    [dependencies, runOutcomeMutation],
-  );
+    });
+    return phase17FixtureProtocolRef.current;
+  }, [requireServices]);
 
   const value = useMemo<RuntimeValue>(() => ({
     ...state,
+    nowMs: dependencies.nowMs,
+    runningPlanRuntime: state.launchState === "trusted"
+      ? requireServices().runningPlans
+      : null,
+    garminImport,
     actOnToday: (action) => requireServices().schedules.actOnToday(action),
     acceptRecommendation: acceptWorkoutRecommendation,
     activateAcceptedStarterPlan: activateAcceptedStarter,
+    createStarterEditableCopy,
     activatePlan,
+    addExercise: addWorkoutExercise,
     addWarmup: addWorkoutWarmup,
     addWorkingSet: addWorkoutWorkingSet,
     adjustRest: adjustWorkoutRest,
     completeSet: completeWorkoutSet,
+    updateSessionExerciseDefaultRest: updateWorkoutSessionExerciseDefaultRest,
+    readWorkoutPreferences,
+    setWorkoutPreferences,
     completeWarmup: completeWorkoutWarmup,
+    collectPhase14SourceStateProof: () => {
+      if (!phase14NativeRecoveryFixtureEnabled()) {
+        return Promise.reject(new Error("phase14_source_state_proof_unavailable"));
+      }
+      const {
+        CryptoDigestAlgorithm,
+        digestStringAsync,
+      } = require("expo-crypto") as typeof import("expo-crypto");
+      return collectPhase14SourceStateProofFromKernel({
+        kernel: requireServices().kernel,
+        sha256: (value) =>
+          digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+      });
+    },
+    collectPhase20QualitySourceProof: () => {
+      if (!phase20QualitySourceProofEnabled()) {
+        return Promise.reject(new Error("phase20_quality_source_proof_unavailable"));
+      }
+      const {
+        CryptoDigestAlgorithm,
+        digestStringAsync,
+      } = require("expo-crypto") as typeof import("expo-crypto");
+      return collectPhase20QualityWorkloadProof({
+        kernel: requireServices().kernel,
+        sha256: (value) =>
+          digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+      });
+    },
+    prepareV12NativeAcceptanceProductCase: async (request) => {
+      if (!phase20QualitySourceProofEnabled()) {
+        throw new Error("v12_native_acceptance_executor_unavailable");
+      }
+      const services = requireServices();
+      v12NativeAcceptanceProductRequestRef.current = request;
+      const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+      const prepared = await prepareV12NativeAcceptanceProductCaseFromKernel({
+        kernel: services.kernel,
+        request,
+        sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+        prepareOperation: ({ contract, request: operationRequest }) =>
+          prepareV12NativeAcceptanceProductionOperation({
+            kernel: services.kernel,
+            contract,
+            request: operationRequest,
+            runtime: {
+              running: services.runningPlans,
+              ownedPlans: services.ownedPlans,
+              customExercises: services.customExerciseRepository,
+            },
+          }),
+      });
+      v12NativeAcceptancePreparedProductCases.set(
+        `${request.shard}:${request.caseId}:${request.nonce}`,
+        prepared,
+      );
+      setState(await trustedRead(services));
+      return prepared;
+    },
+    readV12NativeAcceptanceReceipt: async (request) => {
+      if (!phase20QualitySourceProofEnabled()) {
+        throw new Error("v12_native_acceptance_executor_unavailable");
+      }
+      const key = `${request.shard}:${request.caseId}:${request.nonce}`;
+      const preparedProductCase = v12NativeAcceptancePreparedProductCases.get(key);
+      if (preparedProductCase === undefined) {
+        throw new Error("v12_native_acceptance_prepared_case_missing");
+      }
+      const services = requireServices();
+      const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+      const readbacks = await readV12NativeAcceptanceReceiptFromKernel({
+        kernel: services.kernel,
+        request,
+        preparedProductCase,
+        sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+      });
+      v12NativeAcceptancePreparedProductCases.delete(key);
+      v12NativeAcceptanceProductRequestRef.current = null;
+      return readbacks;
+    },
+    triggerPhase20ProgressRebuild: async () => {
+      if (!phase20QualitySourceProofEnabled()) {
+        throw new Error("phase20_quality_progress_rebuild_unavailable");
+      }
+      await requireServices().kernel.write((transaction) => transaction.execute(
+        "UPDATE history_projection_freshness SET applied_revision = applied_revision - 1 WHERE applied_revision > 0",
+      ));
+    },
+    collectPhase17SourceStateProof: () => {
+      if (!phase17NativeContractEnabled()) {
+        return Promise.reject(new Error("phase17_source_state_proof_unavailable"));
+      }
+      const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+      return collectPhase14SourceStateProofFromKernel({
+        kernel: requireServices().kernel,
+        sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+      });
+    },
+    setupPhase17Fixture: async (caseId) => {
+      const fixture = await phase17FixtureProtocol().setup(caseId);
+      if (fixture.actionReceiptId !== null) {
+        const cleanupManifest = isPhase17FamilyACaseId(fixture.caseId)
+          ? createPhase17FamilyACleanupManifest(fixture.caseId, fixture.fixtureToken, {
+            ownedPlanId: fixture.selectors.ownedPlanId!,
+            customExerciseId: fixture.selectors.customExerciseId!,
+          })
+          : undefined;
+        await phase17ActionEnvelopeSource().activate({
+          caseId: fixture.caseId,
+          fixtureToken: fixture.fixtureToken,
+          envelopes: phase17ActionEnvelopePlan(fixture.caseId, fixture.fixtureToken),
+          ...(cleanupManifest === undefined ? {} : { cleanupManifest }),
+        });
+      }
+      return fixture;
+    },
+    probePhase17Fixture: (input) => phase17FixtureProtocol().probe(input),
+    cleanupPhase17Fixture: async (input) => {
+      if (PHASE17_CASE_ACTION_CONTRACTS.some(({ id, proofMode }) => id === input.caseId && proofMode === "mutating")) {
+        const source = phase17ActionEnvelopeSource();
+        await source.assertConsumed(input);
+        if (isPhase17FamilyACaseId(input.caseId)) {
+          const cleanupManifest = createPhase17FamilyACleanupManifest(input.caseId, input.fixtureToken, {
+            ownedPlanId: `phase17:owned-plan:${input.fixtureToken.slice("phase17:".length)}`,
+            customExerciseId: `phase17:custom:${input.fixtureToken.slice("phase17:".length)}`,
+          });
+          await source.updateCleanupManifest({
+            ...input,
+            cleanupManifest: await materializePhase17FamilyACleanupManifest(requireServices().kernel, cleanupManifest),
+          });
+        }
+      }
+      return phase17FixtureProtocol().cleanup(input);
+    },
+    hydratePhase17ActionEnvelopes: async (input) => {
+      const active = await phase17ActionEnvelopeSource().hydrate();
+      if (active === null || active.caseId !== input.caseId || active.fixtureToken !== input.fixtureToken) {
+        throw new Error("phase17_action_envelope_token_mismatch");
+      }
+      return true;
+    },
+    createPhase17ActionRequestId: async (label, productionRequestId) => {
+      if (!phase17NativeContractEnabled()) return productionRequestId;
+      const source = phase17ActionEnvelopeSourceRef.current;
+      if (source === null) throw new Error("phase17_action_envelope_missing");
+      const requestId = await source.reserveCached(label);
+      if (requestId === null) throw new Error("phase17_action_envelope_missing");
+      return requestId;
+    },
     createSecureBackup: (input) =>
       requireServices().backupCommands.createSecureBackup(input),
+    connectAutomaticBackup: () => runAutomaticBackupCommand((runtime) => runtime.connect()),
+    deferAutomaticRestore: () => runAutomaticBackupCommand((runtime) => runtime.deferRestore()),
+    cancelAutomaticBackupCheck: () => runAutomaticBackupCommand((runtime) => runtime.cancelChecking()),
+    checkAutomaticBackupAgain: () => runAutomaticBackupCommand((runtime) => runtime.checkAgain()),
+    continueAutomaticRestore: () => runAutomaticBackupCommand((runtime) => runtime.continueRestore()),
+    reviewAutomaticRecovery: (input) => runAutomaticBackupCommand((runtime) => runtime.prepareRecovery(input)),
+    commitAutomaticRecovery: (input) => runAutomaticBackupCommand((runtime) => runtime.commitRecovery(input)),
+    cancelAutomaticRecovery: (attemptId) => runAutomaticBackupCommand((runtime) => runtime.cancelRecovery(attemptId)),
+    finishAutomaticBackupSetup: () => runAutomaticBackupCommand((runtime) => runtime.finishSetup()),
+    requestAutomaticBackupNow: () => runAutomaticBackupCommand((runtime) => runtime.backupNow()),
+    retryAutomaticBackup: () => runAutomaticBackupCommand((runtime) => runtime.retryBackup()),
+    useAutomaticBackupCellularThisTime: () => runAutomaticBackupCommand((runtime) => runtime.useCellularThisTime()),
+    dismissAutomaticBackupCellularConfirmation: () => runAutomaticBackupCommand((runtime) => runtime.dismissCellularConfirmation()),
+    setAutomaticBackupDataUsePolicy: (policy) => runAutomaticBackupCommand((runtime) => runtime.setDataUsePolicy(policy)),
+    takeOverAutomaticBackup: () => runAutomaticBackupCommand((runtime) => runtime.takeOver()),
+    disconnectAutomaticBackup: () => runAutomaticBackupCommand((runtime) => runtime.disconnect()),
+    deleteAutomaticCloudBackup: () => runAutomaticBackupCommand((runtime) => runtime.deleteCloudBackup()),
+    finishDeletingAutomaticCloudBackup: () => runAutomaticBackupCommand((runtime) => runtime.finishDeletingCloudBackup()),
+    startNewAutomaticCloudBackup: () => runAutomaticBackupCommand((runtime) => runtime.startNewCloudBackup()),
     createCsvExport: async () => {
       const services = requireServices();
       return services.csvFiles.writeCsv(
@@ -3622,6 +5303,22 @@ export function WorkoutAppRuntimeProvider({
     discardCsvExport: (handle) => requireServices().csvFiles.discardCsv(handle),
     preflightSecureRestore: (input) =>
       requireServices().restoreCommands.preflightSecureRestore(input),
+    preflightSecureMerge: (input) =>
+      requireServices().mergeCommands.preflightSecureMerge(input),
+    commitSecureMerge: async (input) => {
+      const services = requireServices();
+      await services.mergeCommands.commitSecureMerge(input);
+      const result = services.reconcileRestore === undefined
+        ? { outcome: "retryable_failure" as const }
+        : await services.reconcileRestore();
+      return {
+        state: result.outcome === "rebuilt" || result.outcome === "already_ready"
+          ? "ready" as const
+          : "rebuild_pending" as const,
+      };
+    },
+    invalidateSecureMergePreflight: (token) =>
+      requireServices().mergeCommands.invalidateSecureMergePreflight(token),
     invalidateSecureRestorePreflight: (token) =>
       requireServices().restoreCommands.invalidateSecureRestorePreflight(token),
     commitSecureRestore: async (input) => {
@@ -3637,6 +5334,7 @@ export function WorkoutAppRuntimeProvider({
       };
     },
     createCustomExercise: createRuntimeCustomExercise,
+    createCustomCopy: createRuntimeCustomCopy,
     createCustomExerciseId: (kind) =>
       requireServices().ownedPlans.createId(kind),
     editCustomExercise: editRuntimeCustomExercise,
@@ -3655,21 +5353,38 @@ export function WorkoutAppRuntimeProvider({
     discardStarterSwitchWorkout,
     expireRest: expireWorkoutRest,
     exerciseNotificationExpiry,
+    applyCompletedWorkoutPlanWriteBack: applyCompletedPlanWriteBack,
     finishCompleted: finishWorkoutCompleted,
     finishPartial: finishWorkoutPartial,
     finishStarterSwitchWorkout,
     getActiveWorkout,
     getSessionDetail,
+    getSessionDetailAtRevision,
+    getCalendarSessionDetail,
+    loadGarminRevisionReview,
+    listGarminRevisionReviews,
+    resolveGarminRevision,
+    loadImportedActivityDetail,
+    loadRunningActivityMatch,
+    confirmActivityMatch,
+    unmatchActivityMatch,
+    reassignActivityMatch,
     loadHistoryCorrectionSession,
     listAvailableCorrectionExercises,
     correctHistorySession: correctRuntimeHistorySession,
     removeHistorySession: removeRuntimeHistorySession,
     restoreHistorySession: restoreRuntimeHistorySession,
     loadCalendarMonth,
+    loadCalendarRange,
+    loadPlannedStrengthOccurrence,
     listRemovedHistorySessions,
     loadExerciseMetricHistory,
     loadProgress,
+    progressRunningTargetRuntime,
+    progressRecommendationRuntime,
+    progressBodyweightRuntime,
     keepCurrentTarget: keepWorkoutTarget,
+    keepCompletedWorkoutPlanAsIs: keepCompletedPlanAsIs,
     chooseTimeZone: (choice, detectedDeviceTimeZone) =>
       requireServices().schedules.chooseTimeZone(
         choice,
@@ -3683,6 +5398,8 @@ export function WorkoutAppRuntimeProvider({
     listOwnedPlanExercises: () =>
       requireServices().ownedPlans.listExercises(),
     loadLibrary,
+    deleteLibraryPlan,
+    retryLibraryLoad,
     loadOwnedPlan: (planId) => requireServices().ownedPlans.loadPlan(planId),
     loadSchedule: (planId) => requireServices().schedules.loadSchedule(planId),
     loadToday: (instantMs) => requireServices().schedules.loadToday(instantMs),
@@ -3690,10 +5407,12 @@ export function WorkoutAppRuntimeProvider({
       requireServices().schedules.markWeekdayMissed(localDate),
     previewOwnedPlanDayRemoval: previewOwnedDayRemoval,
     previewOwnedPlanExerciseReplacement: previewOwnedExerciseReplacement,
+    previewCompletedWorkoutPlanWriteBack: previewCompletedPlanWriteBack,
     loadStarterActivationPreview,
     loadStarterPlan,
     loadStarterTemplateUpdate,
     openRestNotificationSettings,
+    refreshPreciseRestAlarms,
     readRestAlertPreferences,
     pauseRest: pauseWorkoutRest,
     requestRestNotificationPermission,
@@ -3701,6 +5420,9 @@ export function WorkoutAppRuntimeProvider({
     recordTrainAnyway: (input) =>
       requireServices().schedules.recordTrainAnyway(input),
     recordExerciseEffort: recordWorkoutEffort,
+    replaceExercise: replaceWorkoutExercise,
+    removeExercise: removeWorkoutExercise,
+    reorderExercises: reorderWorkoutExercises,
     removeWarmup: removeWorkoutWarmup,
     removeWorkingSet: removeWorkoutWorkingSet,
     reviseCompletedSet: reviseWorkoutCompletedSet,
@@ -3723,11 +5445,31 @@ export function WorkoutAppRuntimeProvider({
       void initialize();
     },
     saveZeroSetWorkout: finishZeroSetWorkout,
-    shareSecureBackup: (archive) =>
-      requireServices().backupCommands.shareSecureBackup(archive),
+    shareSecureBackup: async (archive) => {
+      const services = requireServices();
+      await services.backupCommands.shareSecureBackup(archive);
+      const latestBackup: RuntimeBackupMetadata = Object.freeze({
+        archiveId: archive.archiveId,
+        createdAtMs: archive.createdAtMs,
+        displayName: archive.displayName,
+      });
+      await writeLatestBackupMetadata(
+        services.kernel,
+        latestBackup,
+        dependencies.nowMs(),
+      ).catch(() => undefined);
+      setState((current) => ({
+        ...current,
+        latestBackup,
+      }));
+    },
     shareCsvExport: (handle) => requireServices().csvFiles.shareCsv(handle),
     saveOwnedPlan: saveOwnedDraft,
-    saveSchedule: (input) => requireServices().schedules.saveSchedule(input),
+    saveSchedule: async (input) => {
+      const services = requireServices();
+      const requestId = await phase17RequestId("schedule-save", services.ownedPlans.createId("schedule-save"));
+      return services.schedules.saveSchedule({ ...input, requestId });
+    },
     setDateOverride: (input) =>
       requireServices().schedules.setDateOverride(input),
     searchLibraryExercises,
@@ -3740,6 +5482,7 @@ export function WorkoutAppRuntimeProvider({
     startManualRest: startWorkoutRest,
     startEmptyWorkout,
     startPlanDay,
+    startSelectedStrengthOccurrence,
     createStarterTemplateUpdateCopy,
     duplicateOwnedPlan: duplicateOwnedDraft,
     archiveOwnedPlan: archiveOwnedDraft,
@@ -3752,14 +5495,20 @@ export function WorkoutAppRuntimeProvider({
   }), [
     acceptWorkoutRecommendation,
     activateAcceptedStarter,
+    createStarterEditableCopy,
     activatePlan,
+    addWorkoutExercise,
     addWorkoutWarmup,
     addWorkoutWorkingSet,
     adjustWorkoutRest,
     completeWorkoutSet,
+    readWorkoutPreferences,
+    setWorkoutPreferences,
     completeWorkoutWarmup,
     requireServices,
     createRuntimeCustomExercise,
+    createRuntimeCustomCopy,
+    runAutomaticBackupCommand,
     editRuntimeCustomExercise,
     createOwnedDraft,
     discardActiveWorkout,
@@ -3770,36 +5519,57 @@ export function WorkoutAppRuntimeProvider({
     finishWorkoutPartial,
     finishStarterSwitchWorkout,
     finishZeroSetWorkout,
+    garminImport,
     getActiveWorkout,
     getSessionDetail,
+    getSessionDetailAtRevision,
+    getCalendarSessionDetail,
+    loadGarminRevisionReview,
+    listGarminRevisionReviews,
+    resolveGarminRevision,
+    loadImportedActivityDetail,
+    loadRunningActivityMatch,
+    confirmActivityMatch,
+    unmatchActivityMatch,
+    reassignActivityMatch,
     loadHistoryCorrectionSession,
     listAvailableCorrectionExercises,
     correctRuntimeHistorySession,
     removeRuntimeHistorySession,
     restoreRuntimeHistorySession,
     loadCalendarMonth,
+    loadCalendarRange,
+    loadPlannedStrengthOccurrence,
     listRemovedHistorySessions,
     loadExerciseMetricHistory,
     loadProgress,
+    progressRunningTargetRuntime,
+    progressRecommendationRuntime,
+    progressBodyweightRuntime,
     initialize,
     keepWorkoutTarget,
     listLibraryRecentExercises,
     loadLibrary,
+    deleteLibraryPlan,
     loadRuntimeCustomExercise,
     loadRuntimeCustomExerciseMigration,
     loadStarterActivationPreview,
     loadStarterPlan,
     loadStarterTemplateUpdate,
     openRestNotificationSettings,
+    refreshPreciseRestAlarms,
     readRestAlertPreferences,
     pauseWorkoutRest,
     requestRestNotificationPermission,
     setRestAlertPreferences,
     recordWorkoutEffort,
+    replaceWorkoutExercise,
+    removeWorkoutExercise,
     removeWorkoutWarmup,
     removeWorkoutWorkingSet,
     reviseWorkoutCompletedSet,
     refresh,
+    runExerciseEdit,
     runWorkoutRemoval,
     resumeWorkoutRest,
     resumeSavedPartial,
@@ -3833,9 +5603,34 @@ export function WorkoutAppRuntimeProvider({
     updateWorkoutWarmupDraft,
   ]);
 
+  const calendarRangeRead = useMemo(
+    () => createCalendarRangeReadPort(value),
+    [value.loadCalendarRange],
+  );
+  const calendarSessionRead = useMemo(
+    () => createCalendarSessionReadPort(value),
+    [value.getCalendarSessionDetail],
+  );
+  const calendarStrengthOccurrenceRead = useMemo(
+    () => createCalendarStrengthOccurrenceReadPort(value),
+    [value.loadPlannedStrengthOccurrence],
+  );
+  const calendarActivityRead = useMemo(
+    () => createCalendarActivityReadPort(value),
+    [value.loadGarminRevisionReview, value.loadImportedActivityDetail],
+  );
+
   return (
     <WorkoutAppRuntimeContext.Provider value={value}>
-      {children}
+      <CalendarRangeReadContext.Provider value={calendarRangeRead}>
+        <CalendarSessionReadContext.Provider value={calendarSessionRead}>
+          <CalendarStrengthOccurrenceReadContext.Provider value={calendarStrengthOccurrenceRead}>
+            <CalendarActivityReadContext.Provider value={calendarActivityRead}>
+              {children}
+            </CalendarActivityReadContext.Provider>
+          </CalendarStrengthOccurrenceReadContext.Provider>
+        </CalendarSessionReadContext.Provider>
+      </CalendarRangeReadContext.Provider>
     </WorkoutAppRuntimeContext.Provider>
   );
 }
@@ -3847,5 +5642,29 @@ export function useWorkoutAppRuntime(): RuntimeValue {
       "useWorkoutAppRuntime must be used within WorkoutAppRuntimeProvider",
     );
   }
+  return value;
+}
+
+export function useCalendarRangeReadPort(): CalendarRangeReadPort {
+  const value = useContext(CalendarRangeReadContext);
+  if (value === null) throw new Error("calendar_range_read_port_unavailable");
+  return value;
+}
+
+export function useCalendarSessionReadPort(): CalendarSessionReadPort {
+  const value = useContext(CalendarSessionReadContext);
+  if (value === null) throw new Error("calendar_session_read_port_unavailable");
+  return value;
+}
+
+export function useCalendarStrengthOccurrenceReadPort(): CalendarStrengthOccurrenceReadPort {
+  const value = useContext(CalendarStrengthOccurrenceReadContext);
+  if (value === null) throw new Error("calendar_strength_occurrence_read_port_unavailable");
+  return value;
+}
+
+export function useCalendarActivityReadPort(): CalendarActivityReadPort {
+  const value = useContext(CalendarActivityReadContext);
+  if (value === null) throw new Error("calendar_activity_read_port_unavailable");
   return value;
 }

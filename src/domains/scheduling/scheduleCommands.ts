@@ -32,7 +32,10 @@ import {
   transitionRotation,
   transitionTimeZoneChoice,
   transitionWeekdayOpportunity,
+  type CollisionScheduleOccurrenceV1,
   type RotationAction,
+  type ScheduleCollisionDecision,
+  type ScheduleCollisionDecisionCommand,
   type ScheduleOverrideSelection,
   type ScheduleTimeZoneChoice,
   type WeekdayOpportunityAction,
@@ -162,6 +165,15 @@ type ScheduleCommandContext = Readonly<{
   sha256: Sha256;
 }>;
 
+export type CreateCollisionDecisionInput = Readonly<{
+  id: string;
+  decision: ScheduleCollisionDecision;
+  occurredAtMs: number;
+  strength: CollisionScheduleOccurrenceV1;
+  running: CollisionScheduleOccurrenceV1;
+  prospectiveLocalDate: LocalDate | null;
+}>;
+
 function codePointLength(value: string): number {
   return [...value].length;
 }
@@ -179,6 +191,45 @@ function validRevision(value: number): boolean {
 
 function validTime(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 0;
+}
+
+function validateCollisionOccurrence(value: CollisionScheduleOccurrenceV1): void {
+  if (
+    !validIdentifier(value.id)
+    || !validIdentifier(value.scheduleId)
+    || !validIdentifier(value.scheduleVersionId)
+    || !validIdentifier(value.planId)
+    || !validIdentifier(value.slotId)
+    || !validRevision(value.revision)
+  ) {
+    throw new ScheduleCommandInputError("schedule_identifier_invalid");
+  }
+}
+
+/** Stages the exact identity/revision tuple for an append-only collision
+ * decision.  No current-active-plan lookup is permitted at this boundary. */
+export function createCollisionDecisionCommand(
+  input: CreateCollisionDecisionInput,
+): ScheduleCollisionDecisionCommand {
+  if (!validIdentifier(input.id) || !validTime(input.occurredAtMs)) {
+    throw new ScheduleCommandInputError("schedule_identifier_invalid");
+  }
+  validateCollisionOccurrence(input.strength);
+  validateCollisionOccurrence(input.running);
+  if (
+    (input.decision !== "move_running"
+      && input.decision !== "move_strength"
+      && input.decision !== "keep_both")
+    || (input.decision === "keep_both" && input.prospectiveLocalDate !== null)
+    || (input.decision !== "keep_both" && input.prospectiveLocalDate === null)
+  ) {
+    throw new ScheduleCommandInputError("schedule_action_invalid");
+  }
+  return Object.freeze({
+    ...input,
+    strength: Object.freeze({ ...input.strength }),
+    running: Object.freeze({ ...input.running }),
+  });
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {

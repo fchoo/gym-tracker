@@ -31,6 +31,7 @@ export function MetricProfileOption({
   comparison,
   selected,
   onSelect,
+  testID,
 }: Readonly<{
   profile: MetricProfile;
   label: string;
@@ -38,6 +39,7 @@ export function MetricProfileOption({
   comparison: string;
   selected: boolean;
   onSelect(profile: MetricProfile): void;
+  testID?: string;
 }>) {
   const { colors } = useAppTheme();
   const activate = () => onSelect(profile);
@@ -61,6 +63,7 @@ export function MetricProfileOption({
           borderColor: selected ? colors.action : colors.divider,
         },
       ]}
+      testID={testID}
     >
       {selected ? (
         <Check

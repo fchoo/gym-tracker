@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 
 import fullBodyFoundationAsset from "../../assets/content/full-body-foundation.v1.json";
 import {
@@ -67,6 +68,9 @@ import {
 import {
   createWorkoutRepository,
 } from "../../src/platform/sqlite/repositories/workoutRepository";
+import {
+  createWorkoutPreferenceRepository,
+} from "../../src/platform/sqlite/repositories/workoutPreferenceRepository";
 import {
   createSqliteKernel,
   type SqliteKernel,
@@ -207,9 +211,29 @@ async function setupActiveWorkout(
 
 function haptics(): HapticsPort & {
   committed: jest.MockedFunction<HapticsPort["committed"]>;
+  cue: jest.MockedFunction<HapticsPort["cue"]>;
 } {
   return {
     committed: jest.fn(async () => undefined),
+    cue: jest.fn(async () => undefined),
+  };
+}
+
+function restDefaultInput(input: Readonly<{
+  sessionId: string;
+  sessionExerciseId: string;
+  defaultRestSeconds: number;
+  expectedSessionRevision: number;
+  expectedSessionExerciseRevision: number;
+  occurredAtMs: number;
+  requestId: string;
+}>) {
+  return {
+    ...input,
+    requestSha256: createHash("sha256").update(JSON.stringify({
+      operation: "update_session_exercise_default_rest",
+      ...input,
+    })).digest("hex"),
   };
 }
 
@@ -633,6 +657,61 @@ describe("Plan 07-02 receipt-backed hard removal", () => {
 });
 
 describe("Plan 01-08 exactly-once completeSet and Undo", () => {
+  it("uses the authoritative plan preference until a selected exercise override is committed", async () => {
+    const { kernel, repository, activation, session } = await setupActiveWorkout();
+    const preferences = createWorkoutPreferenceRepository(kernel);
+    await preferences.write({
+      planId: activation.plan.id,
+      expectedRevision: 0,
+      defaultRestSeconds: 47,
+      weightIncrementGrams: 2500,
+      updatedAtMs: 1_786_853_601_000,
+    });
+    const initial = await repository.getActiveWorkout(session.id);
+    const first = initial.currentExercise.workingSets[0]!;
+    await expect(completeSet({
+      repository, haptics: haptics(), invalidate: async () => undefined,
+      drainEffects: async () => undefined,
+      input: {
+        sessionId: session.id, setId: first.id,
+        expectedSessionRevision: initial.revision, expectedSetRevision: first.revision,
+        completionIdempotencyKey: "plan-fallback-rest", metricIdentity: first.metricIdentity,
+        observation: { version: 1, profile: "load_reps", loadGrams: 60_000, reps: 8, source: "manual" },
+        completedAtMs: 1_786_853_602_000,
+      },
+    })).resolves.toMatchObject({ outcome: "committed" });
+    expect(await kernel.queryAll(
+      "SELECT ends_at_ms - started_at_ms AS duration_ms FROM session_rest_states WHERE session_id = ?",
+      [session.id],
+    )).toEqual([{ duration_ms: 47_000 }]);
+
+    const afterFallback = await repository.getActiveWorkout(session.id);
+    const exercise = afterFallback.currentExercise;
+    await repository.updateSessionExerciseDefaultRest!(restDefaultInput({
+      sessionId: session.id, sessionExerciseId: exercise.id, defaultRestSeconds: 23,
+      expectedSessionRevision: afterFallback.revision,
+      expectedSessionExerciseRevision: exercise.revision,
+      occurredAtMs: 1_786_853_602_100, requestId: "exercise-override-rest",
+    }));
+    const afterOverride = await repository.getActiveWorkout(session.id);
+    const second = afterOverride.currentExercise.workingSets.find(({ status }) => status !== "completed")!;
+    await expect(completeSet({
+      repository, haptics: haptics(), invalidate: async () => undefined,
+      drainEffects: async () => undefined,
+      input: {
+        sessionId: session.id, setId: second.id,
+        expectedSessionRevision: afterOverride.revision, expectedSetRevision: second.revision,
+        completionIdempotencyKey: "exercise-override-rest", metricIdentity: second.metricIdentity,
+        observation: { version: 1, profile: "load_reps", loadGrams: 60_000, reps: 8, source: "manual" },
+        completedAtMs: 1_786_853_603_000,
+      },
+    })).resolves.toMatchObject({ outcome: "committed" });
+    expect(await kernel.queryAll(
+      "SELECT ends_at_ms - started_at_ms AS duration_ms FROM session_rest_states WHERE session_id = ?",
+      [session.id],
+    )).toEqual([{ duration_ms: 23_000 }]);
+  });
+
   it("keeps completion and every post-commit probe pending until commit resolves", async () => {
     let holdCommit = false;
     let enteredCommit: (() => void) | undefined;
@@ -774,6 +853,7 @@ describe("Plan 01-08 exactly-once completeSet and Undo", () => {
         committed: async () => {
           throw new Error("haptic_failed");
         },
+        cue: async () => undefined,
       },
       invalidate: async () => {
         throw new Error("invalidation_failed");
@@ -1158,7 +1238,7 @@ describe("Plan 02-27 completed working-set correction", () => {
     )).toEqual(beforeSnapshots);
   });
 
-  it("rejects stale correction replay without changing the committed correction", async () => {
+  it("replays the exact committed correction but conflicts when the request changes", async () => {
     const { repository, session, completed } = await completedWorkingSetFixture();
     const first = completed.currentExercise.workingSets[0]!;
     const input = correctionInput({
@@ -1168,8 +1248,21 @@ describe("Plan 02-27 completed working-set correction", () => {
     });
 
     const corrected = await reviseCompletedSet({ repository, input });
-    await expect(reviseCompletedSet({ repository, input })).rejects
-      .toMatchObject({ code: "revise_completed_set_conflict" });
+    await expect(reviseCompletedSet({ repository, input })).resolves
+      .toEqual(corrected);
+    await expect(reviseCompletedSet({
+      repository,
+      input: {
+        ...input,
+        observation: {
+          version: 1,
+          profile: "load_reps",
+          loadGrams: 65_000,
+          reps: 6,
+          source: "manual",
+        },
+      },
+    })).rejects.toMatchObject({ code: "revise_completed_set_conflict" });
     await expect(repository.getActiveWorkout(session.id)).resolves
       .toEqual(corrected);
   });
@@ -1282,5 +1375,53 @@ describe("Plan 02-27 completed working-set correction", () => {
     expect(await kernel.queryAll(
       "SELECT COUNT(*) AS count FROM pending_effects",
     )).toEqual([{ count: 1 }]);
+  });
+
+  it("recovers one durable correction after post-commit acknowledgment loss", async () => {
+    let loseAcknowledgment = false;
+    const { kernel, repository, session, completed } =
+      await completedWorkingSetFixture({
+        afterCommit: async () => {
+          if (loseAcknowledgment) {
+            loseAcknowledgment = false;
+            throw new Error("injected_correction_acknowledgment_loss");
+          }
+        },
+      });
+    const first = completed.currentExercise.workingSets[0]!;
+    const input = correctionInput({ sessionId: session.id, view: completed, set: first });
+    const protectedBefore = {
+      activeSetId: completed.activeSetId,
+      activeExerciseId: completed.activeExerciseId,
+      rest: completed.rest,
+      later: completed.currentExercise.workingSets.slice(1),
+    };
+
+    loseAcknowledgment = true;
+    await expect(reviseCompletedSet({ repository, input })).rejects.toMatchObject({
+      code: "sqlite_acknowledgment_failed",
+    });
+
+    const relaunchedRepository = createWorkoutRepository(kernel);
+    const recovered = await reviseCompletedSet({
+      repository: relaunchedRepository,
+      input,
+    });
+    expect(recovered).toEqual(expect.objectContaining({
+      activeSetId: protectedBefore.activeSetId,
+      activeExerciseId: protectedBefore.activeExerciseId,
+      rest: protectedBefore.rest,
+    }));
+    expect(recovered.currentExercise.workingSets.slice(1)).toEqual(protectedBefore.later);
+    expect(recovered.currentExercise.workingSets[0]?.observation).toEqual(
+      expect.objectContaining({ loadGrams: 62_500, reps: 7 }),
+    );
+    expect(await kernel.queryAll(
+      "SELECT request_id FROM workout_completed_set_correction_receipts",
+    )).toEqual([{ request_id: input.correctionIdempotencyKey }]);
+    expect(await kernel.queryAll(
+      "SELECT id FROM history_audit_events WHERE session_id = ? AND event_type = 'correction'",
+      [session.id],
+    )).toEqual([{ id: `completed-set-correction:${input.correctionIdempotencyKey}` }]);
   });
 });

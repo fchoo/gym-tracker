@@ -10,6 +10,7 @@ import {
 } from "react-native";
 
 import {
+  ActionRow,
   InlineNotice,
   AppTabs,
   EmptyState,
@@ -26,7 +27,6 @@ import {
 } from "./TodayScreen";
 import {
   AdaptiveScreen,
-  classifyWidth,
 } from "../layout/AdaptiveScreen";
 import { space } from "../theme";
 
@@ -125,6 +125,7 @@ export function StartupReadinessGate({
             }
             tone="attention"
           />
+          <ActionRow>
           {!denied ? (
             <PrimaryAction
               busy={busy}
@@ -151,6 +152,7 @@ export function StartupReadinessGate({
             label="Continue without alerts"
             onPress={continueWithoutAlerts}
           />
+          </ActionRow>
         </>
       }
     />
@@ -167,15 +169,14 @@ const loadingRoutes = [
 export function AppLoadingShell({
   width = 599,
 }: Readonly<{ width?: number }>) {
-  const expanded = classifyWidth(width) === "expanded";
-
   return (
-    <View
-      style={[
-        styles.loadingShell,
-        expanded && styles.loadingShellExpanded,
-      ]}
-    >
+    <View style={styles.loadingShell}>
+      <View
+        accessible
+        accessibilityLabel="Opening workout data"
+        accessibilityRole="progressbar"
+        accessibilityState={{ busy: true }}
+      />
       <View style={styles.loadingContent}>
         <TodayScreen launchState="booting" />
       </View>
@@ -185,7 +186,6 @@ export function AppLoadingShell({
           emit: () => ({ defaultPrevented: false }),
           navigate: () => undefined,
         }}
-        position={expanded ? "rail" : "bottom"}
         state={{ index: 0, routes: loadingRoutes }}
       />
     </View>
@@ -208,14 +208,14 @@ export function TodayScreen({
 }
 
 type EmptyRootProps = Readonly<{
-  onGoToday: () => void;
+  onGoWorkout: () => void;
 }>;
 
 function IntentionalEmptyRoot({
   title,
   heading,
   body,
-  onGoToday,
+  onGoWorkout,
 }: EmptyRootProps &
   Readonly<{
     title: string;
@@ -231,7 +231,7 @@ function IntentionalEmptyRoot({
             body={body}
             heading={heading}
             primaryAction={
-              <PrimaryAction label="Go to Today" onPress={onGoToday} />
+              <PrimaryAction label="Go to Workout" onPress={onGoWorkout} />
             }
           />
         </>
@@ -240,12 +240,12 @@ function IntentionalEmptyRoot({
   );
 }
 
-export function LibraryScreen({ onGoToday }: EmptyRootProps) {
+export function LibraryScreen({ onGoWorkout }: EmptyRootProps) {
   return (
     <IntentionalEmptyRoot
-      body="Full plan and exercise management will arrive in a later phase. Full Body Foundation is available from Today."
+      body="Full plan and exercise management will arrive in a later phase. Full Body Foundation is available from Workout."
       heading="Library is not available yet"
-      onGoToday={onGoToday}
+      onGoWorkout={onGoWorkout}
       title="Library"
     />
   );
@@ -270,8 +270,8 @@ export function ActiveWorkoutLoadingScreen({
         <>
           <ScreenHeader
             backAction={onGoBack}
-            eyebrow="FOCUSED WORKOUT"
-            title="Active Workout"
+            eyebrow="WORKOUT OVERVIEW"
+            title="Workout"
           />
           <View
             accessibilityLabel={`Workout session ${sessionId}`}
@@ -291,9 +291,6 @@ export function ActiveWorkoutLoadingScreen({
 const styles = StyleSheet.create({
   loadingShell: {
     flex: 1,
-  },
-  loadingShellExpanded: {
-    flexDirection: "row-reverse",
   },
   loadingContent: {
     flex: 1,

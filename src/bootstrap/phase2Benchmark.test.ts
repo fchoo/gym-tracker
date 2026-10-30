@@ -7,6 +7,7 @@ import {
 
 import {
   boundedPhase2BenchmarkSamples,
+  executePhase2OrdinaryJsTask,
   phase2BenchmarkStartupAction,
   performPhase2BenchmarkWithDependencies,
   type Phase2BenchmarkDependencies,
@@ -61,6 +62,12 @@ function dependencies(): Phase2BenchmarkDependencies & Readonly<{
 }
 
 describe("Phase 2 native benchmark application", () => {
+  it("performs deterministic work over the real query result inside the ordinary JS span", () => {
+    const first = executePhase2OrdinaryJsTask({ state: "page", items: [{ exerciseId: "one" }] }, 1);
+    expect(first).toBe(executePhase2OrdinaryJsTask({ state: "page", items: [{ exerciseId: "one" }] }, 1));
+    expect(first).not.toBe(executePhase2OrdinaryJsTask({ state: "page", items: [{ exerciseId: "two" }] }, 1));
+    expect(first).not.toBe(executePhase2OrdinaryJsTask({ state: "page", items: [{ exerciseId: "one" }] }, 2));
+  });
   it("gates startup on the root runtime reaching trusted state", () => {
     const cases = [
       [false, "booting", false, "disabled"],
@@ -90,6 +97,8 @@ describe("Phase 2 native benchmark application", () => {
 
   it("records one hundred real search-page and working-set samples", async () => {
     const ports = dependencies();
+    const observeSample = jest.fn<NonNullable<Phase2BenchmarkDependencies["observeSample"]>>();
+    Object.assign(ports, { observeSample });
 
     const result = await performPhase2BenchmarkWithDependencies(100, ports);
 
@@ -114,6 +123,19 @@ describe("Phase 2 native benchmark application", () => {
     expect(result.measurements[1]?.durationsMs).toHaveLength(100);
     expect(ports.search).toHaveBeenCalledTimes(100);
     expect(ports.performWorkingSet).toHaveBeenCalledWith(100);
+    expect(observeSample).toHaveBeenCalledTimes(200);
+    expect(observeSample).toHaveBeenNthCalledWith(1, {
+      operation: "search-page",
+      sequence: 1,
+      startMs: 0.5,
+      endMs: 1,
+    });
+    expect(observeSample).toHaveBeenNthCalledWith(2, {
+      operation: "ordinary-js-task",
+      sequence: 1,
+      startMs: 1,
+      endMs: 1.5,
+    });
     expect(ports.close).not.toHaveBeenCalled();
     expect(ports.removeDatabase).toHaveBeenCalledTimes(1);
   });

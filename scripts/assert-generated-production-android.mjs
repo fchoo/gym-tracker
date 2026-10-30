@@ -3,7 +3,9 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { GOOGLE_OAUTH_REGISTRATIONS } from "./google-oauth-config.mjs";
 
 const androidRoot = path.resolve(process.argv[2] ?? "android");
 const failures = [];
@@ -37,6 +39,11 @@ const requireExclusions = (value, section, output) => {
   }
 };
 
+export function validateProductionNativeContractConfig(config) {
+  return config.extra?.nativeContractsEnabled === false && config.extra?.nativeContractSuite === null
+    ? [] : ["production native contract hooks must be false and suite null"];
+}
+
 export function validateGeneratedProductionAndroidSources({
   gradle, gradleProperties, manifest, strings, backup, extraction,
 }) {
@@ -45,9 +52,26 @@ export function validateGeneratedProductionAndroidSources({
   match(gradle, /applicationId\s+["']com\.fchoo\.gymtracker["']/u, "production applicationId is missing");
   match(
     gradleProperties,
-    /^reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64$/mu,
-    "production React Native architectures must retain the full ABI set",
+    /^reactNativeArchitectures=arm64-v8a$/mu,
+    "production React Native architectures must retain selected ARM64",
   );
+  const application = manifest.match(/<application\b[^>]*>/u)?.[0] ?? '';
+  const debugFlag = application.match(/android:debuggable\s*=\s*["']([^"']*)["']/u)?.[1];
+  if (debugFlag !== undefined && debugFlag !== 'false') {
+    output.push('production main application must remain nondebuggable');
+  }
+  if (/\btools:ignore\s*=\s*["'][^"']*\bHardcodedDebugMode\b/u.test(manifest)) {
+    output.push('production must not carry the development-test debug lint annotation');
+  }
+  const releaseBlock = gradle.match(/\brelease\s*\{(?:[^{}]|\{[^{}]*\})*\}/u)?.[0] ?? '';
+  if (/\bdebuggable\s*(?:=\s*)?true\b/u.test(releaseBlock)
+    || /\brelease\.debuggable\s*=\s*true\b/u.test(gradle)
+    || /\bdebuggableVariants\s*(?:=|\+=)\s*\[[^\]]*["']release["']/u.test(gradle)) {
+    output.push('production release build must not enable debugging');
+  }
+  if (/<instrumentation\b|Phase20QualityInstrumentation/u.test(manifest)) {
+    output.push('production generated Android must not contain test instrumentation');
+  }
   match(manifest, /<data[^>]*android:scheme="gymtracker"/u, "production URL scheme is missing");
   match(strings, /<string name="app_name">Gym Tracker<\/string>/u, "production app label is missing");
   match(manifest, /android:fullBackupContent="@xml\/backup_rules"/u, "production full backup rules are not linked");
@@ -64,6 +88,46 @@ export function validateGeneratedProductionAndroidSources({
 const isMain = process.argv[1] !== undefined
   && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
+  try {
+    const config = JSON.parse(readFileSync(
+      path.join(process.cwd(), ".expo", "production-app-config.json"),
+      "utf8",
+    ));
+    if (
+      config.extra?.buildProfile !== "production"
+      || config.android?.package !== GOOGLE_OAUTH_REGISTRATIONS.production.packageName
+      || config.extra?.googleOAuth?.projectNumber !== GOOGLE_OAUTH_REGISTRATIONS.projectNumber
+      || config.extra?.googleOAuth?.webClientId !== GOOGLE_OAUTH_REGISTRATIONS.webClientId
+      || config.extra?.googleOAuth?.androidClientId !== GOOGLE_OAUTH_REGISTRATIONS.production.androidClientId
+      || config.extra?.googleOAuth?.packageName !== GOOGLE_OAUTH_REGISTRATIONS.production.packageName
+      || config.extra?.googleOAuth?.signingCertificate?.sha1 !== GOOGLE_OAUTH_REGISTRATIONS.production.sha1
+      || config.extra?.googleOAuth?.signingCertificate?.sha256 !== GOOGLE_OAUTH_REGISTRATIONS.production.sha256
+    ) failures.push("production Google OAuth configuration is missing or mismatched");
+    failures.push(...validateProductionNativeContractConfig(config));
+  } catch {
+    try {
+      const config = JSON.parse((await import("node:child_process")).execFileSync(
+        // Pinned Expo serialization turns null into {}; evaluate the factory before serialization.
+        process.execPath, ["-e", 'const {loadModuleSync}=require("@expo/require-utils"); const config=loadModuleSync(process.cwd()+"/app.config.ts").default({config:{}}); process.stdout.write(JSON.stringify(config));'], {
+          cwd: fileURLToPath(new URL("..", import.meta.url)),
+          encoding: "utf8", maxBuffer: 1024 * 1024,
+          env: { ...process.env, GYM_TRACKER_BUILD_PROFILE: "production" },
+          stdio: ["ignore", "pipe", "ignore"],
+        },
+      ));
+      if (
+        config.extra?.buildProfile !== "production"
+        || config.android?.package !== GOOGLE_OAUTH_REGISTRATIONS.production.packageName
+        || config.extra?.googleOAuth?.projectNumber !== GOOGLE_OAUTH_REGISTRATIONS.projectNumber
+        || config.extra?.googleOAuth?.webClientId !== GOOGLE_OAUTH_REGISTRATIONS.webClientId
+        || config.extra?.googleOAuth?.androidClientId !== GOOGLE_OAUTH_REGISTRATIONS.production.androidClientId
+        || config.extra?.googleOAuth?.packageName !== GOOGLE_OAUTH_REGISTRATIONS.production.packageName
+        || config.extra?.googleOAuth?.signingCertificate?.sha1 !== GOOGLE_OAUTH_REGISTRATIONS.production.sha1
+        || config.extra?.googleOAuth?.signingCertificate?.sha256 !== GOOGLE_OAUTH_REGISTRATIONS.production.sha256
+      ) failures.push("production Google OAuth configuration is missing or mismatched");
+      failures.push(...validateProductionNativeContractConfig(config));
+    } catch { failures.push("production Google OAuth configuration could not be generated"); }
+  }
   const sourceFailures = validateGeneratedProductionAndroidSources({
     gradle: read("app/build.gradle"),
     gradleProperties: read("gradle.properties"),

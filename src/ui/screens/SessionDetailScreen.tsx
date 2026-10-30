@@ -2,6 +2,11 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { displayLocalDateTime } from "../../domains/shared/displayTimeZone";
+import { useDeviceTimeZone } from "../time/useDeviceTimeZone";
+import {
+  Pencil,
+} from "lucide-react-native";
 import {
   StyleSheet,
   Text,
@@ -19,6 +24,7 @@ import type {
   SessionProgress,
 } from "../../domains/workout";
 import {
+  ActionRow,
   ConfirmationSheet,
   InlineNotice,
   PrimaryAction,
@@ -118,9 +124,10 @@ export function SessionDetailScreen({
   onCorrectWorkout?: () => void;
   onRemoveFromHistory?: () => void | Promise<void>;
   onOpenExerciseHistory(exercise: SessionDetail["exercises"][number]): void;
-  onResume: () => void;
+  onResume?: () => void;
 }>) {
   const { colors } = useAppTheme();
+  const displayTimeZone = useDeviceTimeZone();
   const [removeConfirmationVisible, setRemoveConfirmationVisible] = useState(false);
   const [removeFailed, setRemoveFailed] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -156,7 +163,7 @@ export function SessionDetailScreen({
                 { color: colors.textSecondary },
               ]}
             >
-              {detail.localDate} · {durationText(detail.durationMs)}
+              {displayLocalDateTime(detail.startedAtMs, displayTimeZone)} · {durationText(detail.durationMs)}
             </Text>
             <Text
               style={[
@@ -174,6 +181,27 @@ export function SessionDetailScreen({
             >
               Working sets · {progressText(detail.workingSetProgress)}
             </Text>
+            {detail.modifiedFromPlan !== true ? null : (
+              <View
+                accessibilityLabel="Modified from plan"
+                style={styles.modified}
+              >
+                <Pencil
+                  accessibilityElementsHidden
+                  color={colors.textSecondary}
+                  importantForAccessibility="no-hide-descendants"
+                  size={20}
+                />
+                <Text
+                  style={[
+                    typeScale.bodyStrong as TextStyle,
+                    { color: colors.textPrimary },
+                  ]}
+                >
+                  Modified from plan
+                </Text>
+              </View>
+            )}
             {detail.ownerNote === null || detail.ownerNote === undefined
               ? null
               : (
@@ -349,7 +377,7 @@ export function SessionDetailScreen({
             heading="Recommendation"
             tone="neutral"
           />
-          {onCorrectWorkout !== undefined
+          <ActionRow>{onCorrectWorkout !== undefined
             && (detail.status === "completed" || detail.status === "partial") ? (
               <SecondaryAction
                 label="Correct workout"
@@ -366,8 +394,8 @@ export function SessionDetailScreen({
               }}
               ref={removeActionRef}
             />
-          ) : null}
-          {detail.resumable ? (
+          ) : null}</ActionRow>
+          {detail.resumable && onResume !== undefined ? (
             <PrimaryAction label="Resume workout" onPress={onResume} />
           ) : null}
         </>
@@ -423,6 +451,11 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     gap: space[4],
     padding: space[4],
+  },
+  modified: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: space[1],
   },
   setSection: {
     gap: space[2],

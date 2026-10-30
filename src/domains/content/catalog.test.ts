@@ -95,7 +95,7 @@ describe("accepted exercise catalog runtime boundary", () => {
 
     expect(catalog.metadata).toEqual(expect.objectContaining({
       namespace: "gym-tracker.exercise-library",
-      revision: 1,
+      revision: 2,
       normalizationVersion: 1,
       metricSchemaVersion: 1,
     }));
@@ -106,7 +106,7 @@ describe("accepted exercise catalog runtime boundary", () => {
     expect(catalog.acceptance).toEqual(expect.objectContaining({
       accepted: true,
       reviewerResponse: "approved",
-      packSha256: "9ffa6209c4e07ddbd0f3988a2b3607b8f536595f70d4b74f41e0d5fa95779ae9",
+      packSha256: "d1e5f190d1bab2c337a203c67374e19807606f9340cb618bcf7564cf75fe2b13",
     }));
   });
 
@@ -161,7 +161,7 @@ describe("accepted exercise catalog runtime boundary", () => {
     [
       "unknown catalog version",
       (catalog: Record<string, unknown>) => {
-        catalog.schemaVersion = 2;
+        catalog.schemaVersion = 3;
       },
       "catalog_version_unsupported",
     ],
@@ -264,8 +264,100 @@ describe("accepted exercise catalog runtime boundary", () => {
           ...(exercises[1]!.source as object),
           upstreamId: firstSource.upstreamId,
         };
+        exercises[1]!.instructions = {
+          ...(exercises[1]!.instructions as object),
+          source: {
+            ...((exercises[1]!.instructions as Record<string, unknown>)
+              .source as object),
+            upstreamId: firstSource.upstreamId,
+          },
+        };
       },
       "catalog_identity_conflict",
+    ],
+    [
+      "invalid pinned instruction authority",
+      (catalog: Record<string, unknown>) => {
+        const exercise = (catalog.exercises as Array<Record<string, unknown>>)
+          .find(({ instructions }) =>
+            ((instructions as Record<string, unknown>).source as Record<string, unknown>).namespace
+              === "kinetic-place.exercises-db"
+          )!;
+        const instructions = exercise.instructions as Record<string, unknown>;
+        instructions.source = {
+          ...(instructions.source as object),
+          license: "Original",
+          attribution: "Original Gym Tracker program",
+        };
+      },
+      "catalog_relation_invalid",
+    ],
+    [
+      "invalid legacy instruction authority",
+      (catalog: Record<string, unknown>) => {
+        const exercise = (catalog.exercises as Array<Record<string, unknown>>)
+          .find(({ instructions }) =>
+            ((instructions as Record<string, unknown>).source as Record<string, unknown>).namespace
+              === "gym-tracker.original"
+          )!;
+        const instructions = exercise.instructions as Record<string, unknown>;
+        instructions.source = {
+          ...(instructions.source as object),
+          license: "MIT",
+          attribution: "Copyright (c) 2026 Kinetic.place",
+        };
+      },
+      "catalog_relation_invalid",
+    ],
+    [
+      "pinned instruction identity drift",
+      (catalog: Record<string, unknown>) => {
+        const exercises = catalog.exercises as Array<Record<string, unknown>>;
+        const pinned = exercises.filter(({ source }) =>
+          (source as Record<string, unknown>).namespace === "kinetic-place.exercises-db"
+        );
+        const instructions = pinned[0]!.instructions as Record<string, unknown>;
+        instructions.source = {
+          ...((pinned[1]!.instructions as Record<string, unknown>).source as object),
+        };
+      },
+      "catalog_relation_invalid",
+    ],
+    [
+      "legacy link-candidate instruction drift",
+      (catalog: Record<string, unknown>) => {
+        const exercises = catalog.exercises as Array<Record<string, unknown>>;
+        const legacy = exercises.find(({ source }) =>
+          (source as Record<string, unknown>).legacyLinkStatus === "link_candidate"
+        )!;
+        const pinned = exercises.find(({ source }) =>
+          (source as Record<string, unknown>).namespace === "kinetic-place.exercises-db"
+          && (source as Record<string, unknown>).upstreamId
+            !== (legacy.source as Record<string, unknown>).linkedUpstreamId
+        )!;
+        const instructions = legacy.instructions as Record<string, unknown>;
+        instructions.source = {
+          ...((pinned.instructions as Record<string, unknown>).source as object),
+        };
+      },
+      "catalog_relation_invalid",
+    ],
+    [
+      "preserved legacy instruction drift",
+      (catalog: Record<string, unknown>) => {
+        const exercises = catalog.exercises as Array<Record<string, unknown>>;
+        const legacy = exercises.find(({ source }) =>
+          (source as Record<string, unknown>).legacyLinkStatus === "preserve_original"
+        )!;
+        const pinned = exercises.find(({ source }) =>
+          (source as Record<string, unknown>).namespace === "kinetic-place.exercises-db"
+        )!;
+        const instructions = legacy.instructions as Record<string, unknown>;
+        instructions.source = {
+          ...((pinned.instructions as Record<string, unknown>).source as object),
+        };
+      },
+      "catalog_relation_invalid",
     ],
   ])("rejects %s before persistence", async (_label, mutate, code) => {
     await expect(parseExerciseCatalog(
@@ -274,6 +366,26 @@ describe("accepted exercise catalog runtime boundary", () => {
       code,
       retryable: false,
     } satisfies Partial<CatalogBoundaryError>));
+  });
+
+  it("requires source-backed, non-empty bundled instruction steps", async () => {
+    const catalog = await parseExerciseCatalog(acceptedInput());
+
+    expect(catalog.exercises.every((exercise) =>
+      exercise.instructions.steps.length > 0
+      && exercise.instructions.steps.every((step) => step.trim() === step)
+      && exercise.instructions.source.attribution.length > 0
+    )).toBe(true);
+
+    await expect(parseExerciseCatalog(rebindAcceptedInput((input) => {
+      const exercise = (input.exercises as Array<Record<string, unknown>>)[0]!;
+      exercise.instructions = {
+        ...(exercise.instructions as object),
+        steps: [],
+      };
+    }))).rejects.toEqual(expect.objectContaining({
+      code: "catalog_invalid",
+    }));
   });
 
   it("rejects a manifest whose pinned source hashes drift from the catalog", async () => {

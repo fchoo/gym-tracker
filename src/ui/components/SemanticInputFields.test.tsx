@@ -113,6 +113,7 @@ describe("TimeDurationField", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: "Target duration seconds",
     }));
+    expect(screen.getByTestId("bottom-sheet-frame")).toBeOnTheScreen();
     expect(screen.getByLabelText("Target duration seconds hours"))
       .toHaveProp("keyboardType", "number-pad");
     expect(screen.getByLabelText("Target duration seconds seconds"))

@@ -28,8 +28,11 @@ export default function RemoveOwnedPlanDayRoute() {
     <>
       <Stack.Screen options={{ gestureEnabled: false }} />
       <PlanDayRemovalScreen
-        createRequestId={() =>
-          runtime.createOwnedPlanId("plan-impact-remove")}
+        createRequestId={async () =>
+          runtime.createPhase17ActionRequestId(
+            "plan-impact-remove",
+            runtime.createOwnedPlanId("plan-impact-remove"),
+          )}
         dayId={dayId}
         loadPreview={runtime.previewOwnedPlanDayRemoval}
         onBack={() => router.back()}

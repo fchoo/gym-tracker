@@ -1,0 +1,204 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 17 Library executable journeys
+tags: [phase-17, native-only, development-test]
+---
+- launchApp:
+    clearState: false
+    stopApp: false
+    permissions: { notifications: deny }
+- extendedWaitUntil: { visible: "Workout", timeout: 90000 }
+- tapOn: "Library"
+- extendedWaitUntil: { visible: "Library section", timeout: 30000 }
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.remembered-state'}"
+    commands:
+      - pressKey: BACK
+      - assertVisible: "Workout"
+      - tapOn: "Library"
+      - assertVisible: "Library section"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.plan-groups'}"
+    commands:
+      - tapOn: "Plans"
+      - tapOn: "Filters"
+      - assertVisible: "Plan filters"
+      - pressKey: BACK
+      - assertVisible: "Library section"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.exercise-search'}"
+    commands:
+      - tapOn: "Exercises"
+      - tapOn: "Search exercises"
+      - inputText: "squat"
+      - assertVisible: "Exercises"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.exercise-favorites'}"
+    commands:
+      - tapOn: "Exercises"
+      - tapOn: "Favorite"
+      - assertVisible: "Exercises"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.actions-sheet'}"
+    commands:
+      - tapOn: "Open App Settings"
+      - assertVisible: "Settings"
+      - pressKey: BACK
+      - assertVisible: "Library section"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.neutral-plan-chooser'}"
+    commands:
+      - tapOn: "Create plan"
+      - assertVisible: "Choose a plan type"
+      - assertVisible: "Strength"
+      - assertVisible: "Running"
+      - pressKey: BACK
+      - assertVisible: "Library section"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.true-no-plans'}"
+    commands:
+      - tapOn: "Create plan"
+      - tapOn: "Strength"
+      - tapOn: "Create draft"
+      - pressKey: BACK
+      - tapOn: "Plans"
+      - assertVisible: "Library section"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.owned-summary'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/plan/${PHASE17_OWNED_PLAN_ID}"
+      - assertVisible: "Plan details"
+      - pressKey: BACK
+      - assertVisible: "Library section"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.owned-lifecycle'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/plan/${PHASE17_OWNED_PLAN_ID}"
+      - tapOn: "Archive plan"
+      - tapOn: "Confirm"
+      - assertVisible: "Plan details"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.starter-detail'}"
+    commands:
+      - tapOn: "Starter plans"
+      - tapOn: "Starter plan"
+      - assertVisible: "Plan details"
+      - pressKey: BACK
+      - assertVisible: "Library section"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.starter-activation'}"
+    commands:
+      - tapOn: "Starter plans"
+      - tapOn: "Starter plan"
+      - tapOn: "Activate plan"
+      - tapOn: "Confirm"
+      - assertVisible: "Library section"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.template-update'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/plan/${PHASE17_OWNED_PLAN_ID}"
+      - tapOn: "Review changes"
+      - assertVisible: "Review changes"
+      - pressKey: BACK
+      - assertVisible: "Plan details"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.create-strength'}"
+    commands:
+      - tapOn: "Create plan"
+      - tapOn: "Strength"
+      - tapOn: "Create draft"
+      - tapOn: "Save Plan Changes"
+      - pressKey: BACK
+      - assertVisible: "Library section"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.plan-editor'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/plan/${PHASE17_OWNED_PLAN_ID}/edit"
+      - tapOn: "Save Plan Changes"
+      - assertVisible: "Plan details"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.editor-draft-guards'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/plan/${PHASE17_OWNED_PLAN_ID}/edit"
+      - pressKey: BACK
+      - tapOn: "Discard changes"
+      - assertVisible: "Plan details"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.schedule-editor'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/plan/${PHASE17_OWNED_PLAN_ID}/edit"
+      - tapOn: "Save schedule"
+      - assertVisible: "Schedule"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.replacement-impact'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/plan/${PHASE17_OWNED_PLAN_ID}/edit"
+      - tapOn: "Search replacement exercises"
+      - inputText: "squat"
+      - tapOn: "Save replacement"
+      - assertVisible: "Plan details"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.day-removal-impact'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/plan/${PHASE17_OWNED_PLAN_ID}/edit"
+      - tapOn: "Remove day"
+      - tapOn: "Confirm"
+      - assertVisible: "Plan details"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.builtin-exercise'}"
+    commands:
+      - tapOn: "Exercises"
+      - tapOn: "Search exercises"
+      - inputText: "squat"
+      - tapOn: "Instructions"
+      - assertVisible: "Instructions"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.custom-exercise'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/exercise/${PHASE17_CUSTOM_EXERCISE_ID}"
+      - tapOn: "Archive exercise"
+      - tapOn: "Confirm"
+      - assertVisible: "Archived"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.create-exercise'}"
+    commands:
+      - tapOn: "Create custom exercise"
+      - inputText: "Phase17 exercise"
+      - tapOn: "Save"
+      - pressKey: BACK
+      - assertVisible: "Exercises"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.copy-metric-migration'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/exercise/${PHASE17_BUNDLED_EXERCISE_ID}"
+      - tapOn: "Create custom copy"
+      - tapOn: "Save"
+      - assertVisible: "Metric migration"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.load-error-recovery'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library?phase17Load=fail-once"
+      - tapOn: "Retry loading Library"
+      - assertVisible: "Library section"

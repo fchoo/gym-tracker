@@ -18,6 +18,23 @@ export type WorkoutSessionSource =
   | "rest_day"
   | "empty";
 
+export type SelectedStrengthOccurrence = Readonly<{
+  kind: "strength";
+  opportunityId: string;
+  planId: string;
+  planDayId: string;
+  scheduleId: string;
+  scheduleVersionId: string;
+  localDate: string;
+  timeZone: string;
+  sourceRevisions: Readonly<{
+    plan: number;
+    day: number;
+    schedule: number;
+    opportunity: number;
+  }>;
+}>;
+
 export type StartWorkoutRequest =
   | Readonly<{
       mode: Exclude<WorkoutStartMode, "empty">;
@@ -26,6 +43,13 @@ export type StartWorkoutRequest =
       localDate: string;
       timezone: string;
       startedAtMs: number;
+      /**
+       * Required by the current Schedule runtime for scheduled Strength.  The
+       * legacy optional shape deliberately remains attribution-free so old
+       * interrupted sessions are never guessed onto a later activation.
+       */
+      selectedOccurrence?: SelectedStrengthOccurrence;
+      commandIdentity?: string;
     }>
   | Readonly<{
       mode: "empty";
@@ -41,6 +65,32 @@ export type StartedWorkout = Readonly<{
   planId: string | null;
   planDayId: string | null;
   revision: number;
+}>;
+
+export type PlannedStrengthOccurrenceDetail = Readonly<{
+  occurrenceId: string;
+  planId: string;
+  planName: string;
+  planDayId: string;
+  dayName: string;
+  scheduleId: string;
+  scheduleVersionId: string;
+  localDate: string;
+  timezone: string;
+  sourceRevisions: Readonly<{ plan: number; day: number; schedule: number; opportunity: number }>;
+  exercises: readonly Readonly<{
+    id: string;
+    exerciseId: string;
+    exerciseName: string;
+    ordinal: number;
+    targets: readonly Readonly<{
+      id: string;
+      ordinal: number;
+      targetJson: string;
+      unitJson: string;
+      previousObservationJson: string | null;
+    }>[];
+  }>[];
 }>;
 
 export type TodayHistory = Readonly<{
@@ -112,6 +162,8 @@ export {
   WORKING_SET_VALUE_SOURCES,
   WorkoutCommandConflictError,
   type ActiveWorkoutExercise,
+  type AddExerciseInput,
+  type AddExerciseResult,
   type ActiveWorkoutProgress,
   type ActiveWorkoutRepository,
   type ActiveWorkoutRestState,
@@ -126,6 +178,9 @@ export {
   type RemoveSetResult,
   type RemoveWarmupInput,
   type RemoveWorkingSetInput,
+  type ReorderExerciseRevision,
+  type ReorderExercisesInput,
+  type ReorderExercisesResult,
   type ReviseCompletedSetInput,
   type LoadRepsObservation,
   type SetObservation,
@@ -137,11 +192,16 @@ export {
   type UndoCompletedSetInput,
   type UndoCompletedSetResult,
   type UpdateActiveSetDraftInput,
+  type UpdateSessionExerciseDefaultRestInput,
   type UpdateWarmupDraftInput,
   type WorkoutSessionView,
   type EmptyWorkoutView,
   type WorkingSetValueSource,
 } from "./activeWorkout";
+export {
+  addExercise,
+  reorderExercises,
+} from "./sessionExerciseCommands";
 export {
   addWorkingSet,
   addWarmup,
@@ -166,15 +226,28 @@ export {
   PARTIAL_CONFIRMATION,
   SKIP_EXERCISE_CONFIRMATION,
   ZERO_SET_CONFIRMATION,
+  applyCompletedWorkoutPlanWriteBack,
+  beginCompletedWorkoutPlanWriteBack,
   discardWorkout,
   finishCompleted,
   finishPartial,
+  keepCompletedWorkoutPlanAsIs,
+  previewCompletedWorkoutPlanWriteBack,
   resumePartialWorkout,
   saveZeroSetWorkout,
   skipExercise,
   type DiscardWorkoutInput,
   type FinishCompletedInput,
   type FinishPartialInput,
+  type CompletedWorkoutPlanWriteBackFailure,
+  type CompletedWorkoutPlanWriteBackApplyingState,
+  type CompletedWorkoutPlanWriteBackAwaitingChoiceState,
+  type CompletedWorkoutPlanWriteBackChoiceState,
+  type CompletedWorkoutPlanWriteBackCompletedState,
+  type CompletedWorkoutPlanWriteBackPort,
+  type CompletedWorkoutPlanWriteBackSaveFailedState,
+  type CompletedWorkoutPlanWriteBackState,
+  type FinishPartialResult,
   type ResumePartialWorkoutInput,
   type SaveZeroSetInput,
   type SkipExerciseInput,

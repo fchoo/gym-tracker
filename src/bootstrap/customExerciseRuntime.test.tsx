@@ -50,6 +50,8 @@ function detail(
     primaryMuscles: ["core"],
     secondaryMuscles: ["shoulders"],
     equipment: ["bodyweight"],
+    instructions: [],
+    instructionSource: null,
     metricIdentity: {
       profile: "timed_hold",
       contractVersion: 1,
@@ -125,6 +127,32 @@ function runtime(
         kind: "manual_hold" as const,
         version: 1 as const,
       },
+      invalidations: [],
+    })),
+    createCustomCopy: jest.fn(async (input: {
+      requestId: string;
+      sourceExerciseId: string;
+      expectedSourceRevision: number;
+      exerciseId: string;
+      name: string;
+    }) => ({
+      outcome: "committed" as const,
+      exercise: {
+        requestId: input.requestId,
+        exerciseId: input.exerciseId,
+        name: input.name,
+        normalizedName: input.name.toLocaleLowerCase("en"),
+        aliases: [],
+        exerciseType: "strength" as const,
+        movementClass: "compound" as const,
+        primaryMuscles: ["quadriceps"],
+        secondaryMuscles: [],
+        equipment: ["barbell"],
+        metricIdentity: { profile: "load_reps" as const, contractVersion: 1, exerciseMetricGeneration: 1 },
+        defaultRestSeconds: 60,
+        revision: 1,
+      },
+      progression: { kind: "manual_hold" as const, version: 1 as const },
       invalidations: [],
     })),
     editCustomExercise: jest.fn(async (
@@ -293,6 +321,7 @@ describe("custom exercise runtime capability adapter", () => {
       origin: expect.objectContaining({
         kind: "custom_copy",
         sourceExerciseId: "exercise-owner",
+        sourceExerciseRevision: 3,
       }),
     }));
     expect(copy?.draft).not.toBe(base);
@@ -300,6 +329,7 @@ describe("custom exercise runtime capability adapter", () => {
     const metricOrigin = createCustomCopyEditorOrigin({
       kind: "custom_copy",
       sourceExerciseId: "source",
+      sourceExerciseRevision: 1,
       sourceName: "Source",
       draft: {
         ...copy!.draft,
@@ -366,6 +396,44 @@ describe("custom exercise runtime capability adapter", () => {
         name: "Owner Plank Edited",
       }),
     );
+  });
+
+  it("routes a bundled copy through the dedicated production copy command", async () => {
+    const base = runtime();
+    const adapter = createCustomExerciseRuntimeAdapter(base);
+    const copyDraft = {
+      name: "Bundled owner Copy",
+      aliases: ["Owner alias"],
+      exerciseType: "strength" as const,
+      movementClass: "compound" as const,
+      primaryMuscles: ["quadriceps"],
+      secondaryMuscles: [],
+      equipment: ["barbell"],
+      metricIdentity: { profile: "load_reps" as const, contractVersion: 1, exerciseMetricGeneration: 1 },
+      defaultRestSeconds: 60,
+      progression: { kind: "manual_hold" as const, version: 1 as const },
+    };
+
+    await adapter.saveExercise(saveInput({
+      origin: {
+        kind: "custom_copy",
+        sourceExerciseId: "bundled-owner",
+        sourceExerciseRevision: 7,
+        sourceName: "Bundled owner",
+        draft: copyDraft,
+      },
+      exerciseId: "copied-owner",
+      name: "Bundled owner Copy",
+    }));
+
+    expect(base.createCustomCopy).toHaveBeenCalledWith({
+      requestId: "request-owner",
+      sourceExerciseId: "bundled-owner",
+      expectedSourceRevision: 7,
+      exerciseId: "copied-owner",
+      name: "Bundled owner Copy",
+    });
+    expect(base.createCustomExercise).not.toHaveBeenCalled();
   });
 
   it("delegates detail lifecycle and future-only migration capabilities", async () => {

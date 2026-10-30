@@ -1,4 +1,5 @@
 import React, {
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -13,6 +14,7 @@ import type {
   ActivatedPlanDay,
 } from "../../domains/plans";
 import type {
+  SelectedStrengthOccurrence,
   TodayExercise,
   TodayView,
 } from "../../domains/workout";
@@ -29,6 +31,7 @@ import type {
   LaunchFailure,
 } from "../../bootstrap/launchCoordinator";
 import {
+  ActionRow,
   ExerciseRow,
   ContentCard,
   IconAction,
@@ -37,15 +40,21 @@ import {
   PrimaryAction,
   ScreenHeader,
   SecondaryAction,
+  WorkoutPrimaryAction,
   SectionHeader,
   SkeletonBlock,
 } from "../components";
 import { WorkoutStartSheet } from "../components/WorkoutStartSheet";
+import {
+  WorkoutDaySelector,
+  type WorkoutDayPreview,
+} from "../components/WorkoutDaySelector";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
 import { RootFailureState } from "./RootFailureState";
+import type { RootFocusTarget } from "../shell/rootFocus";
 import {
   space,
-  typeScale,
+  workoutTypeScale,
   useAppTheme,
 } from "../theme";
 import type { LaunchState } from "./RootScreens";
@@ -71,13 +80,39 @@ export type TodayScreenProps = Readonly<{
     dayId: string,
     mode: "scheduled" | "alternate" | "rest_day",
   ) => void;
+  onStartOccurrence?: (occurrence: SelectedStrengthOccurrence) => void;
+  selectedStrengthOccurrence?: SelectedStrengthOccurrence | null;
+  strengthOccurrences?: readonly WorkoutOccurrencePreview[];
+  runningContext?: Readonly<{ label: string; planId: string }>;
+  onOpenRunningPlan?: (planId: string) => void;
+  onSyncGarmin?: () => void;
   scheduleToday?: ScheduleTodayPresentation;
   chooseScheduleTimeZone?: (
     choice: ScheduleTimeZoneChoice,
   ) => void | Promise<void>;
   onOpenSettings?: () => void;
   onRetry?: () => void;
+  headingRef?: React.RefObject<RootFocusTarget | null>;
+  settingsActionRef?: React.RefObject<RootFocusTarget | null>;
+  settingsActionNativeID?: string;
+  onUsefulContent?: () => void;
 }>;
+
+export type WorkoutOccurrencePreview = Readonly<{
+  occurrence: SelectedStrengthOccurrence;
+  planName: string;
+  dayName: string;
+  estimateMinutes: number;
+  exercises: readonly TodayExercise[];
+}>;
+
+function occurrenceDate(localDate: string): string {
+  const [year = "", month = "", day = ""] = localDate.split("-");
+  const date = new Date(`${localDate}T12:00:00Z`);
+  const weekday = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"][date.getUTCDay()] ?? "";
+  const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  return `${weekday} · ${day} ${months[Math.max(0, Number(month) - 1)] ?? ""} ${year}`;
+}
 
 function TodaySkeleton() {
   return (
@@ -121,7 +156,7 @@ function ActivationContent({
         />
         <Text
           style={[
-            typeScale.body as TextStyle,
+            workoutTypeScale.body as TextStyle,
             { color: colors.contentCardTextSecondary },
           ]}
         >
@@ -146,7 +181,7 @@ function ActivationContent({
       <PlanActivationRow onPress={onPreview} tone="card" />
       <Text
         style={[
-          typeScale.body as TextStyle,
+          workoutTypeScale.body as TextStyle,
           { color: colors.contentCardTextSecondary },
         ]}
       >
@@ -177,6 +212,9 @@ function ScheduledContent({
   onStartEmpty,
   onReviewSuggestion,
   pendingRecommendations,
+  selectedStrengthOccurrence,
+  strengthOccurrences = [],
+  onStartOccurrence,
 }: Readonly<{
   view: Extract<TodayView, { state: "scheduled" }>;
   planDays: readonly ActivatedPlanDay[];
@@ -187,47 +225,78 @@ function ScheduledContent({
   onStartEmpty: () => void;
   onReviewSuggestion: (exerciseId: string) => void;
   pendingRecommendations: readonly ProgressRecommendationReview[];
+  selectedStrengthOccurrence?: SelectedStrengthOccurrence | null;
+  strengthOccurrences?: readonly WorkoutOccurrencePreview[];
+  onStartOccurrence?: (occurrence: SelectedStrengthOccurrence) => void;
 }>) {
   const [startSheetVisible, setStartSheetVisible] = useState(false);
+  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState(
+    selectedStrengthOccurrence?.opportunityId,
+  );
   const { colors } = useAppTheme();
   const startSheetActionRef = useRef<View>(null);
 
+  const selectedPreview = strengthOccurrences.find(
+    ({ occurrence }) => occurrence.opportunityId === selectedOccurrenceId,
+  ) ?? strengthOccurrences.find(
+    ({ occurrence }) => occurrence.opportunityId === selectedStrengthOccurrence?.opportunityId,
+  );
+  const selectedView = selectedPreview === undefined ? view : {
+    ...view,
+    planName: selectedPreview.planName,
+    dayId: selectedPreview.occurrence.planDayId,
+    dayName: selectedPreview.dayName,
+    estimateMinutes: selectedPreview.estimateMinutes,
+    exercises: selectedPreview.exercises,
+  };
+  const previews: readonly WorkoutDayPreview[] = strengthOccurrences.map(({ occurrence, dayName }) => ({
+    id: occurrence.opportunityId,
+    label: dayName,
+    detail: occurrenceDate(occurrence.localDate),
+  }));
+
   return (
     <>
+      {selectedPreview === undefined ? null : (
+        <>
+          <Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+            {occurrenceDate(selectedPreview.occurrence.localDate)}
+          </Text>
+          <WorkoutDaySelector
+            items={previews}
+            onSelect={setSelectedOccurrenceId}
+            selectedId={selectedPreview.occurrence.opportunityId}
+          />
+        </>
+      )}
       <ContentCard style={styles.section} testID="today-workout-card">
-        <Text
-          style={[
-            typeScale.label as TextStyle,
-            { color: colors.contentCardTextSecondary },
-          ]}
-        >
-          PLANNED WORKOUT
+        <Text style={[workoutTypeScale.label as TextStyle, { color: colors.textSecondary }]}>PLANNED WORKOUT</Text>
+        <Text accessibilityRole="header" style={[workoutTypeScale.editorialWorkoutTitle as TextStyle, { color: colors.ink }]}>
+          {selectedView.dayName}
         </Text>
-        <SectionHeader
-          supportingText={`${view.exercises.length} exercises · about ${view.estimateMinutes} min`}
-          title={view.dayName}
-          tone="card"
+        <Text style={[workoutTypeScale.body as TextStyle, { color: colors.textSecondary }]}>{selectedView.planName}</Text>
+        <Text style={[workoutTypeScale.body as TextStyle, { color: colors.textSecondary }]}>
+          {selectedView.exercises.length} exercises · about {selectedView.estimateMinutes} min
+        </Text>
+        <ActionRow><WorkoutPrimaryAction
+          label={`Start ${selectedView.dayName}`}
+          onPress={() => selectedPreview === undefined || onStartOccurrence === undefined
+            ? onStart(selectedView.dayId, "scheduled")
+            : onStartOccurrence(selectedPreview.occurrence)}
+          testID="today-start-workout"
         />
-        <PrimaryAction
-          label={`Start ${view.dayName}`}
-          onPress={() => onStart(view.dayId, "scheduled")}
-        />
-        <SecondaryAction
-          label="Choose another day"
-          onPress={() => setStartSheetVisible(true)}
-          ref={startSheetActionRef}
-        />
+        <SecondaryAction label="Choose another day" onPress={() => setStartSheetVisible(true)} ref={startSheetActionRef} testID="today-choose-plan-day" /></ActionRow>
       </ContentCard>
       <View style={styles.section}>
         <Text
           style={[
-            typeScale.label as TextStyle,
+            workoutTypeScale.label as TextStyle,
             { color: colors.textSecondary },
           ]}
         >
           TODAY IN CONTEXT
         </Text>
-        {view.exercises.map((exercise) => (
+        {selectedView.exercises.map((exercise) => (
           <ContentCard
             key={exercise.exerciseId}
             style={styles.exerciseGroup}
@@ -260,7 +329,7 @@ function ScheduledContent({
                   <Text
                     accessibilityLabel={`Pending target review for ${exercise.name}`}
                     style={[
-                      typeScale.secondary as TextStyle,
+                      workoutTypeScale.secondary as TextStyle,
                       { color: colors.contentCardTextSecondary },
                     ]}
                   >
@@ -281,7 +350,7 @@ function ScheduledContent({
         onStartEmpty={onStartEmpty}
         planDays={planDays}
         restoreFocusRef={startSheetActionRef}
-        scheduledDayId={view.dayId}
+        scheduledDayId={selectedView.dayId}
         visible={startSheetVisible}
       />
     </>
@@ -304,6 +373,7 @@ function RestDayContent({
 }>) {
   const [startSheetVisible, setStartSheetVisible] = useState(false);
   const startSheetActionRef = useRef<View>(null);
+  const hasNextPlanDay = planDays.some((day) => day.id === view.nextDayId);
 
   return (
     <>
@@ -313,11 +383,14 @@ function RestDayContent({
           title="Rest day"
           tone="card"
         />
-        <PrimaryAction
-          label="Train anyway"
+        <Text>No workout planned</Text>
+        <ActionRow><PrimaryAction disabled label="Nothing scheduled" onPress={noOp} />
+        <SecondaryAction
+          label={hasNextPlanDay ? "Train anyway" : "Choose another day"}
           onPress={() => setStartSheetVisible(true)}
           ref={startSheetActionRef}
-        />
+          testID="today-choose-plan-day"
+        /></ActionRow>
       </ContentCard>
       <WorkoutStartSheet
         onClose={() => setStartSheetVisible(false)}
@@ -360,14 +433,31 @@ export function TodayScreen({
   pendingRecommendations = [],
   onStartEmpty = noOp,
   onStartPlanDay = noOp,
+  onStartOccurrence,
+  selectedStrengthOccurrence,
+  strengthOccurrences,
+  runningContext,
+  onOpenRunningPlan = noOp,
+  onSyncGarmin = noOp,
   scheduleToday,
   chooseScheduleTimeZone = noOp,
   onOpenSettings = noOp,
   onRetry = noOp,
+  headingRef,
+  settingsActionRef,
+  settingsActionNativeID,
+  onUsefulContent,
 }: TodayScreenProps) {
   const [activationPreview, setActivationPreview] = useState(false);
+  const { colors } = useAppTheme();
   const trusted = launchState === "trusted";
   const adaptiveWidth = width === undefined ? {} : { width };
+
+  useEffect(() => {
+    if (!trusted || view === undefined) return;
+    const frame = requestAnimationFrame(() => onUsefulContent?.());
+    return () => cancelAnimationFrame(frame);
+  }, [onUsefulContent, trusted, view]);
 
   let content: React.ReactNode;
   if (launchState === "failed") {
@@ -403,6 +493,9 @@ export function TodayScreen({
             onStart={(dayId, mode) => onStartPlanDay(dayId, mode)}
             onStartEmpty={onStartEmpty}
             planDays={planDays}
+            {...(onStartOccurrence === undefined ? {} : { onStartOccurrence })}
+            {...(selectedStrengthOccurrence === undefined ? {} : { selectedStrengthOccurrence })}
+            {...(strengthOccurrences === undefined ? {} : { strengthOccurrences })}
             view={view}
           />
         );
@@ -421,7 +514,7 @@ export function TodayScreen({
         content = (
           <InlineNotice
             action={
-              <PrimaryAction
+              <WorkoutPrimaryAction
                 label="Resume workout"
                 onPress={() => onResumeWorkout(view.sessionId)}
               />
@@ -436,7 +529,7 @@ export function TodayScreen({
         content = (
           <InlineNotice
             action={
-              <PrimaryAction
+              <WorkoutPrimaryAction
                 label="Resume workout"
                 onPress={() => onResumeWorkout(
                   view.sessionId,
@@ -464,29 +557,34 @@ export function TodayScreen({
         primary={
           <>
             <ScreenHeader
+              {...(headingRef === undefined
+                ? {}
+                : { ref: headingRef as React.Ref<View> })}
               action={
                 <IconAction
                   accessibilityHint={trusted
-                    ? "Opens Settings"
+                    ? "Opens App Settings"
                     : "Unavailable while workout data is prepared"}
-                  accessibilityLabel="Settings"
+                  accessibilityLabel="Open App Settings"
                   disabled={!trusted}
                   icon="settings"
+                  nativeID={settingsActionNativeID}
                   onPress={onOpenSettings}
+                  ref={settingsActionRef as React.Ref<View>}
                 />
               }
-              title="Today"
+              title="Workout"
             />
             {actionFailure === undefined ? null : (
               <InlineNotice
                 action={
                   <SecondaryAction
-                    label="Retry Today action"
+                    label="Retry starting workout"
                     onPress={onRetry}
                   />
                 }
-                body={`Your saved data was not changed. ${actionFailure.correlationCode}`}
-                heading="Workout action was not saved"
+                body={`Your saved data was not changed. Try again. ${actionFailure.correlationCode}`}
+                heading="Workout was not started"
                 tone="error"
               />
             )}
@@ -505,7 +603,7 @@ export function TodayScreen({
               : (
                   <InlineNotice
                     action={
-                      <View style={styles.timeZoneActions}>
+                      <ActionRow>
                         <SecondaryAction
                           label="Follow device timezone from today"
                           onPress={() => {
@@ -522,7 +620,7 @@ export function TodayScreen({
                             );
                           }}
                         />
-                      </View>
+                      </ActionRow>
                     }
                     body={[
                       `Stored timezone: ${scheduleToday.timezonePrompt.storedTimeZone}.`,
@@ -534,6 +632,14 @@ export function TodayScreen({
                   />
                 )}
             {content}
+            {!trusted || runningContext === undefined ? null : (
+              <View style={styles.runningContext}>
+                <Text style={[workoutTypeScale.label as TextStyle, { color: colors.textSecondary }]}>ALSO SCHEDULED</Text>
+                <Text style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.ink }]}>{runningContext.label}</Text>
+                <ActionRow><SecondaryAction label="View plan" onPress={() => onOpenRunningPlan(runningContext.planId)} />
+                <SecondaryAction label="Sync Garmin" onPress={onSyncGarmin} /></ActionRow>
+              </View>
+            )}
           </>
         }
       />
@@ -552,6 +658,9 @@ const styles = StyleSheet.create({
     gap: space[2],
   },
   timeZoneActions: {
+    gap: space[2],
+  },
+  runningContext: {
     gap: space[2],
   },
 });

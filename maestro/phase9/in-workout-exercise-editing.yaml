@@ -1,0 +1,230 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 9 add exercise and relaunch persistence
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Choose your starting plan"
+    timeout: 90000
+- scrollUntilVisible:
+    element:
+      text: "Use Full Body Foundation"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- tapOn: "Use Full Body Foundation"
+- scrollUntilVisible:
+    element:
+      text: "Activate Full Body Foundation"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- tapOn: "Activate Full Body Foundation"
+- runFlow:
+    when:
+      visible: "Retry Today action"
+    commands:
+      - tapOn: "Retry Today action"
+- extendedWaitUntil:
+    visible: "^(Start Full Body A|Start Full Body B|Rest day)$"
+    timeout: 90000
+- runFlow:
+    when:
+      visible: "^(Start Full Body A|Start Full Body B)$"
+    commands:
+      - tapOn: "Choose another day"
+- runFlow:
+    when:
+      visible: "Rest day"
+    commands:
+      - tapOn: "Train anyway"
+- tapOn:
+    text: "Start empty workout"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "WORKOUT OVERVIEW"
+    timeout: 30000
+- assertVisible: "Add exercise"
+- tapOn: "Add exercise"
+- tapOn: "Search exercises"
+- inputText: "Back Squat"
+- tapOn: "Back Squat. Add exercise"
+- waitForAnimationToEnd:
+    timeout: 10000
+- extendedWaitUntil:
+    visible: "Add Back Squat"
+    timeout: 30000
+- tapOn: "Add Back Squat"
+- assertVisible: '^Back Squat\. Added\. 0 of 1 working sets\. Collapse exercise$'
+- assertVisible: '^Working sets$'
+- tapOn: "Add exercise"
+- tapOn: "Search exercises"
+- inputText: "Overhead Press"
+- tapOn:
+    id: "add-exercise-option-5f140001-7e35-4a6d-9100-000000000007"
+- tapOn: "Add Overhead Press"
+- extendedWaitUntil:
+    visible: "Overhead Press"
+    timeout: 30000
+- tapOn: "More workout actions"
+- tapOn: "Reorder exercises"
+- scrollUntilVisible:
+    element:
+      text: "Move Back Squat down"
+    direction: UP
+    centerElement: true
+    timeout: 30000
+- tapOn: "Move Back Squat down"
+- extendedWaitUntil:
+    visible: "Back Squat moved to 2 of 2"
+    timeout: 30000
+- assertVisible: "Back Squat · Position 2 of 2"
+- stopApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: deny
+- assertVisible: '^Back Squat · Working set 1 · Rest idle$'
+- tapOn: "Resume workout"
+- extendedWaitUntil:
+    visible: "WORKOUT OVERVIEW"
+    timeout: 30000
+- tapOn: "More workout actions"
+- tapOn: "Reorder exercises"
+- assertVisible: "Back Squat · Position 2 of 2"
+- tapOn: "More workout actions"
+- tapOn: "Done reordering"
+- openLink: "gymtracker-devtest://__notification-test-controls?action=arm_replace_exercise_failure"
+- extendedWaitUntil:
+    visible: "Replace exercise failure armed"
+    timeout: 30000
+- repeat:
+    times: 12
+    while:
+      notVisible: "Return to Today"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
+- swipe:
+    start: 95%, 75%
+    end: 95%, 45%
+    duration: 300
+- assertVisible: "Return to Today"
+- tapOn: "Return to Today"
+- extendedWaitUntil:
+    visible: "Resume workout"
+    timeout: 30000
+- tapOn: "Resume workout"
+- extendedWaitUntil:
+    visible: "WORKOUT OVERVIEW"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Back Squat exercise actions"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+- tapOn: "Back Squat exercise actions"
+- tapOn: "Replace exercise"
+- assertVisible: "Choose exercise"
+- tapOn: "Search exercises"
+- inputText: "Bench Press"
+- tapOn:
+    id: "replace-exercise-option-5f140001-7e35-4a6d-9100-000000000002"
+- waitForAnimationToEnd:
+    timeout: 10000
+- extendedWaitUntil:
+    visible: "Replace with Bench Press"
+    timeout: 30000
+- tapOn: "Replace with Bench Press"
+- extendedWaitUntil:
+    visible: "Retry replacing exercise"
+    timeout: 30000
+- tapOn: "Retry replacing exercise"
+- extendedWaitUntil:
+    visible: "Bench Press"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Complete Set 1"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+- assertVisible: "Complete Set 1"
+- tapOn: "Complete Set 1"
+- openLink: "gymtracker-devtest://__notification-test-controls?action=arm_remove_exercise_failure"
+- extendedWaitUntil:
+    visible: "Remove exercise failure armed"
+    timeout: 30000
+- repeat:
+    times: 12
+    while:
+      notVisible: "Return to Today"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
+- swipe:
+    start: 95%, 75%
+    end: 95%, 45%
+    duration: 300
+- assertVisible: "Return to Today"
+- tapOn: "Return to Today"
+- extendedWaitUntil:
+    visible: "Resume workout"
+    timeout: 30000
+- tapOn: "Resume workout"
+- extendedWaitUntil:
+    visible: "WORKOUT OVERVIEW"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Overhead Press exercise actions"
+    direction: UP
+    centerElement: true
+    timeout: 30000
+- tapOn: "Overhead Press exercise actions"
+- tapOn: "Remove exercise"
+- assertVisible: "This exercise has completed sets. They will be retained and this exercise will be marked Skipped, not deleted."
+- tapOn: "Keep exercise"
+- tapOn: "Overhead Press exercise actions"
+- tapOn: "Remove exercise"
+- tapOn:
+    id: "remove-exercise-confirm"
+- extendedWaitUntil:
+    visible: "Retry removing exercise"
+    timeout: 30000
+- tapOn: "Retry removing exercise"
+- extendedWaitUntil:
+    visible: "Overhead Press. Skipped. Completed · 0 kg × 8. 1 of 1 working sets. Expand exercise"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Overhead Press. Skipped. Completed · 0 kg × 8. 1 of 1 working sets. Expand exercise"
+    direction: UP
+    centerElement: true
+    timeout: 30000
+- assertVisible: "Overhead Press. Skipped. Completed · 0 kg × 8. 1 of 1 working sets. Expand exercise"
+- stopApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: deny
+- assertVisible: "Workout in progress"
+- tapOn: "Resume workout"
+- extendedWaitUntil:
+    visible: "WORKOUT OVERVIEW"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Overhead Press. Skipped. Completed · 0 kg × 8. 1 of 1 working sets. Expand exercise"
+    direction: UP
+    centerElement: true
+    timeout: 30000
+- assertVisible: "Overhead Press. Skipped. Completed · 0 kg × 8. 1 of 1 working sets. Expand exercise"

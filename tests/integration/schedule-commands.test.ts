@@ -50,16 +50,12 @@ import {
   configureSqliteConnection,
 } from "../../src/platform/sqlite/connection";
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
-import {
-  scheduleActivationMigration,
-} from "../../src/platform/sqlite/migrations/0008_schedule_activation";
-import {
-  ownedPlansMigration,
-} from "../../src/platform/sqlite/migrations/0009_owned_plans";
+import { migrations } from "../../src/platform/sqlite/migrations";
 import {
   createScheduleRepository,
   ScheduleRepositoryError,
   type ApplyScheduleOpportunityRepositoryInput,
+  type ActivateOwnedPlanScheduleRepositoryInput,
   type ChangeScheduleTimeZoneRepositoryInput,
   type ConsumeScheduleDateOverrideRepositoryInput,
   type SaveScheduleVersionRepositoryInput,
@@ -68,6 +64,7 @@ import {
 import {
   createSqliteKernel,
   type SqliteKernel,
+  type SqliteTransactionExecutor,
 } from "../../src/platform/sqlite/sqliteKernel";
 
 class NodePreparedResult<Row extends Record<string, unknown>>
@@ -184,7 +181,21 @@ async function createRuntime(): Promise<SqliteKernel> {
   await createMigrationRunner({
     databaseName: "gym-tracker.db",
     kernel,
-    migrations: [scheduleActivationMigration, ownedPlansMigration],
+    // The schedule repository is exercised against the current schema.
+    // Phase 13 activation is sport-scoped and therefore requires plan_kind,
+    // which is intentionally absent from the legacy v6 fixture itself.
+    migrations,
+    recoveryBackup: {
+      async createAndValidate(request) {
+        return {
+          backupId: `schedule-coverage-${request.toVersion}`,
+          databaseName: request.databaseName,
+          fromVersion: request.fromVersion,
+          toVersion: request.toVersion,
+          validated: true as const,
+        };
+      },
+    },
   }).run();
   await kernel.write(async (transaction) => {
     await transaction.execute(
@@ -234,6 +245,50 @@ async function createRuntime(): Promise<SqliteKernel> {
        )`,
     );
   });
+  return kernel;
+}
+
+async function createModernRuntime(): Promise<SqliteKernel> {
+  const directory = mkdtempSync(join(tmpdir(), "gym-schedule-modern-"));
+  temporaryDirectories.add(directory);
+  const databasePath = join(directory, "gym-tracker.db");
+  const fixture = new DatabaseSync(databasePath);
+  fixture.exec(readFileSync(
+    join(repositoryRoot, "tests/migrations/fixtures/v6-metric-profiles.sql"),
+    "utf8",
+  ));
+  fixture.close();
+
+  const writer = new NodeSqliteConnection(new DatabaseSync(databasePath));
+  const reader = new NodeSqliteConnection(new DatabaseSync(databasePath));
+  await configureSqliteConnection(writer, { enableWal: true });
+  await configureSqliteConnection(reader, { enableWal: false });
+  const kernel = createSqliteKernel({ reader, writer });
+  runtimes.push(kernel);
+  await createMigrationRunner({
+    databaseName: "gym-tracker.db",
+    kernel,
+    migrations,
+    recoveryBackup: {
+      async createAndValidate(request) {
+        return {
+          backupId: `schedule-coverage-${request.toVersion}`,
+          databaseName: request.databaseName,
+          fromVersion: request.fromVersion,
+          toVersion: request.toVersion,
+          validated: true as const,
+        };
+      },
+    },
+  }).run();
+  await kernel.write((transaction) => transaction.execute(
+    `UPDATE workout_sessions
+     SET status = 'completed',
+         completed_at_ms = COALESCE(completed_at_ms, started_at_ms),
+         active_session_exercise_id = NULL,
+         active_set_id = NULL
+     WHERE status = 'in_progress'`,
+  ));
   return kernel;
 }
 
@@ -374,6 +429,43 @@ async function activateHoldPlan(
     sha256,
     input,
   });
+}
+
+function baseActivateRepositoryInput(
+  overrides: Partial<ActivateOwnedPlanScheduleRepositoryInput> = {},
+): ActivateOwnedPlanScheduleRepositoryInput {
+  return {
+    operation: "activate_schedule",
+    requestId: "repository-activate-hold",
+    requestSha256: "a".repeat(64),
+    planId: "plan-hold",
+    expectedPlanRevision: 2,
+    expectedActivePair: {
+      kind: "pair",
+      planId: "plan-copy",
+      planRevision: 8,
+      scheduleId: "schedule-copy",
+      scheduleRevision: 7,
+    },
+    targetSchedule: { kind: "absent", scheduleId: "schedule-hold" },
+    todayLocalDate: parseLocalDate("2026-08-18"),
+    activatedAtMs: commandTime,
+    next: {
+      effectiveLocalDate: parseLocalDate("2026-08-18"),
+      mode: "weekday",
+      timeZone: parseStoredTimeZone("Asia/Singapore"),
+      bindings: [{
+        ordinal: 0,
+        weekIndex: 0,
+        weekday: "Tuesday",
+        planDayId: "plan-day-hold",
+      }],
+    },
+    confirmationToken: "repository-activation-token",
+    versionId: "repository-activation-version",
+    bindingIds: ["repository-activation-binding"],
+    ...overrides,
+  };
 }
 
 describe("schedule version persistence", () => {
@@ -2308,5 +2400,744 @@ describe("schedule repository edge contracts", () => {
         advanceRotation: true,
       },
     })).resolves.toMatchObject({ scheduleRevision: rotation.scheduleRevision + 2 });
+  });
+
+  it("fails closed before activation when persisted active plan and schedule facts disagree", async () => {
+    const kernel = await createRuntime();
+    await kernel.write((transaction) =>
+      transaction.execute(
+        `UPDATE owned_plan_schedules
+         SET lifecycle = 'inactive', deactivated_at_ms = 1
+         WHERE id = 'schedule-copy'`,
+      )
+    );
+
+    await expect(activateHoldPlan(kernel, {
+      expectedActivePair: { kind: "none" },
+    })).rejects.toMatchObject({
+      code: "schedule_active_state_invalid",
+    });
+    await expect(kernel.queryAll(
+      `SELECT id, is_active, revision FROM plans
+       WHERE id IN ('plan-copy', 'plan-hold') ORDER BY id`,
+    )).resolves.toEqual([
+      { id: "plan-copy", is_active: 1, revision: 8 },
+      { id: "plan-hold", is_active: 0, revision: 2 },
+    ]);
+    await expect(kernel.queryAll(
+      `SELECT id FROM owned_plan_schedule_events
+       WHERE id = 'schedule-command:activate-hold-schedule'`,
+    )).resolves.toEqual([]);
+  });
+
+  it("activates from no persisted active pair and fails closed on invalid activation inputs", async () => {
+    const kernel = await createRuntime();
+    const repository = createScheduleRepository(kernel);
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        "UPDATE plans SET is_active = 0 WHERE id = 'plan-copy'",
+      );
+      await transaction.execute(
+        `UPDATE owned_plan_schedules
+         SET lifecycle = 'inactive', deactivated_at_ms = 1
+         WHERE id = 'schedule-copy'`,
+      );
+    });
+
+    await expect(repository.activateSchedule(baseActivateRepositoryInput({
+      requestId: "activate-from-none",
+      expectedActivePair: { kind: "none" },
+    }))).resolves.toMatchObject({
+      planId: "plan-hold",
+      scheduleId: "schedule-hold",
+      invalidations: [
+        "plan:plan-hold",
+        "schedule:schedule-hold",
+        "schedule:schedule-hold:date:2026-08-18",
+        "today",
+      ],
+    });
+
+    const invalid = await createRuntime();
+    const invalidRepository = createScheduleRepository(invalid);
+    await expect(repositoryErrorCode(() => invalidRepository.activateSchedule(
+      baseActivateRepositoryInput({
+        requestId: "activate-invalid-target",
+        planId: "missing-plan",
+      }),
+    ))).resolves.toBe("schedule_reference_invalid");
+    await expect(repositoryErrorCode(() => invalidRepository.activateSchedule(
+      baseActivateRepositoryInput({
+        requestId: "activate-invalid-binding",
+        next: {
+          effectiveLocalDate: parseLocalDate("2026-08-18"),
+          mode: "weekday",
+          timeZone: parseStoredTimeZone("Asia/Singapore"),
+          bindings: [{
+            ordinal: 0,
+            weekIndex: 0,
+            weekday: "Tuesday",
+            planDayId: "plan-day-copy",
+          }],
+        },
+      }),
+    ))).resolves.toBe("schedule_reference_invalid");
+  });
+
+  it("keeps an active Running pair intact while Strength activates and mutates its schedule", async () => {
+    const kernel = await createModernRuntime();
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        "UPDATE plans SET revision = 8 WHERE id = 'plan-copy'",
+      );
+      await transaction.execute(
+        "UPDATE plans SET revision = 2 WHERE id = 'plan-hold'",
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_schedules
+          (id, plan_id, lifecycle, revision, activated_at_ms,
+           deactivated_at_ms, plan_kind)
+         VALUES (
+           'schedule-copy', 'plan-copy', 'active', 7, 1, NULL, 'strength'
+         )`,
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_day_exercises
+          (id, plan_day_id, exercise_id, ordinal,
+           between_exercise_rest_seconds, metric_profile,
+           metric_contract_version, exercise_metric_generation, revision)
+         VALUES (
+           'running-first-strength-occurrence', 'plan-day-hold',
+           'exercise-plank', 0, 60, 'timed_hold', 1, 1, 1
+         )`,
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_working_set_targets
+          (id, plan_day_exercise_id, ordinal, target_json, unit_json,
+           metric_profile, metric_contract_version,
+           exercise_metric_generation, revision)
+         VALUES (
+           'running-first-strength-target',
+           'running-first-strength-occurrence', 0,
+           '{"version":1,"profile":"timed_hold","durationSeconds":30,"sets":3}',
+           '{"version":1,"time":"seconds"}', 'timed_hold', 1, 1, 1
+         )`,
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_progression_policies
+          (id, plan_day_exercise_id, policy_kind, policy_id, policy_version,
+           rule_json, metric_profile, metric_contract_version,
+           exercise_metric_generation, status, revision)
+         VALUES (
+           'running-first-strength-policy',
+           'running-first-strength-occurrence', 'manual_hold',
+           'manual-hold-v1', 1,
+           '{"kind":"manual_hold","id":"manual-hold-v1","version":1}',
+           'timed_hold', 1, 1, 'active', 1
+         )`,
+      );
+      await transaction.execute(
+        `INSERT INTO plans
+          (id, content_pack_id, origin, source_namespace, upstream_id, name,
+           days_per_week, audience, goal, estimate_minutes, attribution,
+           is_active, revision, plan_kind)
+         VALUES (
+           'running-first', NULL, 'custom', NULL, NULL, 'Running First',
+           1, 'Personal', 'Running', 30, 'Owner', 1, 1, 'running'
+         )`,
+      );
+      await transaction.execute(
+        `INSERT INTO running_plans
+          (plan_id, status, revision, created_at_ms)
+         VALUES ('running-first', 'ready', 1, 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_schedules
+          (id, plan_id, lifecycle, revision, activated_at_ms,
+           deactivated_at_ms, plan_kind)
+         VALUES (
+           'running-first-schedule', 'running-first', 'active', 1, 1,
+           NULL, 'running'
+         )`,
+      );
+    });
+
+    const repository = createScheduleRepository(kernel);
+    await expect(repository.activateSchedule(baseActivateRepositoryInput({
+      requestId: "activate-strength-after-running",
+    }))).resolves.toMatchObject({
+      planId: "plan-hold",
+      scheduleId: "schedule-hold",
+    });
+
+    const strength = await repository.readTimeZoneState({
+      scheduleId: "schedule-hold",
+    });
+    expect(strength).not.toBeNull();
+    await expect(repository.saveVersion({
+      operation: "save_schedule_version",
+      requestId: "mutate-strength-after-running",
+      requestSha256: "b".repeat(64),
+      scheduleId: "schedule-hold",
+      planId: "plan-hold",
+      expectedScheduleRevision: 1,
+      expectedPlanRevision: 3,
+      todayLocalDate: parseLocalDate("2026-08-18"),
+      savedAtMs: commandTime + 1,
+      before: strength!.version,
+      next: {
+        effectiveLocalDate: parseLocalDate("2026-08-19"),
+        mode: "weekday",
+        timeZone: parseStoredTimeZone("Asia/Singapore"),
+        bindings: [{
+          ordinal: 0,
+          weekIndex: 0,
+          weekday: "Monday",
+          planDayId: "plan-day-hold",
+        }],
+      },
+      confirmationToken: "strength-after-running",
+      versionId: "strength-after-running-version",
+      bindingIds: ["strength-after-running-binding"],
+    })).resolves.toMatchObject({
+      scheduleId: "schedule-hold",
+      scheduleRevision: 2,
+      planRevision: 4,
+    });
+
+    await expect(kernel.queryAll(
+      `SELECT plan.id, plan.plan_kind, plan.is_active,
+              schedule.id AS schedule_id, schedule.lifecycle, schedule.revision
+       FROM plans plan
+       JOIN owned_plan_schedules schedule ON schedule.plan_id = plan.id
+       WHERE plan.id IN ('plan-hold', 'running-first')
+       ORDER BY plan.plan_kind`,
+    )).resolves.toEqual([
+      {
+        id: "running-first",
+        plan_kind: "running",
+        is_active: 1,
+        schedule_id: "running-first-schedule",
+        lifecycle: "active",
+        revision: 1,
+      },
+      {
+        id: "plan-hold",
+        plan_kind: "strength",
+        is_active: 1,
+        schedule_id: "schedule-hold",
+        lifecycle: "active",
+        revision: 2,
+      },
+    ]);
+  });
+
+  it("fails closed when Running readiness aggregates are absent or omit recovery membership", async () => {
+    const activate = (readiness: readonly Record<string, unknown>[]) => {
+      const transaction: SqliteTransactionExecutor = {
+        execute: async () => ({ changes: 1, lastInsertRowId: 0 }),
+        queryAll: async <Row extends Record<string, unknown>>(sql: string) => {
+          if (sql.includes("FROM workout_sessions")) {
+            return [{ count: 0 }] as unknown as readonly Row[];
+          }
+          if (sql.includes("COUNT(*) AS slot_count")) {
+            return readiness as unknown as readonly Row[];
+          }
+          if (sql.includes("FROM plans plan")) {
+            return [{
+              plan_id: "running",
+              plan_revision: 1,
+              plan_kind: "running",
+              plan_active: 0,
+              plan_origin: "custom",
+              running_status: "ready",
+              schedule_id: "running-schedule",
+              schedule_revision: 1,
+              schedule_kind: "running",
+              schedule_lifecycle: "inactive",
+            }] as unknown as readonly Row[];
+          }
+          return [];
+        },
+      };
+      const kernel = {
+        write: async <Result>(operation: (value: SqliteTransactionExecutor) => Promise<Result>) => operation(transaction),
+      } as unknown as SqliteKernel;
+      return createScheduleRepository(kernel).activateRunningSchedule?.({
+        planId: "running",
+        scheduleId: "running-schedule",
+        expectedPlanRevision: 1,
+        expectedScheduleRevision: 1,
+        activatedAtMs: 2,
+      });
+    };
+
+    await expect(activate([])).rejects.toMatchObject({ code: "schedule_reference_invalid" });
+    await expect(activate([{ slot_count: 1, recovery_count: null }]))
+      .rejects.toMatchObject({ code: "schedule_reference_invalid" });
+  });
+
+  it("guards Running activation and translates failed SQLite readback paths", async () => {
+    const prepareRunningPlan = async (kernel: SqliteKernel) => {
+      await kernel.write(async (transaction) => {
+        await transaction.execute(
+          "UPDATE plans SET is_active = 0 WHERE plan_kind = 'strength'",
+        );
+        await transaction.execute(
+          `UPDATE owned_plan_schedules
+           SET lifecycle = 'inactive', deactivated_at_ms = 1
+           WHERE plan_kind = 'strength' AND lifecycle = 'active'`,
+        );
+        await transaction.execute(
+          `INSERT INTO plans
+            (id, content_pack_id, origin, source_namespace, upstream_id, name,
+             days_per_week, audience, goal, estimate_minutes, attribution,
+             is_active, revision, plan_kind)
+           VALUES (
+             'schedule-coverage-running', NULL, 'custom', NULL, NULL,
+             'Schedule Coverage Running', 1, 'Personal', 'Running', 30,
+             'Owner', 0, 1, 'running'
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO running_plans
+            (plan_id, status, revision, created_at_ms)
+           VALUES ('schedule-coverage-running', 'ready', 1, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO running_goals
+            (id, plan_id, goal_json, revision, created_at_ms)
+           VALUES (
+             'schedule-coverage-running:goal:1', 'schedule-coverage-running',
+             '{"version":1,"id":"schedule-coverage-running:goal:1"}', 1, 1
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO running_session_revisions
+            (id, plan_id, session_kind, revision, definition_json, created_at_ms)
+           VALUES (
+             'schedule-coverage-running:recovery:1', 'schedule-coverage-running',
+             'recovery', 1, '{"version":1,"sessionKind":"recovery"}', 1
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO running_session_roots
+            (id, plan_id, session_kind, current_revision, created_at_ms)
+           VALUES (
+             'schedule-coverage-running:recovery', 'schedule-coverage-running',
+             'recovery', 1, 1
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO running_session_slot_roots
+            (id, plan_id, weekday, created_at_ms)
+           VALUES (
+             'schedule-coverage-running:slot', 'schedule-coverage-running',
+             'Monday', 1
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO running_session_slot_revisions
+            (id, slot_root_id, revision, ordinal, session_root_id,
+             session_revision_id, created_at_ms)
+           VALUES (
+             'schedule-coverage-running:slot:1', 'schedule-coverage-running:slot',
+             1, 0, 'schedule-coverage-running:recovery',
+             'schedule-coverage-running:recovery:1', 1
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO running_session_slots
+            (id, plan_id, weekday, ordinal, session_revision_id, revision, retired_at_ms)
+           VALUES (
+             'schedule-coverage-running:slot', 'schedule-coverage-running',
+             'Monday', 0, 'schedule-coverage-running:recovery:1', 1, NULL
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO owned_plan_schedules
+            (id, plan_id, lifecycle, revision, activated_at_ms,
+             deactivated_at_ms, plan_kind)
+           VALUES (
+             'schedule-coverage-running', 'schedule-coverage-running',
+             'inactive', 1, 1, 1, 'running'
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO owned_plan_schedule_versions
+            (id, schedule_id, version_number, effective_local_date, mode,
+             timezone, rotation_pointer, created_at_ms)
+           VALUES (
+             'schedule-coverage-running:version:1', 'schedule-coverage-running',
+             1, '2026-08-01', 'weekday', 'Asia/Singapore', NULL, 1
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO plan_days
+            (id, plan_id, ordinal, name, revision)
+           VALUES (
+             'schedule-coverage-running:day:1', 'schedule-coverage-running',
+             0, 'Recovery', 1
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO owned_plan_schedule_bindings
+            (id, schedule_version_id, mode, ordinal, week_index, weekday,
+             plan_day_id)
+           VALUES (
+             'schedule-coverage-running:binding:1',
+             'schedule-coverage-running:version:1', 'weekday', 0, 0,
+             'Monday', 'schedule-coverage-running:day:1'
+           )`,
+        );
+      });
+      const [readiness] = await kernel.queryAll<{ recovery_count: number; slot_count: number; version_count: number; binding_count: number }>(
+        `SELECT
+           (SELECT COUNT(*) FROM running_session_slots slot
+            JOIN running_session_roots root ON root.id = 'schedule-coverage-running:recovery'
+            JOIN running_session_revisions revision ON revision.id = slot.session_revision_id
+              AND revision.revision = root.current_revision
+            WHERE slot.plan_id = 'schedule-coverage-running' AND slot.retired_at_ms IS NULL
+              AND revision.session_kind = 'recovery') AS recovery_count,
+           (SELECT COUNT(*) FROM running_session_slots
+            WHERE plan_id = 'schedule-coverage-running' AND retired_at_ms IS NULL) AS slot_count,
+           (SELECT COUNT(*) FROM owned_plan_schedule_versions
+            WHERE schedule_id = 'schedule-coverage-running') AS version_count,
+           (SELECT COUNT(*) FROM owned_plan_schedule_bindings binding
+            JOIN owned_plan_schedule_versions version ON version.id = binding.schedule_version_id
+            WHERE version.schedule_id = 'schedule-coverage-running') AS binding_count`,
+      );
+      if (readiness?.recovery_count !== 1 || readiness.slot_count !== 1 || readiness.version_count !== 1 || readiness.binding_count !== 1) {
+        throw new Error(`schedule_running_fixture_not_current:${JSON.stringify(readiness)}`);
+      }
+    };
+    const activate = (kernel: SqliteKernel) =>
+      createScheduleRepository(kernel).activateRunningSchedule?.({
+        planId: "schedule-coverage-running",
+        scheduleId: "schedule-coverage-running",
+        expectedPlanRevision: 1,
+        expectedScheduleRevision: 1,
+        activatedAtMs: 2,
+      });
+    const prepareActiveStrengthPair = (kernel: SqliteKernel) => kernel.write(
+      async (transaction) => {
+        await transaction.execute(
+          `INSERT INTO plans
+            (id, content_pack_id, origin, source_namespace, upstream_id, name,
+             days_per_week, audience, goal, estimate_minutes, attribution,
+             is_active, revision, plan_kind)
+           VALUES (
+             'schedule-coverage-strength', NULL, 'custom', NULL, NULL,
+             'Schedule Coverage Strength', 1, 'Personal', 'Strength', 30,
+             'Owner', 1, 1, 'strength'
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO owned_plan_aggregate_states
+            (plan_id, lifecycle, graph_status, missing_requirement_code,
+             missing_requirement, created_at_ms, updated_at_ms, archived_at_ms)
+           VALUES (
+             'schedule-coverage-strength', 'ready', 'valid', NULL, NULL,
+             1, 1, NULL
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO owned_plan_schedules
+            (id, plan_id, lifecycle, revision, activated_at_ms,
+             deactivated_at_ms, plan_kind)
+           VALUES (
+             'schedule-coverage-strength', 'schedule-coverage-strength',
+             'active', 1, 1, NULL, 'strength'
+           )`,
+        );
+      },
+    );
+
+    const committed = await createModernRuntime();
+    await prepareRunningPlan(committed);
+    await prepareActiveStrengthPair(committed);
+    await expect(activate(committed)).resolves.toBeUndefined();
+
+    const blocked = await createModernRuntime();
+    await prepareRunningPlan(blocked);
+    await blocked.write((transaction) => transaction.execute(
+      `UPDATE workout_sessions
+       SET status = 'in_progress', completed_at_ms = NULL
+       WHERE id = 'session-active'`,
+    ));
+    await expect(activate(blocked)).rejects.toMatchObject({
+      code: "schedule_active_workout_blocked",
+    });
+
+    const malformed = await createModernRuntime();
+    await prepareRunningPlan(malformed);
+    await expect(createScheduleRepository(malformed).activateRunningSchedule?.({
+      planId: "missing-running",
+      scheduleId: "schedule-coverage-running",
+      expectedPlanRevision: 1,
+      expectedScheduleRevision: 1,
+      activatedAtMs: 2,
+    })).rejects.toMatchObject({ code: "schedule_reference_invalid" });
+
+    const staleSchedule = await createModernRuntime();
+    await prepareRunningPlan(staleSchedule);
+    await staleSchedule.write((transaction) => transaction.execute(
+      `CREATE TRIGGER schedule_coverage_running_stale_schedule
+       AFTER UPDATE OF is_active ON plans
+       WHEN NEW.id = 'schedule-coverage-running'
+       BEGIN
+         UPDATE owned_plan_schedules
+         SET lifecycle = 'active', deactivated_at_ms = NULL
+         WHERE id = 'schedule-coverage-running';
+       END`,
+    ));
+    await expect(activate(staleSchedule)).rejects.toMatchObject({
+      code: "schedule_active_revision_conflict",
+    });
+
+    const missingPair = await createModernRuntime();
+    await prepareRunningPlan(missingPair);
+    await missingPair.write((transaction) => transaction.execute(
+      `CREATE TRIGGER schedule_coverage_running_missing_pair
+       AFTER UPDATE OF lifecycle ON owned_plan_schedules
+       WHEN NEW.id = 'schedule-coverage-running' AND NEW.lifecycle = 'active'
+       BEGIN
+         UPDATE owned_plan_schedules
+         SET lifecycle = 'inactive', deactivated_at_ms = 2
+         WHERE id = 'schedule-coverage-running';
+       END`,
+    ));
+    await expect(activate(missingPair)).rejects.toMatchObject({
+      code: "schedule_active_state_invalid",
+    });
+
+    const invalidPair = await createModernRuntime();
+    await prepareRunningPlan(invalidPair);
+    await invalidPair.write((transaction) => transaction.execute(
+      `CREATE TRIGGER schedule_coverage_running_invalid_pair
+       AFTER UPDATE OF lifecycle ON owned_plan_schedules
+       WHEN NEW.id = 'schedule-coverage-running' AND NEW.lifecycle = 'active'
+       BEGIN
+         UPDATE running_plans SET status = 'draft'
+         WHERE plan_id = 'schedule-coverage-running';
+       END`,
+    ));
+    await expect(activate(invalidPair)).rejects.toMatchObject({
+      code: "schedule_active_state_invalid",
+    });
+  });
+
+  it("fails closed for malformed Strength active pairs and unacknowledged writes", async () => {
+    const multipleActive = await createRuntime();
+    await multipleActive.write(async (transaction) => {
+      await transaction.execute("DROP INDEX one_active_owned_plan_per_sport");
+      await transaction.execute(
+        `INSERT INTO plans
+          (id, content_pack_id, origin, source_namespace, upstream_id, name,
+           days_per_week, audience, goal, estimate_minutes, attribution,
+           is_active, revision, plan_kind)
+         VALUES (
+           'plan-duplicate-active', NULL, 'custom', NULL, NULL,
+           'Duplicate active Strength plan', 1, 'Personal', 'Strength', 30,
+           'Owner', 1, 1, 'strength'
+         )`,
+      );
+    });
+    await expect(repositoryErrorCode(() => createScheduleRepository(multipleActive)
+      .activateSchedule(baseActivateRepositoryInput({
+        requestId: "activate-multiple-active",
+      })))).resolves.toBe("schedule_active_state_invalid");
+
+    const mismatchedActive = await createRuntime();
+    await mismatchedActive.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE owned_plan_schedules
+         SET lifecycle = 'inactive', deactivated_at_ms = 1
+         WHERE id = 'schedule-copy'`,
+      );
+      await transaction.execute(
+        `INSERT INTO plans
+          (id, content_pack_id, origin, source_namespace, upstream_id, name,
+           days_per_week, audience, goal, estimate_minutes, attribution,
+           is_active, revision, plan_kind)
+         VALUES (
+           'plan-stray-schedule', NULL, 'custom', NULL, NULL,
+           'Stray Strength schedule owner', 1, 'Personal', 'Strength', 30,
+           'Owner', 0, 1, 'strength'
+         )`,
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_schedules
+          (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms)
+         VALUES ('schedule-stray', 'plan-stray-schedule', 'active', 1, 1, NULL)`,
+      );
+    });
+    await expect(repositoryErrorCode(() => createScheduleRepository(mismatchedActive)
+      .activateSchedule(baseActivateRepositoryInput({
+        requestId: "activate-mismatched-active",
+      })))).resolves.toBe("schedule_active_state_invalid");
+
+    const sourcePlanIgnored = await createRuntime();
+    await sourcePlanIgnored.write((transaction) => transaction.execute(
+      `CREATE TRIGGER schedule_coverage_source_plan_ignored
+       BEFORE UPDATE OF is_active ON plans
+       WHEN OLD.id = 'plan-copy'
+       BEGIN SELECT RAISE(IGNORE); END`,
+    ));
+    await expect(repositoryErrorCode(() => createScheduleRepository(sourcePlanIgnored)
+      .activateSchedule(baseActivateRepositoryInput({
+        requestId: "activate-source-plan-ignored",
+      })))).resolves.toBe("schedule_active_revision_conflict");
+
+    const sourceScheduleIgnored = await createRuntime();
+    await sourceScheduleIgnored.write((transaction) => transaction.execute(
+      `CREATE TRIGGER schedule_coverage_source_schedule_ignored
+       BEFORE UPDATE OF lifecycle ON owned_plan_schedules
+       WHEN OLD.id = 'schedule-copy'
+       BEGIN SELECT RAISE(IGNORE); END`,
+    ));
+    await expect(repositoryErrorCode(() => createScheduleRepository(sourceScheduleIgnored)
+      .activateSchedule(baseActivateRepositoryInput({
+        requestId: "activate-source-schedule-ignored",
+      })))).resolves.toBe("schedule_active_revision_conflict");
+
+    const targetPlanIgnored = await createRuntime();
+    await targetPlanIgnored.write((transaction) => transaction.execute(
+      `CREATE TRIGGER schedule_coverage_target_plan_ignored
+       BEFORE UPDATE OF is_active ON plans
+       WHEN OLD.id = 'plan-hold'
+       BEGIN SELECT RAISE(IGNORE); END`,
+    ));
+    await expect(repositoryErrorCode(() => createScheduleRepository(targetPlanIgnored)
+      .activateSchedule(baseActivateRepositoryInput({
+        requestId: "activate-target-plan-ignored",
+      })))).resolves.toBe("schedule_plan_revision_conflict");
+
+    const readbackChanged = await createRuntime();
+    await readbackChanged.write((transaction) => transaction.execute(
+      `CREATE TRIGGER schedule_coverage_target_readback_changed
+       AFTER UPDATE OF is_active ON plans
+       WHEN NEW.id = 'plan-hold'
+       BEGIN
+         UPDATE owned_plan_schedules SET revision = revision + 1
+         WHERE id = 'schedule-hold';
+       END`,
+    ));
+    await expect(repositoryErrorCode(() => createScheduleRepository(readbackChanged)
+      .activateSchedule(baseActivateRepositoryInput({
+        requestId: "activate-readback-changed",
+      })))).resolves.toBe("schedule_active_state_invalid");
+  });
+
+  it("rejects an inactive target with a changed snapshot or ignored activation write", async () => {
+    const inputForInactiveTarget = async (kernel: SqliteKernel) => {
+      await kernel.write(async (transaction) => {
+        await transaction.execute(
+          `INSERT INTO owned_plan_schedules
+            (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms)
+           VALUES ('schedule-hold', 'plan-hold', 'inactive', 3, 100, 200)`,
+        );
+        await transaction.execute(
+          `INSERT INTO owned_plan_schedule_versions
+            (id, schedule_id, version_number, effective_local_date, mode,
+             timezone, rotation_pointer, created_at_ms)
+           VALUES (
+             'schedule-hold:version:1', 'schedule-hold', 1, '2026-08-01',
+             'weekday', 'Asia/Singapore', NULL, 100
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO owned_plan_schedule_bindings
+            (id, schedule_version_id, mode, ordinal, week_index, weekday,
+             plan_day_id)
+           VALUES (
+             'schedule-hold:binding:1', 'schedule-hold:version:1', 'weekday',
+             0, 0, 'Monday', 'plan-day-hold'
+           )`,
+        );
+      });
+      const repository = createScheduleRepository(kernel);
+      const before = (await repository.readTimeZoneState({
+        scheduleId: "schedule-hold",
+      }))!.version;
+      return baseActivateRepositoryInput({
+        targetSchedule: {
+          kind: "inactive",
+          scheduleId: "schedule-hold",
+          scheduleRevision: 3,
+          before,
+        },
+      });
+    };
+
+    const changedSnapshot = await createRuntime();
+    const changedInput = await inputForInactiveTarget(changedSnapshot);
+    const changedTarget = changedInput.targetSchedule;
+    if (changedTarget.kind !== "inactive") {
+      throw new Error("expected_inactive_schedule_target");
+    }
+    await expect(repositoryErrorCode(() => createScheduleRepository(changedSnapshot)
+      .activateSchedule({
+        ...changedInput,
+        requestId: "activate-inactive-snapshot-changed",
+        targetSchedule: {
+          ...changedTarget,
+          before: {
+            ...changedTarget.before,
+            versionNumber: 2,
+          },
+        },
+      }))).resolves.toBe("schedule_before_snapshot_conflict");
+
+    const ignoredTargetWrite = await createRuntime();
+    const ignoredInput = await inputForInactiveTarget(ignoredTargetWrite);
+    await ignoredTargetWrite.write((transaction) => transaction.execute(
+      `CREATE TRIGGER schedule_coverage_target_schedule_ignored
+       BEFORE UPDATE OF lifecycle ON owned_plan_schedules
+       WHEN OLD.id = 'schedule-hold'
+       BEGIN SELECT RAISE(IGNORE); END`,
+    ));
+    await expect(repositoryErrorCode(() => createScheduleRepository(ignoredTargetWrite)
+      .activateSchedule({
+        ...ignoredInput,
+        requestId: "activate-inactive-write-ignored",
+      }))).resolves.toBe("schedule_revision_conflict");
+  });
+
+  it("keeps a rotation action state's recurring opportunity null when an override masks an empty rotation", async () => {
+    const kernel = await createRuntime();
+    const repository = createScheduleRepository(kernel);
+    await repository.saveVersion(await baseSaveInput({
+      requestId: "empty-rotation-override-readback",
+      versionId: "empty-rotation-override-version",
+      bindingIds: [],
+      next: {
+        effectiveLocalDate: parseLocalDate("2026-08-18"),
+        mode: "rotation",
+        timeZone: parseStoredTimeZone("Asia/Singapore"),
+        rotationPointer: 0,
+        bindings: [],
+      },
+    }));
+    await kernel.write((transaction) => transaction.execute(
+      `INSERT INTO owned_plan_schedule_overrides
+        (id, schedule_id, local_date, selection_kind, plan_day_id, state,
+         revision, consumed_opportunity_id, created_at_ms, consumed_at_ms)
+       VALUES ('empty-rotation-override', 'schedule-copy', '2026-08-18',
+               'skip', NULL, 'pending', 1, NULL, 1, NULL)`,
+    ));
+
+    await expect(repository.readActionState({
+      scheduleId: "schedule-copy",
+      instantMs: Date.UTC(2026, 7, 18, 4),
+    })).resolves.toMatchObject({
+      hasEffectiveOverride: true,
+      rotationState: {
+        bindings: [],
+        pointer: 0,
+        currentOpportunity: null,
+      },
+      opportunity: null,
+    });
   });
 });

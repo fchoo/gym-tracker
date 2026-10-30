@@ -23,6 +23,8 @@ import type {
 } from "../../platform/sqlite/sqliteKernel";
 
 export const PHASE2_CONTENT_CONTRACT_VERSION = 1 as const;
+/** Current accepted catalogs include instruction sets, introduced in schema 37. */
+const CURRENT_CATALOG_SCHEMA_VERSION = 37;
 
 export const PHASE2_CONTENT_CASE_IDS = [
   "content-accepted-fresh-import",
@@ -213,12 +215,23 @@ export function parseAcceptedPhase2Catalog(
 
 async function migrateThrough(
   kernel: SqliteKernel,
-  version: 1 | 2 | 3 | 4 | 5,
+  version: number,
 ): Promise<void> {
   await createMigrationRunner({
     databaseName: `phase2-content-v${version}`,
     kernel,
     migrations: migrations.filter((migration) => migration.version <= version),
+    recoveryBackup: {
+      async createAndValidate(request) {
+        return {
+          backupId: "phase2-content-contract",
+          databaseName: request.databaseName,
+          fromVersion: request.fromVersion,
+          toVersion: request.toVersion,
+          validated: true,
+        };
+      },
+    },
   }).run();
 }
 
@@ -337,7 +350,7 @@ async function createAcceptedUpdate(
 
 const contractCases: Record<Phase2ContentContractCaseId, ContractCase> = {
   async "content-accepted-fresh-import"({ kernel }, adapter) {
-    await migrateThrough(kernel, 5);
+    await migrateThrough(kernel, CURRENT_CATALOG_SCHEMA_VERSION);
     const catalog = await parseAcceptedPhase2Catalog(adapter.sha256);
     const result = await createContentRepository(kernel).importAcceptedCatalog({
       catalog,
@@ -385,7 +398,7 @@ const contractCases: Record<Phase2ContentContractCaseId, ContractCase> = {
   },
 
   async "content-d50-d51-update"({ kernel }, adapter) {
-    await migrateThrough(kernel, 5);
+    await migrateThrough(kernel, CURRENT_CATALOG_SCHEMA_VERSION);
     const catalog = await parseAcceptedPhase2Catalog(adapter.sha256);
     const repository = createContentRepository(kernel);
     await repository.importAcceptedCatalog({
@@ -439,7 +452,7 @@ const contractCases: Record<Phase2ContentContractCaseId, ContractCase> = {
   },
 
   async "content-replay-rollback"({ kernel }, adapter) {
-    await migrateThrough(kernel, 5);
+    await migrateThrough(kernel, CURRENT_CATALOG_SCHEMA_VERSION);
     const catalog = await parseAcceptedPhase2Catalog(adapter.sha256);
     const repository = createContentRepository(kernel);
     const first = await repository.importAcceptedCatalog({

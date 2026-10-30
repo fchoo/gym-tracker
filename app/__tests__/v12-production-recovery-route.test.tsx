@@ -1,0 +1,262 @@
+import { act, cleanup, render as renderComponent, screen, waitFor } from "@testing-library/react-native";
+import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
+import React from "react";
+import { SafeAreaInsetsContext } from "react-native-safe-area-context";
+
+import V12ProductionRecoveryRoute from "../__v12-production-recovery";
+import { V12RecoveryRootContext } from "../../src/testing/v12RecoveryRootContext";
+
+let mockProfile = "development-test";
+let mockParams: Record<string, string>;
+let mockInsets = { top: 28, bottom: 24, left: 7, right: 11 };
+const mockRun = jest.fn<typeof import("../../src/testing/v12ProductionRecovery")["collectV12ProductionRecoveryPhase"]>();
+
+jest.mock("expo-constants", () => ({
+  __esModule: true,
+  default: {
+    expoConfig: {
+      android: { package: "com.fchoo.gymtracker.devtest" },
+      extra: {
+        get buildProfile() { return mockProfile; },
+        nativeContractsEnabled: true,
+        nativeContractSuite: "v1.2-acceptance",
+      },
+    },
+  },
+}));
+
+jest.mock("expo-router", () => ({
+  useLocalSearchParams: () => mockParams,
+  Redirect: () => {
+    const { View } = require("react-native") as typeof import("react-native");
+    return <View testID="recovery-route-disabled" />;
+  },
+}));
+
+jest.mock("../../src/testing/v12ProductionRecovery", () => {
+  const actual = jest.requireActual<typeof import("../../src/testing/v12ProductionRecovery")>(
+    "../../src/testing/v12ProductionRecovery",
+  );
+  return {
+    ...actual,
+    collectV12ProductionRecoveryPhase: (...args: Parameters<typeof actual.collectV12ProductionRecoveryPhase>) => mockRun(...args),
+  };
+});
+
+describe("V12ProductionRecoveryRoute", () => {
+  async function render(element: React.ReactElement) {
+    return renderComponent(element, {
+      wrapper: ({ children }) => <SafeAreaInsetsContext.Provider value={mockInsets}>{children}</SafeAreaInsetsContext.Provider>,
+    });
+  }
+  async function renderScopedRoute() {
+    return render(<V12RecoveryRootContext.Provider value={{ databaseName: `gym-tracker-phase20-recovery-shell-${mockParams.nonce}.db` }}><V12ProductionRecoveryRoute /></V12RecoveryRootContext.Provider>);
+  }
+  beforeEach(() => {
+    mockProfile = "development-test";
+    mockInsets = { top: 28, bottom: 24, left: 7, right: 11 };
+    mockParams = {
+      nonce: "a".repeat(32),
+      caseId: "queued-callback",
+      stepId: "queued-set-commit",
+      cutId: "post-commit-before-ack",
+      phase: "arm",
+    };
+    mockRun.mockReset();
+    mockRun.mockResolvedValue("armed");
+  });
+
+  afterEach(async () => { await cleanup(); jest.restoreAllMocks(); });
+
+  it("keeps preparation content inside the current safe-area edges and responds to inset changes", async () => {
+    const rendered = await render(<V12ProductionRecoveryRoute />);
+    expect(screen.getByRole("header").parent).toHaveStyle({
+      flex: 1, paddingTop: 28, paddingBottom: 24, paddingLeft: 7, paddingRight: 11,
+    });
+    mockInsets = { top: 0, bottom: 12, left: 32, right: 18 };
+    await rendered.rerender(<V12ProductionRecoveryRoute />);
+    expect(screen.getByRole("header").parent).toHaveStyle({
+      flex: 1, paddingTop: 0, paddingBottom: 12, paddingLeft: 32, paddingRight: 18,
+    });
+    expect(mockRun).not.toHaveBeenCalled();
+  });
+
+  it.each(["pending-arm", "pending-recovery", "armed", "observed", "failed"] as const)(
+    "keeps %s execution content inside all actual safe-area edges",
+    async (mode) => {
+      if (mode === "pending-arm" || mode === "pending-recovery") mockRun.mockImplementation(() => new Promise(() => undefined));
+      if (mode === "pending-recovery" || mode === "observed") mockParams.phase = "recover";
+      if (mode === "armed") mockRun.mockResolvedValue("armed");
+      if (mode === "observed") mockRun.mockResolvedValue("observed");
+      if (mode === "failed") mockRun.mockRejectedValue(new Error("synthetic-failure"));
+      await renderScopedRoute();
+      await waitFor(() => expect(screen.getByRole("header").parent).toHaveStyle({
+        flex: 1, paddingTop: 28, paddingBottom: 24, paddingLeft: 7, paddingRight: 11,
+      }));
+      expect(mockRun).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("waits for the validated root scope before starting native Recovery", async () => {
+    const rendered = await render(<V12ProductionRecoveryRoute />);
+    expect(mockRun).not.toHaveBeenCalled();
+    expect(screen.getByText("Preparing recovery route")).toBeOnTheScreen();
+    await rendered.rerender(<V12RecoveryRootContext.Provider value={{ databaseName: `gym-tracker-phase20-recovery-shell-${mockParams.nonce}.db` }}><V12ProductionRecoveryRoute /></V12RecoveryRootContext.Provider>);
+    await waitFor(() => expect(mockRun).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not borrow a different nonce's root scope", async () => {
+    await render(<V12RecoveryRootContext.Provider value={{ databaseName: `gym-tracker-phase20-recovery-shell-${"b".repeat(32)}.db` }}><V12ProductionRecoveryRoute /></V12RecoveryRootContext.Provider>);
+    expect(mockRun).not.toHaveBeenCalled();
+    expect(screen.getByText("Preparing recovery route")).toBeOnTheScreen();
+  });
+
+  it("executes the arm phase and exposes a concrete kill point", async () => {
+    await renderScopedRoute();
+
+    await waitFor(() => expect(screen.getByText("Recovery cut armed")).toBeOnTheScreen());
+    expect(mockRun).toHaveBeenCalledWith(expect.objectContaining({
+      phase: "arm",
+      identity: expect.objectContaining({
+        caseId: "queued-callback",
+        stepId: "queued-set-commit",
+        cutId: "post-commit-before-ack",
+      }),
+    }));
+  });
+
+  it("executes recovery only after relaunch and exposes completion", async () => {
+    mockParams.phase = "recover";
+    mockRun.mockResolvedValue("observed");
+
+    await renderScopedRoute();
+
+    await waitFor(() => expect(screen.getByText("Recovery observation complete")).toBeOnTheScreen());
+    expect(mockRun).toHaveBeenCalledWith(expect.objectContaining({ phase: "recover" }));
+  });
+
+  it("cannot render or execute under the production identity", async () => {
+    mockProfile = "production";
+    const rendered = await renderScopedRoute();
+
+    expect(rendered.getByTestId("recovery-route-disabled")).toBeOnTheScreen();
+    expect(mockRun).not.toHaveBeenCalled();
+  });
+
+  it("observes leaf identity and ARMED UI commits without publishing acceptance progress", async () => {
+    let armed: (() => void) | undefined;
+    mockRun.mockImplementation((input) => {
+      armed = input.onArmed;
+      return new Promise(() => undefined);
+    });
+    mockParams.stage = "unknown-request-label";
+    const lines: string[] = [];
+    jest.spyOn(console, "info").mockImplementation((line) => { lines.push(String(line)); });
+    const rendered = await renderScopedRoute();
+    const rows = () => lines.map((line) => JSON.parse(line.slice("GYM_TRACKER_V12_RECOVERY_ROUTE:".length)));
+    expect(rows()).toEqual([{
+      schema_version: 1, nonce: mockParams.nonce, stage: "leaf-identity", validity: true, contextMatch: true,
+    }]);
+    await act(async () => armed?.());
+    await waitFor(() => expect(screen.getByText("Recovery cut armed")).toBeOnTheScreen());
+    expect(rows().at(-1)).toEqual({ schema_version: 1, nonce: mockParams.nonce, stage: "leaf-armed-rendered" });
+    await rendered.unmount();
+    expect(rows().at(-1)).toEqual({ schema_version: 1, nonce: mockParams.nonce, stage: "leaf-unmount" });
+    expect(lines.every((line) => line.startsWith("GYM_TRACKER_V12_RECOVERY_ROUTE:"))).toBe(true);
+    expect(lines.join("\n")).not.toMatch(/unknown-request-label|caseId|stepId|databaseName|PROGRESS/u);
+  });
+
+  it("observes lost leaf identity using only the retained validated nonce", async () => {
+    const nonce = mockParams.nonce!;
+    const lines: string[] = [];
+    jest.spyOn(console, "info").mockImplementation((line) => { lines.push(String(line)); });
+    const rendered = await renderScopedRoute();
+    mockParams = {};
+    await rendered.rerender(
+      <V12RecoveryRootContext.Provider value={{ databaseName: `gym-tracker-phase20-recovery-shell-${nonce}.db` }}>
+        <V12ProductionRecoveryRoute />
+      </V12RecoveryRootContext.Provider>,
+    );
+    const rows = lines.map((line) => JSON.parse(line.slice("GYM_TRACKER_V12_RECOVERY_ROUTE:".length)));
+    expect(rows.at(-1)).toEqual({ schema_version: 1, nonce, stage: "leaf-identity", validity: false, contextMatch: false });
+    expect(screen.getByTestId("recovery-route-disabled")).toBeOnTheScreen();
+    expect(mockRun).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["", "short", "A".repeat(32), "a".repeat(33), ["a".repeat(32)], null,
+    { toString: () => { throw new Error("must-not-stringify-invalid-nonce"); } },
+  ])(
+    "does not observe an initially invalid nonce %j",
+    async (nonce) => {
+      mockParams.nonce = nonce as unknown as string;
+      const info = jest.spyOn(console, "info").mockImplementation(() => undefined);
+      await render(<V12ProductionRecoveryRoute />);
+      expect(info).not.toHaveBeenCalled();
+      expect(mockRun).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not observe the Recovery leaf under a disabled build identity", async () => {
+    mockProfile = "production";
+    const info = jest.spyOn(console, "info").mockImplementation(() => undefined);
+    await renderScopedRoute();
+    expect(info).not.toHaveBeenCalled();
+    expect(mockRun).not.toHaveBeenCalled();
+  });
+
+  it("does not stringify an invalid root scope while observing a valid leaf", async () => {
+    const info = jest.spyOn(console, "info").mockImplementation(() => undefined);
+    await render(
+      <V12RecoveryRootContext.Provider value={{
+        databaseName: { toString: () => { throw new Error("must-not-stringify-invalid-scope"); } } as unknown as string,
+      }}>
+        <V12ProductionRecoveryRoute />
+      </V12RecoveryRootContext.Provider>,
+    );
+    expect(screen.getByText("Preparing recovery route")).toBeOnTheScreen();
+    expect(mockRun).not.toHaveBeenCalled();
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('"contextMatch":false'));
+  });
+
+  it("keeps the ARMED page and native outcome unchanged when diagnostic logging throws", async () => {
+    jest.spyOn(console, "info").mockImplementation(() => { throw new Error("logger-failed"); });
+    const rendered = await renderScopedRoute();
+    await waitFor(() => expect(screen.getByText("Recovery cut armed")).toBeOnTheScreen());
+    expect(mockRun).toHaveBeenCalledTimes(1);
+    await rendered.unmount();
+  });
+
+  it.each(["setup", "command", "barrier", "validation", "delete"])(
+    "emits one terminal error only after arm %s failure cleanup settles",
+    async (stage) => {
+      mockParams.phase = "arm";
+      let rejectAfterCleanup: ((error: Error) => void) | undefined;
+      mockRun.mockImplementation(() => new Promise((_, reject) => {
+        rejectAfterCleanup = reject;
+      }));
+      const terminal: string[] = [];
+      const info = jest.spyOn(console, "info").mockImplementation((line) => {
+        if (String(line).startsWith("GYM_TRACKER_V12_DOMAIN_RESULT:")) {
+          terminal.push(String(line));
+        }
+      });
+
+      try {
+        await renderScopedRoute();
+        expect(terminal).toEqual([]);
+        await act(async () => rejectAfterCleanup?.(new Error(`${stage}_failed`)));
+        await waitFor(() => expect(screen.getByText("Recovery observation failed")).toBeOnTheScreen());
+        expect(terminal).toHaveLength(1);
+        expect(JSON.parse(terminal[0]!.slice("GYM_TRACKER_V12_DOMAIN_RESULT:".length)))
+          .toEqual({
+            schema_version: 2,
+            nonce: mockParams.nonce,
+            kind: "error",
+            code: "domain_failed",
+          });
+      } finally {
+        info.mockRestore();
+      }
+    },
+  );
+});

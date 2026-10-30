@@ -1,143 +1,136 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react-native";
-import {
-  beforeEach,
-  describe,
-  expect,
-  it,
-  jest,
-} from "@jest/globals";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
-import {
-  AppearanceProvider,
-} from "../../src/ui/theme";
+import { AppearanceProvider } from "../../src/ui/theme";
+import { Phase20VisualContextProvider } from "../../src/testing/phase20VisualContext";
 
 const mockPush = jest.fn();
-let mockWorkoutRefreshGeneration = 0;
-let mockProgressProjection: Record<string, unknown> = {
-  state: "baseline" as const,
-  window: { start: "2026-08-01", end: "2026-08-24" },
-  summary: {
-    scheduledOpportunities: { completed: 0, planned: 0 },
-    workingSets: { completed: 0, planned: 0 },
-    improvingCount: 0,
-    holdingCount: 0,
-    baselineCount: 0,
-    attentionCount: 0,
-    sourceReferences: {
-      scheduledOpportunities: { sessionIds: [], exerciseIds: [], exercises: [] },
-      workingSets: { sessionIds: [], exerciseIds: [], exercises: [] },
-      exerciseStatuses: { sessionIds: [], exerciseIds: [], exercises: [] },
-      attention: { sessionIds: [], exerciseIds: [], exercises: [] },
-    },
-  },
-  records: [],
-  exercises: [],
-  trend: [],
-  attention: [],
-  recommendations: [],
-  stateSourceReferences: { sessionIds: [], exerciseIds: [], exercises: [] },
-};
-const mockLoadProgress = jest.fn(async () => ({
-  period: "4_weeks" as const,
+const mockLoadProgress = jest.fn(async (input: { sport?: string; period: string }) => ({
+  sport: input.sport,
+  period: input.period as "4_weeks" | "12_weeks" | "all_time",
   freshness: "current" as const,
-  projection: mockProgressProjection,
+  dashboard: input.sport === "Running" ? {
+    sport: "Running" as const,
+    state: "ready" as const,
+    goals: [{
+      distanceMeters: 2400, timeBasis: "elapsed" as const,
+      latest: { activityId: "latest", sourceIdentity: "opaque-latest", sourceRevision: 2, localDate: "2026-08-24", durationSeconds: 680, timeBasis: "elapsed" as const, evidence: "source_summary" as const },
+      best: { activityId: "best", sourceIdentity: "opaque-best", sourceRevision: 1, localDate: "2026-08-17", durationSeconds: 650, timeBasis: "elapsed" as const, evidence: "source_laps" as const },
+      target: { targetId: "target", durationSeconds: 660 }, targetAtDate: { targetId: "target", durationSeconds: 660 }, history: [{ effort: { activityId: "activity-local-01", sourceIdentity: "opaque-latest", sourceRevision: 2, localDate: "2026-08-24", durationSeconds: 680, timeBasis: "elapsed" as const, evidence: "source_summary" as const }, targetAtDate: { targetId: "target", durationSeconds: 660 } }], evidenceCount: 2,
+      gap: "Gap · 10 seconds ahead of target",
+      pacing: { target: "11:00", pacePerKm: "4:35/km", per400m: "1:50/400 m", per200m: "0:55/200 m" },
+    }],
+  } : { sport: "All" as const, state: "empty" as const, primaryGoal: null, activeGoals: [] },
 }));
 
 jest.mock("expo-router", () => ({
   router: { push: (...args: readonly unknown[]) => mockPush(...args) },
+  useFocusEffect: (effect: () => void) => effect(),
 }));
-
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
   useWorkoutAppRuntime: () => ({
     loadProgress: mockLoadProgress,
-    workoutRefreshGeneration: mockWorkoutRefreshGeneration,
+    progressRunningTargetRuntime: {
+      createId: () => "target-request",
+      loadPlan: jest.fn(async () => null),
+      saveRunningTarget: jest.fn(),
+    },
+    workoutRefreshGeneration: 0,
+    progressBodyweightRuntime: { createId: () => "synthetic-bodyweight", loadHistory: async () => [], save: async () => [], delete: async () => [] },
   }),
 }));
 
 import ProgressRoute from "../(tabs)/progress";
 
 describe("ProgressRoute", () => {
-  beforeEach(() => {
-    mockPush.mockReset();
-    mockLoadProgress.mockClear();
-    mockWorkoutRefreshGeneration = 0;
-    mockProgressProjection = {
-      ...mockProgressProjection,
-      records: [],
-      exercises: [],
-      trend: [],
-      recommendations: [],
-    };
+  beforeEach(() => { mockPush.mockReset(); mockLoadProgress.mockClear(); });
+
+  it.each(["BW-089", "BW-090"] as const)("keeps a genuine pending Progress read for isolated visual state %s", async (state) => {
+    mockLoadProgress.mockResolvedValueOnce({ sport: "Running", period: "4_weeks", freshness: "current",
+      dashboard: { sport: "Running", state: "empty", goals: [] } } as never);
+    await render(<AppearanceProvider><Phase20VisualContextProvider request={{ state, nonce: "a".repeat(32),
+      configuration: "AP-L-C390-P-F100", appearance: "Light", mode: "capture" }}><ProgressRoute /></Phase20VisualContextProvider></AppearanceProvider>);
+    await waitFor(() => expect(mockLoadProgress).toHaveBeenCalledWith(expect.objectContaining({ sport: "Running", nowLocalDate: "2026-10-01" })));
+    expect(screen.getByLabelText("Loading progress")).toHaveProp("accessibilityRole", "progressbar");
+    expect(screen.getByTestId("progress-skeleton", { includeHiddenElements: true })).toBeOnTheScreen();
+    expect(screen.queryByText("No imported running efforts yet")).toBeNull();
+    if (state === "BW-090") {
+      await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
+      await screen.findByTestId("progress-settings-sheet");
+      expect(screen.getByRole("button", { name: "Bodyweight history" })).toBeOnTheScreen();
+      expect(screen.getByTestId("progress-skeleton", { includeHiddenElements: true })).toBeOnTheScreen();
+    }
   });
 
-  it("binds Progress only through the typed runtime load capability", async () => {
-    await render(
-      <AppearanceProvider>
-        <ProgressRoute />
-      </AppearanceProvider>,
-    );
+  it("forwards only selected sport/range requests through the typed runtime adapter", async () => {
+    await render(<AppearanceProvider><ProgressRoute /></AppearanceProvider>);
+    await fireEvent.press(await screen.findByRole("tab", { name: "Running" }));
+    await fireEvent.press(screen.getByRole("button", { name: "12 weeks" }));
 
-    expect(await screen.findByRole("header", { name: "Progress" }))
-      .toBeOnTheScreen();
-    await waitFor(() => expect(mockLoadProgress).toHaveBeenCalledWith({
-      period: "4_weeks",
-      nowLocalDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/u),
-    }));
-    expect(screen.getByRole("header", { name: "No progress history yet" }))
-      .toBeOnTheScreen();
+    await waitFor(() => expect(mockLoadProgress).toHaveBeenLastCalledWith(expect.objectContaining({
+      sport: "Running", period: "12_weeks", nowLocalDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/u),
+    })));
+    expect(screen.queryByText(/opaque-latest|opaque-best/u)).not.toBeOnTheScreen();
   });
 
-  it("reloads Progress when the runtime workout generation changes", async () => {
-    const rendered = await render(
-      <AppearanceProvider>
-        <ProgressRoute />
-      </AppearanceProvider>,
-    );
-    await waitFor(() => expect(mockLoadProgress).toHaveBeenCalledTimes(1));
+  it("navigates Running evidence with only the exact local activity revision", async () => {
+    await render(<AppearanceProvider><ProgressRoute /></AppearanceProvider>);
+    await fireEvent.press(await screen.findByRole("tab", { name: "Running" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Open history for 2.4 km" }));
+    await fireEvent.press(screen.getAllByRole("button", { name: "Show history data" }).at(-1)!);
+    await fireEvent.press(screen.getByRole("button", { name: "Open source" }));
 
-    mockWorkoutRefreshGeneration = 1;
-    await rendered.rerender(
-      <AppearanceProvider>
-        <ProgressRoute />
-      </AppearanceProvider>,
-    );
-
-    await waitFor(() => expect(mockLoadProgress).toHaveBeenCalledTimes(2));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/garmin/activity/[activityId]",
+      params: {
+        activityId: "activity-local-01",
+        origin: "progress",
+        sourceRevision: "2",
+      },
+    });
   });
 
-  it("routes a named Progress exercise without using its UUID as the title", async () => {
-    const exerciseId = "5f140001-7e35-4a6d-9100-000000000001";
-    mockProgressProjection = {
-      ...mockProgressProjection,
-      exercises: [{
-        exerciseId,
-        exerciseName: "Back Squat",
-        identityKey: "load_reps:1:1",
-        comparatorKey: "identity",
-        status: "baseline",
-        sessionId: "session-1",
-        setId: "set-1",
-        localDate: "2026-08-24",
-      }],
-    };
-    await render(
-      <AppearanceProvider>
-        <ProgressRoute />
-      </AppearanceProvider>,
-    );
+  it("navigates Strength history with an allowlisted retained return token", async () => {
+    mockLoadProgress.mockImplementation((async (input: { sport?: string; period: string }) => ({
+      sport: input.sport,
+      period: input.period as "4_weeks" | "12_weeks" | "all_time",
+      freshness: "current" as const,
+      dashboard: input.sport === "Strength" ? {
+        sport: "Strength" as const,
+        state: "ready" as const,
+        facts: [{ exerciseId: "bench-press", exerciseName: "Bench Press", identityKey: "load_reps:1:1", comparatorKey: "identity", sessionId: "session-42", setId: "set-1", localDate: "2026-08-24", targetJson: "{}", observationJson: "{}" }],
+        goals: [{
+          goalId: "bench",
+          exerciseId: "bench-press",
+          exerciseName: "Bench Press",
+          identityKey: "load_reps:1:1",
+          status: "improving" as const,
+          latest: { value: 62.5, label: "62.5 kg × 8", localDate: "2026-08-24", sessionId: "session-42", sourceRevision: 2 },
+          best: { value: 62.5, label: "62.5 kg × 8", localDate: "2026-08-24", sessionId: "session-42", sourceRevision: 2 },
+          target: { value: 60, label: "60 kg × 8" },
+          gap: "Gap · 2.5 kg better than target",
+          evidenceCount: 2,
+          fasterIsLower: false,
+          valueFormat: "kilograms" as const,
+          unitLabel: "kg",
+          directionLabel: "Higher comparable load is better.",
+          history: [{ value: 62.5, label: "62.5 kg × 8", localDate: "2026-08-24", sessionId: "session-42", sourceRevision: 2, targetAtDate: 60 }],
+        }],
+      } : { sport: "All" as const, state: "empty" as const, primaryGoal: null, activeGoals: [] },
+    })) as never);
+    await render(<AppearanceProvider><ProgressRoute /></AppearanceProvider>);
+    await fireEvent.press(await screen.findByRole("tab", { name: "Strength" }));
+    await fireEvent.press((await screen.findAllByRole("button", { name: "Open exercise history for Bench Press" })).at(-1)!);
 
-    await fireEvent.press(await screen.findByRole("button", {
-      name: "Open exercise history for Back Squat",
-    }));
-
-    expect(mockPush).toHaveBeenCalledWith(
-      `/exercise-history/${exerciseId}?exerciseName=Back%20Squat`,
-    );
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/exercise-history/[exerciseId]",
+      params: {
+        exerciseId: "bench-press",
+        exerciseName: "Bench Press",
+        origin: "progress",
+        returnToken: "progress:Strength:4_weeks:exercise:bench-press",
+      },
+    });
   });
 });

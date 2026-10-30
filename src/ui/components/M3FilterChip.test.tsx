@@ -12,7 +12,12 @@ import {
 import React from "react";
 
 import { M3FilterChip } from "./M3FilterChip";
-import { AppearanceProvider, createMemoryAppearanceStore } from "../theme";
+import {
+  AppearanceProvider,
+  createMemoryAppearanceStore,
+  sizes,
+  themes,
+} from "../theme";
 
 async function renderChip(
   chip: React.ReactNode,
@@ -75,7 +80,7 @@ describe("M3FilterChip", () => {
     );
 
     expect(screen.getByRole("checkbox", { name: "Favorite selected" }).children[0])
-      .toHaveProp("fill", "#1F7A4D");
+      .toHaveProp("fill", themes.light.completed);
     expect(screen.getByRole("checkbox", { name: "Favorite selected" }))
       .toHaveProp("accessibilityState", expect.objectContaining({
         checked: true,
@@ -115,7 +120,7 @@ describe("M3FilterChip", () => {
         name: "Long equipment filter label selected",
       });
       await fireEvent(chip, "focus");
-      expect(chip).toHaveStyle({ outlineWidth: 2 });
+      expect(chip).toHaveStyle({ outlineWidth: sizes.focusRing });
       expect(chip).toHaveStyle({ minHeight: 48 });
     },
   );
