@@ -1,0 +1,289 @@
+{
+  "schema_version": 1,
+  "producer": "garmin-pinned-cached-cli-supplement/v1",
+  "proof": "NON_NATIVE_HOST_ONLY",
+  "original_packaging_seal_sha256": "b769d4dcdd93e29644f8fa922912ca70b6f0e8151f43558c8bc5c636a9a3da26",
+  "source_commit": "ef6de0ed11ac705499d63c71146aa0180b6120d5",
+  "subject": "scripts/verify-garmin-python-lock.mjs",
+  "subject_sha256": "2721d90c7ede91296b43ed89c924cf38c0408c16f6b74ad70b96725827eb9946",
+  "source_url": "file:///Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/verify-garmin-python-lock.mjs",
+  "lock_path": "modules/garmin-connect/python/garmin-python-lock.json",
+  "lock_sha256": "1c0f24e6907a2040ed6862de7556aceaf0b99813c2f50f853f412fdfd93dd6d0",
+  "tests": [
+    "scripts/verify-garmin-python-lock.test.mjs",
+    "scripts/testing/closeout-garmin-cached-cli.test.mjs"
+  ],
+  "test_total": 10,
+  "execution": {
+    "path": "artifacts/native/personal-closeout-20261027/garmin-lock-corrected-coverage/attempt-01/execution.json",
+    "sha256": "aa2e6139bfe62e26946ce33142b1edb755c59126ece0009e290c5f0940be27ff"
+  },
+  "before": {
+    "path": "artifacts/native/personal-closeout-20261027/garmin-lock-corrected-coverage/attempt-01/inputs-before.json",
+    "sha256": "23cc5d512e0993907a03a2167fb81587d2ca92a22938bc8e13aa4a7ab1609f86"
+  },
+  "after": {
+    "path": "artifacts/native/personal-closeout-20261027/garmin-lock-corrected-coverage/attempt-01/inputs-after.json",
+    "sha256": "0ed723a2af8efc15e98779b578c5582ad401aeedb2b34a1dc6a44eb8c11c4613"
+  },
+  "report": {
+    "path": "artifacts/native/personal-closeout-20261027/garmin-lock-corrected-coverage/attempt-01/tests.tap",
+    "sha256": "8f9e065ba5a91445c85fecdf53f8ee24a11083385130621b18fae2ca872e36ed"
+  },
+  "tool_before": {
+    "path": "artifacts/native/personal-closeout-20261027/garmin-lock-corrected-coverage/attempt-01/tool-before.json",
+    "sha256": "2e284f98247fcf6d8bf4f99b3965c2fa20b28a9eeb936032d24b7fe0012dc0c6"
+  },
+  "tool_after": {
+    "path": "artifacts/native/personal-closeout-20261027/garmin-lock-corrected-coverage/attempt-01/tool-after.json",
+    "sha256": "2e284f98247fcf6d8bf4f99b3965c2fa20b28a9eeb936032d24b7fe0012dc0c6"
+  },
+  "dependencies_before": {
+    "path": "artifacts/native/personal-closeout-20261027/garmin-lock-corrected-coverage/attempt-01/dependencies-before.json",
+    "sha256": "8605c838257f3e231786da553767249f31914ef0792e4846507990f2362bce29"
+  },
+  "dependencies_after": {
+    "path": "artifacts/native/personal-closeout-20261027/garmin-lock-corrected-coverage/attempt-01/dependencies-after.json",
+    "sha256": "8605c838257f3e231786da553767249f31914ef0792e4846507990f2362bce29"
+  },
+  "inputs": [
+    {
+      "path": "jest.config.js",
+      "sha256": "c3a2a8d9d02a5f3fe2e19546829b24414f2e1c7d03ba1f7597004c7d60f6f5c5",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/c3a2a8d9d02a5f3fe2e19546829b24414f2e1c7d03ba1f7597004c7d60f6f5c5.blob",
+        "sha256": "c3a2a8d9d02a5f3fe2e19546829b24414f2e1c7d03ba1f7597004c7d60f6f5c5"
+      }
+    },
+    {
+      "path": "jest.setup.js",
+      "sha256": "a83d9523e847d8571899a0259e0a00ec68d9eb3ef989f392850b11d77fb51279",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/a83d9523e847d8571899a0259e0a00ec68d9eb3ef989f392850b11d77fb51279.blob",
+        "sha256": "a83d9523e847d8571899a0259e0a00ec68d9eb3ef989f392850b11d77fb51279"
+      }
+    },
+    {
+      "path": "modules/garmin-connect/python/android-cffi/build-inputs.json",
+      "sha256": "40c706297872d458021a090d3c84bbcbd401e6e2570d8af86080156ba682d9e0",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/40c706297872d458021a090d3c84bbcbd401e6e2570d8af86080156ba682d9e0.blob",
+        "sha256": "40c706297872d458021a090d3c84bbcbd401e6e2570d8af86080156ba682d9e0"
+      }
+    },
+    {
+      "path": "modules/garmin-connect/python/android-cffi/cffi-2.1.1-cp313-cp313-android_24_arm64_v8a.whl",
+      "sha256": "850ee4664381151d0e10407de861b47e0c9954a06e4b0e8307431472990bd767",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/850ee4664381151d0e10407de861b47e0c9954a06e4b0e8307431472990bd767.blob",
+        "sha256": "850ee4664381151d0e10407de861b47e0c9954a06e4b0e8307431472990bd767"
+      }
+    },
+    {
+      "path": "modules/garmin-connect/python/garmin-python-artifacts/certifi-2026.7.22-py3-none-any.whl",
+      "sha256": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775.blob",
+        "sha256": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775"
+      }
+    },
+    {
+      "path": "modules/garmin-connect/python/garmin-python-artifacts/cffi-2.1.1-cp313-cp313-android_24_arm64_v8a.whl",
+      "sha256": "850ee4664381151d0e10407de861b47e0c9954a06e4b0e8307431472990bd767",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/850ee4664381151d0e10407de861b47e0c9954a06e4b0e8307431472990bd767.blob",
+        "sha256": "850ee4664381151d0e10407de861b47e0c9954a06e4b0e8307431472990bd767"
+      }
+    },
+    {
+      "path": "modules/garmin-connect/python/garmin-python-artifacts/chaquopy_libffi-3.3-3-py3-none-android_24_arm64_v8a.whl",
+      "sha256": "86873c2f8e5e43b07b72233bf35e06ad8dae41ba98e0556202d61d00d7ad952f",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/86873c2f8e5e43b07b72233bf35e06ad8dae41ba98e0556202d61d00d7ad952f.blob",
+        "sha256": "86873c2f8e5e43b07b72233bf35e06ad8dae41ba98e0556202d61d00d7ad952f"
+      }
+    },
+    {
+      "path": "modules/garmin-connect/python/garmin-python-artifacts/charset_normalizer-3.5.2-py3-none-any.whl",
+      "sha256": "b6b751274acb69d77b3323d6b7dbaa3c7fdfc1eb829b7eb61d262f32e1af9685",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/b6b751274acb69d77b3323d6b7dbaa3c7fdfc1eb829b7eb61d262f32e1af9685.blob",
+        "sha256": "b6b751274acb69d77b3323d6b7dbaa3c7fdfc1eb829b7eb61d262f32e1af9685"
+      }
+    },
+    {
+      "path": "modules/garmin-connect/python/garmin-python-artifacts/curl_cffi-0.15.0-cp313-abi3-android_24_arm64_v8a.whl",
+      "sha256": "4682dc38d4336e0eb0b185374db90a760efde63cbea994b4e63f3521d44c4c92",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/4682dc38d4336e0eb0b185374db90a760efde63cbea994b4e63f3521d44c4c92.blob",
+        "sha256": "4682dc38d4336e0eb0b185374db90a760efde63cbea994b4e63f3521d44c4c92"
+      }
+    },
+    {
+      "path": "modules/garmin-connect/python/garmin-python-artifacts/idna-3.20-py3-none-any.whl",
+      "sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c.blob",
+        "sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c"
+      }
+    },
+    {
+      "path": "modules/garmin-connect/python/garmin-python-artifacts/markdown_it_py-4.2.0-py3-none-any.whl",
+      "sha256": "9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a.blob",
+        "sha256": "9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a"
+      }
+    },
+    {
+      "path": "modules/garmin-connect/python/garmin-python-artifacts/mdurl-0.1.2-py3-none-any.whl",
+      "sha256": "84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8.blob",
+        "sha256": "84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8"
+      }
+    },
+    {
+      "path": "modules/garmin-connect/python/garmin-python-artifacts/pycparser-3.11-py3-none-any.whl",
+      "sha256": "51d5a8ba2be0bbe440b99d2112604c95bbbc3c2748a64260186c541e1729cd80",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/51d5a8ba2be0bbe440b99d2112604c95bbbc3c2748a64260186c541e1729cd80.blob",
+        "sha256": "51d5a8ba2be0bbe440b99d2112604c95bbbc3c2748a64260186c541e1729cd80"
+      }
+    },
+    {
+      "path": "modules/garmin-connect/python/garmin-python-artifacts/pygments-2.21.0-py3-none-any.whl",
+      "sha256": "2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9.blob",
+        "sha256": "2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9"
+      }
+    },
+    {
+      "path": "modules/garmin-connect/python/garmin-python-artifacts/python-garminconnect-218e72ca5459e014435fc2d94fd18bd601fa0c14.tar.gz",
+      "sha256": "afb02ea1151d8d4c65349255d6556d5fe50b45e34fd92f62dafc57a6206c8dbe",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/afb02ea1151d8d4c65349255d6556d5fe50b45e34fd92f62dafc57a6206c8dbe.blob",
+        "sha256": "afb02ea1151d8d4c65349255d6556d5fe50b45e34fd92f62dafc57a6206c8dbe"
+      }
+    },
+    {
+      "path": "modules/garmin-connect/python/garmin-python-artifacts/requests-2.34.2-py3-none-any.whl",
+      "sha256": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0.blob",
+        "sha256": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0"
+      }
+    },
+    {
+      "path": "modules/garmin-connect/python/garmin-python-artifacts/rich-15.0.0-py3-none-any.whl",
+      "sha256": "33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb.blob",
+        "sha256": "33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb"
+      }
+    },
+    {
+      "path": "modules/garmin-connect/python/garmin-python-artifacts/ua_generator-2.1.6-py3-none-any.whl",
+      "sha256": "877285e6adab3d6b0f9b295d954d121fc21a0305be8526038218e8f08be76df6",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/877285e6adab3d6b0f9b295d954d121fc21a0305be8526038218e8f08be76df6.blob",
+        "sha256": "877285e6adab3d6b0f9b295d954d121fc21a0305be8526038218e8f08be76df6"
+      }
+    },
+    {
+      "path": "modules/garmin-connect/python/garmin-python-artifacts/urllib3-2.8.0-py3-none-any.whl",
+      "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3.blob",
+        "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3"
+      }
+    },
+    {
+      "path": "modules/garmin-connect/python/garmin-python-lock.json",
+      "sha256": "1c0f24e6907a2040ed6862de7556aceaf0b99813c2f50f853f412fdfd93dd6d0",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/1c0f24e6907a2040ed6862de7556aceaf0b99813c2f50f853f412fdfd93dd6d0.blob",
+        "sha256": "1c0f24e6907a2040ed6862de7556aceaf0b99813c2f50f853f412fdfd93dd6d0"
+      }
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "e6df2dc920024237819a77b4718e5199952a7b86a97e7a27d6a0cc2d4c78c75b",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/e6df2dc920024237819a77b4718e5199952a7b86a97e7a27d6a0cc2d4c78c75b.blob",
+        "sha256": "e6df2dc920024237819a77b4718e5199952a7b86a97e7a27d6a0cc2d4c78c75b"
+      }
+    },
+    {
+      "path": "package.json",
+      "sha256": "9e7ca6733336b394f0248f3a0709a35436b8e44ebb460a4af62d746bcf16dff1",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/9e7ca6733336b394f0248f3a0709a35436b8e44ebb460a4af62d746bcf16dff1.blob",
+        "sha256": "9e7ca6733336b394f0248f3a0709a35436b8e44ebb460a4af62d746bcf16dff1"
+      }
+    },
+    {
+      "path": "scripts/testing/closeout-garmin-cached-cli.test.mjs",
+      "sha256": "c8f696438817df9a3032cbc80e96cd58a1353b3e925e9a5539624046b97d3c5a",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/c8f696438817df9a3032cbc80e96cd58a1353b3e925e9a5539624046b97d3c5a.blob",
+        "sha256": "c8f696438817df9a3032cbc80e96cd58a1353b3e925e9a5539624046b97d3c5a"
+      }
+    },
+    {
+      "path": "scripts/verify-garmin-python-lock.mjs",
+      "sha256": "2721d90c7ede91296b43ed89c924cf38c0408c16f6b74ad70b96725827eb9946",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/2721d90c7ede91296b43ed89c924cf38c0408c16f6b74ad70b96725827eb9946.blob",
+        "sha256": "2721d90c7ede91296b43ed89c924cf38c0408c16f6b74ad70b96725827eb9946"
+      }
+    },
+    {
+      "path": "scripts/verify-garmin-python-lock.test.mjs",
+      "sha256": "6831d6c93da42d6a527dfc949545f9527c0eb55f132337e9fc18744c0fefb3d5",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/6831d6c93da42d6a527dfc949545f9527c0eb55f132337e9fc18744c0fefb3d5.blob",
+        "sha256": "6831d6c93da42d6a527dfc949545f9527c0eb55f132337e9fc18744c0fefb3d5"
+      }
+    },
+    {
+      "path": "tsconfig.json",
+      "sha256": "7329dd00cdc8c71aae190caac9052a95efc4feac0408501153d2907826486246",
+      "artifact": {
+        "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/inputs/7329dd00cdc8c71aae190caac9052a95efc4feac0408501153d2907826486246.blob",
+        "sha256": "7329dd00cdc8c71aae190caac9052a95efc4feac0408501153d2907826486246"
+      }
+    }
+  ],
+  "raw": [
+    {
+      "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/raw/coverage-82200-1793153624199-0.json",
+      "sha256": "046f6973ac8a8a98b486dfe9a044862e5b607e678de1240b8f03fb084f283b3b"
+    },
+    {
+      "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/raw/coverage-82205-1793153624184-0.json",
+      "sha256": "c8ee3ef801e02f8be450f1ebad486d775711686d0a6e93bb224a308c88ce6eeb"
+    },
+    {
+      "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/raw/coverage-82230-1793153624471-0.json",
+      "sha256": "2187b6519b5b0d9a687234ddb6ef2644f15a9bdf4dff023fe41f75caa42ce9a5"
+    },
+    {
+      "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/raw/coverage-82244-1793153624353-0.json",
+      "sha256": "c0bb3014923c8d47cd6ecb1aa61f8c30778052e21bf989c65054c20c8a02240a"
+    },
+    {
+      "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/raw/coverage-82245-1793153624389-0.json",
+      "sha256": "ef9d77515bacc8735d124dbb7488e3d7962a41236792d7898d874f003fa26392"
+    },
+    {
+      "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/raw/coverage-82247-1793153624426-0.json",
+      "sha256": "551443eb78fee35311f0deb4510982c2334d1d178771933ae6a87a9e262b9b70"
+    },
+    {
+      "path": "artifacts/host/garmin-lock-cached-cli-supplement-20261028/raw/coverage-82252-1793153624462-0.json",
+      "sha256": "3fac1c6a7000cf085b050527f559828e961831862ee0ba8d05404bb7f1c65c6d"
+    }
+  ]
+}

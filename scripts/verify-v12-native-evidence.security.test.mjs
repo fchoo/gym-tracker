@@ -10,6 +10,13 @@ import {
   assertV12ExactArtifactFileSet,
   recoverV12FinalPublication,
   validateV12ContractSourceIdentity,
+  deriveV12Ledger,
+  sealV12FinalEvidence,
+  validateV12RunManifest,
+  readV12FinalDeviceState,
+  validateV12ProductionPublicationOrigins,
+  validateV12FinalNativeIdentity,
+  classifyV12FinalReadiness,
 } from "./verify-v12-native-evidence.mjs";
 import {
   publishV12RollbackEvidence,
@@ -17,9 +24,217 @@ import {
   V12_ROLLBACK_PUBLICATION_MEMBERS,
 } from "./v12-rollback-evidence.mjs";
 import { V12_PHASE14_CLOSURE_REGISTRY } from "./v12-phase14-retention.mjs";
+import { deriveV12Ledger as deriveContractLedger, loadV12ContractInputs } from "./v12-evidence-contract.mjs";
 
 const digest = character => character.repeat(64);
 const sha256 = value => createHash("sha256").update(value).digest("hex");
+
+test("readiness classification preserves every blocker and requires reviewed exception policy",async t=>{
+  const counts={NOT_RUN:0,PASS:172,FAIL:0,REVIEW_REQUIRED:0,ACCEPTED_EXCEPTION:0,N_A_REVIEWED:0};
+  const policy={policy_id:"reviewed-v12-policy",reviewed_by:"owner",reviewed_at:"2026-10-17",permits_accepted_exceptions:true};
+  const cases=[
+    ["all passing",counts,undefined,"READY"],
+    ["reviewed not applicable",{...counts,PASS:171,N_A_REVIEWED:1},undefined,"READY"],
+    ["missing execution",{...counts,PASS:171,NOT_RUN:1},policy,"NOT_READY"],
+    ["failed execution",{...counts,PASS:171,FAIL:1},policy,"NOT_READY"],
+    ["review required",{...counts,PASS:171,REVIEW_REQUIRED:1},policy,"NOT_READY"],
+    ["exception without policy",{...counts,PASS:171,ACCEPTED_EXCEPTION:1},undefined,"NOT_READY"],
+    ["exception with null policy",{...counts,PASS:171,ACCEPTED_EXCEPTION:1},null,"NOT_READY"],
+    ["reviewed exception",{...counts,PASS:171,ACCEPTED_EXCEPTION:1},policy,"CONDITIONALLY_READY"],
+    ["exception cannot soften missing execution",{...counts,PASS:170,ACCEPTED_EXCEPTION:1,NOT_RUN:1},policy,"NOT_READY"],
+    ["exception cannot soften failure",{...counts,PASS:170,ACCEPTED_EXCEPTION:1,FAIL:1},policy,"NOT_READY"],
+    ["exception cannot soften review",{...counts,PASS:170,ACCEPTED_EXCEPTION:1,REVIEW_REQUIRED:1},policy,"NOT_READY"],
+  ];
+  for(const [name,value,reviewedPolicy,expected]of cases)await t.test(name,()=>{
+    const before=structuredClone(value);assert.equal(classifyV12FinalReadiness(Object.freeze(value),reviewedPolicy),expected);assert.deepEqual(value,before);
+  });
+  assert.equal(classifyV12FinalReadiness(Object.assign(Object.create(null),counts)),"READY");
+});
+
+test("readiness rejects malformed count and policy DTOs rather than assuming missing counters are zero",async t=>{
+  const counts={NOT_RUN:0,PASS:172,FAIL:0,REVIEW_REQUIRED:0,ACCEPTED_EXCEPTION:0,N_A_REVIEWED:0};
+  const missing={...counts};delete missing.FAIL;
+  for(const value of [null,undefined,[],{},missing,{...counts,extra:0},{...counts,PASS:171},{...counts,PASS:173},{...counts,PASS:-1},{...counts,PASS:1.5},{...counts,PASS:"172"},{...counts,PASS:NaN},{...counts,PASS:Infinity},{...counts,PASS:Number.MAX_SAFE_INTEGER+1}])assert.throws(()=>classifyV12FinalReadiness(value),/v12_final_readiness_counts_invalid/u);
+  const policy={policy_id:"reviewed-v12-policy",reviewed_by:"owner",reviewed_at:"2026-10-17",permits_accepted_exceptions:true};
+  for(const [field,value]of [["policy_id",1],["reviewed_by",1],["reviewed_at",undefined],["reviewed_at","invalid"],["permits_accepted_exceptions",false]])await t.test(field+" "+String(value),()=>{
+    assert.throws(()=>classifyV12FinalReadiness(counts,{...policy,[field]:value}),/v12_final_readiness_policy_invalid/u);
+  });
+  assert.throws(()=>classifyV12FinalReadiness(counts,{}),/v12_final_readiness_policy_invalid/u);
+});
+
+function closeoutManifest() {
+  return {
+    schema_version: 1, run_id: "phase20-20261017T000000Z-aaaaaaaaaaaa", mode: "live", evidence_origin: "native", created_at: "2026-10-17T00:00:00Z",
+    source: { head: "a".repeat(40), tree_sha256: digest("b"), dirty: false, package_json_sha256: digest("c"), package_lock_sha256: digest("d") },
+    planning: { matrix_sha256: digest("e"), requirements_sha256: digest("f"), source_manifest_sha256: digest("1"), owner_brief_sha256: digest("2"), ui_spec_sha256: digest("3"), deviations_sha256: digest("4") },
+    prototype: { revision: 18, approval_sha256: digest("5"), html_sha256: digest("6") }, fixtures: { registry_sha256: digest("7") },
+    build: { profile: "development-test", package: "com.fchoo.gymtracker.devtest", version_name: "0.1.0", version_code: 1, apk: { path: "artifacts/native/v1.2-acceptance/app.apk", sha256: digest("8"), size_bytes: 1, page_alignment_verified: true, signature_sha256: digest("9"), certificate_sha256: digest("a") } },
+    device: { identity_sha256: digest("b"), abi: "arm64-v8a", installed_apk_sha256: digest("8"), settings_sha256: digest("c"), restoration_sha256: digest("d") }, configuration: { id: "AP-L-C390-P-F100" },
+  };
+}
+
+test("a retained run rejects drift in each observed identity field", () => {
+  const manifest = closeoutManifest();
+  const identity = {
+    head: manifest.source.head, tree_sha256: manifest.source.tree_sha256, package: manifest.build.package,
+    apk_sha256: manifest.build.apk.sha256, installed_apk_sha256: manifest.device.installed_apk_sha256,
+    certificate_sha256: manifest.build.apk.certificate_sha256, device_identity_sha256: manifest.device.identity_sha256,
+    settings_sha256: manifest.device.settings_sha256, configuration_id: manifest.configuration.id,
+  };
+  assert.deepEqual(validateV12RunManifest(manifest, identity), manifest);
+  for (const key of Object.keys(identity)) {
+    assert.throws(() => validateV12RunManifest(manifest, { ...identity, [key]: "changed" }), /v12_final_run_identity_stale/u, key);
+  }
+  assert.throws(() => validateV12RunManifest({ ...manifest, mode: "host-only" }), /v12_final_run_manifest_invalid/u);
+  const prebuild = structuredClone(manifest);
+  prebuild.mode = "prebuild_schema_fixture";
+  delete prebuild.build.apk;
+  delete prebuild.device;
+  delete prebuild.configuration;
+  assert.throws(() => validateV12RunManifest(prebuild), /v12_final_run_manifest_invalid/u);
+});
+
+test("final native identity rejects absent source, APK, device, and settings authority", () => {
+  const observed = Object.fromEntries([
+    "source_head", "source_tree_sha256", "apk_sha256", "apk_size_bytes", "signature_sha256",
+    "certificate_sha256", "installed_apk_sha256", "device_identity_sha256", "settings_sha256",
+  ].map(key => [key, undefined]));
+  assert.throws(() => validateV12FinalNativeIdentity({ evidence_origin: "native" }, observed), /v12_final_native_identity_invalid/u);
+  const historical = closeoutManifest();
+  delete historical.evidence_origin;
+  assert.throws(() => validateV12FinalNativeIdentity(historical, observed), /v12_final_native_identity_invalid/u);
+  assert.throws(() => validateV12FinalNativeIdentity(closeoutManifest(), null), /v12_final_native_identity_invalid/u);
+});
+
+test("typed row evidence rejects unsafe paths and unreadable or unbound artifact bytes", () => {
+  const manifest = closeoutManifest();
+  const bytes = Buffer.from('{"bounded":true}\n');
+  const item = { row_id: "VER-01", artifact: `artifacts/native/v1.2/${manifest.run_id}/proof/bounded.json`, sha256: sha256(bytes), result: "PASS", configuration_id: manifest.configuration.id, selector: {}, bindings: [] };
+  const inputs = { matrix: { rows: [{ requirement_id: item.row_id }] } };
+  const derive = (evidence, readArtifact = () => bytes) => deriveV12Ledger({ inputs, manifest, evidence, readArtifact });
+  for (const artifact of [
+    "artifacts/native/v1.2/other/proof/bounded.json",
+    item.artifact.replace("proof/", "proof\\"),
+    item.artifact.replace("proof/", "proof//"),
+    item.artifact.replace("proof/", "proof/./"),
+    item.artifact.replace("proof/", "proof/../"),
+  ]) {
+    let reads = 0;
+    assert.throws(() => derive([{ ...item, artifact }], () => { reads += 1; return bytes; }), /v12_final_artifact_path_invalid/u, artifact);
+    assert.equal(reads, 0);
+  }
+  assert.throws(() => derive([item], () => { throw Error("not readable"); }), /v12_final_artifact_read_failed/u);
+  for (const actual of [bytes.toString(), Buffer.alloc(0), Buffer.from("changed")]) {
+    assert.throws(() => derive([item], () => actual), /v12_final_artifact_hash_invalid/u);
+  }
+  const privateBytes = Buffer.from('{"email":"fixture@example.invalid"}\n');
+  assert.throws(() => derive([{ ...item, sha256: sha256(privateBytes) }], () => privateBytes), /v12_final_privacy_invalid/u);
+  for (const evidence of [null, [], [null], [{ ...item, result: "UNKNOWN" }], [{ ...item, row_id: "VER-02" }], [{ ...item, sha256: "bad" }], [{ ...item, configuration_id: 1 }]]) {
+    assert.throws(() => derive(evidence), /v12_final_evidence_(?:set|schema)_invalid/u);
+  }
+  assert.throws(()=>derive([{...item,verdict:"PASS"}]),/v12_final_producer_verdict_forbidden/u);
+  assert.throws(() => deriveV12Ledger({ inputs, manifest, evidence: [item] }), /v12_final_artifact_reader_required/u);
+  const na = { ...item, result: "N_A_REVIEWED", na: {} };
+  delete na.selector;
+  delete na.bindings;
+  assert.throws(() => derive([na]), /v12_final_na_metadata_invalid/u);
+});
+
+test("final device observation fails closed on invalid serials, transport errors, and ambiguous installs", () => {
+  const manifest = closeoutManifest();
+  for (const serial of [undefined, "", "unsafe serial", 1]) {
+    let calls = 0;
+    assert.throws(() => readV12FinalDeviceState(manifest, { serial, executeAdb: () => { calls += 1; return "device"; } }), /v12_preflight_final_identity_invalid/u);
+    assert.equal(calls, 0);
+  }
+  assert.throws(() => readV12FinalDeviceState(manifest, { serial: "controlled", executeAdb: () => { throw Error("transport unavailable"); } }), /v12_preflight_final_identity_invalid/u);
+  assert.throws(() => readV12FinalDeviceState(manifest, { serial: "controlled", executeAdb: () => "offline" }), /v12_preflight_final_identity_invalid/u);
+  for (const installed of ["", "package:/other/base.apk", "package:/data/app/one.apk\npackage:/data/app/two.apk"]) {
+    const executeAdb = (...args) => {
+      if (args[0] === "get-state") return "device";
+      if (args.includes("ro.product.cpu.abi")) return "arm64-v8a";
+      if (args.includes("ro.build.version.sdk")) return "36";
+      if (args.includes("ro.product.model")) return "controlled";
+      if (args.includes("path")) return installed;
+      assert.fail("ambiguous install must fail before reading installed bytes or settings");
+    };
+    assert.throws(() => readV12FinalDeviceState(manifest, { serial: "controlled", executeAdb }), /v12_preflight_final_identity_invalid/u);
+  }
+});
+
+test("publication provenance rejects malformed shard lists and absent or invalid origin records", (t) => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "v12-closeout-origin-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const runId = closeoutManifest().run_id;
+  for (const shards of [null, [], ["sqlite", "sqlite"], ["unknown"]]) {
+    assert.throws(() => validateV12ProductionPublicationOrigins(root, runId, shards), /v12_preflight_adapter_provenance_invalid/u);
+  }
+  assert.throws(() => validateV12ProductionPublicationOrigins(root, runId, ["sqlite"]), /v12_preflight_adapter_provenance_missing/u);
+  const publication = path.join(root, `artifacts/native/v1.2/${runId}/publication/sqlite.json`);
+  mkdirSync(path.dirname(publication), { recursive: true });
+  for (const bytes of ["not json", JSON.stringify({ execution_origin: {} })]) {
+    writeFileSync(publication, bytes);
+    assert.throws(() => validateV12ProductionPublicationOrigins(root, runId, ["sqlite"]), /v12_preflight_adapter_provenance_(?:missing|invalid)/u);
+  }
+});
+
+test("final sealing rejects mismatched runs, missing writers, and softened source blockers before writing", () => {
+  const runId = closeoutManifest().run_id;
+  const rows = Array.from({ length: 172 }, (_, index) => ({ requirement_id: `REQ-${index}`, verdict: "PASS" }));
+  const ledger = { run_id: runId, evidence_origin: "native", rows, readiness: "READY", source_results: rows.map(row => ({ row_id: row.requirement_id, result: "PASS", selector: { type: "typed" } })) };
+  let writes = 0;
+  const seal = change => sealV12FinalEvidence({ mode: "final", run_id: runId, ledger, writeImmutableJson: () => { writes += 1; }, ...change });
+  for (const run_id of [undefined, "invalid", "phase20-20261017T000000Z-bbbbbbbbbbbb"]) assert.throws(() => seal({ run_id }), /v12_final_seal_input_invalid/u);
+  assert.throws(() => seal({ writeImmutableJson: undefined }), /v12_final_seal_input_invalid/u);
+  assert.throws(() => seal({ ledger: { ...ledger, rows: [] } }), /v12_final_seal_input_invalid/u);
+  assert.throws(() => seal({ ledger: { ...ledger, source_results: null } }), /v12_final_seal_source_results_invalid/u);
+  assert.throws(() => seal({ ledger: { ...ledger, source_results: [] } }), /v12_final_seal_source_results_invalid/u);
+  for (const update of [{ selector: null }, { row_id: "other" }, { result: "FAIL" }, { result: "NOT_RUN" }, { result: "REVIEW_REQUIRED" }]) {
+    assert.throws(() => seal({ ledger: { ...ledger, source_results: [{ ...ledger.source_results[0], ...update }, ...ledger.source_results.slice(1)] } }), /v12_final_seal_source_results_invalid/u);
+  }
+  assert.equal(writes, 0);
+});
+
+test("interrupted final publication rejects inconsistent 172-row envelopes and incomplete handoffs", (t) => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "v12-closeout-recovery-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const runId = closeoutManifest().run_id;
+  const runRoot = path.join(root, "artifacts/native/v1.2", runId);
+  const stage = path.join(runRoot, ".staging/final");
+  mkdirSync(stage, { recursive: true });
+  writeFileSync(path.join(stage, "manifest.json"), "{}\n");
+  const rows = Object.entries({ 13: 17, 14: 13, 15: 36, 16: 23, 17: 36, 18: 16, 19: 18, 20: 13 }).flatMap(([phase, count]) =>
+    Array.from({ length: count }, (_, index) => ({ owning_phase: Number(phase), requirement_id: `REQ-${phase}-${index}`, verdict: "PASS" })));
+  const finalEvidence = { rows, source_results: rows.map(row => ({ row_id: row.requirement_id })), evidence_hashes: rows.map(() => digest("a")), verdict_counts: { PASS: 172 }, readiness: "READY" };
+  const matrix = { rows: structuredClone(rows), verdict_counts: { PASS: 172 }, readiness: "READY" };
+  const scenarios = [
+    value => { value.finalEvidence.rows = null; },
+    value => { value.finalEvidence.source_results = []; },
+    value => { value.finalEvidence.evidence_hashes = []; },
+    value => { value.matrix.rows = null; },
+    value => { value.matrix.rows[0].verdict = "FAIL"; },
+    value => { value.matrix.verdict_counts.PASS = 171; },
+    value => { value.matrix.readiness = "NOT_READY"; },
+    value => { value.finalEvidence.rows[0].owning_phase = 99; value.matrix.rows[0].owning_phase = 99; },
+    value => { value.finalEvidence.rows[0].owning_phase = 14; value.matrix.rows[0].owning_phase = 14; },
+    () => {}, // A consistent envelope still needs a valid readiness handoff.
+  ];
+  for (const mutate of scenarios) {
+    const value = structuredClone({ finalEvidence, matrix });
+    mutate(value);
+    writeFileSync(path.join(stage, "final-evidence.json"), `${JSON.stringify(value.finalEvidence)}\n`);
+    writeFileSync(path.join(stage, "ui-state-matrix.json"), `${JSON.stringify(value.matrix)}\n`);
+    writeFileSync(path.join(stage, "readiness-handoff.md"), "{}\n");
+    assert.throws(() => recoverV12FinalPublication(root, runId), /v12_preflight_final_recovery_invalid/u);
+    assert.equal(existsSync(path.join(runRoot, "publication/final.json")), false);
+  }
+  for (const bytes of ["not json", '{"email":"fixture@example.invalid"}\n']) {
+    writeFileSync(path.join(stage, "final-evidence.json"), bytes);
+    assert.throws(() => recoverV12FinalPublication(root, runId), /v12_preflight_final_recovery_invalid/u);
+  }
+  rmSync(path.join(stage, "final-evidence.json"));
+  assert.throws(() => recoverV12FinalPublication(root, runId), /v12_preflight_final_recovery_invalid/u);
+});
 
 function rollbackArchive(formatVersion, schemaVersion) {
   const header = Buffer.from(JSON.stringify({ version: formatVersion, schemaVersion }));
@@ -230,7 +445,17 @@ test("final mode verifies and passes immutable rollback evidence instead of hard
 test("interrupted final recovery revalidates preseal authorities and rederives the canonical ledger", () => {
   const source = readFileSync(new URL("./verify-v12-native-evidence.mjs", import.meta.url), "utf8");
   assert.match(source, /function finalRecoveryAuthorities[\s\S]*verifyV12AtomicShard[\s\S]*preflightValidateArtifacts[\s\S]*v12ContractSourceDigests[\s\S]*deriveExpectedFinalOutputs/u);
-  assert.match(source, /deriveExpectedFinalOutputs[\s\S]*deriveV12Ledger[\s\S]*ledger\.rows\.length !== 172[\s\S]*ledger\.phase_counts/u);
+  assert.match(source, /deriveExpectedFinalOutputs[\s\S]*deriveV12Ledger/u);
+  const inputs = loadV12ContractInputs();
+  const ledger = deriveContractLedger(inputs);
+  assert.equal(ledger.rows.length, 172);
+  assert.deepEqual(ledger.phase_counts, { 13: 17, 14: 13, 15: 36, 16: 23, 17: 36, 18: 16, 19: 18, 20: 13 });
+  const missingRow = structuredClone(inputs);
+  missingRow.matrix.rows.pop();
+  assert.throws(() => deriveContractLedger(missingRow), /v12_contract_requirement_set_drift/u);
+  const wrongPhase = structuredClone(inputs);
+  wrongPhase.matrix.rows[0].owning_phase = 14;
+  assert.throws(() => deriveContractLedger(wrongPhase), /v12_contract_requirement_set_drift/u);
   assert.match(source, /validateFinalCandidateBytes[\s\S]*member\.sha256 !== sha256\(bytes\)[\s\S]*member\.size_bytes !== bytes\.length/u);
 });
 

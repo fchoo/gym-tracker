@@ -52,15 +52,15 @@ function deepFreeze(value) {
   return value;
 }
 
-function createRunId(createdAt, head) {
+export function createV12RunId(createdAt, head) {
   assertTimestamp(createdAt);
-  if (!HEAD.test(head ?? "")) fail("source_invalid");
+  if (typeof head !== "string" || !HEAD.test(head)) fail("source_invalid");
   return `phase20-${createdAt.replaceAll(/[-:]/gu, "")}-${head.slice(0, 12)}`;
 }
 
 function normalizeSource(value) {
   if (!exactKeys(value, ["head", "tree_sha256", "dirty", "package_json_sha256", "package_lock_sha256"])
-    || !HEAD.test(value.head ?? "") || value.dirty !== false) fail("source_invalid");
+    || typeof value.head !== "string" || !HEAD.test(value.head) || value.dirty !== false) fail("source_invalid");
   assertHash(value.tree_sha256, "source_invalid");
   assertHash(value.package_json_sha256, "source_invalid");
   assertHash(value.package_lock_sha256, "source_invalid");
@@ -89,8 +89,8 @@ function normalizeFixtures(value) {
 
 function normalizeBuild(value, live) {
   const expectedKeys = live ? ["profile", "package", "version_name", "version_code", "apk"] : ["profile", "package", "version_name", "version_code"];
-  if (!exactKeys(value, expectedKeys) || value.profile !== "development-test" || !PACKAGE.test(value.package ?? "")
-    || !VERSION.test(value.version_name ?? "") || !Number.isSafeInteger(value.version_code) || value.version_code < 1) {
+  if (!exactKeys(value, expectedKeys) || value.profile !== "development-test" || typeof value.package !== "string" || !PACKAGE.test(value.package)
+    || typeof value.version_name !== "string" || !VERSION.test(value.version_name) || !Number.isSafeInteger(value.version_code) || value.version_code < 1) {
     fail(live ? "live_identity_invalid" : "build_invalid");
   }
   if (!live) return { ...value };
@@ -113,12 +113,12 @@ function normalizeDevice(value, apkSha256) {
 }
 
 function normalizeConfiguration(value) {
-  if (!exactKeys(value, ["id"]) || !CONFIG.test(value.id ?? "")) fail("live_identity_invalid");
+  if (!exactKeys(value, ["id"]) || typeof value.id !== "string" || !CONFIG.test(value.id)) fail("live_identity_invalid");
   return { ...value };
 }
 
 function expectedRunId(createdAt, source) {
-  return createRunId(createdAt, source.head);
+  return createV12RunId(createdAt, source.head);
 }
 
 function normalizeInput(input) {
@@ -155,6 +155,7 @@ function normalizeInput(input) {
 }
 
 export function createV12RunManifest({ input, existing_run_ids = [], output_exists = false } = {}) {
+  try { input = snapshotManifestValue(input); } catch { fail("canonical_invalid"); }
   if (input?.evidence_origin === "test") fail("origin_invalid");
   const manifest = normalizeInput(input);
   if (!Array.isArray(existing_run_ids) || existing_run_ids.some((runId) => typeof runId !== "string")) fail("run_registry_invalid");
@@ -163,23 +164,40 @@ export function createV12RunManifest({ input, existing_run_ids = [], output_exis
   return deepFreeze(manifest);
 }
 
+function snapshotManifestValue(value, snapshots = new WeakMap()) {
+  if (value === null || typeof value !== "object") return value;
+  if (snapshots.has(value)) return snapshots.get(value);
+  const snapshot = Array.isArray(value) ? [] : Object.create(Object.getPrototypeOf(value));
+  snapshots.set(value, snapshot);
+  for (const key of Object.keys(value)) {
+    Object.defineProperty(snapshot, key, {
+      value: snapshotManifestValue(value[key], snapshots), enumerable: true, configurable: true, writable: true,
+    });
+  }
+  return snapshot;
+}
+
 export function validateV12RunManifest(manifest) {
   if (!isPlainObject(manifest)) fail("exact_keys_invalid");
+  try { manifest = snapshotManifestValue(manifest); } catch { fail("canonical_invalid"); }
   const live = manifest.mode === "live";
   const expectedKeys = live
     ? ["schema_version", "run_id", "mode", ...(Object.hasOwn(manifest, "evidence_origin") ? ["evidence_origin"] : []), "created_at", "source", "planning", "prototype", "fixtures", "build", "device", "configuration"]
     : ["schema_version", "run_id", "mode", ...(Object.hasOwn(manifest, "evidence_origin") ? ["evidence_origin"] : []), "created_at", "source", "planning", "prototype", "fixtures", "build"];
-  if (!exactKeys(manifest, expectedKeys) || manifest.schema_version !== 1 || !RUN_ID.test(manifest.run_id ?? "")) fail("exact_keys_invalid");
+  if (!exactKeys(manifest, expectedKeys) || manifest.schema_version !== 1 || typeof manifest.run_id !== "string" || !RUN_ID.test(manifest.run_id)) fail("exact_keys_invalid");
   const normalized = normalizeInput(manifest);
-  if (normalized.run_id !== manifest.run_id || JSON.stringify(normalized) !== JSON.stringify(manifest)) fail("canonical_invalid");
-  return deepFreeze(structuredClone(manifest));
+  let canonical;
+  try { canonical = normalized.run_id === manifest.run_id && JSON.stringify(normalized) === JSON.stringify(manifest); }
+  catch { fail("canonical_invalid"); }
+  if (!canonical) fail("canonical_invalid");
+  return deepFreeze(manifest);
 }
 
 export function parseV12RunManifestCliArgs(args) {
   if (Array.isArray(args) && args.length === 2 && args[0] === "--from-build" && args[1] === "--create") {
     return Object.freeze({ mode: "create" });
   }
-  if (Array.isArray(args) && args.length === 3 && args[0] === "--run" && RUN_ID.test(args[1] ?? "") && args[2] === "--verify-build-only") {
+  if (Array.isArray(args) && args.length === 3 && args[0] === "--run" && typeof args[1] === "string" && RUN_ID.test(args[1]) && args[2] === "--verify-build-only") {
     return Object.freeze({ mode: "verify", runId: args[1] });
   }
   fail("cli_invalid");

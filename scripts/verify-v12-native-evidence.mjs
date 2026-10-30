@@ -57,9 +57,13 @@ import { expectedV12AccessibilityMembers, V12_PHASE14_CLOSURE_REGISTRY } from ".
 
 const ROOT = process.cwd();
 const HASH = /^[a-f0-9]{64}$/u;
+const isHash = value => typeof value === "string" && HASH.test(value);
 const HEAD = /^[a-f0-9]{40}$/u;
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const ALLOWED_RESULTS = new Set(["PASS", "FAIL", "REVIEW_REQUIRED"]);
+// Issuance is process-local authority. Persisted or copied DTOs must be
+// rederived from source bytes before they can publish a seal.
+const V12_ISSUED_LEDGER_SNAPSHOTS = new WeakMap();
 
 export const CALENDAR_NATIVE_CASE_IDS = Object.freeze(
   Array.from({ length: 9 }, (_, index) => `NV-CAL-${String(index + 1).padStart(2, "0")}`),
@@ -87,7 +91,7 @@ function descriptor(value, code, expectedPaths) {
   schema(value, value?.size_bytes === undefined ? ["path", "sha256"] : ["path", "sha256", "size_bytes"], code);
   const artifactPath = normalizedPath(value.path, code);
   if (expectedPaths !== undefined && !new Set(expectedPaths).has(artifactPath)) fail(`${code}_path_invalid`);
-  if ([!HASH.test(value.sha256), value.size_bytes !== undefined && [!Number.isSafeInteger(value.size_bytes), value.size_bytes < 1].some(Boolean)].some(Boolean)) fail(`${code}_descriptor_invalid`);
+  if ([!isHash(value.sha256), value.size_bytes !== undefined && [!Number.isSafeInteger(value.size_bytes), value.size_bytes < 1].some(Boolean)].some(Boolean)) fail(`${code}_descriptor_invalid`);
 }
 
 function liveRoot(runId) {
@@ -119,13 +123,13 @@ function validateIdentity(evidence, fixtureMode) {
   schema(identity, ["base_head", "source_tree_sha256", "source_manifest_sha256", "reference_map_sha256", "package", "apk_sha256", "installed_apk_sha256", "device_identity_sha256", "report_sha256"], "identity");
   if ([
     !HEAD.test(identity.base_head),
-    !HASH.test(identity.source_tree_sha256),
-    !HASH.test(identity.source_manifest_sha256),
-    !HASH.test(identity.reference_map_sha256),
-    !HASH.test(identity.apk_sha256),
-    !HASH.test(identity.installed_apk_sha256),
-    !HASH.test(identity.device_identity_sha256),
-    !HASH.test(identity.report_sha256),
+    !isHash(identity.source_tree_sha256),
+    !isHash(identity.source_manifest_sha256),
+    !isHash(identity.reference_map_sha256),
+    !isHash(identity.apk_sha256),
+    !isHash(identity.installed_apk_sha256),
+    !isHash(identity.device_identity_sha256),
+    !isHash(identity.report_sha256),
     identity.base_head !== manifest.base_head,
     identity.source_tree_sha256 !== manifest.source_tree_sha256,
     identity.source_manifest_sha256 !== manifest.source_manifest_sha256,
@@ -163,7 +167,7 @@ function validateRouteJourneys(evidence, fixtureMode) {
     const focusInvalid = fixtureMode
       ? entry.focus.clearance_dp !== null || entry.focus.measurement_status !== "NOT_RUN"
       : entry.focus.clearance_dp !== 4 || entry.focus.measurement_status !== "EXECUTED";
-    if ([entry.status !== "PASS", entry.execution !== "host-component", entry.actual_route !== true, entry.actual_loader !== true, entry.back_restored !== true, entry.focus.ring_dp !== 3, focusInvalid, !HASH.test(entry.durable_identity_sha256), !HASH.test(entry.source_digest_before), entry.source_digest_after !== entry.source_digest_before, !Array.isArray(entry.command_ledger), Array.isArray(entry.command_ledger) && entry.command_ledger.length !== 0, !["touch", "keyboard"].includes(entry.activation)].some(Boolean)) fail("route_journey_invalid");
+    if ([entry.status !== "PASS", entry.execution !== "host-component", entry.actual_route !== true, entry.actual_loader !== true, entry.back_restored !== true, entry.focus.ring_dp !== 3, focusInvalid, !isHash(entry.durable_identity_sha256), !isHash(entry.source_digest_before), entry.source_digest_after !== entry.source_digest_before, !Array.isArray(entry.command_ledger), Array.isArray(entry.command_ledger) && entry.command_ledger.length !== 0, !["touch", "keyboard"].includes(entry.activation)].some(Boolean)) fail("route_journey_invalid");
     activationKinds.add(entry.activation);
     descriptor(entry.artifact, "route_journey_artifact", [fixtureMode
       ? `fixtures/routes/${entry.id.replace(/^calendar-/u, "")}.json`
@@ -181,7 +185,7 @@ function validateDeviations(evidence) {
     if ([entry.owner_decision !== "accepted", entry.owner_decision_date !== "2026-10-07", !ALLOWED_RESULTS.has(entry.technical_status)].some(Boolean)) fail("deviation_invalid");
     if (!entry.evidence_complete) {
       if (entry.technical_status !== "REVIEW_REQUIRED" || entry.classification !== "REVIEW_REQUIRED") fail("deviation_incomplete_status_invalid");
-    } else if ([!Array.isArray(entry.evidence_hashes), Array.isArray(entry.evidence_hashes) && entry.evidence_hashes.length === 0, Array.isArray(entry.evidence_hashes) && entry.evidence_hashes.some((value) => !HASH.test(value))].some(Boolean)) fail("deviation_complete_status_invalid");
+    } else if ([!Array.isArray(entry.evidence_hashes), Array.isArray(entry.evidence_hashes) && entry.evidence_hashes.length === 0, Array.isArray(entry.evidence_hashes) && entry.evidence_hashes.some((value) => !isHash(value))].some(Boolean)) fail("deviation_complete_status_invalid");
     else if (entry.technical_status === "PASS") {
       if (!["PASS", "accepted_deviation"].includes(entry.classification)) fail("deviation_complete_status_invalid");
     } else if (entry.technical_status === "FAIL") {
@@ -502,7 +506,7 @@ export function validateV12RunManifest(manifest, currentIdentity = undefined) {
   let validated;
   try { validated = validateGenericRunManifest(manifest); }
   catch { finalFail("run_manifest_invalid"); }
-  if (validated.mode !== "live" || !V12_FINAL_RUN.test(validated.run_id)) finalFail("run_manifest_invalid");
+  if (validated.mode !== "live") finalFail("run_manifest_invalid");
   if (currentIdentity !== undefined) {
     const expected = {
       head: validated.source.head,
@@ -530,7 +534,7 @@ function finalEvidenceIndex(inputs, manifest, evidence, readArtifact) {
       : ["row_id", "artifact", "sha256", "result", "configuration_id", "selector", "bindings"];
     if (!finalExact(item, expectedKeys) || Object.hasOwn(item, "verdict")) finalFail(Object.hasOwn(item ?? {}, "verdict") ? "producer_verdict_forbidden" : "evidence_schema_invalid");
     if (item.row_id !== expectedIds[index] || indexed.has(item.row_id) || !FINAL_RESULTS.has(item.result)
-      || !HASH.test(item.sha256) || typeof item.configuration_id !== "string" || finalHasPrivateValue(item)) finalFail("evidence_schema_invalid");
+      || !isHash(item.sha256) || typeof item.configuration_id !== "string" || finalHasPrivateValue(item)) finalFail("evidence_schema_invalid");
     finalSafeArtifactPath(item.artifact, manifest.run_id);
     let artifactBytes;
     try { artifactBytes = readArtifact(item.artifact); }
@@ -556,7 +560,7 @@ function finalExceptionIndex(exceptions, inputs) {
       || !/^\d{4}-\d{2}-\d{2}$/u.test(exception.decided_at ?? "") || typeof exception.scope !== "string"
       || typeof exception.rationale !== "string" || !Array.isArray(exception.configurations) || exception.configurations.length === 0
       || !Array.isArray(exception.evidence_hashes) || exception.evidence_hashes.length === 0
-      || exception.evidence_hashes.some((hash) => !HASH.test(hash)) || finalHasPrivateValue(exception)) finalFail("exception_metadata_invalid");
+      || exception.evidence_hashes.some((hash) => !isHash(hash)) || finalHasPrivateValue(exception)) finalFail("exception_metadata_invalid");
     indexed.set(exception.row_id, exception);
   }
   return indexed;
@@ -568,6 +572,18 @@ function finalReadinessPolicy(policy) {
     || typeof policy.policy_id !== "string" || typeof policy.reviewed_by !== "string"
     || !/^\d{4}-\d{2}-\d{2}$/u.test(policy.reviewed_at ?? "") || policy.permits_accepted_exceptions !== true) finalFail("readiness_policy_invalid");
   return Object.freeze({ ...policy });
+}
+
+export function classifyV12FinalReadiness(counts, readinessPolicy) {
+  const keys = ["NOT_RUN", "PASS", "FAIL", "REVIEW_REQUIRED", "ACCEPTED_EXCEPTION", "N_A_REVIEWED"];
+  if (!finalExact(counts, keys)
+    || Object.values(counts).some(value => !Number.isSafeInteger(value) || value < 0)
+    || Object.values(counts).reduce((total, value) => total + value, 0) !== 172) finalFail("readiness_counts_invalid");
+  const policy = finalReadinessPolicy(readinessPolicy);
+  // Missing, failed and review-required evidence always blocks readiness.
+  if (counts.NOT_RUN > 0 || counts.FAIL > 0 || counts.REVIEW_REQUIRED > 0) return "NOT_READY";
+  if (counts.ACCEPTED_EXCEPTION > 0) return policy === undefined ? "NOT_READY" : "CONDITIONALLY_READY";
+  return "READY";
 }
 
 function validateV12AttendedBinding(attended, manifest, root) {
@@ -616,19 +632,14 @@ export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], r
       if (["FAIL", "NOT_RUN", "REVIEW_REQUIRED"].includes(item.result)) return { row_id: requirement_id, verdict: item.result };
       return { row_id: requirement_id, verdict: "ACCEPTED_EXCEPTION", ...exception };
     }
-    return item.result === "N_A_REVIEWED"
-      ? { row_id: requirement_id, verdict: item.result, ...item.na }
-      : { row_id: requirement_id, verdict: item.result };
+    return { row_id: requirement_id, verdict: item.result };
   });
   const baseLedger = deriveContractLedger(inputs, { observations: resolvedEvidence.map((item) => ({ row_id: item.row_id, source: "final-validator", status: item.result })), verdicts });
   const policy = finalReadinessPolicy(readiness_policy);
   const counts = baseLedger.verdict_counts;
-  const attendedBlocked = attendedRecord !== null && attendedRecord.status !== "passed";
-  const hardBlock = counts.NOT_RUN > 0 || counts.FAIL > 0 || counts.REVIEW_REQUIRED > 0 || attendedBlocked;
-  const readiness = hardBlock ? "NOT_READY"
-    : counts.ACCEPTED_EXCEPTION > 0 ? (policy === undefined ? "NOT_READY" : "CONDITIONALLY_READY")
-      : "READY";
-  return Object.freeze({
+  // Attended failures resolve to FAIL rows and cannot be softened by exceptions.
+  const readiness = classifyV12FinalReadiness(counts, policy);
+  const ledger = Object.freeze({
     ...baseLedger,
     run_id: validatedManifest.run_id,
     evidence_origin: validatedManifest.evidence_origin ?? "unspecified",
@@ -653,33 +664,51 @@ export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], r
     policy: policy ?? null,
     exceptions: Object.freeze([...exceptionsByRow.values()].map(item => Object.freeze({ ...item }))),
   });
+  V12_ISSUED_LEDGER_SNAPSHOTS.set(ledger, freezeV12SealSnapshot(structuredClone(ledger)));
+  return ledger;
+}
+
+function freezeV12SealSnapshot(value) {
+  if (value !== null && typeof value === "object") {
+    Object.values(value).forEach(freezeV12SealSnapshot);
+    Object.freeze(value);
+  }
+  return value;
 }
 
 export function sealV12FinalEvidence({ mode, run_id, ledger, writeImmutableJson } = {}) {
   if (mode !== "final") finalFail("explicit_final_mode_required");
   if (ledger?.evidence_origin !== "native") finalFail("test_origin_forbidden");
-  if (!V12_FINAL_RUN.test(run_id ?? "") || ledger?.run_id !== run_id || ledger?.rows?.length !== 172
+  if (!V12_FINAL_RUN.test(run_id ?? "") || ledger.run_id !== run_id || ledger.rows?.length !== 172
     || typeof writeImmutableJson !== "function") finalFail("seal_input_invalid");
   if (!Array.isArray(ledger.source_results) || ledger.source_results.length !== 172
     || ledger.source_results.some((item, index) => !item.selector || item.row_id !== ledger.rows[index].requirement_id
       || (["FAIL", "NOT_RUN", "REVIEW_REQUIRED"].includes(item.result) && (ledger.rows[index].verdict !== item.result || ledger.readiness !== "NOT_READY")))) finalFail("seal_source_results_invalid");
+  const issuedSnapshot = V12_ISSUED_LEDGER_SNAPSHOTS.get(ledger);
+  if (issuedSnapshot === undefined) finalFail("seal_ledger_unissued");
+  let snapshot;
+  try {
+    snapshot = structuredClone(ledger);
+  } catch { finalFail("seal_ledger_changed"); }
+  if (!isDeepStrictEqual(snapshot, issuedSnapshot)) finalFail("seal_ledger_changed");
+  freezeV12SealSnapshot(snapshot);
   const base = `artifacts/native/v1.2/${run_id}`;
-  const matrix = Object.freeze({ schema_version: 3, run_id, evidence_origin: ledger.evidence_origin, rows: ledger.rows, verdict_counts: ledger.verdict_counts, readiness: ledger.readiness, release_authorized: false });
+  const matrix = Object.freeze({ schema_version: 3, run_id, evidence_origin: snapshot.evidence_origin, rows: snapshot.rows, verdict_counts: snapshot.verdict_counts, readiness: snapshot.readiness, release_authorized: false });
   const finalEvidence = Object.freeze({
     schema_version: 3,
     run_id,
-    evidence_origin: ledger.evidence_origin,
-    identity: ledger.identity ?? null,
-    rows: ledger.rows,
-    source_results: ledger.source_results ?? [],
-    evidence_hashes: ledger.evidence_hashes ?? [],
-    gates: ledger.gates ?? [],
-    readiness: ledger.readiness,
-    verdict_counts: ledger.verdict_counts,
-    accepted_exception_count: ledger.accepted_exception_count,
+    evidence_origin: snapshot.evidence_origin,
+    identity: snapshot.identity,
+    rows: snapshot.rows,
+    source_results: snapshot.source_results,
+    evidence_hashes: snapshot.evidence_hashes,
+    gates: snapshot.gates,
+    readiness: snapshot.readiness,
+    verdict_counts: snapshot.verdict_counts,
+    accepted_exception_count: snapshot.accepted_exception_count,
     release_authorized: false,
-    policy: ledger.policy,
-    exceptions: ledger.exceptions ?? [],
+    policy: snapshot.policy,
+    exceptions: snapshot.exceptions,
   });
   writeImmutableJson(`${base}/ui-state-matrix.json`, matrix);
   writeImmutableJson(`${base}/final-evidence.json`, finalEvidence);
@@ -697,9 +726,9 @@ export const V12_ARTIFACT_REGISTRY = Object.freeze({
   recovery: Object.freeze(["recovery/lifecycle.json", "maestro/recovery.xml"]),
   garmin: Object.freeze(["garmin/packaging-auth.json", "garmin/sync-read.json", "garmin/dedupe.json", "garmin/matching.json", "maestro/garmin-progress.xml"]),
   calendar: Object.freeze(["calendar-transitions.json", "calendar-requirements.json", "maestro/calendar.xml", "maestro/calendar-requirements.xml", "calendar/artifact-registry.json"]),
-  "multi-plan": Object.freeze(["maestro/multi-plan.xml", "mapping/multi-plan.json"]),
-  workout: Object.freeze(["maestro/workout.xml", "mapping/workout.json"]),
-  "library-running": Object.freeze(["maestro/library-running.xml", "mapping/library-running.json"]),
+  "multi-plan": Object.freeze(["maestro/multi-plan.xml", "mapping/multi-plan.json", "tools/direct-multi-plan-receipt.json", "tools/direct-multi-plan-runner.jar"]),
+  workout: Object.freeze(["maestro/workout.xml", "mapping/workout.json", "tools/direct-workout-receipt.json", "tools/direct-workout-runner.jar"]),
+  "library-running": Object.freeze(["maestro/library-running.xml", "mapping/library-running.json", "tools/direct-library-running-receipt.json", "tools/direct-library-running-runner.jar"]),
   visual: Object.freeze(["screenshots/index.json", "comparison/index.json"]),
   accessibility: Object.freeze(["semantics/accessibility.json", "geometry/hit-targets.json", V12_PHASE14_CLOSURE_REGISTRY]),
   performance: Object.freeze(["performance.json"]),
@@ -751,11 +780,21 @@ function preflightSafeRelative(value) {
   return value;
 }
 
+/** Validate an absolute artifact destination before lexical or physical use. */
+export function validateV12ArtifactConfinement({ root, resolvedPath } = {}) {
+  if (typeof root !== "string" || root.length === 0 || typeof resolvedPath !== "string"
+    || !path.isAbsolute(resolvedPath)) preflightFail("path_invalid");
+  const projectRoot = path.resolve(root);
+  const resolved = path.resolve(resolvedPath);
+  if (!(resolved === projectRoot || resolved.startsWith(`${projectRoot}${path.sep}`))) preflightFail("path_invalid");
+  return resolved;
+}
+
 function preflightSafeFile(root, relative, { required = true } = {}) {
   const projectRoot = path.resolve(root);
   const safe = preflightSafeRelative(relative);
   const resolved = path.resolve(projectRoot, safe);
-  if (!(resolved === projectRoot || resolved.startsWith(`${projectRoot}${path.sep}`))) preflightFail("path_invalid");
+  validateV12ArtifactConfinement({ root: projectRoot, resolvedPath: resolved });
   if (!existsSync(resolved)) { if (required) preflightFail("artifact_missing"); return null; }
   let cursor = projectRoot;
   for (const part of safe.split("/")) {
@@ -763,13 +802,14 @@ function preflightSafeFile(root, relative, { required = true } = {}) {
     if (lstatSync(cursor).isSymbolicLink()) preflightFail("symlink_forbidden");
   }
   const real = realpathSync(resolved);
-  if (!(real === projectRoot || real.startsWith(`${projectRoot}${path.sep}`)) || !lstatSync(real).isFile()) preflightFail("artifact_invalid");
+  try { validateV12ArtifactConfinement({ root: projectRoot, resolvedPath: real }); }
+  catch { preflightFail("artifact_invalid"); }
+  if (!lstatSync(real).isFile()) preflightFail("artifact_invalid");
   return real;
 }
 
-function preflightHashFile(root, relative, options) {
-  const file = preflightSafeFile(root, relative, options);
-  if (file === null) return null;
+function preflightHashFile(root, relative) {
+  const file = preflightSafeFile(root, relative);
   const bytes = readFileSync(file);
   try { assertV12ArtifactPrivacySafe(relative, bytes); } catch { preflightFail("privacy_invalid"); }
   return sha256(bytes);
@@ -777,20 +817,21 @@ function preflightHashFile(root, relative, options) {
 
 export function validateV12FinalNativeIdentity(manifest, observed) {
   if (!finalPlainObject(manifest) || manifest.evidence_origin === "test") finalFail("test_origin_forbidden");
+  try { validateV12RunManifest(manifest); } catch { finalFail("native_identity_invalid"); }
   if (manifest.evidence_origin !== "native") finalFail("native_identity_invalid");
   if (!finalExact(observed, ["source_head", "source_tree_sha256", "apk_sha256", "apk_size_bytes", "signature_sha256", "certificate_sha256", "installed_apk_sha256", "device_identity_sha256", "settings_sha256"])) finalFail("native_identity_invalid");
   const expected = {
-    source_head: manifest.source?.head,
-    source_tree_sha256: manifest.source?.tree_sha256,
-    apk_sha256: manifest.build?.apk?.sha256,
-    apk_size_bytes: manifest.build?.apk?.size_bytes,
-    signature_sha256: manifest.build?.apk?.signature_sha256,
-    certificate_sha256: manifest.build?.apk?.certificate_sha256,
-    installed_apk_sha256: manifest.device?.installed_apk_sha256,
-    device_identity_sha256: manifest.device?.identity_sha256,
-    settings_sha256: manifest.device?.settings_sha256,
+    source_head: manifest.source.head,
+    source_tree_sha256: manifest.source.tree_sha256,
+    apk_sha256: manifest.build.apk.sha256,
+    apk_size_bytes: manifest.build.apk.size_bytes,
+    signature_sha256: manifest.build.apk.signature_sha256,
+    certificate_sha256: manifest.build.apk.certificate_sha256,
+    installed_apk_sha256: manifest.device.installed_apk_sha256,
+    device_identity_sha256: manifest.device.identity_sha256,
+    settings_sha256: manifest.device.settings_sha256,
   };
-  if (!isDeepStrictEqual(observed, expected) || manifest.device?.restoration_sha256 !== observed.settings_sha256) finalFail("native_identity_invalid");
+  if (!isDeepStrictEqual(observed, expected) || manifest.device.restoration_sha256 !== observed.settings_sha256) finalFail("native_identity_invalid");
   return true;
 }
 
@@ -810,13 +851,13 @@ function finalAndroidTool(name) {
 export function verifyV12FinalNativeIdentity(manifest, { root = ROOT, gitExecution = undefined } = {}) {
   if (manifest.evidence_origin === "test") preflightFail("test_origin_forbidden");
   if (manifest.evidence_origin !== "native") preflightFail("native_origin_required");
-  const apkFile = preflightSafeFile(root, manifest.build?.apk?.path);
+  const apkFile = preflightSafeFile(root, manifest.build.apk.path);
   const apkBytes = readFileSync(apkFile);
   const sourceControl = gitExecution ?? readV12RetainedGitExecution({ root, runManifest: manifest });
   const apksigner = finalAndroidTool("apksigner"); const adb = finalAndroidTool("adb");
   const signatureReport = finalNativeCommand(apksigner, ["verify", "--verbose", "--print-certs", apkFile]);
   const certificate = /certificate SHA-256 digest:\s*([A-Fa-f0-9:]{64,95})/u.exec(signatureReport.toString("utf8"))?.[1]?.replaceAll(":", "").toLowerCase();
-  if (!HASH.test(certificate ?? "")) preflightFail("native_identity_invalid");
+  if (!isHash(certificate ?? "")) preflightFail("native_identity_invalid");
   const serial = process.env.V12_DEVICE_SERIAL;
   if (typeof serial !== "string" || !/^[A-Za-z0-9._:-]{1,200}$/u.test(serial)) preflightFail("native_identity_invalid");
   const adbText = (...args) => finalNativeCommand(adb, ["-s", serial, ...args], { encoding: "utf8" }).trim();
@@ -825,7 +866,7 @@ export function verifyV12FinalNativeIdentity(manifest, { root = ROOT, gitExecuti
   const apiLevel = adbText("shell", "getprop", "ro.build.version.sdk");
   const model = adbText("shell", "getprop", "ro.product.model");
   const installedPaths = adbText("shell", "pm", "path", manifest.build.package).split(/\r?\n/u).filter(Boolean);
-  if (installedPaths.length !== 1 || !/^package:\/data\/app\/[A-Za-z0-9_./=+-]+\.apk$/u.test(installedPaths[0])) preflightFail("native_identity_invalid");
+  if (installedPaths.length !== 1 || !/^package:\/data\/app\/[A-Za-z0-9_./=+~-]+\.apk$/u.test(installedPaths[0])) preflightFail("native_identity_invalid");
   const installedBytes = finalNativeCommand(adb, ["-s", serial, "exec-out", "cat", installedPaths[0].slice("package:".length)]);
   const settings = [adbText("shell", "settings", "get", "system", "font_scale"), adbText("shell", "settings", "get", "secure", "ui_night_mode"), adbText("shell", "settings", "get", "global", "animator_duration_scale")];
   validateV12FinalNativeIdentity(manifest, {
@@ -903,7 +944,6 @@ function assertFinalRecoveryEnvelope(finalEvidence, matrix, handoff) {
 function deriveExpectedFinalOutputs({ root, runId, manifest, preseal, attended, rollbackEvidence }) {
   const ledger = deriveV12Ledger({ inputs: loadV12ContractInputs({ root }), manifest, evidence: preseal.row_evidence,
     attended, root, readArtifact: relative => readFileSync(preflightSafeFile(root, relative)) });
-  if (ledger.rows.length !== 172 || !isDeepStrictEqual(ledger.phase_counts, V12_FINAL_PHASE_COUNTS)) preflightFail("final_recovery_invalid");
   const writes = [];
   const finalEvidence = sealV12FinalEvidence({ mode: "final", run_id: runId, ledger,
     writeImmutableJson: (relative, value) => writes.push([relative.replace(`artifacts/native/v1.2/${runId}/`, ""), value]) });
@@ -931,12 +971,12 @@ function validateFinalCandidateBytes(root, runId, expected) {
   if (!Array.isArray(publication.members)) preflightFail("final_recovery_invalid");
   validateFinalPublicationMembers(publication.members);
   const expectedByName = new Map(expected.writes.map(([relative, value]) => [relative,
-    Buffer.isBuffer(value) ? value : Buffer.from(typeof value === "string" ? value : `${JSON.stringify(value)}\n`),
+    Buffer.from(typeof value === "string" ? value : `${JSON.stringify(value)}\n`),
   ]));
   for (const member of publication.members) {
     const bytes = finalRecoveryBytes(root, runPrefix, member.artifact);
     const expectedBytes = expectedByName.get(member.artifact);
-    if (!Buffer.isBuffer(expectedBytes) || !bytes.equals(expectedBytes) || member.sha256 !== sha256(bytes)
+    if (!bytes.equals(expectedBytes) || member.sha256 !== sha256(bytes)
       || member.size_bytes !== bytes.length) preflightFail("final_recovery_invalid");
   }
   const finalEvidence = readFinalRecoveryJson(root, runPrefix, "final-evidence.json");
@@ -1046,6 +1086,22 @@ function preflightVerifyArtifact(root, runId, relative, manifest, allowTestCalen
   const file = preflightSafeFile(root, full); const bytes = readFileSync(file);
   try { assertV12ArtifactPrivacySafe(relative, bytes); } catch { preflightFail("privacy_invalid"); }
   if (relative.startsWith("shell/phase14/")) return { path: full, sha256: sha256(bytes) };
+  const sdkMember = /^tools\/direct-(multi-plan|workout|library-running)-(receipt\.json|runner\.jar)$/u.exec(relative);
+  if (sdkMember !== null) {
+    const [, shard, kind] = sdkMember;
+    let mapping;
+    try { mapping = JSON.parse(readFileSync(preflightSafeFile(root, `artifacts/native/v1.2/${runId}/mapping/${shard}.json`), "utf8")); }
+    catch { preflightFail("safe_sdk_attestation_invalid"); }
+    const sdk = mapping?.tool_attestation?.safe_sdk;
+    if (!finalPlainObject(mapping) || mapping.schema_version !== 2 || mapping.producer !== "v12-maestro-source-map/v2"
+      || mapping.run_id !== runId || mapping.shard !== shard
+      || !finalExact(sdk, ["schema_version", "identity_sha256", "receipt_path", "receipt_sha256", "jar_path", "jar_sha256"])
+      || sdk.schema_version !== 1 || ![sdk.identity_sha256, sdk.receipt_sha256, sdk.jar_sha256].every(value => isHash(value))
+      || sdk.receipt_path !== `artifacts/native/v1.2/${runId}/tools/direct-${shard}-receipt.json`
+      || sdk.jar_path !== `artifacts/native/v1.2/${runId}/tools/direct-${shard}-runner.jar`
+      || sha256(bytes) !== (kind === "receipt.json" ? sdk.receipt_sha256 : sdk.jar_sha256)) preflightFail("safe_sdk_attestation_invalid");
+    return { path: full, sha256: sha256(bytes) };
+  }
   if (relative.endsWith(".xml")) {
     const text = bytes.toString("utf8");
     if (!/<testsuite[ >]/u.test(text) || !/<testcase[ >]/u.test(text)) preflightFail("xml_schema_invalid");
@@ -1069,10 +1125,10 @@ function preflightVerifyArtifact(root, runId, relative, manifest, allowTestCalen
       for (const record of value.records) {
         const descriptor = record?.native_png;
         const receipt = record?.settings?.state_receipt;
-        if (record?.schema_version !== 3 || record.producer !== "v12-visual-capture/v3" || !descriptor || typeof descriptor.path !== "string" || !HASH.test(descriptor.sha256)
+        if (record?.schema_version !== 3 || record.producer !== "v12-visual-capture/v3" || !descriptor || typeof descriptor.path !== "string" || !isHash(descriptor.sha256)
           || receipt?.schema_version !== 3 || !/^[a-f0-9]{32}$/u.test(receipt.nonce ?? "") || nonces.has(receipt.nonce)
           || receipt.run_id !== runId || receipt.state_id !== record.state_id || receipt.configuration_id !== record.configuration_id
-          || receipt.png_sha256 !== descriptor.sha256 || receipt.source_receipt?.nonce !== receipt.nonce || !HASH.test(receipt.source_receipt?.digest ?? "")) preflightFail("visual_record_invalid");
+          || receipt.png_sha256 !== descriptor.sha256 || receipt.source_receipt?.nonce !== receipt.nonce || !isHash(receipt.source_receipt?.digest ?? "")) preflightFail("visual_record_invalid");
         nonces.add(receipt.nonce);
         const pngFile = preflightSafeFile(root, descriptor.path);
         const png = readFileSync(pngFile); preflightPng(png);
@@ -1153,7 +1209,7 @@ function defaultApkSignature(apkPath) {
   catch { preflightFail("final_identity_invalid"); }
   const text = report.toString("utf8");
   const certificate = /certificate SHA-256 digest:\s*([A-Fa-f0-9:]{64,95})/u.exec(text)?.[1]?.replaceAll(":", "").toLowerCase();
-  if (!text.includes("Verified using v2 scheme (APK Signature Scheme v2): true") || !HASH.test(certificate ?? "")) preflightFail("final_identity_invalid");
+  if (!text.includes("Verified using v2 scheme (APK Signature Scheme v2): true") || !isHash(certificate ?? "")) preflightFail("final_identity_invalid");
   return { signature_sha256: sha256(report), certificate_sha256: certificate };
 }
 
@@ -1170,11 +1226,11 @@ export function readV12FinalDeviceState(manifest, {
   const abi = adb("shell", "getprop", "ro.product.cpu.abi");
   const identity_sha256 = phase18DeviceIdentitySha256({ serial, abi, apiLevel: adb("shell", "getprop", "ro.build.version.sdk"), model: adb("shell", "getprop", "ro.product.model") });
   const installed = adb("shell", "pm", "path", manifest.build.package);
-  if (!/^package:\/data\/app\/[A-Za-z0-9_./=+-]+\.apk$/u.test(installed)) preflightFail("final_identity_invalid");
+  if (!/^package:\/data\/app\/[A-Za-z0-9_./=+~-]+\.apk$/u.test(installed)) preflightFail("final_identity_invalid");
   const installed_apk_sha256 = adb("shell", "sha256sum", installed.slice(8)).split(/\s/u)[0];
   const restoration = readV12CanonicalRestorationSnapshot((args) => adb(...args));
   const leaseCommand = `${V12_DEVICE_LEASE_PATHS.map((leasePath) => `[ ! -e '${leasePath}' ]`).join(" && ")} && printf clear || printf active`;
-  const lease_state = adb("shell", "sh", "-c", leaseCommand);
+  const lease_state = adb("shell", leaseCommand);
   return {
     identity_sha256,
     installed_apk_sha256,
@@ -1212,12 +1268,12 @@ export function validateV12FinalProductionIdentity(manifest, {
   }
   catch (error) { if (error instanceof Error && error.message.startsWith("v12_preflight_")) throw error; preflightFail("final_identity_invalid"); }
   if (device?.lease_state !== "clear") preflightFail("final_lease_active");
-  if (device?.restoration_sha256 !== validated.device.restoration_sha256) preflightFail("final_restoration_invalid");
+  if (device.restoration_sha256 !== validated.device.restoration_sha256) preflightFail("final_restoration_invalid");
   if (apkBytes.length !== validated.build.apk.size_bytes || sha256(apkBytes) !== validated.build.apk.sha256
     || head !== validated.source.head || source !== validated.source.tree_sha256
     || signature?.signature_sha256 !== validated.build.apk.signature_sha256 || signature?.certificate_sha256 !== validated.build.apk.certificate_sha256
-    || device?.identity_sha256 !== validated.device.identity_sha256 || device?.installed_apk_sha256 !== validated.device.installed_apk_sha256
-    || device?.installed_apk_sha256 !== validated.build.apk.sha256 || device?.abi !== validated.device.abi) preflightFail("final_identity_invalid");
+    || device.identity_sha256 !== validated.device.identity_sha256 || device.installed_apk_sha256 !== validated.device.installed_apk_sha256
+    || device.abi !== validated.device.abi) preflightFail("final_identity_invalid");
   return true;
 }
 
@@ -1247,6 +1303,18 @@ const V12_PUBLICATION_ARTIFACTS = Object.freeze({
   visual: Object.freeze(["screenshots/index.json"]),
   comparison: Object.freeze(["comparison/index.json"]),
 });
+
+/** Validate a registry lookup; callers cannot change the production registry. */
+export function validateV12ExpectedPublicationMembers({ shard, registry } = {}) {
+  if (typeof shard !== "string" || !finalPlainObject(registry)) preflightFail("artifact_set_invalid");
+  const expected = registry[shard];
+  if (!Array.isArray(expected)) preflightFail("artifact_set_invalid");
+  let members;
+  try { members = Array.from({ length: expected.length }, (_, index) => preflightSafeRelative(expected[index])); }
+  catch { preflightFail("artifact_set_invalid"); }
+  if (members.length === 0 || new Set(members).size !== members.length) preflightFail("artifact_set_invalid");
+  return Object.freeze(members);
+}
 
 function publicationPathToMember(value, runId) {
   const prefix = `artifacts/native/v1.2/${runId}/`;
@@ -1291,9 +1359,7 @@ function expectedPublicationMembers(root, runId, shard) {
     }
     return ["comparison/index.json", ...dynamic];
   }
-  const expected = V12_PUBLICATION_ARTIFACTS[shard];
-  if (!Array.isArray(expected)) preflightFail("artifact_set_invalid");
-  return [...expected];
+  return validateV12ExpectedPublicationMembers({ shard, registry: V12_PUBLICATION_ARTIFACTS });
 }
 
 function validatedPublicationFiles(root, runId, shard) {

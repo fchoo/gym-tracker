@@ -55,6 +55,7 @@ const ROOT = process.cwd();
 const FLOW = "maestro/v1.2/calendar.yaml";
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const SHA256 = /^[a-f0-9]{64}$/u;
+const isSha256 = value => typeof value === "string" && SHA256.test(value);
 const GIT_HEAD = /^[a-f0-9]{40}$/u;
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const stableJson = (value) => {
@@ -109,7 +110,8 @@ function directSdkPaths(runId, shard) {
   return { receipt: `${prefix}-receipt.json`, jar: `${prefix}-runner.jar` };
 }
 
-function directSdkFile(root, relative, output = false) {
+/** Resolve a retained SDK artifact or destination without accepting unsafe paths. */
+export function resolveV12SdkArtifact(root, relative, output = false) {
   if (typeof relative !== "string" || path.isAbsolute(relative) || relative.includes("\\")
     || relative.split("/").some(part => !part || part === "." || part === "..")) genericFail("safe_sdk_attestation_invalid");
   const base = realpathSync(root);
@@ -122,6 +124,8 @@ function directSdkFile(root, relative, output = false) {
   if (!output && !lstatSync(cursor).isFile()) genericFail("safe_sdk_attestation_invalid");
   return cursor;
 }
+
+const directSdkFile = resolveV12SdkArtifact;
 
 function sdkStableIdentity(receipt) {
   const { jar_sha256: _jarHash, ...identity } = receipt;
@@ -138,13 +142,17 @@ export function readV12DirectSafeSdkIdentity({ root = ROOT, toolchain = resolveS
   };
 }
 
-export function validateV12DirectSafeSdkAttestation(value, { root = ROOT, runId, shard, testOnly = false,
+function captureV12DirectSafeSdkAttestation(value, { root = ROOT, runId, shard, testOnly = false,
   readIdentity = readV12DirectSafeSdkIdentity } = {}) {
   try {
     const paths = directSdkPaths(runId, shard);
     if (!exactKeys(value, ["schema_version", "identity_sha256", "receipt_path", "receipt_sha256", "jar_path", "jar_sha256"])
-      || value.schema_version !== 1 || value.receipt_path !== paths.receipt || value.jar_path !== paths.jar
-      || ![value.identity_sha256, value.receipt_sha256, value.jar_sha256].every(hash => SHA256.test(hash ?? ""))) genericFail("safe_sdk_attestation_invalid");
+      || (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)) genericFail("safe_sdk_attestation_invalid");
+    // Capture values once before comparing ownership or reading retained bytes.
+    // All later validation and returned cards use this same value graph.
+    value = structuredClone(value);
+    if (value.schema_version !== 1 || value.receipt_path !== paths.receipt || value.jar_path !== paths.jar
+      || ![value.identity_sha256, value.receipt_sha256, value.jar_sha256].every(hash => isSha256(hash ?? ""))) genericFail("safe_sdk_attestation_invalid");
     const receiptBytes = readFileSync(directSdkFile(root, value.receipt_path));
     const jar = readFileSync(directSdkFile(root, value.jar_path));
     const receipt = JSON.parse(receiptBytes);
@@ -155,7 +163,12 @@ export function validateV12DirectSafeSdkAttestation(value, { root = ROOT, runId,
         || receipt.engine !== "test-controlled/sdk-flow" || !jar.equals(CONTROLLED_SDK_JAR)) genericFail("safe_sdk_attestation_invalid");
     } else if (!exactKeys(receipt, ["schema_version", "engine", "node_version", "wrapper_sha256", "sources", "toolchain", "jar_sha256"])
       || stableJson(sdkStableIdentity(receipt)) !== stableJson(readIdentity({ root }))) genericFail("safe_sdk_attestation_invalid");
+    return Object.freeze(value);
   } catch { genericFail("safe_sdk_attestation_invalid"); }
+}
+
+export function validateV12DirectSafeSdkAttestation(value, options = {}) {
+  captureV12DirectSafeSdkAttestation(value, options);
   return true;
 }
 
@@ -266,7 +279,7 @@ function acquireDirectLease({ root, runId, shard, serial, manifest, dependencies
   const snapshotFile = directSdkFile(root, `${relative}.snapshot.json`, true);
   const owner = (dependencies.readLeaseOwner ?? readV12DirectLeaseOwner)();
   if (!exactKeys(owner, ["pid", "process_birth_sha256", "nonce"]) || !Number.isSafeInteger(owner.pid) || owner.pid < 1
-    || ![owner.process_birth_sha256, owner.nonce].every(value => SHA256.test(value ?? ""))) genericFail("lease_owner_invalid");
+    || ![owner.process_birth_sha256, owner.nonce].every(value => isSha256(value ?? ""))) genericFail("lease_owner_invalid");
   const identity = { schema_version: 2, run_id: runId, shard, serial_sha256: sha256(serial),
     device_identity_sha256: manifest.device.identity_sha256, source_tree_sha256: manifest.source.tree_sha256,
     apk_sha256: manifest.build.apk.sha256, owner };
@@ -333,6 +346,69 @@ function genericFail(code) {
   throw new Error(`v12_maestro_${code}`);
 }
 
+function assertV12ProcessPid(pid) {
+  if (!Number.isSafeInteger(pid) || pid < 1) genericFail("process_arguments_invalid");
+}
+
+/** Read process-tree observations through the ordinary Windows command port. */
+export function enumerateV12WindowsProcessTree({ pid, probe = spawnSync, timeoutMs = V12_MAESTRO_COMMAND_BUDGETS.kill_grace_ms } = {}) {
+  if (pid === undefined) return [];
+  assertV12ProcessPid(pid);
+  const script = "$root=[uint32]$args[0];$all=@(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId);$seen=@{};$queue=New-Object System.Collections.Queue;$queue.Enqueue($root);while($queue.Count -gt 0){$parent=[uint32]$queue.Dequeue();foreach($item in $all){if([uint32]$item.ParentProcessId -eq $parent -and -not $seen.ContainsKey([uint32]$item.ProcessId)){$seen[[uint32]$item.ProcessId]=$true;$queue.Enqueue([uint32]$item.ProcessId)}}};foreach($item in $all){if([uint32]$item.ProcessId -eq $root){$seen[$root]=$true}};$seen.Keys | Sort-Object";
+  let outcome;
+  try {
+    outcome = probe("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script, String(pid)], {
+      encoding: "utf8", maxBuffer: 256 * 1024, timeout: timeoutMs, windowsHide: true,
+    });
+  } catch { return null; }
+  if (outcome?.status !== 0 || outcome.signal !== null || outcome.error !== undefined || typeof outcome.stdout !== "string") return null;
+  const values = outcome.stdout.trim() === "" ? [] : outcome.stdout.trim().split(/\r?\n/u).map((value) => Number(value.trim()));
+  if (values.length > 4_096 || values.some((value) => !Number.isSafeInteger(value) || value < 1)) return null;
+  return [...new Set(values)];
+}
+
+/** Termination succeeds only after a successful command or an empty observation. */
+export function terminateV12WindowsProcessTree({ pid, force = false, probe = spawnSync, taskkill = spawnSync,
+  termGraceMs = V12_MAESTRO_COMMAND_BUDGETS.term_grace_ms, killGraceMs = V12_MAESTRO_COMMAND_BUDGETS.kill_grace_ms } = {}) {
+  if (pid === undefined) return false;
+  assertV12ProcessPid(pid);
+  const observe = () => enumerateV12WindowsProcessTree({ pid, probe, timeoutMs: killGraceMs });
+  const observed = observe();
+  if (Array.isArray(observed) && observed.length === 0) return true;
+  const targets = observed === null || observed.includes(pid) ? [pid] : observed;
+  const signalled = targets.every((target) => {
+    let outcome;
+    try {
+      outcome = taskkill("taskkill", ["/PID", String(target), "/T", ...(force ? ["/F"] : [])], {
+        encoding: "utf8", maxBuffer: 64 * 1024, timeout: force ? killGraceMs : termGraceMs, windowsHide: true,
+      });
+    } catch { return false; }
+    return outcome?.status === 0 && outcome.signal === null && outcome.error === undefined;
+  });
+  if (signalled) return true;
+  const after = observe();
+  return Array.isArray(after) && after.length === 0;
+}
+
+/** Dispatch a signal without losing a failed process observation. */
+export function signalV12OwnedProcessGroup({ pid, platform = process.platform, signalName, posixTracker,
+  windowsProbe = spawnSync, windowsTaskkill = spawnSync,
+  termGraceMs = V12_MAESTRO_COMMAND_BUDGETS.term_grace_ms, killGraceMs = V12_MAESTRO_COMMAND_BUDGETS.kill_grace_ms } = {}) {
+  if (pid === undefined) return Object.freeze({ signalled: false, cleanup_error: undefined });
+  assertV12ProcessPid(pid);
+  if (platform === "win32") return Object.freeze({ signalled: terminateV12WindowsProcessTree({ pid, force: signalName === "SIGKILL",
+    probe: windowsProbe, taskkill: windowsTaskkill, termGraceMs, killGraceMs }), cleanup_error: undefined });
+  if (posixTracker === undefined) return Object.freeze({ signalled: false, cleanup_error: undefined });
+  try { return Object.freeze({ signalled: posixTracker.signal(signalName), cleanup_error: undefined }); }
+  catch { return Object.freeze({ signalled: false, cleanup_error: "process_tree_enumeration_failed" }); }
+}
+
+/** Classify observation data; this does not observe or signal an OS process. */
+export function classifyV12ProcessCleanup(state, platform = process.platform) {
+  if (state === "empty") return undefined;
+  return state === "unknown" && platform !== "win32" ? "process_tree_enumeration_failed" : "process_tree_termination_failed";
+}
+
 /** Run one native tool in its own process group. Timeout or caller cancellation
  * first sends TERM to the whole tree, then escalates to KILL after a fixed grace. */
 export function runV12BoundedProcess(program, args, {
@@ -382,20 +458,7 @@ export function runV12BoundedProcess(program, args, {
         cleanupCode = "process_tree_enumeration_failed";
       }
     }
-    const windowsTreePids = () => {
-      if (child.pid === undefined) return [];
-      const script = "$root=[uint32]$args[0];$all=@(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId);$seen=@{};$queue=New-Object System.Collections.Queue;$queue.Enqueue($root);while($queue.Count -gt 0){$parent=[uint32]$queue.Dequeue();foreach($item in $all){if([uint32]$item.ParentProcessId -eq $parent -and -not $seen.ContainsKey([uint32]$item.ProcessId)){$seen[[uint32]$item.ProcessId]=$true;$queue.Enqueue([uint32]$item.ProcessId)}}};foreach($item in $all){if([uint32]$item.ProcessId -eq $root){$seen[$root]=$true}};$seen.Keys | Sort-Object";
-      let outcome;
-      try {
-        outcome = windowsTreeProbeImplementation("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script, String(child.pid)], {
-          encoding: "utf8", maxBuffer: 256 * 1024, timeout: killGraceMs, windowsHide: true,
-        });
-      } catch { return null; }
-      if (outcome?.status !== 0 || outcome.signal !== null || outcome.error !== undefined || typeof outcome.stdout !== "string") return null;
-      const values = outcome.stdout.trim() === "" ? [] : outcome.stdout.trim().split(/\r?\n/u).map((value) => Number(value.trim()));
-      if (values.length > 4_096 || values.some((value) => !Number.isSafeInteger(value) || value < 1)) return null;
-      return [...new Set(values)];
-    };
+    const windowsTreePids = () => enumerateV12WindowsProcessTree({ pid: child.pid, probe: windowsTreeProbeImplementation, timeoutMs: killGraceMs });
     const treeState = () => {
       if (child.pid === undefined) return "empty";
       if (platform === "win32") {
@@ -409,33 +472,11 @@ export function runV12BoundedProcess(program, args, {
         return "unknown";
       }
     };
-    const taskkillTree = (force) => {
-      if (child.pid === undefined) return false;
-      const observed = windowsTreePids();
-      if (Array.isArray(observed) && observed.length === 0) return true;
-      const targets = observed === null || observed.includes(child.pid) ? [child.pid] : observed;
-      const signalled = targets.every((pid) => {
-        let outcome;
-        try {
-          outcome = taskkillImplementation("taskkill", ["/PID", String(pid), "/T", ...(force ? ["/F"] : [])], {
-            encoding: "utf8", maxBuffer: 64 * 1024, timeout: force ? killGraceMs : termGraceMs, windowsHide: true,
-          });
-        } catch { return false; }
-        return outcome?.status === 0 && outcome.signal === null && outcome.error === undefined;
-      });
-      if (signalled) return true;
-      const after = windowsTreePids();
-      return Array.isArray(after) && after.length === 0;
-    };
     const killTree = (signalName) => {
-      if (child.pid === undefined) return false;
-      if (platform === "win32") return taskkillTree(signalName === "SIGKILL");
-      if (posixTree === undefined) return false;
-      try { return posixTree.signal(signalName); }
-      catch {
-        cleanupCode ??= "process_tree_enumeration_failed";
-        return false;
-      }
+      const result = signalV12OwnedProcessGroup({ pid: child.pid, platform, signalName, posixTracker: posixTree,
+        windowsProbe: windowsTreeProbeImplementation, windowsTaskkill: taskkillImplementation, termGraceMs, killGraceMs });
+      cleanupCode ??= result.cleanup_error;
+      return result.signalled;
     };
     const cleanup = () => {
       clearTimeout(timeout); clearTimeout(escalation); clearTimeout(killDeadline);
@@ -444,8 +485,7 @@ export function runV12BoundedProcess(program, args, {
     const settleAfterTree = () => {
       if (settled) return;
       const state = treeState();
-      if (state !== "empty") cleanupCode ??= state === "unknown" && platform !== "win32"
-        ? "process_tree_enumeration_failed" : "process_tree_termination_failed";
+      cleanupCode ??= classifyV12ProcessCleanup(state, platform);
       if (state === "empty" && posixTree !== undefined) {
         try { posixTree.stop(); }
         catch { cleanupCode ??= "process_tree_termination_failed"; }
@@ -643,14 +683,14 @@ function validateV12AppFunctionalReadbackObjects({ sourceReceipt, uiReadback, sh
     || sourceReceipt.operation_kind !== contract.operation.kind || sourceReceipt.operation_result !== contract.operation.expectedResult
     || sourceReceipt.operation_handler_id !== contract.operation.handlerId
     || sourceReceipt.operation_postcondition_id !== contract.operation.postcondition.id
-    || !SHA256.test(sourceReceipt.operation_result_sha256 ?? "") || sourceReceipt.source_probe !== contract.sourceProbe
+    || !isSha256(sourceReceipt.operation_result_sha256 ?? "") || sourceReceipt.source_probe !== contract.sourceProbe
     || JSON.stringify(sourceReceipt.authority_tables) !== JSON.stringify(contract.probes.post.tables)
     || !Array.isArray(sourceReceipt.authority_tables) || sourceReceipt.authority_tables.length === 0
     || new Set(sourceReceipt.authority_tables).size !== sourceReceipt.authority_tables.length
     || sourceReceipt.authority_tables.some((table) => !/^[a-z][a-z0-9_]{1,80}$/u.test(table))) genericFail("source_readback_invalid");
   for (const [index, state] of [sourceReceipt.pre, sourceReceipt.action, sourceReceipt.post].entries()) {
-    if (!exactKeys(state, APP_SOURCE_STATE_KEYS) || !SHA256.test(state.source_sha256 ?? "")
-      || !SHA256.test(state.facts_sha256 ?? "") || state.probe_id !== [contract.probes.pre.id, contract.probes.action.id, contract.probes.post.id][index]
+    if (!exactKeys(state, APP_SOURCE_STATE_KEYS) || !isSha256(state.source_sha256 ?? "")
+      || !isSha256(state.facts_sha256 ?? "") || state.probe_id !== [contract.probes.pre.id, contract.probes.action.id, contract.probes.post.id][index]
       || !Number.isSafeInteger(state.row_count) || state.row_count < 0
       || !Number.isSafeInteger(state.table_count) || state.table_count !== sourceReceipt.authority_tables.length
       || !Number.isSafeInteger(state.schema_version) || state.schema_version < 1) genericFail("source_readback_invalid");
@@ -686,9 +726,9 @@ function validateV12AppFunctionalReadbackObjects({ sourceReceipt, uiReadback, sh
     ui_readback_id: contract.uiReadback.id,
   };
   const { source_receipt_sha256: sourceReceiptSha256, ...sourceUnsigned } = sourceReceipt;
-  if (!SHA256.test(sourceReceipt.action_request_sha256 ?? "")
+  if (!isSha256(sourceReceipt.action_request_sha256 ?? "")
     || sourceReceipt.action_request_sha256 !== sha256(JSON.stringify(actionRequest))
-    || !SHA256.test(sourceReceiptSha256 ?? "") || sourceReceiptSha256 !== sha256(JSON.stringify(sourceUnsigned))) genericFail("source_readback_invalid");
+    || !isSha256(sourceReceiptSha256 ?? "") || sourceReceiptSha256 !== sha256(JSON.stringify(sourceUnsigned))) genericFail("source_readback_invalid");
   if (!exactKeys(uiReadback, APP_UI_READBACK_KEYS)
     || uiReadback.schema_version !== 2 || uiReadback.producer !== "v12-native-acceptance-ui-readback/v2"
     || uiReadback.shard !== shard || uiReadback.case_id !== caseId || uiReadback.nonce !== nonce
@@ -696,7 +736,7 @@ function validateV12AppFunctionalReadbackObjects({ sourceReceipt, uiReadback, sh
     || uiReadback.readback_id !== contract.uiReadback.id
     || uiReadback.source_receipt_sha256 !== sourceReceiptSha256) genericFail("ui_readback_invalid");
   const { ui_receipt_sha256: uiReceiptSha256, ...uiUnsigned } = uiReadback;
-  if (!SHA256.test(uiReceiptSha256 ?? "") || uiReceiptSha256 !== sha256(JSON.stringify(uiUnsigned))) genericFail("ui_readback_invalid");
+  if (!isSha256(uiReceiptSha256 ?? "") || uiReceiptSha256 !== sha256(JSON.stringify(uiUnsigned))) genericFail("ui_readback_invalid");
   return true;
 }
 
@@ -762,13 +802,13 @@ export function validateV12FunctionalExecutionReceipt(receipt, { runId, shard, c
   for (const [index, phase] of receipt.phases.entries()) {
     if (!exactKeys(phase, expectedPhaseKeys[index]) || phase.phase !== FUNCTIONAL_RECEIPT_PHASES[index]
       || phase.nonce !== receipt.nonce || phase.authority !== authorities[index]
-      || Object.entries(phase).filter(([key]) => key.endsWith("_sha256")).some(([, value]) => !SHA256.test(value))) genericFail("execution_receipt_invalid");
+      || Object.entries(phase).filter(([key]) => key.endsWith("_sha256")).some(([, value]) => !isSha256(value))) genericFail("execution_receipt_invalid");
   }
   if (receipt.phases[0].source_sha256 !== receipt.source_receipt.pre.source_sha256
     || receipt.phases[2].source_sha256 !== receipt.source_receipt.post.source_sha256
     || receipt.phases[2].ui_sha256 !== receipt.ui_readback.ui_receipt_sha256) genericFail("execution_receipt_invalid");
   const { receipt_sha256: receiptSha256, ...unsigned } = receipt;
-  if (!SHA256.test(receiptSha256 ?? "") || receiptSha256 !== sha256(JSON.stringify(unsigned))) genericFail("execution_receipt_invalid");
+  if (!isSha256(receiptSha256 ?? "") || receiptSha256 !== sha256(JSON.stringify(unsigned))) genericFail("execution_receipt_invalid");
   return true;
 }
 
@@ -985,10 +1025,17 @@ function containsVerdictAuthority(value) {
 
 function immutableWrite(root, relativePath, value, write = undefined) {
   if (typeof write === "function") return write(relativePath, value);
-  const absolute = path.resolve(root, relativePath);
-  if (!absolute.startsWith(`${path.resolve(root)}${path.sep}`) || existsSync(absolute)) genericFail("immutable_output_invalid");
+  const absolute = validateV12ImmutableOutputDestination({ root, relativePath });
   mkdirSync(path.dirname(absolute), { recursive: true });
   writeFileSync(absolute, `${JSON.stringify(value)}\n`, { encoding: "utf8", flag: "wx" });
+}
+
+/** Validate the path used by the exclusive local evidence writer. */
+export function validateV12ImmutableOutputDestination({ root = ROOT, relativePath } = {}) {
+  if (typeof root !== "string" || typeof relativePath !== "string") genericFail("immutable_output_invalid");
+  const absolute = path.resolve(root, relativePath);
+  if (!absolute.startsWith(`${path.resolve(root)}${path.sep}`) || existsSync(absolute)) genericFail("immutable_output_invalid");
+  return absolute;
 }
 
 function sourceOrderedCaseIds(bytes, shard) {
@@ -1002,12 +1049,25 @@ function validateSourceOrderedObservations(observations, caseIds, shard) {
   for (const [index, observation] of observations.entries()) {
     if (!observation || observation.case_id !== caseIds[index] || observation.ordinal !== index + 1
       || observation.fixture_id !== "v12-synthetic-fixtures-r18" || typeof observation.report_sha256 !== "string"
-      || !SHA256.test(observation.report_sha256) || seen.has(observation.case_id)
+      || !isSha256(observation.report_sha256) || seen.has(observation.case_id)
       || observation.execution_receipt === undefined
       || containsVerdictAuthority(observation)) genericFail("observation_mapping_invalid");
     seen.add(observation.case_id);
   }
-  if (seen.size !== caseIds.length || shard === "recovery") genericFail("observation_mapping_invalid");
+  validateV12ObservationSetIdentity({ observedCaseIds: [...seen], expectedCaseIds: caseIds, shard });
+}
+
+/** Check imported observation membership independently of ordered record fields. */
+export function validateV12ObservationSetIdentity({ observedCaseIds, expectedCaseIds, shard } = {}) {
+  if (!Array.isArray(observedCaseIds) || !Array.isArray(expectedCaseIds) || typeof shard !== "string") genericFail("observation_mapping_invalid");
+  observedCaseIds = Array.from({ length: observedCaseIds.length }, (_, index) => observedCaseIds[index]);
+  expectedCaseIds = Array.from({ length: expectedCaseIds.length }, (_, index) => expectedCaseIds[index]);
+  const observed = new Set(observedCaseIds);
+  if ([observed.size !== expectedCaseIds.length, shard === "recovery", observedCaseIds.length !== observed.size,
+    new Set(expectedCaseIds).size !== expectedCaseIds.length,
+    observedCaseIds.some(id => typeof id !== "string" || id.length === 0), expectedCaseIds.some(id => typeof id !== "string" || id.length === 0),
+    expectedCaseIds.some(id => !observed.has(id))].some(Boolean)) genericFail("observation_mapping_invalid");
+  return true;
 }
 
 function resolvedExecutionTools(value) {
@@ -1053,7 +1113,7 @@ export function createV12DirectMaestroToolAttestation({ execute = execFileSync, 
   root = ROOT, runId, retainedSafeSdk, readSafeSdkIdentity } = {}) {
   const tools = resolvedExecutionTools(executionTools);
   if (!LIVE_GENERIC_SHARDS.includes(shard)) genericFail("tool_attestation_invalid");
-  if (retainedSafeSdk !== undefined) validateV12DirectSafeSdkAttestation(retainedSafeSdk, {
+  if (retainedSafeSdk !== undefined) retainedSafeSdk = captureV12DirectSafeSdkAttestation(retainedSafeSdk, {
     root, runId, shard, testOnly: tools.test_only, readIdentity: readSafeSdkIdentity,
   });
   return Object.freeze({
@@ -1071,9 +1131,14 @@ export function createV12DirectMaestroToolAttestation({ execute = execFileSync, 
   });
 }
 
-async function createV12DirectMaestroToolAttestationAsync({ run, executionTools, shard, safeSdk }) {
+/** Async counterpart of the direct tool attestation builder; not execution proof. */
+export async function createV12DirectMaestroToolAttestationAsync({ run, executionTools, shard, safeSdk,
+  root = ROOT, runId, readSafeSdkIdentity } = {}) {
   const tools = resolvedExecutionTools(executionTools);
   if (!LIVE_GENERIC_SHARDS.includes(shard)) genericFail("tool_attestation_invalid");
+  if (typeof run !== "function") genericFail("toolchain_invalid");
+  const retainedSafeSdk = captureV12DirectSafeSdkAttestation(safeSdk, { root, runId, shard,
+    testOnly: tools.test_only, readIdentity: readSafeSdkIdentity });
   const versions = await Promise.all(DIRECT_MAESTRO_TOOL_NAMES.map((name) => toolVersionAsync(run, name, tools[name], tools.test_only)));
   return Object.freeze({
     schema_version: 2,
@@ -1086,7 +1151,7 @@ async function createV12DirectMaestroToolAttestationAsync({ run, executionTools,
       executable_sha256: sourceSha256(tools[name]),
       version: versions[index],
     }))),
-    safe_sdk: safeSdk,
+    safe_sdk: retainedSafeSdk,
   });
 }
 
@@ -1107,15 +1172,20 @@ function directMaestroRequestAttestation({ runId, shard, manifest, snapshot, git
   }));
 }
 
-function executionOrigin({ root, runId, shard, manifest, snapshot, tools, gitAttestationSha256, toolAttestation, observations }) {
-  const production = tools.execution_origin === V12_PRODUCTION_EXECUTION_ORIGIN;
-  const sources = V12_MAESTRO_SOURCE_PATHS[shard];
-  if (sources === undefined) genericFail("toolchain_invalid");
+/** Build provenance from an independently checked canonical source registration. */
+export function createV12DirectMaestroExecutionOrigin({ root, runId, shard, sourceRegistration, manifest, snapshot, tools, gitAttestationSha256, toolAttestation, observations } = {}) {
+  if (sourceRegistration === undefined) genericFail("toolchain_invalid");
+  const canonical = V12_MAESTRO_SOURCE_PATHS[shard];
+  if (!exactKeys(sourceRegistration, ["adapter", "launcher", "domain"]) || canonical === undefined) genericFail("toolchain_invalid");
+  const sources = Object.freeze({ adapter: sourceRegistration.adapter, launcher: sourceRegistration.launcher, domain: sourceRegistration.domain });
+  if (Object.keys(canonical).some(key => sources[key] !== canonical[key])) genericFail("toolchain_invalid");
+  const validatedTools = resolvedExecutionTools(tools);
+  const production = validatedTools.execution_origin === V12_PRODUCTION_EXECUTION_ORIGIN;
   return Object.freeze({
     schema_version: 1,
     action: shard,
     kind: production ? "production-default-launcher" : "test-fixture",
-    toolchain_origin: tools.execution_origin,
+    toolchain_origin: validatedTools.execution_origin,
     default_launcher: production,
     test_only: !production,
     adapter_source_sha256: sourceSha256(path.join(root, sources.adapter)),
@@ -1171,7 +1241,7 @@ async function measureDirectMaestroDeviceAsync(adb, serial, manifest) {
     settings_sha256: digestV12CanonicalRestorationSnapshot(settings),
     configuration_id: manifest.configuration.id,
   });
-  if (!SHA256.test(measurement.installed_apk_sha256)) genericFail("identity_mismatch");
+  if (!isSha256(measurement.installed_apk_sha256)) genericFail("identity_mismatch");
   return Object.freeze({ measurement, settings });
 }
 
@@ -1201,7 +1271,7 @@ export function readV12DirectMaestroDeviceMeasurement(manifest, {
   const measurement = Object.freeze({ schema_version: 1, source: "attested-absolute-adb/v1", package: packageName,
     installed_apk_sha256: installedApkSha256, device_identity_sha256: phase18DeviceIdentitySha256({ serial, abi, apiLevel, model }),
     abi, settings_sha256: digestV12CanonicalRestorationSnapshot(settings), configuration_id: manifest.configuration.id });
-  if (!SHA256.test(measurement.installed_apk_sha256)) genericFail("identity_mismatch");
+  if (!isSha256(measurement.installed_apk_sha256)) genericFail("identity_mismatch");
   return measurement;
 }
 
@@ -1226,7 +1296,14 @@ function directMaestroIdentity(manifest, sourceIdentity, apkSha256, measurement)
   });
 }
 
-function assertDirectMaestroMeasurement(manifest, sourceIdentity, apkSha256, measurement) {
+/** Validate a measured snapshot without granting execution authority. */
+export function validateV12MeasuredExecutionIdentity({ manifest, sourceIdentity, apkSha256, measurement } = {}) {
+  try {
+    manifest = validateGenericV12RunManifest(manifest);
+    sourceIdentity = structuredClone(sourceIdentity);
+    measurement = structuredClone(measurement);
+  } catch { genericFail("identity_mismatch"); }
+  if (!sourceIdentity || !measurement) genericFail("identity_mismatch");
   genericIdentityMatches(manifest, {
     head: sourceIdentity.head,
     tree_sha256: sourceIdentity.tree_sha256,
@@ -1239,6 +1316,27 @@ function assertDirectMaestroMeasurement(manifest, sourceIdentity, apkSha256, mea
     configuration_id: measurement.configuration_id,
   });
   if (measurement.abi !== manifest.device.abi) genericFail("identity_mismatch");
+  return true;
+}
+
+const assertDirectMaestroMeasurement = (manifest, sourceIdentity, apkSha256, measurement) =>
+  validateV12MeasuredExecutionIdentity({ manifest, sourceIdentity, apkSha256, measurement });
+
+/** Preserve the byte ordering comparison used by measured readbacks. */
+export function validateV12MeasurementStability({ before, after } = {}) {
+  const keys = ["schema_version", "source", "package", "installed_apk_sha256", "device_identity_sha256", "abi", "settings_sha256", "configuration_id"];
+  if (!exactKeys(before, keys) || !exactKeys(after, keys)) genericFail("measurement_invalid");
+  let snapshotBefore; let snapshotAfter;
+  try { snapshotBefore = structuredClone(before); snapshotAfter = structuredClone(after); }
+  catch { genericFail("measurement_invalid"); }
+  if (JSON.stringify(snapshotBefore) !== JSON.stringify(snapshotAfter)) genericFail("measurement_drift");
+  return true;
+}
+
+/** Require confirmed restoration at the local tool transaction boundary. */
+export function validateV12SettingsRestored(restored) {
+  if (restored !== true) genericFail("settings_restore_failed");
+  return true;
 }
 
 function validateDirectMaestroToolAttestation(value, shard, executionOrigin, allowTest, root, runId, readIdentity) {
@@ -1252,8 +1350,8 @@ function validateDirectMaestroToolAttestation(value, shard, executionOrigin, all
   for (const [index, descriptor] of value.tools.entries()) {
     if (!exactKeys(descriptor, ["name", "executable_realpath_sha256", "executable_sha256", "version"])
       || descriptor.name !== DIRECT_MAESTRO_TOOL_NAMES[index]
-      || !SHA256.test(descriptor.executable_realpath_sha256 ?? "")
-      || !SHA256.test(descriptor.executable_sha256 ?? "")
+      || !isSha256(descriptor.executable_realpath_sha256 ?? "")
+      || !isSha256(descriptor.executable_sha256 ?? "")
       || typeof descriptor.version !== "string" || descriptor.version.length < 1 || descriptor.version.length > 512
       || /[\u0000-\u001f\u007f]/u.test(descriptor.version)
       || (value.test_only ? descriptor.version !== "test-controlled" : descriptor.version === "test-controlled")) genericFail("tool_attestation_invalid");
@@ -1275,9 +1373,13 @@ function validateDirectMaestroMeasurement(value, manifest) {
 
 export function validateV12DirectMaestroMapping(mapping, { root = ROOT, manifest, shard, allowTest = false, readSafeSdkIdentity } = {}) {
   if (!LIVE_GENERIC_SHARDS.includes(shard)
-    || !exactKeys(mapping, ["schema_version", "producer", "run_id", "shard", "identity", "git_attestation_sha256", "execution_origin", "tool_attestation", "flow_sha256", "source_sha256", "case_ids", "observations"])
-    || mapping.schema_version !== 2 || mapping.producer !== "v12-maestro-source-map/v2" || mapping.shard !== shard
-    || !manifest || mapping.run_id !== manifest.run_id || !SHA256.test(mapping.git_attestation_sha256 ?? "")) genericFail("mapping_invalid");
+    || !exactKeys(mapping, ["schema_version", "producer", "run_id", "shard", "identity", "git_attestation_sha256", "execution_origin", "tool_attestation", "flow_sha256", "source_sha256", "case_ids", "observations"])) genericFail("mapping_invalid");
+  // A caller-owned DTO may expose getters. Validate one captured value graph,
+  // never an earlier case count followed by later observations or identity.
+  try { mapping = structuredClone(mapping); }
+  catch { genericFail("mapping_invalid"); }
+  if (mapping.schema_version !== 2 || mapping.producer !== "v12-maestro-source-map/v2" || mapping.shard !== shard
+    || !manifest || mapping.run_id !== manifest.run_id || !isSha256(mapping.git_attestation_sha256 ?? "")) genericFail("mapping_invalid");
   const contract = V12_MAESTRO_FLOW_CONTRACTS[shard];
   if (!allowTest) assertV12ProductCaseEnvironmentRegistry({ root });
   const caseIds = deriveV12MaestroCaseIdsFromSource(shard, readFileSync(path.join(root, contract.sources[0]), "utf8"));
@@ -1302,24 +1404,14 @@ export function validateV12DirectMaestroMapping(mapping, { root = ROOT, manifest
     });
     validateDirectMaestroMeasurement(observation.device_measurement.before, manifest);
     validateDirectMaestroMeasurement(observation.device_measurement.after, manifest);
-    if (JSON.stringify(observation.device_measurement.before) !== JSON.stringify(observation.device_measurement.after)) genericFail("measurement_drift");
+    validateV12MeasurementStability({ before: observation.device_measurement.before, after: observation.device_measurement.after });
     validateV12FunctionalExecutionReceipt(observation.execution_receipt, {
       runId: mapping.run_id, shard, caseId: observation.case_id, manifest,
     });
     if (observation.execution_receipt.phases[1].report_sha256 !== observation.report_sha256) genericFail("execution_receipt_invalid");
   }
   if (new Set(mapping.observations.map(({ execution_receipt: receipt }) => receipt.nonce)).size !== mapping.observations.length) genericFail("execution_receipt_invalid");
-  const firstMeasurement = mapping.observations[0]?.device_measurement.before;
-  const expectedIdentity = firstMeasurement === undefined ? undefined : {
-    source_tree_sha256: manifest.source.tree_sha256,
-    package: firstMeasurement.package,
-    apk_sha256: manifest.build.apk.sha256,
-    installed_apk_sha256: firstMeasurement.installed_apk_sha256,
-    certificate_sha256: manifest.build.apk.certificate_sha256,
-    device_identity_sha256: firstMeasurement.device_identity_sha256,
-    settings_sha256: firstMeasurement.settings_sha256,
-    configuration_id: firstMeasurement.configuration_id,
-  };
+  const expectedIdentity = deriveV12MappingIdentity({ manifest, measurement: mapping.observations[0]?.device_measurement.before });
   if (JSON.stringify(mapping.identity) !== JSON.stringify(expectedIdentity)
     || mapping.flow_sha256 !== sourceSha256(path.join(root, contract.flow))
     || !exactKeys(mapping.source_sha256, contract.sources)
@@ -1337,6 +1429,30 @@ export function validateV12DirectMaestroMapping(mapping, { root = ROOT, manifest
   return true;
 }
 
+/** Derive a mapping identity DTO from its checked first measurement. */
+export function deriveV12MappingIdentity({ manifest, measurement } = {}) {
+  if (measurement === undefined) return undefined;
+  try { manifest = validateGenericV12RunManifest(manifest); measurement = structuredClone(measurement); }
+  catch { genericFail("mapping_identity_invalid"); }
+  validateDirectMaestroMeasurement(measurement, manifest);
+  return Object.freeze({ source_tree_sha256: manifest.source.tree_sha256, package: measurement.package,
+    apk_sha256: manifest.build.apk.sha256, installed_apk_sha256: measurement.installed_apk_sha256,
+    certificate_sha256: manifest.build.apk.certificate_sha256, device_identity_sha256: measurement.device_identity_sha256,
+    settings_sha256: measurement.settings_sha256, configuration_id: measurement.configuration_id });
+}
+
+/** Check the scope selected for an already normalized runner manifest. */
+export function validateV12RunnerManifestScope({ manifest, runId, requirePackage = true } = {}) {
+  if (typeof requirePackage !== "boolean" || typeof runId !== "string" || !V12_RUN_ID.test(runId)
+    || manifest === null || typeof manifest !== "object" || Array.isArray(manifest)
+    || (Object.getPrototypeOf(manifest) !== Object.prototype && Object.getPrototypeOf(manifest) !== null)) genericFail("manifest_invalid");
+  try { manifest = structuredClone(manifest); }
+  catch { genericFail("manifest_invalid"); }
+  if (manifest.run_id !== runId || manifest.mode !== "live"
+    || (requirePackage && manifest.build?.package !== V12_PACKAGE)) genericFail("manifest_invalid");
+  return true;
+}
+
 export function executeGenericV12Maestro(args = process.argv.slice(2), dependencies = {}) {
   const { runId, shard } = exactGenericArguments(args);
   const root = dependencies.root ?? ROOT;
@@ -1346,10 +1462,10 @@ export function executeGenericV12Maestro(args = process.argv.slice(2), dependenc
   const readBytes = dependencies.readBytes ?? ((file) => readFileSync(path.join(root, file)));
   const exists = dependencies.exists ?? ((file) => existsSync(path.join(root, file)));
   if (!exists(manifestPath) || !exists(contract.flow) || contract.sources.some((file) => !exists(file))) genericFail("artifact_missing");
-  const manifest = readJson(manifestPath);
-  try { validateGenericV12RunManifest(manifest); }
+  let manifest = readJson(manifestPath);
+  try { manifest = validateGenericV12RunManifest(manifest); }
   catch { genericFail("manifest_invalid"); }
-  if (manifest.run_id !== runId || manifest.mode !== "live" || manifest.build.package !== V12_PACKAGE) genericFail("manifest_invalid");
+  validateV12RunnerManifestScope({ manifest, runId });
   genericIdentityMatches(manifest, dependencies.currentIdentity);
 
   const snapshot = () => Object.freeze({
@@ -1369,7 +1485,7 @@ export function executeGenericV12Maestro(args = process.argv.slice(2), dependenc
   } catch (error) {
     executionError = error;
   } finally {
-    if (adapter.restoreSettings(settings) !== true) genericFail("settings_restore_failed");
+    validateV12SettingsRestored(adapter.restoreSettings(settings));
   }
   if (executionError !== undefined) throw executionError;
   const after = snapshot();
@@ -1413,9 +1529,9 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
   if (!LIVE_GENERIC_SHARDS.includes(shard)) genericFail("live_shard_invalid");
   const root = dependencies.root ?? ROOT;
   const readJson = dependencies.readJson ?? ((file) => JSON.parse(readFileSync(path.join(root, file), "utf8")));
-  const manifest = readJson(`artifacts/native/v1.2/${runId}/build.json`);
-  try { validateGenericV12RunManifest(manifest); } catch { genericFail("manifest_invalid"); }
-  if (manifest.run_id !== runId || manifest.mode !== "live" || manifest.build.package !== V12_PACKAGE) genericFail("manifest_invalid");
+  let manifest = readJson(`artifacts/native/v1.2/${runId}/build.json`);
+  try { manifest = validateGenericV12RunManifest(manifest); } catch { genericFail("manifest_invalid"); }
+  validateV12RunnerManifestScope({ manifest, runId });
   const gitExecution = dependencies.gitExecution ?? (manifest.evidence_origin === "native"
     ? readV12RetainedGitExecution({ root, runManifest: manifest, env: dependencies.environment ?? process.env })
     : resolveV12GitExecution({ env: dependencies.environment ?? process.env }));
@@ -1436,7 +1552,8 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
   const run = commandRunner(runnerDependencies, dependencies.signal);
   await assertMaestroVersionAsync(run, tools.maestro);
   const sdk = prepareV12DirectSafeSdkBinding({ root, runId, shard, tools, dependencies });
-  const toolAttestation = await createV12DirectMaestroToolAttestationAsync({ run, executionTools: tools, shard, safeSdk: sdk.attestation });
+  const toolAttestation = await createV12DirectMaestroToolAttestationAsync({ run, executionTools: tools, shard, safeSdk: sdk.attestation,
+    root, runId, readSafeSdkIdentity: dependencies.readSafeSdkIdentity });
   const apkSha256 = retainedApkSha256(root, manifest);
   const outputRoot = `artifacts/native/v1.2/${runId}`;
   const reportPath = `${outputRoot}/maestro/${shard}.xml`;
@@ -1502,7 +1619,7 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
             await restoreDirectMaestroSettings(cleanupAdb, before.settings);
             after = await measureDirectMaestroDeviceAsync(cleanupAdb, serial, manifest);
             assertDirectMaestroMeasurement(manifest, sourceIdentity, apkSha256, after.measurement);
-            if (JSON.stringify(before.measurement) !== JSON.stringify(after.measurement)) genericFail("measurement_drift");
+            validateV12MeasurementStability({ before: before.measurement, after: after.measurement });
           } catch (error) { retainLease = true; throw error; }
         }
       }
@@ -1553,7 +1670,7 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
     const flowSha256 = sha256(readFileSync(flowPath));
     const sourceSnapshot = Object.freeze({ flow_sha256: flowSha256, source_sha256: Object.freeze({ [contract.sources[0]]: sha256(sourceBytes) }) });
     const gitAttestationSha256 = gitExecution.retained_sha256 ?? sha256(`${JSON.stringify(gitExecution.attestation)}\n`);
-    const provenance = executionOrigin({ root, runId, shard, manifest, snapshot: sourceSnapshot, tools, gitAttestationSha256, toolAttestation, observations });
+    const provenance = createV12DirectMaestroExecutionOrigin({ root, runId, shard, sourceRegistration: V12_MAESTRO_SOURCE_PATHS[shard], manifest, snapshot: sourceSnapshot, tools, gitAttestationSha256, toolAttestation, observations });
     const mapping = Object.freeze({ schema_version: 2, producer: "v12-maestro-source-map/v2", run_id: runId, shard, identity: measuredIdentity, git_attestation_sha256: gitAttestationSha256, execution_origin: provenance, tool_attestation: toolAttestation, flow_sha256: flowSha256, source_sha256: sourceSnapshot.source_sha256, case_ids: caseIds, observations });
     validateSourceOrderedObservations(observations, caseIds, shard);
     validateV12DirectMaestroMapping(mapping, { root, manifest, shard, allowTest: tools.test_only, readSafeSdkIdentity: dependencies.readSafeSdkIdentity });
@@ -1574,7 +1691,7 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
   } finally {
     if (!retainLease) lease.release();
   }
-  if (!restored) genericFail("settings_restore_failed");
+  validateV12SettingsRestored(restored);
   return outcome;
 }
 
@@ -1597,7 +1714,7 @@ export function validateV12LiveSourceLineage(manifest, dependencies = {}) {
       return false;
     }
   });
-  if (!GIT_HEAD.test(manifest?.source?.head ?? "") || !SHA256.test(manifest?.source?.tree_sha256 ?? "") || !GIT_HEAD.test(currentHead)) {
+  if (!GIT_HEAD.test(manifest?.source?.head ?? "") || !isSha256(manifest?.source?.tree_sha256 ?? "") || !GIT_HEAD.test(currentHead)) {
     genericFail("identity_mismatch");
   }
   if (isAncestor(manifest.source.head, currentHead) !== true) genericFail("source_lineage_mismatch");
@@ -1623,8 +1740,18 @@ function liveIdentity(manifest, root, sourceIdentity) {
 }
 
 function retainedApkSha256(root, manifest) {
+  return readV12RetainedApkDigest({ root, apk: manifest.build.apk });
+}
+
+/** Read a captured local APK descriptor without granting native authority. */
+export function readV12RetainedApkDigest({ root = ROOT, apk } = {}) {
+  if (apk === null || typeof apk !== "object" || Array.isArray(apk)
+    || (Object.getPrototypeOf(apk) !== Object.prototype && Object.getPrototypeOf(apk) !== null)) genericFail("identity_mismatch");
+  try { apk = structuredClone(apk); }
+  catch { genericFail("identity_mismatch"); }
+  if (typeof apk.path !== "string" || typeof apk.sha256 !== "string" || !Number.isSafeInteger(apk.size_bytes) || apk.size_bytes < 1) genericFail("identity_mismatch");
   const workspace = path.resolve(root);
-  const apkPath = path.resolve(root, manifest.build.apk.path);
+  const apkPath = path.resolve(root, apk.path);
   if (!apkPath.startsWith(`${workspace}${path.sep}`)) genericFail("identity_mismatch");
   let bytes;
   try {
@@ -1635,7 +1762,7 @@ function retainedApkSha256(root, manifest) {
     genericFail("identity_mismatch");
   }
   const digest = sha256(bytes);
-  if (bytes.length !== manifest.build.apk.size_bytes || digest !== manifest.build.apk.sha256) genericFail("identity_mismatch");
+  if (bytes.length !== apk.size_bytes || digest !== apk.sha256) genericFail("identity_mismatch");
   return digest;
 }
 
@@ -1650,9 +1777,9 @@ export async function executeLiveV12RecoveryMaestro(args = process.argv.slice(2)
   const { runId, shard } = exactGenericArguments(args);
   if (shard !== "recovery") genericFail("live_shard_invalid");
   const root = dependencies.root ?? ROOT;
-  const manifest = (dependencies.readJson ?? ((file) => JSON.parse(readFileSync(path.join(root, file), "utf8"))))(`artifacts/native/v1.2/${runId}/build.json`);
-  try { validateGenericV12RunManifest(manifest); } catch { genericFail("manifest_invalid"); }
-  if (manifest.run_id !== runId || manifest.mode !== "live") genericFail("manifest_invalid");
+  let manifest = (dependencies.readJson ?? ((file) => JSON.parse(readFileSync(path.join(root, file), "utf8"))))(`artifacts/native/v1.2/${runId}/build.json`);
+  try { manifest = validateGenericV12RunManifest(manifest); } catch { genericFail("manifest_invalid"); }
+  validateV12RunnerManifestScope({ manifest, runId, requirePackage: false });
   const gitExecution = dependencies.gitExecution ?? ((dependencies.currentHead !== undefined
     && dependencies.sourceDigest !== undefined && dependencies.isAncestor !== undefined)
     ? undefined : readV12RetainedGitExecution({ root, runManifest: manifest, env: dependencies.environment ?? process.env }));
@@ -1727,7 +1854,7 @@ export async function executeLiveV12RecoveryMaestro(args = process.argv.slice(2)
       if (restored || priorAirplane === undefined) lease.release();
     }
   }
-  if (!restored) genericFail("settings_restore_failed");
+  validateV12SettingsRestored(restored);
   return Object.freeze({ ok: true, run_id: runId, shard, report: path.relative(root, output), cases: V12_RECOVERY_CASE_IDS.length,
     steps: V12_RECOVERY_STEPS.length, cuts: V12_RECOVERY_STEPS.length * V12_RECOVERY_CUT_IDS.length, executions: reports.length,
     safe_sdk: sdk.attestation });
@@ -1749,14 +1876,14 @@ export function validateV12CalendarManifest(manifest, current = {}) {
     manifest.package !== PACKAGE,
     manifest.js_bundle.embedded !== true,
     !GIT_HEAD.test(manifest.base_head),
-    !SHA256.test(manifest.source_tree_sha256),
-    !SHA256.test(manifest.source_manifest_sha256),
-    !SHA256.test(manifest.reference_map_sha256),
-    !SHA256.test(manifest.apk.sha256),
+    !isSha256(manifest.source_tree_sha256),
+    !isSha256(manifest.source_manifest_sha256),
+    !isSha256(manifest.reference_map_sha256),
+    !isSha256(manifest.apk.sha256),
     manifest.installed_apk.matches_retained_apk !== true,
     manifest.installed_apk.sha256 !== manifest.apk.sha256,
-    !SHA256.test(manifest.device.identity_sha256),
-    !SHA256.test(manifest.report_sha256),
+    !isSha256(manifest.device.identity_sha256),
+    !isSha256(manifest.report_sha256),
   ].some(Boolean)) throw new Error("v12_calendar_manifest_invalid");
   if (current.head !== undefined && manifest.base_head !== current.head) throw new Error("v12_calendar_manifest_stale_head");
   if (current.source !== undefined && manifest.source_tree_sha256 !== current.source) throw new Error("v12_calendar_manifest_stale_source");
@@ -1844,6 +1971,7 @@ export async function runV12MaestroCli(args = process.argv.slice(2), io = proces
     process.once("SIGTERM", cancel);
     process.once("SIGINT", cancel);
   }
+  let result;
   try {
     if (args.includes("--run")) {
       const { runId, shard } = exactGenericArguments(args);
@@ -1870,19 +1998,20 @@ export async function runV12MaestroCli(args = process.argv.slice(2), io = proces
         io.stdout.write(`${JSON.stringify(result)}\n`);
       }
     } else io.stdout.write(`${JSON.stringify(executeV12Maestro(args))}\n`);
-    return 0;
+    result = 0;
   } catch (error) {
     const runIndex = args.indexOf("--run"); const shardIndex = args.indexOf("--shard");
     const runId = runIndex >= 0 ? args[runIndex + 1] : undefined; const shard = shardIndex >= 0 ? args[shardIndex + 1] : undefined;
     if (V12_RUN_ID.test(runId ?? "") && typeof shard === "string" && shard !== "recovery") { try { recordV12AtomicFailure({ root: dependencies.root, runId, shard, error }); } catch { /* first receipt wins */ } }
     io.stderr.write(`${error.message}\n`);
-    return 1;
+    result = 1;
   } finally {
     if (controller !== undefined) {
       process.removeListener("SIGTERM", cancel);
       process.removeListener("SIGINT", cancel);
     }
   }
+  return result;
 }
 
 /* node:coverage ignore next 4 */

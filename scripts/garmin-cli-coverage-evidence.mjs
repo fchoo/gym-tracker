@@ -8,7 +8,69 @@ import { pathToFileURL } from "node:url";
 // Renew this seal only with a new reviewed producer stream when any bound input changes.
 export const GARMIN_CLI_EVIDENCE_SHA256 = "b769d4dcdd93e29644f8fa922912ca70b6f0e8151f43558c8bc5c636a9a3da26";
 export const GARMIN_CLI_EVIDENCE_DIRECTORY = "artifacts/host/garmin-cli-proof-current-fd";
+export const GARMIN_CACHED_CLI_SUPPLEMENT = Object.freeze({
+  path: "artifacts/host/garmin-lock-cached-cli-supplement-20261028/evidence.json",
+  sha256: "9f7f11d3668781469265c9904d6a29a0a347828af284cf7fdcca9ca5ca26c99b",
+});
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
+
+function cachedCliSupplement(projectRoot, canonicalUrl) {
+  const root = realpathSync(projectRoot);
+  const read = entry => {
+    assert.ok(typeof entry.path === "string" && !path.isAbsolute(entry.path)
+      && !entry.path.includes("\\") && entry.path.split("/").every(part => part && part !== "." && part !== ".."));
+    const file = path.join(root, entry.path);
+    assert.ok(lstatSync(file).isFile());
+    assert.equal(realpathSync(file), file);
+    const bytes = readFileSync(file);
+    assert.equal(sha256(bytes), entry.sha256);
+    return bytes;
+  };
+  const proof = JSON.parse(read(GARMIN_CACHED_CLI_SUPPLEMENT));
+  assert.equal(proof.producer, "garmin-pinned-cached-cli-supplement/v1");
+  assert.equal(proof.proof, "NON_NATIVE_HOST_ONLY");
+  assert.equal(proof.original_packaging_seal_sha256, GARMIN_CLI_EVIDENCE_SHA256);
+  assert.equal(proof.subject, "scripts/verify-garmin-python-lock.mjs");
+  assert.equal(sha256(readFileSync(path.join(root, proof.subject))), proof.subject_sha256);
+  const lockInput = proof.inputs.find(entry => entry.path === proof.lock_path);
+  const lock = JSON.parse(read(lockInput.artifact));
+  assert.equal(lockInput.sha256, proof.lock_sha256);
+  const actual = JSON.parse(read(proof.execution));
+  const before = JSON.parse(read(proof.before)); const after = JSON.parse(read(proof.after));
+  const inputs = proof.inputs.map(({ path: file, sha256: digest }) => ({ path: file, sha256: digest }));
+  assert.deepEqual(actual.source_inputs, inputs);
+  assert.deepEqual(before.source_inputs, inputs); assert.deepEqual(after.source_inputs, inputs);
+  assert.equal(actual.exit_code, 0); assert.equal(actual.signal, null); assert.equal(actual.error, null);
+  assert.deepEqual(actual.changed_inputs, []); assert.deepEqual(after.changed_inputs, []);
+  assert.deepEqual(actual.test_files, proof.tests);
+  assert.equal(actual.report_sha256, proof.report.sha256); assert.equal(after.report_sha256, proof.report.sha256);
+  assert.ok(Date.parse(before.recorded_at) <= Date.parse(actual.started_at)
+    && Date.parse(actual.started_at) <= Date.parse(actual.finished_at)
+    && Date.parse(actual.finished_at) <= Date.parse(after.recorded_at));
+  assert.deepEqual(read(proof.tool_before), read(proof.tool_after));
+  assert.deepEqual(read(proof.dependencies_before), read(proof.dependencies_after));
+  assertCompleteTests(read(proof.report).toString("utf8"), proof.test_total);
+  for (const entry of proof.inputs) assert.equal(sha256(read(entry.artifact)), entry.sha256);
+  for (const entry of lock.packages) {
+    const input = proof.inputs.find(value => value.path === `modules/garmin-connect/python/garmin-python-artifacts/${entry.artifact.filename}`);
+    assert.equal(input.sha256, entry.artifact.sha256);
+  }
+  const sourceInput = proof.inputs.find(entry => entry.path === proof.subject);
+  assert.equal(sourceInput.sha256, proof.subject_sha256);
+  const length = read(sourceInput.artifact).toString("utf8").length;
+  const scripts = [];
+  for (const entry of proof.raw) {
+    const raw = JSON.parse(read(entry));
+    for (const script of raw.result) if (script.url === proof.source_url) {
+      assert.ok(script.functions.every(fn => fn.ranges.every(range => Number.isSafeInteger(range.startOffset)
+        && Number.isSafeInteger(range.endOffset) && range.startOffset >= 0 && range.endOffset <= length
+        && range.endOffset >= range.startOffset && Number.isSafeInteger(range.count) && range.count >= 0)));
+      scripts.push({ ...script, url: canonicalUrl });
+    }
+  }
+  assert.ok(scripts.length > 0);
+  return scripts;
+}
 
 export function assertGarminCliProcessReceipt(receipt, invocation) {
   assert.ok(receipt !== null && typeof receipt === "object" && !Array.isArray(receipt), "process receipt object");
@@ -103,6 +165,7 @@ export function loadGarminCliCoverageEvidence({ projectRoot, targetFiles, tests,
       }
     }
     assert.deepEqual(new Set(scripts.map(script => script.url)), new Set(urls.values()));
+    scripts.push(...cachedCliSupplement(root, pathToFileURL(path.join(root, "scripts/verify-garmin-python-lock.mjs")).href));
     return scripts;
   } catch (error) {
     throw new Error("phase20_garmin_cli_evidence_invalid", { cause: error });

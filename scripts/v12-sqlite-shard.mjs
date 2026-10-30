@@ -45,7 +45,9 @@ function validateCase(entry, index) {
     || entry.order !== index || !exactKeys(entry.digests, ['pre', 'post', 'reopen', 'rebuild'])
     || !Object.values(entry.digests).every(hash) || !Array.isArray(entry.source_facts)
     || entry.source_facts.length === 0) fail('case_invalid');
-  let sourceCount = 0;
+  const sourceCount = entry.source_facts.reduce((count, source) =>
+    count + (Array.isArray(source?.cases) ? source.cases.length : 0), 0);
+  if (sourceCount < 1) fail('case_invalid');
   const registries = new Set();
   for (const source of entry.source_facts) {
     if (!exactKeys(source, ['registry', 'cases']) || typeof source.registry !== 'string'
@@ -55,10 +57,9 @@ function validateCase(entry, index) {
     for (const sourceCase of source.cases) {
       if (!exactKeys(sourceCase, ['id', 'status']) || typeof sourceCase.id !== 'string'
         || sourceCase.status !== 'passed' || ids.has(sourceCase.id)) fail('case_invalid');
-      ids.add(sourceCase.id); sourceCount += 1;
+      ids.add(sourceCase.id);
     }
   }
-  if (sourceCount < 1) fail('case_invalid');
 }
 
 const GROUP_BOUNDS = Object.freeze({
@@ -154,7 +155,8 @@ function safeRunPath(runId, suffix) {
 function readJson(file) { return JSON.parse(readFileSync(file, 'utf8')); }
 function nativeResultToInput(manifest, result) {
   if (!result || result.status !== 'passed') fail('native_result_invalid');
-  try { assertV12AcceptanceNativeContractResult(result.contract, V12_SQLITE_SHARD_CASE_IDS); }
+  let contract;
+  try { contract = assertV12AcceptanceNativeContractResult(result.contract, V12_SQLITE_SHARD_CASE_IDS); }
   catch { fail('native_result_invalid'); }
   const identity = {
     source_digest: manifest.source.tree_sha256,
@@ -167,7 +169,7 @@ function nativeResultToInput(manifest, result) {
     schema_version: 1,
     producer: 'v12-sqlite-shard',
     identity,
-    cases: result.contract.cases.map((entry, order) => {
+    cases: contract.cases.map((entry, order) => {
       const base = { identity, id: entry.id, order, code: entry.code, counts: entry.counts, sourceFacts: entry.sourceFacts };
       return { id: entry.id, status: 'passed', order, source_facts: entry.sourceFacts, digests: {
         pre: digest({ ...base, cut: 'pre' }), post: digest({ ...base, cut: 'post' }),

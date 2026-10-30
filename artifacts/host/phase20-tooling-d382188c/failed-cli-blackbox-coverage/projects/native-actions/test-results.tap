@@ -1,0 +1,232 @@
+TAP version 13
+# Subtest: unset adapter command reaches the default launcher and a real exclusive lease protocol
+ok 1 - unset adapter command reaches the default launcher and a real exclusive lease protocol
+  ---
+  duration_ms: 3209.579833
+  type: 'test'
+  ...
+# Subtest: checked-in fake accepted only by the explicit test triplet
+ok 2 - checked-in fake accepted only by the explicit test triplet
+  ---
+  duration_ms: 698.102125
+  type: 'test'
+  ...
+# Subtest: adapter envelope labels the checked-in fake as test-only provenance
+ok 3 - adapter envelope labels the checked-in fake as test-only provenance
+  ---
+  duration_ms: 646.316667
+  type: 'test'
+  ...
+# Subtest: public adapter wrappers bind CLI run identity and normalize Garmin execution
+ok 4 - public adapter wrappers bind CLI run identity and normalize Garmin execution
+  ---
+  duration_ms: 4270.847584
+  type: 'test'
+  ...
+# Subtest: default launcher provenance preserves a controlled toolchain as test-only evidence
+ok 5 - default launcher provenance preserves a controlled toolchain as test-only evidence
+  ---
+  duration_ms: 1340.181125
+  type: 'test'
+  ...
+# Subtest: default launcher provenance changes when controlled executable bytes change
+ok 6 - default launcher provenance changes when controlled executable bytes change
+  ---
+  duration_ms: 3283.7955
+  type: 'test'
+  ...
+# Subtest: supervisor gives a process tree TERM cleanup time before bounded KILL
+ok 7 - supervisor gives a process tree TERM cleanup time before bounded KILL
+  ---
+  duration_ms: 201.249334
+  type: 'test'
+  ...
+# Subtest: process-tree signaling records bounded Windows TERM and forced KILL receipts
+ok 8 - process-tree signaling records bounded Windows TERM and forced KILL receipts
+  ---
+  duration_ms: 0.217709
+  type: 'test'
+  ...
+# Subtest: process-tree signaling validates ownership before POSIX signals and group-empty polling
+ok 9 - process-tree signaling validates ownership before POSIX signals and group-empty polling
+  ---
+  duration_ms: 4.179375
+  type: 'test'
+  ...
+# Subtest: supervisor rejects an invalid process contract before spawning
+ok 10 - supervisor rejects an invalid process contract before spawning
+  ---
+  duration_ms: 0.178125
+  type: 'test'
+  ...
+# Subtest: supervisor escalates an uncooperative process tree from TERM to KILL
+ok 11 - supervisor escalates an uncooperative process tree from TERM to KILL
+  ---
+  duration_ms: 194.844208
+  type: 'test'
+  ...
+# Subtest: supervisor forwards host cancellation through the same bounded TERM path
+ok 12 - supervisor forwards host cancellation through the same bounded TERM path
+  ---
+  duration_ms: 81.454125
+  type: 'test'
+  ...
+# Subtest: supervisor cancels a pre-aborted request without starting the target
+ok 13 - supervisor cancels a pre-aborted request without starting the target
+  ---
+  duration_ms: 0.537167
+  type: 'test'
+  ...
+# Subtest: supervisor keeps group ownership after a cooperative leader exits and kills its resistant grandchild
+ok 14 - supervisor keeps group ownership after a cooperative leader exits and kills its resistant grandchild
+  ---
+  duration_ms: 256.290917
+  type: 'test'
+  ...
+# Subtest: minimal supervisor bootstrap acknowledges signal readiness before imports complete
+ok 15 - minimal supervisor bootstrap acknowledges signal readiness before imports complete
+  ---
+  duration_ms: 47.716083
+  type: 'test'
+  ...
+# Subtest: direct adapter supervisor entry aborts after its target reports readiness
+ok 16 - direct adapter supervisor entry aborts after its target reports readiness
+  ---
+  duration_ms: 131.20575
+  type: 'test'
+  ...
+# Subtest: adapter provenance is immutable and action-scoped across borrowed-lease cleanup
+ok 17 - adapter provenance is immutable and action-scoped across borrowed-lease cleanup
+  ---
+  duration_ms: 1960.85875
+  type: 'test'
+  ...
+# Subtest: Calendar adapter labels the checked-in subprocess fixture as test-only
+ok 18 - Calendar adapter labels the checked-in subprocess fixture as test-only
+  ---
+  duration_ms: 742.077
+  type: 'test'
+  ...
+# Subtest: Calendar timeout covers all source-derived stages, probes, and runtime restoration
+ok 19 - Calendar timeout covers all source-derived stages, probes, and runtime restoration
+  ---
+  duration_ms: 0.137875
+  type: 'test'
+  ...
+# Subtest: fake command rejected outside explicit test mode
+ok 20 - fake command rejected outside explicit test mode
+  ---
+  duration_ms: 393.184791
+  type: 'test'
+  ...
+# Subtest: fake command failure is normalized without exposing subprocess stderr
+ok 21 - fake command failure is normalized without exposing subprocess stderr
+  ---
+  duration_ms: 667.151459
+  type: 'test'
+  ...
+# Subtest: partial test triplet rejected with and without override: NODE_ENV
+ok 22 - partial test triplet rejected with and without override: NODE_ENV
+  ---
+  duration_ms: 425.737291
+  type: 'test'
+  ...
+# Subtest: partial test triplet rejected with and without override: V12_NATIVE_ADAPTER_TEST_MODE
+ok 23 - partial test triplet rejected with and without override: V12_NATIVE_ADAPTER_TEST_MODE
+  ---
+  duration_ms: 427.817541
+  type: 'test'
+  ...
+# Subtest: partial test triplet rejected with and without override: V12_NATIVE_ADAPTER_TEST_PROCESS
+ok 24 - partial test triplet rejected with and without override: V12_NATIVE_ADAPTER_TEST_PROCESS
+  ---
+  duration_ms: 429.534875
+  type: 'test'
+  ...
+# Subtest: forged source response attestation rejected
+ok 25 - forged source response attestation rejected
+  ---
+  duration_ms: 708.739541
+  type: 'test'
+  ...
+# Subtest: forged apk response attestation rejected
+ok 26 - forged apk response attestation rejected
+  ---
+  duration_ms: 721.450875
+  type: 'test'
+  ...
+# Subtest: forged device response attestation rejected
+ok 27 - forged device response attestation rejected
+  ---
+  duration_ms: 781.205083
+  type: 'test'
+  ...
+# Subtest: production rejects test markers even when the fake override is unset
+ok 28 - production rejects test markers even when the fake override is unset
+  ---
+  duration_ms: 702.981625
+  type: 'test'
+  ...
+# Subtest: direct launcher rejects extra attestation fields without reflecting private data
+ok 29 - direct launcher rejects extra attestation fields without reflecting private data
+  ---
+  duration_ms: 567.322458
+  type: 'test'
+  ...
+# Subtest: every adapter action has an explicit bounded timeout and transport budget
+ok 30 - every adapter action has an explicit bounded timeout and transport budget
+  ---
+  duration_ms: 0.282042
+  type: 'test'
+  ...
+# Subtest: outer adapter survives maximum producers and every restoration/release call
+ok 31 - outer adapter survives maximum producers and every restoration/release call
+  ---
+  duration_ms: 0.141209
+  type: 'test'
+  ...
+# Subtest: production tool resolution ignores PATH binaries and requires an absolute SDK
+ok 32 - production tool resolution ignores PATH binaries and requires an absolute SDK
+  ---
+  duration_ms: 1.377708
+  type: 'test'
+  ...
+# Subtest: controlled tools require explicit test origin and absolute executable paths
+ok 33 - controlled tools require explicit test origin and absolute executable paths
+  ---
+  duration_ms: 2.902916
+  type: 'test'
+  ...
+# Subtest: tool requirements reject unknown names instead of consulting PATH
+ok 34 - tool requirements reject unknown names instead of consulting PATH
+  ---
+  duration_ms: 0.071
+  type: 'test'
+  ...
+# Subtest: Git resolution ignores poisoned PATH and records realpath, bytes, and live version
+ok 35 - Git resolution ignores poisoned PATH and records realpath, bytes, and live version
+  ---
+  duration_ms: 25.22225
+  type: 'test'
+  ...
+# Subtest: controlled Git requires explicit test origin and still records its live version
+ok 36 - controlled Git requires explicit test origin and still records its live version
+  ---
+  duration_ms: 289.690625
+  type: 'test'
+  ...
+# Subtest: retained Git execution is hash-bound to the build and run identities
+ok 37 - retained Git execution is hash-bound to the build and run identities
+  ---
+  duration_ms: 821.979666
+  type: 'test'
+  ...
+1..37
+# tests 37
+# suites 0
+# pass 37
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 22961.144166

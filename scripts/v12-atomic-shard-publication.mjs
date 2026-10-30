@@ -50,7 +50,7 @@ function assertDirectory(value, code = "symlink_forbidden") {
   if (stat === undefined || !stat.isDirectory()) fail("path_invalid");
 }
 
-function assertAncestors(base, target, { targetRequired = false } = {}) {
+export function assertV12AtomicPathAncestors(base, target, { targetRequired = false } = {}) {
   const root = path.resolve(base); const resolved = path.resolve(target);
   assertDirectory(root);
   if (!(resolved === root || resolved.startsWith(`${root}${path.sep}`))) fail("path_invalid");
@@ -71,7 +71,7 @@ function safeRoot(root, runId) {
   if (!RUN.test(runId)) fail("run_invalid");
   const workspace = path.resolve(root);
   const runRoot = path.join(workspace, "artifacts/native/v1.2", runId);
-  assertAncestors(workspace, runRoot, { targetRequired: true });
+  assertV12AtomicPathAncestors(workspace, runRoot, { targetRequired: true });
   assertDirectory(runRoot);
   return runRoot;
 }
@@ -95,10 +95,10 @@ function fsyncDirectory(directory) {
 }
 
 function ensureDirectory(base, directory) {
-  assertAncestors(base, path.dirname(directory), { targetRequired: true });
+  assertV12AtomicPathAncestors(base, path.dirname(directory), { targetRequired: true });
   try { mkdirSync(directory, { mode: 0o700 }); }
   catch (error) { if (error?.code !== "EEXIST") throw error; }
-  assertAncestors(base, directory, { targetRequired: true });
+  assertV12AtomicPathAncestors(base, directory, { targetRequired: true });
   assertDirectory(directory);
   fsyncDirectory(path.dirname(directory));
   return directory;
@@ -126,13 +126,13 @@ function removeTreeNoLinks(directory) {
   rmSync(directory, { recursive: true, force: false });
 }
 
-function processAlive(pid) {
+export function isV12AtomicProcessAlive(pid) {
   if (!Number.isSafeInteger(pid) || pid < 1) return false;
   try { process.kill(pid, 0); return true; }
   catch (error) { return error?.code === "EPERM"; }
 }
 
-function legacyProcessBirthSha256(pid) {
+export function readV12AtomicLegacyProcessBirthSha256(pid) {
   if (!Number.isSafeInteger(pid) || pid < 1) return null;
   const result = spawnSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
     encoding: "utf8", timeout: 5_000, maxBuffer: 16 * 1024, stdio: ["ignore", "pipe", "ignore"],
@@ -141,33 +141,39 @@ function legacyProcessBirthSha256(pid) {
   return birth.length === 0 ? null : sha256(birth);
 }
 
-function linuxProcessBirthSha256(pid) {
+/** Validate captured procfs text without probing a process or signaling it. */
+export function digestV12AtomicLinuxProcessBirth(pid, bootId, processStat) {
+  if (!Number.isSafeInteger(pid) || pid < 1 || typeof bootId !== "string" || typeof processStat !== "string") return null;
+  const end = processStat.lastIndexOf(") ");
+  const fields = end === -1 ? [] : processStat.slice(end + 2).trim().split(/\s+/u);
+  const startTicks = fields[19];
+  return /^[a-f0-9-]{36}$/u.test(bootId) && /^\d+$/u.test(startTicks ?? "")
+    ? sha256(`linux-procfs-v1:${bootId}:${String(pid)}:${startTicks}`)
+    : null;
+}
+
+export function readV12AtomicLinuxProcessBirthSha256(pid) {
   try {
     const bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
     const stat = readFileSync(`/proc/${String(pid)}/stat`, "utf8");
-    const end = stat.lastIndexOf(") ");
-    const fields = end === -1 ? [] : stat.slice(end + 2).trim().split(/\s+/u);
-    const startTicks = fields[19];
-    return /^[a-f0-9-]{36}$/u.test(bootId) && /^\d+$/u.test(startTicks ?? "")
-      ? sha256(`linux-procfs-v1:${bootId}:${String(pid)}:${startTicks}`)
-      : null;
+    return digestV12AtomicLinuxProcessBirth(pid, bootId, stat);
   } catch { return null; }
 }
 
-function processBirthSha256(pid) {
+export function readV12AtomicProcessBirthSha256(pid) {
   if (!Number.isSafeInteger(pid) || pid < 1) return null;
   // Losing the precise Linux probe cannot turn a live precise owner into a
   // mismatching legacy fingerprint. Unknown identity must fail closed.
-  if (process.platform === "linux") return linuxProcessBirthSha256(pid);
-  const legacy = legacyProcessBirthSha256(pid);
+  if (process.platform === "linux") return readV12AtomicLinuxProcessBirthSha256(pid);
+  const legacy = readV12AtomicLegacyProcessBirthSha256(pid);
   return legacy === null ? null : sha256(`ps-pid-v1:${String(pid)}:${legacy}`);
 }
 
 function claimOwnerAlive(owner) {
-  if (!processAlive(owner.pid)) return false;
-  const observed = processBirthSha256(owner.pid);
+  if (!isV12AtomicProcessAlive(owner.pid)) return false;
+  const observed = readV12AtomicProcessBirthSha256(owner.pid);
   if (observed === null || observed === owner.process_birth_sha256) return true;
-  const legacyObserved = legacyProcessBirthSha256(owner.pid);
+  const legacyObserved = readV12AtomicLegacyProcessBirthSha256(owner.pid);
   return legacyObserved === null || legacyObserved === owner.process_birth_sha256;
 }
 
@@ -185,11 +191,11 @@ function acquireClaim(runRoot, runId, shard) {
   const claims = ensureDirectory(runRoot, path.join(runRoot, ".claims"));
   const claim = path.join(claims, `${shard}.json`);
   const nonce = randomBytes(16).toString("hex");
-  const processBirth = processBirthSha256(process.pid);
+  const processBirth = readV12AtomicProcessBirthSha256(process.pid);
   if (processBirth === null) fail("claim_conflict");
   const owner = `${JSON.stringify({ schema_version: 2, run_id: runId, shard, pid: process.pid, process_birth_sha256: processBirth, nonce })}\n`;
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    assertAncestors(runRoot, claim);
+    assertV12AtomicPathAncestors(runRoot, claim);
     try {
       writeFileSync(claim, owner, { encoding: "utf8", flag: "wx", mode: 0o600 });
       fsyncFile(claim); fsyncDirectory(claims);
@@ -240,11 +246,28 @@ function failureCode(error) {
   return error instanceof Error ? "producer_failed" : "internal_error";
 }
 
+/** Validate a retained failure against its trusted run/shard context. */
+export function validateV12AtomicFailureRecord(value, { runId, shard } = {}) {
+  const expected = ["schema_version", "producer", "run_id", "shard", "stage", "failure_code", "failure_digest", "privacy", "retry_allowed"];
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || ![Object.prototype, null].includes(Object.getPrototypeOf(value))
+    || Object.keys(value).length !== expected.length || expected.some(key => !Object.hasOwn(value, key))) fail("failure_record_invalid");
+  let snapshot;
+  try { snapshot = structuredClone(value); } catch { fail("failure_record_invalid"); }
+  if (typeof runId !== "string" || !RUN.test(runId) || typeof shard !== "string" || !SAFE.test(shard)
+    || snapshot.schema_version !== 2 || snapshot.producer !== "v12-atomic-shard-failure/v3"
+    || snapshot.run_id !== runId || snapshot.shard !== shard || snapshot.stage !== "publication"
+    || typeof snapshot.failure_digest !== "string" || !HASH.test(snapshot.failure_digest)
+    || snapshot.privacy !== "safe" || snapshot.retry_allowed !== false) fail("failure_record_invalid");
+  const code = snapshot.failure_code;
+  if (!FAILURE_CODES.has(code)) fail("internal_error");
+  return Object.freeze(snapshot);
+}
+
 function safeFailure(error, runId, shard) {
   const raw = error instanceof Error ? error.message : String(error ?? "unknown");
   const code = failureCode(error);
-  if (!FAILURE_CODES.has(code)) fail("internal_error");
-  return Object.freeze({
+  const record = Object.freeze({
     schema_version: 2,
     producer: "v12-atomic-shard-failure/v3",
     run_id: runId,
@@ -255,6 +278,7 @@ function safeFailure(error, runId, shard) {
     privacy: "safe",
     retry_allowed: false,
   });
+  return validateV12AtomicFailureRecord(record, { runId, shard });
 }
 
 function publicationIdentity(runRoot) {
@@ -390,8 +414,8 @@ function completePublication({ runRoot, runId, shard, stage, manifest, beforeMan
   for (const member of manifest.members) {
     const source = path.join(stage, member.artifact);
     const target = path.join(runRoot, member.artifact);
-    assertAncestors(stage, source);
-    assertAncestors(runRoot, target);
+    assertV12AtomicPathAncestors(stage, source);
+    assertV12AtomicPathAncestors(runRoot, target);
     if (!existsSync(source) && !memberBytesValid(target, member)) fail("output_conflict");
     if (existsSync(source) && !memberBytesValid(source, member)) fail("stage_member_invalid");
     if (existsSync(source)) publishNoClobber(runRoot, source, target, member);
@@ -417,7 +441,7 @@ function recoverExistingPublicationResidue(root, runRoot, runId, shard, existing
     const current = existingPublication(root, runRoot, runId, shard);
     if (current === null || JSON.stringify(current.manifest) !== JSON.stringify(existing.manifest)) fail("manifest_invalid");
     if (existsSync(stage)) {
-      assertAncestors(runRoot, stage, { targetRequired: true });
+      assertV12AtomicPathAncestors(runRoot, stage, { targetRequired: true });
       assertDirectory(stage);
       const memberByArtifact = new Map(existing.manifest.members.map(member => [member.artifact, member]));
       for (const artifact of stagedFiles(stage)) {
@@ -442,7 +466,7 @@ function recoverExistingPublicationResidue(root, runRoot, runId, shard, existing
 function existingPublication(root, runRoot, runId, shard) {
   const manifestPath = path.join(runRoot, "publication", `${shard}.json`);
   if (!existsSync(manifestPath)) return null;
-  assertAncestors(runRoot, manifestPath, { targetRequired: true });
+  assertV12AtomicPathAncestors(runRoot, manifestPath, { targetRequired: true });
   let parsed;
   try { parsed = JSON.parse(readFileSync(manifestPath, "utf8")); }
   catch { fail("manifest_invalid"); }
@@ -471,7 +495,7 @@ export function publishV12AtomicShard({ root = process.cwd(), runId, shard, prod
     const stage = path.join(staging, shard);
     const stagedManifest = path.join(stage, "manifest.json");
     if (existsSync(stage)) {
-      assertAncestors(runRoot, stage, { targetRequired: true });
+      assertV12AtomicPathAncestors(runRoot, stage, { targetRequired: true });
       assertDirectory(stage);
       if (existsSync(stagedManifest)) {
         let manifest;
@@ -486,7 +510,7 @@ export function publishV12AtomicShard({ root = process.cwd(), runId, shard, prod
     const members = [];
     const write = (artifact, value) => {
       const safe = relative(artifact); const target = path.join(stage, safe);
-      assertAncestors(stage, target);
+      assertV12AtomicPathAncestors(stage, target);
       if (existsSync(target)) fail("second_write");
       ensureParents(stage, target);
       const bytes = Buffer.isBuffer(value) ? value : Buffer.from(typeof value === "string" ? value : `${JSON.stringify(value)}\n`);

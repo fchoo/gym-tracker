@@ -84,10 +84,10 @@ function releaseManifest(bytes, apkBytes, signature, expectedPackage) {
     || value.schema_version !== 1 || value.producer !== "v12-retained-prior-release/v1"
     || value.package !== expectedPackage
     || !exact(value.apk, ["sha256", "size_bytes", "signature_sha256", "certificate_sha256"])
+    || ![value.apk.sha256, value.apk.signature_sha256, value.apk.certificate_sha256].every(hash => typeof hash === "string" && HASH.test(hash))
     || value.apk.sha256 !== sha256(apkBytes) || value.apk.size_bytes !== apkBytes.length
     || value.apk.signature_sha256 !== sha256(signature.report)
-    || value.apk.certificate_sha256 !== signature.certificate_sha256
-    || ![value.apk.sha256, value.apk.signature_sha256, value.apk.certificate_sha256].every(hash => HASH.test(hash ?? ""))) {
+    || value.apk.certificate_sha256 !== signature.certificate_sha256) {
     fail("release_manifest_invalid");
   }
   return Object.freeze(value);

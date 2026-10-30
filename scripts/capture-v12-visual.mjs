@@ -61,7 +61,7 @@ function decodeNativePng(bytes) {
   fail("png_invalid");
 }
 
-function visualState(root, stateId) {
+export function resolveV12VisualState(root, stateId) {
   let states = registryCache.get(path.resolve(root));
   try {
     if (states === undefined) {
@@ -75,7 +75,7 @@ function visualState(root, stateId) {
 }
 
 function validateStateReceipt(root, runId, item, measured, pngSha256) {
-  const state = visualState(root, item.state_id); const receipt = measured.settings.state_receipt; const observation = measured.settings.observation;
+  const state = resolveV12VisualState(root, item.state_id); const receipt = measured.settings.state_receipt; const observation = measured.settings.observation;
   const sourceReceipt = receipt?.source_receipt;
   const sourceMaterial = { state_id: item.state_id, fixture_variant: state.fixture_variant, assertions: state.readiness.source_receipt.assertions,
     production_instance_id: sourceReceipt?.production_instance_id, mount_id: sourceReceipt?.mount_id,
@@ -119,7 +119,7 @@ function validateStateReceipt(root, runId, item, measured, pngSha256) {
   return receipt;
 }
 
-function sourceCaseIds(root, { contractPath, prefix }) {
+export function readV12SourceCaseIds(root, { contractPath, prefix }) {
   const text = readFileSync(path.join(root, contractPath), "utf8");
   const ids = [...text.matchAll(/\[\s*["']([^"']+)["']/gu)].map(([, id]) => id)
     .filter((id) => id.startsWith(prefix));
@@ -140,7 +140,7 @@ function flowSnapshot(root, source) {
     id: source.id,
     source_path: source.sourcePath,
     source_sha256: hash(bytes),
-    stages: sourceCaseIds(root, source),
+    stages: readV12SourceCaseIds(root, source),
   });
 }
 
@@ -197,11 +197,17 @@ export function parseV12VisualCaptureCli(args) {
 }
 
 const captureCount = V12_BROWSER_WALK_STATE_IDS.length * V12_CONFIG_IDS.length;
+export function validateV12VisualCaptureCoordinate(stateId, configurationId) {
+  if (stateId === undefined || configurationId === undefined
+    || !V12_BROWSER_WALK_STATE_IDS.includes(stateId) || !V12_CONFIG_IDS.includes(configurationId)) fail("capture_mapping_invalid");
+  return Object.freeze({ state_id: stateId, configuration_id: configurationId });
+}
+
 function captureAt(index) {
   const stateIndex = Math.floor(index / V12_CONFIG_IDS.length);
   const stateId = V12_BROWSER_WALK_STATE_IDS[stateIndex];
   const configurationId = V12_CONFIG_IDS[index % V12_CONFIG_IDS.length];
-  if (stateId === undefined || configurationId === undefined) fail("capture_mapping_invalid");
+  validateV12VisualCaptureCoordinate(stateId, configurationId);
   return Object.freeze({
     state_id: stateId,
     configuration_id: configurationId,

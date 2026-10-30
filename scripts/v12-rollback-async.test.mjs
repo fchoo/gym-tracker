@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import childProcess from "node:child_process";
+import filesystem from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -212,4 +213,135 @@ test("signature subprocess success and both real CLI routes are covered with hos
     : actualSpawn(exe, args, options)); syncBuiltinESMExports();
   try { assert.equal((await rollback.executeV12RollbackCli(["--derive-prior-manifest", f.options.priorApkPath])).apk.sha256, hash(readFileSync(f.options.priorApkPath))); }
   finally { mock.mock.restore(); syncBuiltinESMExports(); }
+});
+
+function rewritePublishedMember(f, artifact, bytes) {
+  const file = path.join(f.options.root, `artifacts/native/v1.2/${f.options.runId}`, artifact);
+  writeFileSync(file, bytes);
+  const publication = JSON.parse(readFileSync(f.published, "utf8"));
+  const member = publication.members.find(value => value.artifact === artifact);
+  member.sha256 = hash(bytes); member.size_bytes = bytes.length;
+  writeFileSync(f.published, JSON.stringify(publication));
+}
+
+test("synchronous rollback authentication sanitizes a throwing parser before any publication", t => {
+  for (const error of [new Error("private parser payload"), "private text"]) {
+    const f = fixture(t);
+    assert.throws(() => rollback.publishV12RollbackEvidence({ ...f.options, authenticateAndRestoreArchive: () => { throw error; } }), /v12_rollback_archive_invalid/u);
+    assert.equal(existsSync(f.published), false);
+  }
+});
+
+test("rollback rejects malformed public manifest digests before retaining the prior release", t => {
+  for (const [key, value] of [["sha256", null], ["signature_sha256", "not-a-digest"], ["certificate_sha256", undefined], ["sha256", ["a".repeat(64)]], ["sha256", "b".repeat(64)]]) {
+    const f = fixture(t); const manifest = JSON.parse(readFileSync(f.options.priorReleaseManifestPath, "utf8"));
+    manifest.apk[key] = value; writeFileSync(f.options.priorReleaseManifestPath, JSON.stringify(manifest));
+    assert.throws(() => rollback.publishV12RollbackEvidence({ ...f.options, authenticateAndRestoreArchive: () => f.inspection }), /v12_rollback_release_manifest_invalid/u);
+    assert.equal(existsSync(f.published), false);
+  }
+});
+
+test("rollback permits every documented adjacent schema and rejects incompatible retained formats", t => {
+  for (const [format, schema] of [[4, 30], [7, 41], [9, 43]]) {
+    const f = fixture(t, format, schema);
+    rollback.publishV12RollbackEvidence({ ...f.options, authenticateAndRestoreArchive: () => f.inspection });
+    assert.equal(rollback.verifyV12RollbackEvidence(f.options).last_valid_schema_version, schema);
+  }
+  for (const [format, schema] of [[4, 31], [7, 42], [9, 42]]) {
+    const f = fixture(t, format, schema);
+    assert.throws(() => rollback.publishV12RollbackEvidence({ ...f.options, authenticateAndRestoreArchive: () => f.inspection }), /schema_boundary_invalid/u);
+  }
+});
+
+test("rollback verification rejects semantic publication mismatches even when member digests are current", t => {
+  const changes = [
+    value => { value.schema_boundary = {}; },
+    value => { value.prior_signed_apk.size_bytes = 3; },
+    value => { value.compatible_archive.size_bytes = 25; },
+    value => { value.compatible_archive.format_version = 2.5; },
+    value => { value.compatible_archive.schema_version = 22.5; },
+    value => { value.schema_boundary.current_schema_version = 48; },
+    value => { value.schema_boundary.newer_schema_committed = false; },
+    value => { value.schema_boundary.recovery_boundary = "unsupported"; },
+    value => { value.prior_release_manifest.path = "wrong"; },
+    value => { value.clean_restore.canonical_facts_sha256 = null; },
+  ];
+  for (const change of changes) {
+    const f = fixture(t); rollback.publishV12RollbackEvidence({ ...f.options, authenticateAndRestoreArchive: () => f.inspection });
+    const file = path.join(f.options.root, `artifacts/native/v1.2/${f.options.runId}/rollback/rollback-evidence.json`);
+    const value = JSON.parse(readFileSync(file, "utf8")); change(value);
+    rewritePublishedMember(f, "rollback/rollback-evidence.json", Buffer.from(JSON.stringify(value)));
+    assert.throws(() => rollback.verifyV12RollbackEvidence(f.options), /v12_rollback_(?:evidence|schema_boundary)_invalid/u);
+  }
+  assert.throws(() => rollback.verifyV12RollbackEvidence(), /arguments_invalid/u);
+});
+
+test("rollback requires the complete publication member set and rejects a missing retained file after verification", t => {
+  const incomplete = fixture(t); rollback.publishV12RollbackEvidence({ ...incomplete.options, authenticateAndRestoreArchive: () => incomplete.inspection });
+  const publication = JSON.parse(readFileSync(incomplete.published, "utf8")); publication.members.pop(); writeFileSync(incomplete.published, JSON.stringify(publication));
+  assert.throws(() => rollback.verifyV12RollbackEvidence(incomplete.options), /artifact_invalid/u);
+  for (const state of ["missing", "not-file"]) {
+    const f = fixture(t); rollback.publishV12RollbackEvidence({ ...f.options, authenticateAndRestoreArchive: () => f.inspection });
+    const target = path.join(filesystem.realpathSync(f.options.root), `artifacts/native/v1.2/${f.options.runId}/rollback/prior-signed.apk`);
+    const publicationPath = filesystem.realpathSync(f.published);
+    const actualRead = filesystem.readFileSync; const actualStat = filesystem.lstatSync; let metadataReads = 0; let verified = false;
+    const reader = t.mock.method(filesystem, "readFileSync", (file, ...args) => {
+      const result = actualRead(file, ...args); if (filesystem.realpathSync(file) === publicationPath && ++metadataReads === 2) verified = true; return result;
+    });
+    const stat = t.mock.method(filesystem, "lstatSync", (file, options) => {
+      if (verified && filesystem.realpathSync(file) === target) return state === "missing" ? undefined : { isSymbolicLink: () => false, isFile: () => false };
+      return actualStat(file, options);
+    });
+    syncBuiltinESMExports();
+    try { assert.throws(() => rollback.verifyV12RollbackEvidence(f.options), /artifact_invalid/u); assert.equal(verified, true); }
+    finally { reader.mock.restore(); stat.mock.restore(); syncBuiltinESMExports(); }
+  }
+});
+
+test("rollback detects changed bytes between atomic verification and source reconstruction", t => {
+  const f = fixture(t); rollback.publishV12RollbackEvidence({ ...f.options, authenticateAndRestoreArchive: () => f.inspection });
+  const target = path.join(filesystem.realpathSync(f.options.root), `artifacts/native/v1.2/${f.options.runId}/rollback/canonical-post-restore-facts.json`);
+  const actualRead = filesystem.readFileSync; let reads = 0;
+  const mock = t.mock.method(filesystem, "readFileSync", (file, ...args) => {
+    const result = actualRead(file, ...args);
+    if (filesystem.realpathSync(file) === target && ++reads === 2) return Buffer.from("changed after atomic verification");
+    return result;
+  });
+  syncBuiltinESMExports();
+  try { assert.throws(() => rollback.verifyV12RollbackEvidence(f.options), /artifact_invalid/u); assert.equal(reads, 2); }
+  finally { mock.mock.restore(); syncBuiltinESMExports(); }
+});
+
+test("rollback rejects corrupted JSON delivered by a read adapter after the atomic publication was checked", t => {
+  for (const targetArtifact of ["rollback/rollback-evidence.json", "rollback/clean-restore-receipt.json", "rollback/canonical-post-restore-facts.json"]) {
+    const f = fixture(t); rollback.publishV12RollbackEvidence({ ...f.options, authenticateAndRestoreArchive: () => f.inspection });
+    const directory = path.join(filesystem.realpathSync(f.options.root), `artifacts/native/v1.2/${f.options.runId}`);
+    const evidenceFile = path.join(directory, "rollback/rollback-evidence.json"); const target = path.join(directory, targetArtifact);
+    const broken = Buffer.from("invalid-json"); const actualRead = filesystem.readFileSync; const reads = new Map();
+    const mock = t.mock.method(filesystem, "readFileSync", (file, ...args) => {
+      const result = actualRead(file, ...args); const canonical = filesystem.realpathSync(file); const count = (reads.get(canonical) ?? 0) + 1; reads.set(canonical, count);
+      if (canonical === evidenceFile && count === 2 && targetArtifact !== "rollback/rollback-evidence.json") {
+        const value = JSON.parse(result.toString());
+        if (targetArtifact.includes("receipt")) value.clean_restore.receipt_sha256 = hash(broken); else value.clean_restore.canonical_facts_sha256 = hash(broken);
+        return Buffer.from(JSON.stringify(value));
+      }
+      if (canonical === target && count === 2) return broken;
+      return result;
+    });
+    syncBuiltinESMExports();
+    try { assert.throws(() => rollback.verifyV12RollbackEvidence(f.options), /v12_rollback_(?:artifact|evidence)_invalid/u); assert.equal(reads.get(target), 2); }
+    finally { mock.mock.restore(); syncBuiltinESMExports(); }
+  }
+});
+
+test("rollback verification detects corrupt retained JSON and differing signature facts after publication", t => {
+  for (const artifact of ["rollback/rollback-evidence.json", "rollback/clean-restore-receipt.json", "rollback/canonical-post-restore-facts.json"]) {
+    const f = fixture(t); rollback.publishV12RollbackEvidence({ ...f.options, authenticateAndRestoreArchive: () => f.inspection });
+    rewritePublishedMember(f, artifact, Buffer.from("invalid-json"));
+    assert.throws(() => rollback.verifyV12RollbackEvidence(f.options), /v12_artifact_privacy_invalid/u);
+  }
+  const f = fixture(t); rollback.publishV12RollbackEvidence({ ...f.options, authenticateAndRestoreArchive: () => f.inspection });
+  assert.throws(() => rollback.verifyV12RollbackEvidence({ ...f.options,
+    verifyApkSignature: () => ({ report: Buffer.from(`Verified using v2 scheme (APK Signature Scheme v2): true\nSigner #1 certificate SHA-256 digest: ${"c".repeat(64)}\n`), certificate_sha256: "c".repeat(64) }),
+  }), /signature_invalid/u);
 });

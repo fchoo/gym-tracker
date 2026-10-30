@@ -207,9 +207,11 @@ test('gives all seven V12 source registries a finite source-derived polling budg
   assert.match(runner, /suite === 'v1\.2-acceptance'/u);
   assert.match(runner, /V12_ACCEPTANCE_TIMEOUT_MS/u);
   assert.match(route, /emitAggregateProgress\(runId, `v1\.2-acceptance:\$\{stage\}`\)/u);
+  const contract = readFileSync('src/testing/contracts/v12Acceptance.contract.ts', 'utf8');
+  assert.match(contract, /const report = \(stage: V12AcceptanceProgressStage\) => reportContractProgress\(onProgress, stage\)/u);
   assert.match(
-    readFileSync('src/testing/contracts/v12Acceptance.contract.ts', 'utf8'),
-    /onProgress\?\.\("sqlite-kernel"\)[\s\S]*onProgress\?\.\("migrations"\)[\s\S]*onProgress\?\.\("portable-merge"\)[\s\S]*onProgress\?\.\("multi-plan-running"\)[\s\S]*onProgress\?\.\("google-drive-backup"\)[\s\S]*onProgress\?\.\("garmin-acceptance"\)[\s\S]*onProgress\?\.\("progress-parity"\)/u,
+    contract,
+    /report\("sqlite-kernel"\)[\s\S]*report\("migrations"\)[\s\S]*report\("portable-merge"\)[\s\S]*report\("multi-plan-running"\)[\s\S]*report\("google-drive-backup"\)[\s\S]*report\("garmin-acceptance"\)[\s\S]*report\("progress-parity"\)/u,
   );
   assert.equal(
     classifyV12SqliteNativeFailure(new Error('Native contract result was not logged within 300000 ms.')),

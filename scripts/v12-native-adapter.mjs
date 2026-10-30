@@ -216,6 +216,37 @@ export async function verifyV12ProcessGroupEmpty(processGroupId, timeoutMs, {
   return isEmpty(processGroupId);
 }
 
+/** Decide lifecycle effects without owning process signals or cleanup authority. */
+export function transitionV12NativeSupervisorLifecycle(state, event) {
+  if (!state || typeof state !== "object" || Array.isArray(state)
+    || ![Object.prototype, null].includes(Object.getPrototypeOf(state))
+    || Object.keys(state).sort().join("|") !== "settled|termination") fail("supervisor_invalid");
+  let snapshot;
+  try { snapshot = structuredClone(state); } catch { fail("supervisor_invalid"); }
+  if (typeof snapshot.settled !== "boolean" || ![null, "SIGTERM", "SIGKILL"].includes(snapshot.termination)
+    || !["finish", "terminate", "term-grace"].includes(event)) fail("supervisor_invalid");
+  let effect;
+  if (event === "finish") {
+    if (snapshot.settled) effect = "ignore";
+    else { snapshot.settled = true; effect = "finish"; }
+  } else if (event === "terminate") {
+    if (snapshot.settled || snapshot.termination !== null) effect = "ignore";
+    else { snapshot.termination = "SIGTERM"; effect = "term"; }
+  } else {
+    if (snapshot.settled) effect = "ignore";
+    else { snapshot.termination = "SIGKILL"; effect = "kill"; }
+  }
+  return Object.freeze({ state: Object.freeze(snapshot), effect });
+}
+
+/** Gate caller-owned effects once; the callback retains cleanup authority. */
+export function dispatchV12NativeSupervisorLifecycle(state, event, effectHandler) {
+  if (typeof effectHandler !== "function") fail("supervisor_invalid");
+  const decision = transitionV12NativeSupervisorLifecycle(state, event);
+  if (decision.effect === "ignore") return;
+  return effectHandler(decision.state, decision.effect);
+}
+
 /** Owns one detached process group and bounds TERM -> KILL escalation. */
 export function superviseV12NativeProcess({
   executable,
@@ -261,9 +292,8 @@ export function superviseV12NativeProcess({
     let timedOut = false; let cancelled = false; let outputExceeded = false; let termination = null; let settled = false;
     let cleanupVerified = true;
     let termTimer; let killTimer;
-    const finish = async (status, childSignal) => {
-      if (settled) return;
-      settled = true;
+    const finish = async (status, childSignal) => dispatchV12NativeSupervisorLifecycle({ settled, termination }, "finish", async (nextState) => {
+      settled = nextState.settled;
       clearTimeout(deadline); clearTimeout(termTimer); clearTimeout(killTimer);
       signal?.removeEventListener("abort", onAbort);
       cleanupVerified = cleanupVerified && await verifyV12ProcessGroupEmpty(processGroupId, killGraceMs);
@@ -278,20 +308,18 @@ export function superviseV12NativeProcess({
         termination,
         cleanup_verified: cleanupVerified,
       }));
-    };
-    const terminate = (reason) => {
-      if (settled || termination !== null) return;
+    });
+    const terminate = (reason) => dispatchV12NativeSupervisorLifecycle({ settled, termination }, "terminate", (nextState) => {
       timedOut = reason === "timeout";
       cancelled = reason === "signal";
-      termination = "SIGTERM";
+      termination = nextState.termination;
       cleanupVerified = signalV12OwnedProcessTree(child, "SIGTERM") && cleanupVerified;
-      termTimer = setTimeout(() => {
-        if (settled) return;
-        termination = "SIGKILL";
+      termTimer = setTimeout(() => dispatchV12NativeSupervisorLifecycle({ settled, termination }, "term-grace", (escalationState) => {
+        termination = escalationState.termination;
         cleanupVerified = signalV12OwnedProcessTree(child, "SIGKILL") && cleanupVerified;
         killTimer = setTimeout(() => finish(null, null), killGraceMs);
-      }, termGraceMs);
-    };
+      }), termGraceMs);
+    });
     const deadline = setTimeout(() => terminate("timeout"), timeoutMs);
     const onAbort = () => terminate("signal");
     signal?.addEventListener("abort", onAbort, { once: true });
@@ -379,7 +407,7 @@ export function invokeV12NativeAdapterEnvelope(action, payload, {
   if (!target.testOnly && JSON.stringify(response.execution_origin) !== JSON.stringify(nativeExecutionOrigin)) fail("execution_origin_invalid");
   let normalizedResult = response.result;
   if (action === "garmin") {
-    if (normalizedResult === null || typeof normalizedResult !== "object" || Array.isArray(normalizedResult)) fail("response_invalid");
+    normalizedResult = validateV12NativeActionResult(action, normalizedResult);
     const domainOrigin = target.testOnly ? V12_TEST_EXECUTION_ORIGIN : normalizedResult.execution_origin;
     if (![V12_PRODUCTION_EXECUTION_ORIGIN, V12_TEST_EXECUTION_ORIGIN].includes(domainOrigin)) fail("execution_origin_invalid");
     normalizedResult = Object.freeze({ ...normalizedResult, execution_origin: domainOrigin });
@@ -416,6 +444,15 @@ export function invokeV12NativeAdapter(action, payload, options = {}) {
   return invokeV12NativeAdapterEnvelope(action, payload, options).result;
 }
 
+/** Capture the result once before callers consume action-specific evidence. */
+export function validateV12NativeActionResult(action, result) {
+  if (typeof action !== "string" || !Object.hasOwn(V12_NATIVE_ACTION_TIMEOUT_MS, action)) fail("action_invalid");
+  let snapshot;
+  try { snapshot = structuredClone(result); } catch { fail("response_invalid"); }
+  if (action === "garmin" && (snapshot === null || typeof snapshot !== "object" || Array.isArray(snapshot))) fail("response_invalid");
+  return Object.freeze(snapshot);
+}
+
 export function createV12NativeAdapter(options = {}) {
   const executionOrigins = new Map();
   const callEnvelope = (action, payload) => {
@@ -443,8 +480,7 @@ export function createV12NativeAdapter(options = {}) {
     executeRecovery: (payload) => call("recovery", payload),
     executeGarmin: (lease, settings, payload) => {
       const response = callEnvelope("garmin", { lease, settings, ...payload });
-      if (response.result === null || typeof response.result !== "object" || Array.isArray(response.result)) fail("response_invalid");
-      return response.result;
+      return validateV12NativeActionResult("garmin", response.result);
     },
     executeCalendar: (lease, settings, payload) => {
       const response = callEnvelope("calendar", { lease, settings, ...payload });

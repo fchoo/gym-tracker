@@ -1,0 +1,107 @@
+TAP version 13
+# [Hardcode detection] Timeout (2 seconds), aborting scan.
+# [Hardcode detection] Timeout (2 seconds), aborting scan.
+# [Hardcode detection] Timeout (2 seconds), aborting scan.
+# [Hardcode detection] Timeout (2 seconds), aborting scan.
+# [Hardcode detection] Timeout (2 seconds), aborting scan.
+# Subtest: Phase 20 fake-device Recovery path proves offline rollback and one retry
+not ok 1 - Phase 20 fake-device Recovery path proves offline rollback and one retry
+  ---
+  duration_ms: 4425.576416
+  type: 'test'
+  location: '/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-phase20-cli-blackbox.test.mjs:60:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    scripts/v12-recovery-shard.mjs --run phase20-20261014T000000Z-42993d25f838 --execute
+    v12_native_adapter_command_failed
+    
+    
+    
+    1 !== 0
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 0
+  actual: 1
+  operator: 'strictEqual'
+  stack: |-
+    pass (file:///Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-phase20-cli-blackbox.test.mjs:150:10)
+    TestContext.<anonymous> (file:///Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-phase20-cli-blackbox.test.mjs:285:5)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.start (node:internal/test_runner/test:1242:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+# Subtest: over-budget performance executes through the CLI and publishes one immutable FAIL observation
+not ok 2 - over-budget performance executes through the CLI and publishes one immutable FAIL observation
+  ---
+  duration_ms: 4429.180292
+  type: 'test'
+  location: '/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-phase20-cli-blackbox.test.mjs:60:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    scripts/v12-performance-shard.mjs --run phase20-20261014T000000Z-825e4c6dfc55 --execute
+    v12_native_adapter_command_failed
+    
+    
+    
+    1 !== 0
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 0
+  actual: 1
+  operator: 'strictEqual'
+  stack: |-
+    pass (file:///Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-phase20-cli-blackbox.test.mjs:150:10)
+    TestContext.<anonymous> (file:///Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-phase20-cli-blackbox.test.mjs:309:5)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: Phase 20 fake-device pipeline exercises every CLI but cannot publish preseal or final native evidence
+not ok 3 - Phase 20 fake-device pipeline exercises every CLI but cannot publish preseal or final native evidence
+  ---
+  duration_ms: 8489.004334
+  type: 'test'
+  location: '/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-phase20-cli-blackbox.test.mjs:60:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /garmin_execution_origin_invalid/u. Input:
+    
+    'v12_native_adapter_command_failed\n'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: |-
+    v12_native_adapter_command_failed
+    
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-phase20-cli-blackbox.test.mjs:346:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: Phase 20 subprocesses fail closed without leaking device identity or publishing partial staging
+ok 4 - Phase 20 subprocesses fail closed without leaking device identity or publishing partial staging
+  ---
+  duration_ms: 7719.195375
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 1
+# fail 3
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 25143.520791

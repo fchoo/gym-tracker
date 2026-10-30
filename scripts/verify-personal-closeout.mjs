@@ -76,20 +76,538 @@ function nativeIdentity(value, manifest, noncePattern = NONCE) {
     && noncePattern.test(value.nonce ?? "") && value.source_tree_sha256 === manifest.source.tree_sha256
     && value.apk_sha256 === manifest.build.apk.sha256 && value.device_identity_sha256 === manifest.device.identity_sha256, "native_identity_invalid");
 }
-function proofInputs(inputs, expectedHead, authority, required) {
+function proofInputs(inputs, expectedHead, authority, required, artifactPaths = new Set()) {
   check(Array.isArray(inputs) && inputs.length > 0 && unique(inputs.map(x => x.path))
     && required.every(file => inputs.some(x => x.path === file)), "source_inputs_invalid");
   for (const input of inputs) {
     check(exact(input, ["path", "sha256"]) && safePath(input.path) && HASH.test(input.sha256)
-      && sha(authority.readSource(expectedHead, input.path)) === input.sha256, "source_inputs_changed");
+      && (artifactPaths.has(input.path) || sha(authority.readSource(expectedHead, input.path)) === input.sha256), "source_inputs_changed");
   }
 }
-function actualHostExecution(receipt, hashFile, reportSha) {
+const ROOT_PRODUCER_CAPABILITIES = new WeakSet();
+const VERIFIED_PRODUCER_SCOPES = new WeakSet();
+const PRODUCER_ROLES = new Set(["RUNTIME_REQUIRED", "STATIC_RUNTIME_ENTRYPOINT", "CAPTURED_CODE_OR_CONFIG", "OPAQUE_SOURCE_TEXT", "FIXTURE_DATA"]);
+const PRODUCER_OPERATIONS = new Set(["static-seed", "static-import-closure", "static-url-entrypoint", "finite-directory-capture", "descriptor-data-read", "opaque-source-text-capture"]);
+const PRODUCER_METADATA = new Map([["artifacts/native/v1.2-acceptance/build.json", "retained-host-build-input/v1"], ["artifacts/native/v1.2-acceptance/git-execution-origin.json", "git-execution-origin-input/v1"]]);
+const producerHash = value => typeof value === "string" && HASH.test(value);
+const producerHead = value => typeof value === "string" && HEAD.test(value);
+// Admission witnesses can be emitted by Node or Python. Keep their original
+// RFC3339 strings; Date.parse converts fractional precision to epoch milliseconds.
+function producerTime(value, now) {
+  check(typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/u.test(value)
+    && Number.isFinite(Date.parse(value)) && Date.parse(value) <= now, "producer_capture_time_invalid"); return Date.parse(value);
+}
+function producerNode(value) {
+  check(exact(value, ["executable_sha256", "version", ...(value?.content_snapshot === undefined ? [] : ["content_snapshot"])])
+    && producerHash(value.executable_sha256) && typeof value.version === "string" && value.version.length > 0, "producer_capture_vector_invalid");
+  if (value.content_snapshot !== undefined) producerBinding(value.content_snapshot);
+  return { executable_sha256: value.executable_sha256, version: value.version };
+}
+function producerPath(value) {
+  check(safePath(value) && !value.split("/").some(part => part === ".coverage" || part === "untitled-2.md"), "producer_capture_path_invalid"); return value;
+}
+function producerBinding(value) {
+  check(exact(value, ["path", "sha256"]) && producerHash(value.sha256), "producer_capture_binding_invalid"); producerPath(value.path); return value;
+}
+function producerFreeze(value, visited = new WeakSet()) {
+  if (value && typeof value === "object" && !visited.has(value)) { visited.add(value); for (const child of Object.values(value)) producerFreeze(child, visited); Object.freeze(value); }
+  return value;
+}
+function producerSnapshot(value) { try { return producerFreeze(structuredClone(value)); } catch { fail("producer_capture_value_invalid"); } }
+function producerRead(binding, readBytes, root) {
+  producerBinding(binding);
+  let cursor = path.resolve(root);
+  try {
+    check(!lstatSync(cursor).isSymbolicLink() && lstatSync(cursor).isDirectory(), "producer_capture_path_invalid");
+    for (const part of binding.path.split("/")) { cursor = path.join(cursor, part); const stat = lstatSync(cursor); check(!stat.isSymbolicLink(), "producer_capture_path_invalid"); }
+    check(lstatSync(cursor).isFile(), "producer_capture_path_invalid");
+  } catch { fail("producer_capture_path_invalid"); }
+  const bytes = Buffer.from(readBytes(binding.path)); check(sha(bytes) === binding.sha256, "producer_capture_binding_changed"); return bytes;
+}
+function producerNestedBindings(value, visited = new WeakSet()) {
+  if (!value || typeof value !== "object" || visited.has(value)) return;
+  visited.add(value);
+  if (Object.hasOwn(value, "path") && Object.hasOwn(value, "sha256")) producerBinding({ path: value.path, sha256: value.sha256 });
+  for (const child of Object.values(value)) if (child && typeof child === "object") producerNestedBindings(child, visited);
+}
+function producerTupleVector(value) {
+  check(Array.isArray(value) && value.length > 0 && unique(value.map(row => row?.path)), "producer_capture_vector_invalid");
+  for (const row of value) producerBinding(row);
+}
+function producerPolicyInputs(policy, capsule, options, requiredRuntime) {
+  check(exact(policy, ["schema_version", "kind", "producer_code", "observer_code", "operations", "coverage_only", "native_acceptance", "outside_file_overrides"])
+    && policy.schema_version === 1 && policy.kind === "producer-capture-policy/v1" && policy.coverage_only === true && policy.native_acceptance === false
+    && policy.outside_file_overrides === false && Array.isArray(policy.producer_code) && Array.isArray(policy.observer_code)
+    && Array.isArray(policy.operations) && policy.operations.length > 0 && unique(policy.operations.map(value => value?.id)), "producer_capture_policy_invalid");
+  const code = [...policy.producer_code, ...policy.observer_code]; producerTupleVector(policy.producer_code);
+  check(Array.isArray(policy.observer_code), "producer_capture_policy_invalid"); for (const binding of code) producerBinding(binding);
+  const bytesByPath = new Map();
+  for (const binding of code) { const bytes = options.readSource(capsule.tested_source_head, binding.path); check(Buffer.isBuffer(bytes) && sha(bytes) === binding.sha256, "producer_capture_source_changed"); bytesByPath.set(binding.path, bytes); }
+  const full = capsule.source_inputs.map(value => value.path); const operations = new Map();
+  for (const operation of policy.operations) {
+    check(exact(operation, ["id", "kind", "producer_path", "node_start", "node_end", "node_sha256", "roots", "opaque_import_descendants"])
+      && typeof operation.id === "string" && operation.id.length > 0 && PRODUCER_OPERATIONS.has(operation.kind)
+      && bytesByPath.has(operation.producer_path) && Number.isSafeInteger(operation.node_start) && Number.isSafeInteger(operation.node_end)
+      && operation.node_start >= 0 && operation.node_end > operation.node_start && producerHash(operation.node_sha256)
+      && Array.isArray(operation.roots) && operation.roots.length > 0 && unique(operation.roots) && typeof operation.opaque_import_descendants === "boolean", "producer_capture_operation_invalid");
+    operation.roots.forEach(producerPath);
+    const text = bytesByPath.get(operation.producer_path).toString("utf8"); const ast = ts.createSourceFile(operation.producer_path, text, ts.ScriptTarget.Latest, true);
+    check(ast.parseDiagnostics.length === 0 && operation.node_end <= text.length && sha(text.slice(operation.node_start, operation.node_end)) === operation.node_sha256, "producer_capture_ast_invalid");
+    let node; const find = candidate => { if (candidate.getStart(ast) === operation.node_start && candidate.end === operation.node_end) node = candidate; ts.forEachChild(candidate, find); }; find(ast);
+    check(node && (ts.isVariableDeclaration(node) || ts.isCallExpression(node) || ts.isNewExpression(node) || ts.isArrayLiteralExpression(node) || ts.isExpressionStatement(node) || ts.isFunctionDeclaration(node)), "producer_capture_ast_invalid");
+    const literals = new Set(); const inspect = value => { if (ts.isStringLiteral(value)) literals.add(value.text); ts.forEachChild(value, inspect); }; inspect(node);
+    const allowed = new Set();
+    for (const root of operation.roots) {
+      // The ROOT-pinned policy names finite captured manifests/roots. A reviewed
+      // descriptor-read expression may obtain roots from its registered vector;
+      // literal seeds/directory roots must occur in the exact approved AST node.
+      check(operation.kind === "descriptor-data-read" || operation.kind === "opaque-source-text-capture" || literals.has(root)
+        || [...literals].some(value => value.startsWith(".") && path.posix.normalize(path.posix.join(path.posix.dirname(operation.producer_path), value)) === root)
+        || root === operation.producer_path, "producer_capture_operation_invalid");
+      if (operation.kind === "finite-directory-capture") {
+        const capturedFiles = full.filter(value => value.startsWith(root + "/"));
+        check(capturedFiles.length > 0 && operation.opaque_import_descendants === true, "producer_capture_operation_invalid");
+        for (const file of capturedFiles) allowed.add(file);
+      } else {
+        check(full.includes(root) || bytesByPath.has(root), "producer_capture_operation_invalid"); allowed.add(root);
+        if (operation.kind === "static-import-closure" || operation.kind === "static-url-entrypoint" || operation.opaque_import_descendants && operation.kind !== "opaque-source-text-capture") {
+          for (const file of options.sourceClosure(capsule.tested_source_head, [root])) allowed.add(file);
+        }
+      }
+    }
+    if (operation.kind === "opaque-source-text-capture" && operation.opaque_import_descendants) {
+      // Conservative producer parsing may capture literal fixture data beside
+      // imports. This remains capture provenance, never runtime expansion.
+      const pending = [...allowed]; const inspected = new Set();
+      while (pending.length > 0) {
+        const file = pending.pop(); if (inspected.has(file) || !full.includes(file)) continue; inspected.add(file);
+        const content = options.readSource(capsule.tested_source_head, file).toString("utf8");
+        const add = candidate => { if (full.includes(candidate) && !allowed.has(candidate)) { allowed.add(candidate); pending.push(candidate); } };
+        for (const match of content.matchAll(/(["'])([^"'\r\n]+)\1/gu)) {
+          for (const candidate of [match[2], path.posix.normalize(path.posix.join(path.posix.dirname(file), match[2]))]) add(candidate);
+        }
+        if (/\.[cm]?[jt]sx?$/u.test(file)) {
+          const capturedAst = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true);
+          const inspectCaptured = node => {
+            const reference = ts.isImportDeclaration(node) || ts.isExportDeclaration(node) ? node.moduleSpecifier
+              : ts.isCallExpression(node) && /^(?:require|import|jest\.requireActual|jest\.mock|require\.resolve)$/u.test(node.expression.getText(capturedAst)) ? node.arguments[0]
+                : ts.isNewExpression(node) && node.expression.getText(capturedAst) === "URL" ? node.arguments?.[0] : undefined;
+            if (reference && ts.isStringLiteral(reference) && reference.text.startsWith(".")) {
+              const base = path.posix.normalize(path.posix.join(path.posix.dirname(file), reference.text));
+              const extensions = [".ts", ".tsx", ".mjs", ".js", ".jsx", ".cjs", ".json", ".native.ts", ".native.tsx", ".ios.ts", ".android.ts"];
+              for (const candidate of [base, ...extensions.map(ext => base + ext), ...extensions.map(ext => path.posix.join(base, "index" + ext))]) add(candidate);
+              if (ts.isNewExpression(node)) for (const candidate of full.filter(value => value.startsWith(base.replace(/\/$/u, "") + "/"))) add(candidate);
+            }
+            ts.forEachChild(node, inspectCaptured);
+          }; inspectCaptured(capturedAst);
+        }
+      }
+    }
+    if (operation.kind === "static-url-entrypoint") check(operation.opaque_import_descendants === false && [...allowed].every(file => requiredRuntime.includes(file) || capsule.roles.some(row => row.path === file && row.role === "STATIC_RUNTIME_ENTRYPOINT")), "producer_capture_runtime_invalid");
+    operations.set(operation.id, { operation, allowed });
+  }
+  return { code, operations };
+}
+function producerMetadataPaths(capsule, beforeInputs, afterInputs, readBound) {
+  check(Array.isArray(capsule.metadata_data) && capsule.metadata_data.length <= 2 && unique(capsule.metadata_data.map(value => value.original_path)), "producer_capture_metadata_invalid");
+  const paths = new Set();
+  for (const item of capsule.metadata_data) {
+    check(exact(item, ["original_path", "sha256", "snapshot", "schema"]) && PRODUCER_METADATA.get(item.original_path) === item.schema && producerHash(item.sha256)
+      && item.snapshot.sha256 === item.sha256 && beforeInputs.some(input => input.path === item.original_path && input.sha256 === item.sha256)
+      && afterInputs.some(input => input.path === item.original_path && input.sha256 === item.sha256), "producer_capture_metadata_invalid");
+    const raw = parse(readBound(item.snapshot));
+    if (item.schema === "git-execution-origin-input/v1") check(exact(raw, ["schema_version", "action", "execution_origin", "test_only", "tools"])
+      && raw.schema_version === 1 && typeof raw.action === "string" && raw.action.length > 0 && typeof raw.execution_origin === "string" && typeof raw.test_only === "boolean"
+      && Array.isArray(raw.tools) && raw.tools.length > 0 && unique(raw.tools.map(value => value.name))
+      && raw.tools.every(value => exact(value, ["name", "executable_realpath_sha256", "executable_sha256", "version"]) && typeof value.name === "string"
+        && producerHash(value.executable_realpath_sha256) && producerHash(value.executable_sha256) && typeof value.version === "string"), "producer_capture_metadata_invalid");
+    else check(exact(raw, ["schema_version", "suite", "profile", "build_variant", "js_bundle", "base_head", "source_tree_sha256", "package", "apk", "installed_apk", "package_launch", "device", "toolchain", "started_at", "finished_at", "v12_evidence_identity"])
+      && raw.schema_version === 1 && raw.suite === "v1.2-acceptance" && raw.profile === "development-test" && typeof raw.build_variant === "string"
+      && exact(raw.js_bundle, ["embedded"]) && raw.js_bundle.embedded === true && producerHead(raw.base_head) && producerHash(raw.source_tree_sha256)
+      && typeof raw.package === "string" && raw.package.length > 0 && object(raw.apk) && safePath(raw.apk.path) && producerHash(raw.apk.sha256)
+      && Number.isSafeInteger(raw.apk.size_bytes) && raw.apk.size_bytes > 0 && object(raw.installed_apk) && raw.installed_apk.sha256 === raw.apk.sha256
+      && object(raw.package_launch) && typeof raw.package_launch.component === "string" && typeof raw.package_launch.succeeded === "boolean"
+      && object(raw.device) && producerHash(raw.device.identity_sha256) && object(raw.toolchain) && object(raw.v12_evidence_identity)
+      && typeof raw.started_at === "string" && typeof raw.finished_at === "string", "producer_capture_metadata_invalid");
+    paths.add(item.original_path);
+  }
+  return paths;
+}
+function validateRegisteredProducerScope(capsule, admission, receipt, context, options, readBound) {
+  const keys = ["schema_version", "kind", "invocation_id", "policy", "source_head", "tested_source_head", "coverage_only", "native_acceptance", "test_files", "source_inputs", "roles", "raw_v8", "producer_sources", "metadata_data", "original_before", "original_after", "original_actual_execution", "original_report", "outer_before", "outer_after", "child_before", "child_after", "node_before", "node_after"];
+  check(exact(capsule, keys) && capsule.schema_version === 1 && capsule.kind === "producer-capture-scope/v1" && capsule.coverage_only === true && capsule.native_acceptance === false
+    && receipt.coverage_only === true && receipt.native_acceptance === false && receipt.input_scope === undefined
+    && producerHead(capsule.source_head) && producerHead(capsule.tested_source_head), "producer_capture_scope_invalid");
+  producerNestedBindings(capsule); producerTupleVector(capsule.source_inputs);
+  producerTupleVector(capsule.raw_v8);
+  check(capsule.invocation_id === admission.invocation_id && capsule.tested_source_head === admission.tested_source_head && capsule.tested_source_head === context.testedHead
+    && capsule.source_head === receipt.source_head && capsule.source_head !== undefined && same(capsule.policy, admission.policy)
+    && same(capsule.source_inputs, receipt.source_inputs) && jsonSha(capsule.source_inputs) === admission.source_inputs_sha256
+    && same(capsule.test_files, receipt.test_files) && same(capsule.raw_v8, receipt.raw_v8) && same(capsule.original_report, receipt.report), "producer_capture_admission_invalid");
+  for (const key of ["original_actual_execution", "outer_before", "outer_after", "child_before", "child_after"]) check(same(capsule[key], admission[key]), "producer_capture_admission_invalid");
+  const policy = producerSnapshot(parse(readBound(capsule.policy)));
+  const before = producerSnapshot(parse(readBound(capsule.original_before))); const after = producerSnapshot(parse(readBound(capsule.original_after)));
+  const original = producerSnapshot(parse(readBound(capsule.original_actual_execution)));
+  const outerBefore = producerSnapshot(parse(readBound(capsule.outer_before))); const outerAfter = producerSnapshot(parse(readBound(capsule.outer_after)));
+  const childBefore = producerSnapshot(parse(readBound(capsule.child_before))); const childAfter = producerSnapshot(parse(readBound(capsule.child_after)));
+  const nodeBefore = producerSnapshot(parse(readBound(capsule.node_before))); const nodeAfter = producerSnapshot(parse(readBound(capsule.node_after)));
+  producerNestedBindings(before); producerNestedBindings(after);
+  check(same(before.source_inputs, capsule.source_inputs) && same(after.source_inputs, capsule.source_inputs)
+    && object(before.environment) && Array.isArray(before.installed_dependencies) && same(before.environment, after.environment) && same(before.installed_dependencies, after.installed_dependencies)
+    && same(nodeBefore, nodeAfter) && same(producerNode(nodeBefore), producerNode(nodeAfter)), "producer_capture_vector_invalid");
+  if (nodeBefore.content_snapshot !== undefined) check(sha(readBound(nodeBefore.content_snapshot)) === nodeBefore.executable_sha256, "producer_capture_vector_invalid");
+  const actual = parse(readBound(receipt.actual_execution));
+  check(original.pid === actual.pid && original.pid === childBefore.pid && original.pid === childAfter.pid && Number.isSafeInteger(original.pid) && original.pid > 0
+    && original.cwd === options.root && childBefore.cwd === options.root && childAfter.cwd === options.root
+    && same(original.argv, actual.argv) && same(original.argv, childBefore.argv) && same(original.argv, childAfter.argv)
+    && same(original.test_files, receipt.test_files) && original.started_at === receipt.started_at && original.finished_at === receipt.finished_at
+    && original.exit_code === 0 && original.signal === null && childAfter.exit_code === 0 && childAfter.signal === null
+    && original.report_sha256 === context.reportSha && same(original.raw_v8, receipt.raw_v8), "producer_capture_child_invalid");
+  check(Number.isSafeInteger(outerBefore.pid) && outerBefore.pid > 0 && outerBefore.pid === outerAfter.pid && original.parent_pid === outerBefore.pid
+    && outerBefore.cwd === options.root && outerAfter.cwd === options.root && same(outerBefore.argv, outerAfter.argv)
+    && Array.isArray(outerBefore.source_inputs) && same(outerBefore.source_inputs, outerAfter.source_inputs)
+    && same(producerNode(outerBefore.node), producerNode(nodeBefore)) && same(producerNode(outerAfter.node), producerNode(nodeAfter)) && outerAfter.exit_code === 0 && outerAfter.signal === null
+    && producerTime(outerBefore.recorded_at, options.now) <= context.start && producerTime(outerAfter.recorded_at, options.now) >= context.end
+    && producerTime(before.recorded_at, options.now) <= context.start && producerTime(after.recorded_at, options.now) >= context.end
+    && (producerTime(childBefore.recorded_at, options.now) <= context.start || childBefore.started_at === receipt.started_at
+      && producerTime(childBefore.recorded_at, options.now) <= context.end) && producerTime(childAfter.recorded_at, options.now) >= context.end
+    && producerTime(admission.registered_at, options.now) >= context.end, "producer_capture_parent_invalid");
+  check(Array.isArray(capsule.roles) && capsule.roles.length === capsule.source_inputs.length && unique(capsule.roles.map(value => value.path))
+    && capsule.roles.every((row, index) => exact(row, ["path", "sha256", "role", "operation_id", "content_snapshot"]) && row.path === capsule.source_inputs[index].path
+      && row.sha256 === capsule.source_inputs[index].sha256 && PRODUCER_ROLES.has(row.role)), "producer_capture_roles_invalid");
+  const { code, operations } = producerPolicyInputs(policy, capsule, options, context.requiredRuntime);
+  check(Array.isArray(outerBefore.argv) && outerBefore.argv.every(value => typeof value === "string")
+    && code.some(binding => outerBefore.argv.some(value => path.resolve(options.root, value) === path.resolve(options.root, binding.path))), "producer_capture_parent_invalid");
+  check(code.every(binding => outerBefore.source_inputs.some(value => same(value, binding))), "producer_capture_source_changed");
+  check(Array.isArray(capsule.producer_sources) && unique(capsule.producer_sources.map(value => value.path)) && code.every(binding => capsule.producer_sources.some(row => row.path === binding.path && row.sha256 === binding.sha256)), "producer_capture_source_changed");
+  for (const row of capsule.producer_sources) check(exact(row, ["path", "sha256", "content_snapshot"]) && readBound(row.content_snapshot).equals(options.readSource(context.testedHead, row.path)) && row.content_snapshot.sha256 === row.sha256, "producer_capture_source_changed");
+  const metadataPaths = producerMetadataPaths(capsule, before.source_inputs, after.source_inputs, readBound);
+  for (const row of capsule.roles) {
+    const operation = operations.get(row.operation_id);
+    check(operation && operation.allowed.has(row.path), "producer_capture_unaccounted_input");
+    check(context.requiredRuntime.includes(row.path) ? row.role === "RUNTIME_REQUIRED" : row.role !== "RUNTIME_REQUIRED", "producer_capture_runtime_invalid");
+    check(row.role !== "STATIC_RUNTIME_ENTRYPOINT" || operation.operation.kind === "static-url-entrypoint", "producer_capture_runtime_invalid");
+    const bytes = readBound(row.content_snapshot); check(sha(bytes) === row.sha256, "producer_capture_source_changed");
+    if (metadataPaths.has(row.path)) check(row.role === "FIXTURE_DATA", "producer_capture_metadata_invalid");
+    else check(bytes.equals(options.readSource(context.testedHead, row.path)), "producer_capture_source_changed");
+  }
+  readBound(capsule.original_report);
+  const result = producerFreeze({ binding: admission.capsule, invocation_id: capsule.invocation_id, source_inputs: capsule.source_inputs, required_runtime: [...context.requiredRuntime], roles: capsule.roles, metadata_paths: [...metadataPaths], physical_raw_bindings: capsule.raw_v8 });
+  VERIFIED_PRODUCER_SCOPES.add(result); return result;
+}
+/** The operator-selected exact index/hash is the trust boundary; receipts cannot select or extend it. */
+export function createRootProducerCaptureCapability(indexBinding, { readBytes, readSource, sourceClosure, root = process.cwd(), now = Date.now() }) {
+  const options = { readBytes, readSource, sourceClosure, root: path.resolve(root), now };
+  check(typeof readBytes === "function" && typeof readSource === "function" && typeof sourceClosure === "function", "producer_capture_authority_invalid");
+  const index = producerSnapshot(parse(producerRead(producerSnapshot(indexBinding), readBytes, options.root)));
+  check(exact(index, ["schema_version", "kind", "admissions", "native_authority"]) && index.schema_version === 1
+    && index.kind === "personal-closeout-root-producer-admissions/v1" && index.native_authority === false && Array.isArray(index.admissions)
+    && index.admissions.length > 0 && unique(index.admissions.map(value => value.capsule?.path)), "producer_capture_index_invalid");
+  producerNestedBindings(index);
+  const registry = new Map();
+  for (const entry of index.admissions) {
+    check(exact(entry, ["capsule", "policy", "invocation_id", "registered_at", "tested_source_head", "original_actual_execution", "outer_before", "outer_after", "child_before", "child_after", "source_inputs_sha256"])
+      && producerHead(entry.tested_source_head) && producerHash(entry.source_inputs_sha256) && typeof entry.invocation_id === "string" && entry.invocation_id.length > 0, "producer_capture_index_invalid");
+    producerTime(entry.registered_at, now); registry.set(entry.capsule.path + ":" + entry.capsule.sha256, entry);
+  }
+  const readBound = binding => producerRead(binding, readBytes, options.root);
+  const verify = (binding, receipt, context) => {
+    try {
+      const frozenBinding = producerSnapshot(binding); producerBinding(frozenBinding);
+      const admission = registry.get(frozenBinding.path + ":" + frozenBinding.sha256); check(admission, "producer_capture_unregistered");
+      const capsule = producerSnapshot(parse(readBound(frozenBinding)));
+      return validateRegisteredProducerScope(capsule, admission, producerSnapshot(receipt), producerSnapshot(context), options, readBound);
+    } catch (error) { if (typeof error?.message === "string" && error.message.startsWith("personal_closeout_")) throw error; fail("producer_capture_value_invalid"); }
+  };
+  ROOT_PRODUCER_CAPABILITIES.add(verify); return verify;
+}
+export const QUALITY107_INPUT_SCOPE_CAPSULE = Object.freeze({ path: "artifacts/native/personal-closeout-20261027/quality-consumer-adapter/quality107-input-scope-capsule-03.json", sha256: "bb973cea9f04622f2027b1476a356123d9f5a0105e4121940d50de9d96b9760b" });
+function quality107Graph(rows, hashFile) {
+  const files = rows.map(row => row.path); const edges = [];
+  for (const row of rows.filter(value => /\.[cm]?[jt]sx?$/u.test(value.path))) {
+    const ast = ts.createSourceFile(row.path, hashFile({ path: row.snapshot, sha256: row.sha256 }).toString("utf8"), ts.ScriptTarget.Latest, true);
+    const visit = node => {
+      let dependency;
+      if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) dependency = node.moduleSpecifier;
+      else if (ts.isCallExpression(node) && /^(?:require|import)$/u.test(node.expression.getText(ast))) dependency = node.arguments[0];
+      else if (ts.isNewExpression(node) && node.expression.getText(ast) === "URL") dependency = node.arguments[0];
+      if (dependency && ts.isStringLiteral(dependency) && dependency.text.startsWith(".")) {
+        const base = path.posix.normalize(path.posix.join(path.posix.dirname(row.path), dependency.text)).replace(/\/$/u, "");
+        const directory = base === "." || files.some(file => file.startsWith(base + "/"));
+        if (ts.isNewExpression(node) && directory) edges.push([row.path, dependency.text, base === "." ? "/" : base + "/"]);
+        else {
+          const resolved = [base, ...[".ts", ".tsx", ".js", ".mjs", ".cjs", ".json"].map(ext => base + ext), path.posix.join(base, "index.ts")].find(file => files.includes(file));
+          check(resolved, "quality107_source_scope_invalid"); edges.push([row.path, dependency.text, resolved]);
+        }
+      }
+      ts.forEachChild(node, visit);
+    }; visit(ast);
+  }
+  return edges;
+}
+function quality107Closure(seeds, edges, directoryInputs = []) {
+  const pending = [...seeds]; const selected = new Set();
+  while (pending.length > 0) {
+    const file = pending.pop();
+    if (selected.has(file)) continue;
+    selected.add(file);
+    for (const edge of edges.filter(value => value[0] === file)) {
+      if (!edge[2].endsWith("/")) pending.push(edge[2]);
+      else if (edge[1].includes("maestro-safe-sdk")) pending.push(...directoryInputs.filter(value => value.startsWith(edge[2])));
+    }
+  }
+  return [...selected].sort();
+}
+function quality107ProducerSeeds(capsule, hashFile, execution) {
+  const ast = ts.createSourceFile("quality107-producer.mjs", hashFile(capsule.original_producer).toString("utf8"), ts.ScriptTarget.Latest, true);
+  const declarations = new Map();
+  const visit = node => { if (ts.isVariableDeclaration(node)) declarations.set(node.name.getText(ast), node.initializer); ts.forEachChild(node, visit); }; visit(ast);
+  const pending = declarations.get("pending"); const fixtures = declarations.get("fixtures");
+  check(ts.isArrayLiteralExpression(pending) && ts.isArrayLiteralExpression(fixtures), "quality107_source_scope_invalid");
+  const producer = capsule.role_partition.find(value => value.original.sha256 === capsule.original_producer.sha256).original.path;
+  const seeds = pending.elements.flatMap(node => {
+    if (ts.isStringLiteral(node)) return node.text === "/tmp/gym-closeout-tool-binding.json" ? capsule.external_original_key : node.text;
+    if (ts.isSpreadElement(node)) return node.expression.getText(ast) === "tests" ? execution.argv.slice(4) : [capsule.subject.path];
+    check(node.getText(ast) === "fileURLToPath(import.meta.url)", "quality107_source_scope_invalid"); return producer;
+  });
+  seeds.push(...fixtures.elements.map(node => node.text), ...capsule.role_partition.filter(value => value.original.path.startsWith(".planning/design/v1.2-browser-evidence/")).map(value => value.original.path));
+  check(same(seeds, capsule.producer_seed_inputs.map(value => value.file)), "quality107_source_scope_invalid");
+  return seeds;
+}
+function quality107Witnesses(capsule, hashFile, authority, execution) {
+  const witnesses = hashFile(capsule.witnesses).toString("utf8").trim().split("\n").map(value => JSON.parse(value));
+  const created = new Map(); const pairs = new Map(); const copied = new Set();
+  const inputMap = new Map(capsule.role_partition.map(value => [value.original.path, value.original]));
+  for (const witness of witnesses) {
+    check(witness.native_acceptance_proof === false, "quality107_native_authority_invalid");
+    if (witness.kind === "controlled-copy-created") {
+      created.set(witness.root, witness);
+      for (const input of witness.source_digest_inputs) {
+        const relative = path.posix.relative(witness.root, input.path); const original = inputMap.get(relative);
+        if (original?.sha256 === input.sha256) copied.add(relative);
+      }
+    } else if (witness.kind === "child-before") pairs.set(witness.test_process_pid + ":" + witness.id, { before: witness });
+    else if (witness.kind === "child-after") {
+      const matching = [...pairs.values()].filter(pair => pair.before.id === witness.id && pair.before.root === witness.root && pair.after === undefined);
+      check(matching.length === 1, "quality107_pid_binding_invalid"); matching[0].after = witness;
+    } else check(witness.kind === "controlled-copy-closed" && same(witness.subjects, created.get(witness.root).subjects), "quality107_copy_binding_invalid");
+  }
+  check(created.size === 106 && pairs.size === 117 && copied.size === 128, "quality107_copy_binding_invalid");
+  for (const pair of pairs.values()) {
+    const before = pair.before; const after = pair.after;
+    check(same(before.subjects, after.subjects) && before.node.sha256 === capsule.node.sha256
+      && timestamp(before.started_at, authority.now) >= Date.parse(execution.started_at)
+      && timestamp(after.finished_at, authority.now) <= Date.parse(execution.finished_at)
+      && Date.parse(after.finished_at) >= Date.parse(before.started_at), "quality107_copy_binding_invalid");
+  }
+  const bindings = parse(hashFile(capsule.raw_bindings)); const excluded = parse(hashFile(capsule.exclusions));
+  check(same(bindings.bindings, capsule.raw_workspace_subject_bindings) && bindings.native_acceptance === false
+    && excluded.excluded_from_metrics === true && excluded.contribution === 0 && excluded.records.length === 3
+    && same(bindings.rejected, excluded.records), "quality107_raw_binding_invalid");
+  const workers = [...new Set([...pairs.values()].map(pair => pair.before.test_process_pid))].sort((a, b) => a - b);
+  check(same(workers, capsule.captured_test_worker_pids), "quality107_pid_binding_invalid");
+  for (const binding of bindings.bindings) {
+    const pair = pairs.get(binding.invocation_key);
+    if (binding.invocation_key === null) check(binding.pid === binding.test_process_pid && workers.includes(binding.pid), "quality107_pid_binding_invalid");
+    else check(pair.before.root === binding.root && pair.before.test_process_pid === binding.test_process_pid && pair.before.id === binding.invocation
+      && pair.after.child_pid === binding.pid && pair.after.raw.some(value => value.path === path.posix.join(capsule.raw_workspace_subject_bindings[0].root, binding.raw.path) && value.sha256 === binding.raw.sha256), "quality107_pid_binding_invalid");
+    check(binding.url === capsule.raw_workspace_subject_url && binding.type === "workspace-source"
+      && path.posix.basename(binding.raw.path).startsWith("coverage-" + binding.pid + "-"), "quality107_raw_binding_invalid");
+  }
+  return { bindings, excluded, copied };
+}
+function quality107InputScope(receipt, hashFile, authority) {
+  if (receipt.input_scope === undefined) return null;
+  check(exact(receipt.input_scope, ["kind", "capsule"]) && receipt.input_scope.kind === "quality107-captured-producer-inputs/v1"
+    && same(receipt.input_scope.capsule, QUALITY107_INPUT_SCOPE_CAPSULE), "quality107_input_scope_invalid");
+  const capsule = parse(hashFile(receipt.input_scope.capsule));
+  const snapshot = parse(hashFile(capsule.tested_source_snapshot));
+  check(same({ head: snapshot.tested_source_snapshot_commit, queue: snapshot.original_queue, count: snapshot.source_input_count, other: snapshot.other_capsule_input_count, checked_out: snapshot.snapshot_was_checked_out, native: snapshot.native_acceptance_claim },
+    { head: capsule.real_tested_source_snapshot_head, queue: capsule.stage_queue, count: 420, other: 4, checked_out: false, native: false }), "quality107_source_scope_invalid");
+  const before = parse(hashFile(capsule.original_before)); const after = parse(hashFile(capsule.original_after)); const execution = parse(hashFile(capsule.original_execution));
+  check(exact(receipt, ["schema_version", "producer", "source_head", "tested_source_head", "started_at", "finished_at", "runner", "test_files", "source_inputs", "report", "actual_execution",
+    "input_snapshot_before", "input_snapshot_after", "coverage_artifacts", "raw_v8", "source_bindings", "coverage_only", "native_acceptance", "coverage_subject", "input_scope", ...(receipt.inheritance === undefined ? [] : ["inheritance"])]), "quality107_input_scope_invalid");
+  check(capsule.native_acceptance_claim === false && capsule.acceptance_claim === false && capsule.test_only === true
+    && receipt.coverage_only === true && receipt.native_acceptance === false && receipt.coverage_subject === capsule.subject.path
+    && receipt.tested_source_head === capsule.real_tested_source_snapshot_head && HEAD.test(receipt.tested_source_head), "quality107_native_authority_invalid");
+  check(same(before.project_inputs, after.project_inputs) && same(before.installed_dependencies, after.installed_dependencies)
+    && same(before.node, after.node) && same(before.environment, after.environment)
+    && same(before.project_inputs, capsule.role_partition.map(value => value.original)), "quality107_inputs_invalid");
+  const artifactPaths = new Set(capsule.role_partition.filter(value => value.role.startsWith("OUTER_PRODUCER_")).map(value => value.original.path));
+  check(same(receipt.source_inputs, capsule.project_inputs) && receipt.source_inputs.length === 423 && artifactPaths.size === 3, "quality107_inputs_invalid");
+  for (const row of capsule.role_partition) {
+    const bytes = hashFile({ path: row.original.snapshot, sha256: row.original.sha256 });
+    check(bytes.length === row.original.bytes, "quality107_inputs_invalid");
+    if (row.role === "IMMUTABLE_TESTED_SOURCE") check(bytes.equals(authority.readSource(receipt.tested_source_head, row.original.path)), "quality107_source_changed");
+  }
+  const tool = parse(hashFile(capsule.external_tool));
+  for (const dependency of before.installed_dependencies) check(hashFile({ path: dependency.snapshot, sha256: dependency.sha256 }).length === dependency.bytes, "quality107_tool_binding_invalid");
+  check(exact(tool, capsule.external_exact_keys) && hashFile(capsule.external_tool).equals(hashFile({ path: capsule.original_external_input.snapshot, sha256: capsule.original_external_input.sha256 }))
+    && before.node.sha256 === "27db838bb204ef7c21df2931f5656e4c8fb32e6e947f363a402b49714d32b5b1" && before.node_version === "v24.19.0", "quality107_tool_binding_invalid");
+  hashFile({ path: before.node.snapshot, sha256: before.node.sha256 });
+  check(hashFile({ path: capsule.safe_sdk_source_pin.snapshot, sha256: capsule.safe_sdk_source_pin.sha256 }).equals(authority.readSource(receipt.tested_source_head, capsule.safe_sdk_source_pin.path)), "quality107_tool_binding_invalid");
+  const edges = quality107Graph(before.project_inputs, hashFile);
+  const seeds = quality107ProducerSeeds(capsule, hashFile, execution);
+  check(same([...edges].sort(), [...before.import_edges].sort()) && same([...edges].sort(), [...capsule.producer_import_edges].sort())
+    && same(quality107Closure(seeds, edges, before.project_inputs.map(value => value.path)), before.project_inputs.map(value => value.path).sort()), "quality107_source_scope_invalid");
+  const required = quality107Closure(["package.json", "package-lock.json", ...execution.argv.slice(4)], edges);
+  check(same(required, capsule.mandatory_runtime_inputs), "quality107_source_scope_invalid");
+  const actual = parse(hashFile(receipt.actual_execution)); const normalizedBefore = parse(hashFile(receipt.input_snapshot_before)); const normalizedAfter = parse(hashFile(receipt.input_snapshot_after));
+  check(receipt.runner === "node-tap" && receipt.source_head === before.context_head && before.context_head === after.context_head
+    && receipt.started_at === execution.started_at && receipt.finished_at === execution.finished_at && same(receipt.test_files, execution.argv.slice(4))
+    && same(receipt.report, capsule.report) && same(receipt.raw_v8, execution.raw) && same(receipt.coverage_artifacts, [capsule.coverage])
+    && same(receipt.source_bindings, [{ id: capsule.subject.path, url: capsule.raw_workspace_subject_url, sha256: capsule.subject.sha256 }])
+    && same(actual.argv, execution.argv) && actual.pid === execution.pid && actual.signal === execution.signal && actual.native_device_operations === 0 && same(actual.original_execution, capsule.original_execution)
+    && same(actual.input_scope, receipt.input_scope) && same(normalizedBefore.input_scope, receipt.input_scope) && same(normalizedAfter.input_scope, receipt.input_scope)
+    && same(normalizedBefore.original_observation, capsule.original_before) && same(normalizedAfter.original_observation, capsule.original_after)
+    && normalizedBefore.recorded_at === before.captured_at && normalizedAfter.recorded_at === after.captured_at, "quality107_execution_binding_invalid");
+  check(same(execution.counts, { tests: 107, pass: 107, fail: 0, cancelled: 0, skipped: 0, todo: 0 }) && execution.stable === true
+    && timestamp(before.captured_at, authority.now) <= Date.parse(execution.started_at) && timestamp(after.captured_at, authority.now) >= Date.parse(execution.finished_at), "quality107_execution_binding_invalid");
+  const witness = quality107Witnesses(capsule, hashFile, authority, execution);
+  return { capsule, required, artifactPaths, witness };
+}
+export const HOST_FIXTURE_CAPSULE = Object.freeze({ path: "artifacts/native/personal-closeout-20261027/host-fixture-capsules/producer-guard-relocation/binding.json", sha256: "2ef44419d1674863ae24b92a8da0695ad8ea4ac7c82a123f0bf728da8ddb8a17" });
+export const HOST_FIXTURE_CAPSULE_CLEAN = Object.freeze({ path: "artifacts/native/personal-closeout-20261027/host-fixture-capsules/clean-privacy-posix/binding.json", sha256: "9d214cb9af66ed81262d9448090a0973fb3214e4fcea02578a887f73fc84e69c" });
+export const HOST_FIXTURE_CAPSULE_FINAL = Object.freeze({ path: "artifacts/native/personal-closeout-20261027/host-fixture-capsules/producer-snapshot-final/binding.json", sha256: "571dd443d28b3c582ad7a00dcf9d2e74f83aac2ba1c061f92248ad060fcf71e4" });
+function hostFixtureCapsule(receipt, hashFile) {
+  check(exact(receipt.artifact_inputs, ["kind", "capsule"]) && [HOST_FIXTURE_CAPSULE, HOST_FIXTURE_CAPSULE_CLEAN, HOST_FIXTURE_CAPSULE_FINAL].some(value => same(receipt.artifact_inputs.capsule, value)), "artifact_input_scope_invalid");
+  const capsule = parse(hashFile(receipt.artifact_inputs.capsule)); const before = parse(hashFile(capsule.original_before)); const after = parse(hashFile(capsule.original_after)); const execution = parse(hashFile(capsule.original_execution));
+  check(capsule.kind === "host-fixture-data/v1" && capsule.test_only === true && capsule.native_acceptance_claim === false
+    && same(capsule.artifacts.map(value => value.source_input_path).sort(), ["artifacts/native/v1.2-acceptance/build.json", "artifacts/native/v1.2-acceptance/git-execution-origin.json"])
+    && same(before.project_inputs, after.project_inputs) && same(receipt.source_inputs, before.project_inputs.map(({ path, sha256 }) => ({ path, sha256 })))
+    && before.project_input_sha256 === jsonSha(before.project_inputs) && after.project_input_sha256 === jsonSha(after.project_inputs)
+    && before.installed_dependency_sha256 === jsonSha(before.installed_dependencies) && after.installed_dependency_sha256 === jsonSha(after.installed_dependencies)
+    && same(before.installed_dependencies, after.installed_dependencies) && same(before.node, after.node) && same(before.environment, after.environment)
+    && execution.source_context_head === receipt.source_head && execution.exit_code === 0 && execution.before_after_inputs_equal === true
+    && same(execution.test_files, receipt.test_files) && same(execution.tests_report, receipt.report), "host_fixture_capsule_invalid");
+  const paths = new Set();
+  for (const value of capsule.artifacts) {
+    const original = before.project_inputs.find(input => input.path === value.source_input_path);
+    check(original && original.sha256 === value.artifact.sha256 && original.sha256 === value.original_content_snapshot.sha256
+      && original.content_snapshot === value.original_content_snapshot.path
+      && hashFile(value.artifact).equals(hashFile(value.original_content_snapshot)), "host_fixture_capsule_invalid");
+    paths.add(value.source_input_path);
+  }
+  return paths;
+}
+function pinnedGarminArtifactInputs(receipt, hashFile, authority, testedHead, reportSha) {
+  if (receipt.artifact_inputs === undefined) return new Set();
+  if (receipt.artifact_inputs.kind === "host-fixture-data/v1") return hostFixtureCapsule(receipt, hashFile);
+  const artifact = receipt.artifact_inputs; const lockPath = "modules/garmin-connect/python/garmin-python-lock.json";
+  check(exact(artifact, ["kind", "lock_path", "artifacts"]) && artifact.kind === "pinned-garmin-cache/v1" && artifact.lock_path === lockPath
+    && Array.isArray(artifact.artifacts) && artifact.artifacts.length === 15 && unique(artifact.artifacts.map(value => value.path)), "artifact_input_scope_invalid");
+  const lockBytes = authority.readSource(testedHead, lockPath); const lock = parse(lockBytes);
+  check(lockBytes.equals(authority.readSource(authority.source.head, lockPath)) && Array.isArray(lock.packages) && lock.packages.length === 15
+    && receipt.source_inputs.some(input => input.path === lockPath && input.sha256 === sha(lockBytes)), "artifact_input_lock_changed");
+  const expected = lock.packages.map(value => ({ path: path.posix.join(path.posix.dirname(lockPath), "garmin-python-artifacts", value.artifact.filename), sha256: value.artifact.sha256 }));
+  check(isDeepStrictEqual([...artifact.artifacts].sort((a, b) => a.path.localeCompare(b.path)), expected.sort((a, b) => a.path.localeCompare(b.path))), "artifact_input_scope_invalid");
+  const before = parse(hashFile(receipt.input_snapshot_before)); const after = parse(hashFile(receipt.input_snapshot_after));
+  check(before.execution_context_head === receipt.source_head && after.execution_context_head === receipt.source_head
+    && same(before.source_inputs, receipt.source_inputs) && same(after.source_inputs, receipt.source_inputs) && after.report_sha256 === reportSha, "tested_snapshot_invalid");
+  for (const binding of artifact.artifacts) {
+    check(receipt.source_inputs.some(input => same(input, binding)), "artifact_input_scope_invalid"); hashFile(binding);
+  }
+  return new Set(artifact.artifacts.map(value => value.path));
+}
+export const JEST_EXECUTION_INTERVAL_ORIGINALS = Object.freeze({
+  producer: { path: "artifacts/native/personal-closeout-20261027/remaining-ts-helper-coverage/run.mjs", sha256: "d13e5c8057d205a0979538b5d49708e90e9853f332183abea425885a50327b79" },
+  scope: { path: "artifacts/native/personal-closeout-20261027/remaining-ts-helper-coverage/scope.json", sha256: "4514beebdf7a8233294ac5dac3758f5a3cb5eccc113f7183336a02077778baa2" },
+  before: { path: "artifacts/native/personal-closeout-20261027/remaining-ts-helper-coverage/before-inputs.json", sha256: "0afe6702a97671a9328ae52c8cf3b8ae66d8749637c72c66cf0b3e0f4ef98f96" },
+  after: { path: "artifacts/native/personal-closeout-20261027/remaining-ts-helper-coverage/after-inputs.json", sha256: "7ff62c151b0515f6c92119fff9519962928dcfda9c8cc6ed6a6e4c144dbfe879" },
+  jest_report: { path: "artifacts/native/personal-closeout-20261027/remaining-ts-helper-coverage/jest-results.json", sha256: "67280b8d734c7b0c96c46adf6a5b1e9d1af65d284afc9597c6c7a3cd7abf3cfd" },
+  final_report: { path: "artifacts/native/personal-closeout-20261027/remaining-ts-helper-coverage/FINAL-REPORT.json", sha256: "9900df5a201ac33d06445be2c43d3abcc2940e18b8bf6b9b173adadc1066e69b" },
+});
+function jestExecutionInterval(receipt, actual, hashFile, authority) {
+  check(receipt.runner === "jest" && receipt.timestamp_kind === "JEST_EXECUTION_INTERVAL" && actual.producer === "personal-closeout-jest-result-interval/v1"
+    && actual.process_wall_time_claimed === false && actual.producer_binding_phase === "AFTER_EXECUTION_ONLY"
+    && isDeepStrictEqual(actual.interval_binding, JEST_EXECUTION_INTERVAL_ORIGINALS) && same(receipt.report, actual.interval_binding.jest_report), "jest_interval_binding_invalid");
+  const refs = actual.interval_binding; const producer = hashFile(refs.producer).toString("utf8"); const scope = parse(hashFile(refs.scope));
+  const before = parse(hashFile(refs.before)); const after = parse(hashFile(refs.after)); const raw = parse(hashFile(refs.jest_report)); const report = parse(hashFile(refs.final_report));
+  check(producer.indexOf("const before = snapshot('before')") < producer.indexOf("const execution = spawnSync(node, args")
+    && producer.indexOf("const execution = spawnSync(node, args") < producer.indexOf("const after = snapshot('after')"), "jest_interval_source_invalid");
+  check(raw.success === true && raw.wasInterrupted === false && raw.numTotalTests === 105 && raw.numPassedTests === 105 && raw.numFailedTests === 0
+    && raw.numPendingTests === 0 && raw.numTodoTests === 0 && raw.numTotalTestSuites === 10 && raw.testResults.length === 10
+    && Number.isSafeInteger(raw.startTime) && raw.testResults.every(row => Number.isSafeInteger(row.startTime) && Number.isSafeInteger(row.endTime)
+      && row.startTime >= raw.startTime && row.endTime >= row.startTime), "jest_interval_results_invalid");
+  const end = Math.max(...raw.testResults.map(row => row.endTime));
+  check(actual.started_at === new Date(raw.startTime).toISOString() && actual.finished_at === new Date(end).toISOString()
+    && timestamp(before.captured_at, authority.now) <= raw.startTime && end <= timestamp(after.captured_at, authority.now), "jest_interval_time_invalid");
+  check(before.source_context_head === receipt.source_head && after.source_context_head === receipt.source_head
+    && same(report.source_context_heads, { before: before.source_context_head, after: after.source_context_head })
+    && same(before.project_inputs, after.project_inputs) && before.project_input_sha256 === jsonSha(before.project_inputs)
+    && after.project_input_sha256 === jsonSha(after.project_inputs)
+    && same(receipt.source_inputs, before.project_inputs.map(({ path, sha256 }) => ({ path, sha256 })))
+    && before.unresolved_relative_inputs.length === 0 && after.unresolved_relative_inputs.length === 0, "jest_interval_inputs_invalid");
+  check(before.installed_dependency_sha256 === jsonSha(before.installed_dependencies) && after.installed_dependency_sha256 === jsonSha(after.installed_dependencies)
+    && same(before.installed_dependencies, after.installed_dependencies) && before.installed_dependencies.length === 77239
+    && same(before.node, after.node) && before.node.version === "v24.19.0" && before.node.sha256 === "27db838bb204ef7c21df2931f5656e4c8fb32e6e947f363a402b49714d32b5b1"
+    && same(before.environment, after.environment) && same(before.environment, scope.environment) && same(before.config_presence, after.config_presence), "jest_interval_environment_invalid");
+  check(report.status === "PASS" && report.acceptance_claim === false && report.execution.exit_code === 0 && report.before_after_inputs_equal === true
+    && same(report.tests, scope.tests) && same(scope.tests, receipt.test_files) && same(report.args, scope.args) && same(actual.argv, [scope.node, ...scope.args])
+    && same(report.actual_tests, { passed: 105, failed: 0, skipped: 0, suites: 10 })
+    && [refs.before, refs.after, refs.jest_report].every(ref => report.artifacts.some(value => same(value, ref)))
+    && report.producer_source.path === refs.producer.path && report.producer_source.sha256 === refs.producer.sha256
+    && report.producer_source.binding.includes("captured after execution") && same(report.scope_artifact, refs.scope), "jest_interval_report_invalid");
+}
+export const FAULT_EXECUTION_ORIGINAL = Object.freeze({ path: "artifacts/native/personal-closeout-20261027/verifier-coverage/fault-current-final-execution/execution.json", sha256: "125ab4ef7058723ef80de7d54c9390f1c36fcc102992f9719bd2a5148a4f2ba2" });
+export const COLLECTOR_PLATFORM_SKIPS = Object.freeze({ path: "artifacts/native/personal-closeout-20261027/verifier-coverage/collector-current-final-execution/execution.json", sha256: "7953630a9deca54e7f3bac73ff783803d6c18d9ab3b5ff281b86c8c9e0e20876" });
+function collectorPlatformSkips(receipt, hashFile, authority) {
+  check(same(receipt.platform_skips, COLLECTOR_PLATFORM_SKIPS), "platform_skip_scope_invalid");
+  const proof = parse(hashFile(receipt.platform_skips)); const root = authority.root ?? process.cwd();
+  const local = value => ({ path: path.relative(root, value.path).split(path.sep).join("/"), sha256: value.sha256 });
+  const before = parse(hashFile(local(proof.before))); const after = parse(hashFile(local(proof.after))); const executed = proof.actual_execution;
+  const files = before.source_inputs.map(local); const tests = executed.argv.filter(value => value.endsWith(".test.mjs"));
+  check(proof.native_acceptance_authority === false && proof.skipped_requirement_assertions_authorized === false && proof.all_inputs_unchanged === true
+    && proof.platform_skips.kind === "coverage-only-platform-skips/v1" && proof.platform_skips.actual_platform === "darwin"
+    && before.platform === "darwin" && before.platform === after.platform && executed.platform === before.platform
+    && before.arch === "arm64" && before.arch === after.arch && executed.arch === before.arch
+    && before.node_version === "v24.19.0" && before.node_version === after.node_version && executed.node_version === before.node_version
+    && executed.exit_code === 0 && executed.signal === null && same(files, receipt.source_inputs) && same(before.source_inputs, after.source_inputs)
+    && same(tests, receipt.test_files) && same(local(proof.test_log), receipt.report)
+    && before.executable_sha256 === "27db838bb204ef7c21df2931f5656e4c8fb32e6e947f363a402b49714d32b5b1"
+    && before.executable_sha256 === after.executable_sha256, "platform_skip_evidence_invalid");
+  check(timestamp(before.captured_at, authority.now) <= timestamp(executed.started_at, authority.now)
+    && timestamp(after.captured_at, authority.now) >= timestamp(executed.finished_at, authority.now), "platform_skip_evidence_invalid");
+  if (receipt.timestamp_kind === undefined) check(receipt.started_at === executed.started_at && receipt.finished_at === executed.finished_at, "platform_skip_evidence_invalid");
+  const testedHead = receipt.tested_source_head ?? receipt.source_head; const cases = proof.platform_skips.cases;
+  check(cases.length === 3 && unique(cases.map(value => value.title)), "platform_skip_scope_invalid");
+  for (const value of cases) {
+    const bytes = authority.readSource(testedHead, value.test_file); const text = bytes.toString("utf8");
+    check(value.test_file === "scripts/testing/closeout-collector-scheduler.test.mjs" && sha(bytes) === value.test_source_sha256
+      && files.some(input => input.path === value.test_file && input.sha256 === value.test_source_sha256)
+      && value.guard === 'process.platform !== "linux"' && value.actual_platform === "darwin" && text.includes(value.title) && text.includes(value.guard), "platform_skip_source_invalid");
+  }
+  return { before, after, titles: new Set(cases.map(value => value.title)) };
+}
+function recordedFaultExecution(receipt, actual, hashFile, authority) {
+  check(same(actual.original_execution, FAULT_EXECUTION_ORIGINAL), "fixture_execution_invalid");
+  const original = parse(hashFile(actual.original_execution)); const root = authority.root ?? process.cwd();
+  const local = value => ({ path: path.relative(root, value.path).split(path.sep).join("/"), sha256: value.sha256 });
+  const before = parse(hashFile(local(original.before))); const after = parse(hashFile(local(original.after))); const executed = original.actual_execution;
+  const inputs = before.source_inputs.map(value => local(value));
+  check(original.all_inputs_unchanged === true && original.native_acceptance_authority === false && original.subject_override_forbidden === true
+    && executed.started_at === actual.started_at && executed.finished_at === actual.finished_at && executed.exit_code === 0 && executed.signal === null
+    && same(actual.argv, [executed.executable, ...executed.argv]) && same(inputs, receipt.source_inputs)
+    && same(before.source_inputs, after.source_inputs) && before.source_head === receipt.source_head && after.source_head === receipt.source_head
+    && before.executable_sha256 === "27db838bb204ef7c21df2931f5656e4c8fb32e6e947f363a402b49714d32b5b1" && before.executable_sha256 === after.executable_sha256
+    && before.node_version === "v24.19.0" && after.node_version === before.node_version && before.platform === "darwin" && before.platform === after.platform
+    && same(receipt.report, local(original.test_log)) && isDeepStrictEqual(receipt.raw_v8, original.raw_streams.map(local)), "fixture_execution_invalid");
+  check(timestamp(before.captured_at, authority.now) <= Date.parse(actual.started_at) && timestamp(after.captured_at, authority.now) >= Date.parse(actual.finished_at), "fixture_execution_invalid");
+}
+function actualHostExecution(receipt, hashFile, reportSha, authority) {
   const actual = parse(hashFile(receipt.actual_execution));
   check(object(actual) && actual.schema_version === 1 && actual.exit_code === 0
     && actual.execution_context_head === receipt.source_head && actual.started_at === receipt.started_at && actual.finished_at === receipt.finished_at
     && same(actual.test_files, receipt.test_files) && same(actual.source_inputs, receipt.source_inputs)
     && actual.report_sha256 === reportSha && Array.isArray(actual.changed_inputs) && actual.changed_inputs.length === 0, "host_actual_execution_invalid");
+  if (actual.timestamp_kind !== undefined) {
+    if (actual.timestamp_kind === "OBSERVED_CAPTURE_BRACKET") {
+      const original = collectorPlatformSkips(receipt, hashFile, authority);
+      check(receipt.timestamp_kind === "OBSERVED_CAPTURE_BRACKET" && actual.process_wall_time_claimed === false
+        && actual.started_at === original.before.captured_at && actual.finished_at === original.after.captured_at, "platform_skip_evidence_invalid");
+    } else { check(actual.timestamp_kind === "JEST_EXECUTION_INTERVAL", "jest_interval_binding_invalid"); jestExecutionInterval(receipt, actual, hashFile, authority); }
+  } else check(receipt.timestamp_kind === undefined, "jest_interval_binding_invalid");
+  if (receipt.fixture_overrides !== undefined) recordedFaultExecution(receipt, actual, hashFile, authority);
   return actual;
 }
 function reconciledReportSha(receipt, hashFile, authority, start, end) {
@@ -98,7 +616,7 @@ function reconciledReportSha(receipt, hashFile, authority, start, end) {
   check(receipt.runner === "jest" && exact(link, ["kind", "log", "json"]) && link.kind === "jest-log-json"
     && same(link.json, receipt.report), "report_reconciliation_invalid");
   const log = hashFile(link.log).toString("utf8"); const raw = parse(hashFile(link.json));
-  const actual = actualHostExecution(receipt, hashFile, link.log.sha256);
+  const actual = actualHostExecution(receipt, hashFile, link.log.sha256, authority);
   const root = authority.root ?? process.cwd();
   check(Array.isArray(actual.argv) && actual.argv.every(value => typeof value === "string") && actual.argv.includes("--json"), "report_argv_invalid");
   const outputs = actual.argv.flatMap((value, index) => value.startsWith("--outputFile=") ? [value.slice(13)]
@@ -120,14 +638,27 @@ function reconciledReportSha(receipt, hashFile, authority, start, end) {
       && suite.startTime >= raw.startTime && suite.endTime >= suite.startTime && suite.endTime <= end), "report_time_invalid");
   return link.log.sha256;
 }
-function hostInputScope(receipt, hashFile, authority, testedHead, required, reportSha) {
+function hostInputScope(receipt, hashFile, authority, testedHead, required, reportSha, artifactPaths, quality107, producerScope) {
   const extras = receipt.source_inputs.filter(input => !required.includes(input.path));
   if (extras.length === 0) return;
-  const actual = actualHostExecution(receipt, hashFile, reportSha);
+  const actual = actualHostExecution(receipt, hashFile, reportSha, authority);
   const before = parse(hashFile(receipt.input_snapshot_before)); const after = parse(hashFile(receipt.input_snapshot_after));
   check(before.execution_context_head === receipt.source_head && after.execution_context_head === receipt.source_head
     && same(before.source_inputs, receipt.source_inputs) && same(after.source_inputs, receipt.source_inputs)
     && after.report_sha256 === reportSha, "tested_snapshot_invalid");
+  if (producerScope !== null) {
+    check(VERIFIED_PRODUCER_SCOPES.has(producerScope) && same(producerScope.source_inputs, receipt.source_inputs)
+      && same(producerScope.required_runtime, required) && producerScope.roles.length === receipt.source_inputs.length, "producer_capture_scope_invalid"); return;
+  }
+  if (quality107 !== null) {
+    check(required.every(file => receipt.source_inputs.some(input => input.path === file))
+      && extras.every(input => quality107.capsule.project_inputs.some(value => same(value, input))), "quality107_source_scope_invalid"); return;
+  }
+  // The fixed helper producer explicitly captured all assets/native variants.
+  // Its complete observed246-row list is validated above; never project it away.
+  if (actual.timestamp_kind === "JEST_EXECUTION_INTERVAL") return;
+  if (actual.timestamp_kind === "OBSERVED_CAPTURE_BRACKET") return;
+  if (receipt.artifact_inputs?.kind === "host-fixture-data/v1") return;
   check(Array.isArray(actual.argv) && actual.argv.every(value => typeof value === "string"), "host_input_scope_invalid");
   const root = authority.root ?? process.cwd();
   const runners = actual.argv.slice(1).map(value => path.relative(root, path.resolve(root, value)).split(path.sep).join("/"))
@@ -138,10 +669,108 @@ function hostInputScope(receipt, hashFile, authority, testedHead, required, repo
   for (const runner of runners) for (const file of authority.sourceClosure(testedHead, [runner])) eligible.add(file);
   const literals = new Set();
   for (const file of eligible) {
-    const text = authority.readSource(testedHead, file).toString("utf8");
+    const text = (artifactPaths.has(file) ? hashFile(receipt.source_inputs.find(value => value.path === file)) : authority.readSource(testedHead, file)).toString("utf8");
     for (const match of text.matchAll(/(["'])([^"'\r\n]+)\1/gu)) if (safePath(match[2])) literals.add(match[2]);
   }
-  check(extras.every(input => eligible.has(input.path) || literals.has(input.path)), "source_scope_invalid");
+  check(extras.every(input => artifactPaths.has(input.path) || eligible.has(input.path) || literals.has(input.path)), "source_scope_invalid");
+}
+function inheritedHostInputs(receipt, inherit, required, hashFile, authority, artifactPaths, quality107 = null, producerScope = null) {
+  const currentRequired = quality107 === null ? hostRequiredClosure(receipt, authority, authority.source.head, generatedTestContext(receipt, hashFile, authority, authority.source.head)) : quality107.required;
+  check(same([...required].sort(), [...currentRequired].sort()), "host_runtime_scope_changed");
+  const entrypoints = producerScope === null ? [] : producerScope.roles.filter(row => row.role === "STATIC_RUNTIME_ENTRYPOINT").map(row => row.path);
+  const oldEntrypoints = entrypoints.length === 0 ? [] : authority.sourceClosure(receipt.tested_source_head ?? receipt.source_head, entrypoints);
+  const currentEntrypoints = entrypoints.length === 0 ? [] : authority.sourceClosure(authority.source.head, entrypoints);
+  check(same([...oldEntrypoints].sort(), [...currentEntrypoints].sort()), "host_runtime_scope_changed");
+  const compatibleRuntime = new Set([...currentRequired, ...currentEntrypoints]);
+  const replacements = inherit.replacements ?? [];
+  check(Array.isArray(replacements) && unique(replacements.map(value => value.id)), "host_input_replacement_invalid");
+  const changed = inherit.inputs.filter(input => !artifactPaths.has(input.path) && (producerScope === null || compatibleRuntime.has(input.path))
+    && sha(authority.readSource(authority.source.head, input.path)) !== input.sha256);
+  check(replacements.every(value => value.id === "scripts/phase20-subprocess-coverage.mjs" && changed.some(input => input.path === value.id)
+    && !currentRequired.includes(value.id) && ["raw-v8-coverage", "composed-coverage"].includes(value.kind)), "host_input_replacement_invalid");
+  for (const input of changed) {
+    const replacement = replacements.find(value => value.id === input.path);
+    check(replacement && !required.includes(input.path) && coverageProof(replacement, hashFile, authority), "host_input_replacement_invalid");
+  }
+}
+export const COVERAGE_FIXTURE_OVERRIDE_INVENTORY = Object.freeze({ path: "artifacts/native/personal-closeout-20261027/verifier-coverage/fault-current-final-execution/fixture-overrides-inventory.json", sha256: "5f7ca2cbce58e5df751085e579d072194969b0bda1b0e22b7e111986260e277f" });
+const FIXTURE_DEPENDENCIES = new Set(["src/testing/v12NativeAcceptanceProductRegistry.ts", "scripts/v12-posix-process-tree.mjs", "scripts/v12-artifact-privacy.mjs",
+  "scripts/v12-atomic-shard-publication.mjs", "scripts/run-v12-maestro.mjs", "scripts/v12-native-execution-origin.mjs", "scripts/v12-rollback-evidence.mjs"]);
+export const GENERATED_PRIVACY_TEST = Object.freeze({ path: "artifacts/native/personal-closeout-20261027/retained-node-corrected-proof/clean-privacy-posix/test-fragment-witness.json", sha256: "37cd628d8b4c9ac6639d6c1fe762587734189929641c918163651e1f3673ebf8" });
+function generatedTestContext(receipt, hashFile, authority, head) {
+  const result = { tests: new Set(), artifactPaths: new Set() };
+  if (receipt.generated_tests === undefined) return result;
+  check(exact(receipt.generated_tests, ["kind", "witness"]) && receipt.generated_tests.kind === "verbatim-test-fragments/v1"
+    && same(receipt.generated_tests.witness, GENERATED_PRIVACY_TEST), "generated_test_invalid");
+  const witness = parse(hashFile(receipt.generated_tests.witness)); const source = authority.readSource(head, witness.original_test_file);
+  check(sha(source) === witness.original_sha256 && source.equals(authority.readSource(authority.source.head, witness.original_test_file))
+    && witness.producer_tests_executed === false && witness.fragments.length === 3 && receipt.test_files.includes(witness.generated_test_file), "generated_test_invalid");
+  const text = source.toString("utf8"); const fragments = witness.fragments.map(value => {
+    check(Number.isSafeInteger(value.start) && Number.isSafeInteger(value.end) && value.start >= 0 && value.end > value.start && value.end <= text.length
+      && value.copied_verbatim === true && sha(text.slice(value.start, value.end)) === value.original_fragment_sha256, "generated_test_invalid");
+    return text.slice(value.start, value.end);
+  });
+  const prefix = "import assert from 'node:assert/strict';\nimport test from 'node:test';\nimport {assertV12ArtifactPrivacySafe} from '../../../../../scripts/v12-artifact-privacy.mjs';\n\n";
+  const generated = hashFile({ path: witness.generated_test_file, sha256: witness.generated_sha256 });
+  check(generated.toString("utf8") === prefix + fragments.join("\n\n") + "\n"
+    && receipt.source_inputs.some(value => value.path === witness.generated_test_file && value.sha256 === witness.generated_sha256)
+    && receipt.source_inputs.some(value => same(value, receipt.generated_tests.witness)), "generated_test_invalid");
+  result.tests.add(witness.generated_test_file); result.artifactPaths.add(witness.generated_test_file); result.artifactPaths.add(receipt.generated_tests.witness.path);
+  return result;
+}
+function hostRequiredClosure(receipt, authority, head, generated) {
+  const sourceTests = receipt.test_files.filter(file => !generated.tests.has(file));
+  if (generated.tests.size > 0) sourceTests.push("scripts/v12-artifact-privacy.mjs");
+  return [...new Set([...authority.sourceClosure(head, sourceTests), ...generated.tests])].sort();
+}
+function coverageFixtureOverrides(receipt, hashFile, authority, testedHead, start, end) {
+  const context = { artifactPaths: new Set(), subjectUrls: new Map() };
+  if (receipt.fixture_overrides === undefined) return context;
+  check(exact(receipt.fixture_overrides, ["kind", "inventory"]) && receipt.fixture_overrides.kind === "coverage-only-dependency-fault/v1"
+    && same(receipt.fixture_overrides.inventory, COVERAGE_FIXTURE_OVERRIDE_INVENTORY), "fixture_override_scope_invalid");
+  const inventory = parse(hashFile(receipt.fixture_overrides.inventory));
+  check(inventory.kind === "coverage-only-dependency-fault/v1" && Array.isArray(inventory.rows) && inventory.rows.length === 23
+    && unique(inventory.rows.map(value => value.path)), "fixture_override_scope_invalid");
+  const root = authority.root ?? process.cwd();
+  const readAbsolute = (file, digest) => {
+    const relative = path.relative(root, file).split(path.sep).join("/");
+    check(safePath(relative) && relative.startsWith("artifacts/native/personal-closeout-20261027/verifier-coverage/"), "fixture_override_path_invalid");
+    return hashFile({ path: relative, sha256: digest });
+  };
+  for (const row of inventory.rows) {
+    const proofPath = path.relative(root, row.path).split(path.sep).join("/");
+    const proof = parse(readAbsolute(row.path, row.sha256));
+    check(proof.schema_version === 1 && proof.evidence_type === "HOST_COVERAGE_ONLY_FAULT_INJECTION" && proof.test_only === true && proof.production_acceptance_authority === false
+      && proof.native_acceptance_proof === false && proof.full_dependency_equality_claimed === false && proof.subject_override_forbidden === true
+      && proof.actual_outcome === "rejected_as_asserted" && receipt.test_files.includes(proof.test.repo_path)
+      && ["scripts/run-v12-maestro.mjs", "scripts/verify-v12-native-evidence.mjs", "scripts/phase20-subprocess-coverage.mjs"].includes(proof.subject.repo_path), "fixture_override_scope_invalid");
+    const subjectBytes = authority.readSource(testedHead, proof.subject.repo_path);
+    check(sha(subjectBytes) === proof.subject.current_source_sha256 && sha(subjectBytes) === proof.subject.fixture_source_sha256
+      && subjectBytes.equals(authority.readSource(authority.source.head, proof.subject.repo_path))
+      && sha(authority.readSource(receipt.source_head, proof.subject.repo_path)) === proof.subject.git_source_sha256
+      && sha(authority.readSource(testedHead, proof.test.repo_path)) === proof.test.source_sha256
+      && receipt.source_inputs.some(value => value.path === proof.subject.repo_path && value.sha256 === proof.subject.current_source_sha256), "fixture_subject_changed");
+    const fixtureSubject = path.join(root, path.posix.dirname(proofPath), proof.subject.repo_path);
+    readAbsolute(fixtureSubject, proof.subject.fixture_source_sha256);
+    if (!context.subjectUrls.has(proof.subject.repo_path)) context.subjectUrls.set(proof.subject.repo_path, new Set());
+    context.subjectUrls.get(proof.subject.repo_path).add(pathToFileURL(fixtureSubject).href);
+    check(Array.isArray(proof.overrides) && proof.overrides.length > 0 && unique(proof.overrides.map(value => value.repo_path)), "fixture_override_scope_invalid");
+    for (const override of proof.overrides) {
+      check(FIXTURE_DEPENDENCIES.has(override.repo_path) && override.repo_path !== proof.subject.repo_path
+        && sha(authority.readSource(testedHead, override.repo_path)) === override.current_source_sha256
+        && sha(authority.readSource(receipt.source_head, override.repo_path)) === override.git_source_sha256
+        && receipt.source_inputs.some(value => value.path === override.repo_path && value.sha256 === override.current_source_sha256), "fixture_override_dependency_invalid");
+      readAbsolute(override.fixture_artifact_path, override.fixture_artifact_sha256);
+    }
+    const before = parse(readAbsolute(proof.before.path, proof.before.sha256)); const after = parse(readAbsolute(proof.after.path, proof.after.sha256));
+    const material = value => ({ subject: value.subject, test: value.test, overrides: value.overrides });
+    check(isDeepStrictEqual(material(before), material(proof)) && isDeepStrictEqual(material(after), material(proof))
+      && timestamp(before.captured_at, authority.now) >= start && timestamp(after.captured_at, authority.now) <= end
+      && timestamp(after.captured_at, authority.now) >= timestamp(before.captured_at, authority.now), "fixture_override_snapshot_invalid");
+  }
+  const prefix = "artifacts/native/personal-closeout-20261027/verifier-coverage/frozen-product-registry-inputs/";
+  for (const input of receipt.source_inputs.filter(value => value.path.startsWith(prefix))) { hashFile(input); context.artifactPaths.add(input.path); }
+  return context;
 }
 function hostExecution(binding, hashFile, authority) {
   const receipt = parse(hashFile(binding));
@@ -151,9 +780,13 @@ function hostExecution(binding, hashFile, authority) {
     && receipt.test_files.every(safePath), "host_execution_invalid");
   const start = timestamp(receipt.started_at, authority.now); const end = timestamp(receipt.finished_at, authority.now);
   check(end >= start, "timestamp_invalid");
+  const quality107 = quality107InputScope(receipt, hashFile, authority);
   const executionReportSha = reconciledReportSha(receipt, hashFile, authority, start, end);
+  if (receipt.actual_execution !== undefined) actualHostExecution(receipt, hashFile, executionReportSha, authority);
   const testedHead = receipt.tested_source_head ?? receipt.source_head;
   check(HEAD.test(testedHead), "host_execution_invalid");
+  const fixtureContext = coverageFixtureOverrides(receipt, hashFile, authority, testedHead, start, end);
+  const generated = generatedTestContext(receipt, hashFile, authority, testedHead);
   if (receipt.tested_source_head !== undefined) {
     const before = parse(hashFile(receipt.input_snapshot_before)); const after = parse(hashFile(receipt.input_snapshot_after));
     check(before.execution_context_head === receipt.source_head && after.execution_context_head === receipt.source_head
@@ -161,14 +794,26 @@ function hostExecution(binding, hashFile, authority) {
       && after.report_sha256 === executionReportSha, "tested_snapshot_invalid");
     authority.readSource(receipt.source_head, "package.json");
   }
-  const required = authority.sourceClosure(testedHead, receipt.test_files);
-  proofInputs(receipt.source_inputs, testedHead, authority, required);
-  hostInputScope(receipt, hashFile, authority, testedHead, required, executionReportSha);
+  const required = quality107 === null ? hostRequiredClosure(receipt, authority, testedHead, generated) : quality107.required;
+  let producerScope = null;
+  if (receipt.producer_capture_scope !== undefined) {
+    check(ROOT_PRODUCER_CAPABILITIES.has(authority.verifyProducerCaptureScope) && receipt.input_scope === undefined, "producer_capture_authority_invalid");
+    producerScope = authority.verifyProducerCaptureScope(receipt.producer_capture_scope, receipt, { testedHead, requiredRuntime: required, reportSha: executionReportSha, start, end });
+    check(VERIFIED_PRODUCER_SCOPES.has(producerScope) && same(producerScope.binding, receipt.producer_capture_scope)
+      && same(producerScope.source_inputs, receipt.source_inputs) && same(producerScope.required_runtime, required), "producer_capture_scope_invalid");
+  }
+  const artifactPaths = pinnedGarminArtifactInputs(receipt, hashFile, authority, testedHead, executionReportSha);
+  for (const file of fixtureContext.artifactPaths) artifactPaths.add(file);
+  for (const file of generated.artifactPaths) artifactPaths.add(file);
+  for (const file of quality107?.artifactPaths ?? []) artifactPaths.add(file);
+  for (const file of producerScope?.metadata_paths ?? []) artifactPaths.add(file);
+  proofInputs(receipt.source_inputs, testedHead, authority, required, artifactPaths);
+  hostInputScope(receipt, hashFile, authority, testedHead, required, executionReportSha, artifactPaths, quality107, producerScope);
   if (testedHead !== authority.source.head) {
     const inherit = receipt.inheritance;
-    check(exact(inherit, ["source_head", "current_head", "ledger", "inputs"]) && inherit.source_head === testedHead
+    check(exact(inherit, ["source_head", "current_head", "ledger", "inputs", ...(inherit?.replacements === undefined ? [] : ["replacements"])]) && inherit.source_head === testedHead
       && inherit.current_head === authority.source.head && same(inherit.inputs, receipt.source_inputs), "inheritance_invalid");
-    proofInputs(inherit.inputs, authority.source.head, authority, required);
+    inheritedHostInputs(receipt, inherit, required, hashFile, authority, artifactPaths, quality107, producerScope);
     const ledger = parse(hashFile(inherit.ledger));
     check(object(ledger) && ledger.producer === "personal-closeout-retained-host-ledger/v1"
       && ledger.source_head === receipt.source_head && ledger.execution_sha256 === jsonSha({ ...receipt, inheritance: null })
@@ -192,10 +837,23 @@ function hostExecution(binding, hashFile, authority) {
     const text = rawBytes.toString("utf8");
     const plan = /^1\.\.(\d+)$/mu.exec(text);
     const cases = [...text.matchAll(/^(ok|not ok) (\d+) - (.+)$/gmu)];
+    const skips = receipt.platform_skips === undefined ? null : collectorPlatformSkips(receipt, hashFile, authority);
+    if (skips !== null) {
+      const allCases = [...text.matchAll(/^\s*(ok|not ok) (\d+) - (.+)$/gmu)];
+      check(text.startsWith("TAP version 13\n") && plan && Number(plan[1]) === cases.length && allCases.length === 44
+        && cases.every((value, index) => value[1] === "ok" && Number(value[2]) === index + 1 && !/# TODO/iu.test(value[3]))
+        && allCases.every(value => value[1] === "ok")
+        && cases.filter(value => /# SKIP/iu.test(value[3])).length === 3
+        && cases.filter(value => /# SKIP/iu.test(value[3])).every(value => skips.titles.has(value[3].split(/\s+# SKIP/iu)[0]))
+        && /^# tests 44$/mu.test(text) && /^# pass 41$/mu.test(text) && /^# skipped 3$/mu.test(text)
+        && ["fail", "cancelled", "todo"].every(field => new RegExp(`^# ${field} 0$`, "mu").test(text)), "host_result_invalid");
+      assertions = allCases.filter(value => !/# SKIP/iu.test(value[3])).flatMap(value => receipt.test_files.map(file => ({ file, name: value[3] })));
+    } else {
     check(text.startsWith("TAP version 13\n") && plan && cases.length > 0 && Number(plan[1]) === cases.length
       && cases.every((c, i) => c[1] === "ok" && Number(c[2]) === i + 1 && !/# (?:SKIP|TODO)/iu.test(c[3]))
       && !/^\s*(?:not ok|Bail out!)|^# (?:fail|skipped|todo|cancelled) [1-9]/mu.test(text), "host_result_invalid");
     assertions = cases.flatMap(c => receipt.test_files.map(file => ({ file, name: c[3] })));
+    }
   } else {
     const text = rawBytes.toString("utf8");
     const footers = [...text.matchAll(/^ℹ (tests|pass|fail|cancelled|skipped|todo) (\d+)$/gmu)];
@@ -206,7 +864,7 @@ function hostExecution(binding, hashFile, authority) {
       && totals.todo === 0 && leaves.length >= totals.tests && !/^\s*[✖✗]|^\s*not ok|Bail out!/mu.test(text), "host_result_invalid");
     assertions = leaves.flatMap(match => receipt.test_files.map(file => ({ file, name: match[2] })));
   }
-  return { receipt, assertions, executionReportSha };
+  return { receipt, testedHead, assertions: producerScope === null && receipt.fixture_overrides === undefined && receipt.generated_tests === undefined && receipt.coverage_only !== true ? assertions : [], executionReportSha, fixtureSubjectUrls: fixtureContext.subjectUrls, quality107, producerScope };
 }
 function sourceReceipt(value, state, nonce) {
   check(exact(value, ["schema_version", "nonce", "state_id", "fixture_variant", "assertions", "production_instance_id", "mount_id", "scroll_offsets", "timer", "digest"])
@@ -284,7 +942,7 @@ function routeProof(item, hashFile, manifest, authority) {
   nativeIdentity(raw, manifest, item.id === "toast-after-confirmed-action" ? FUNCTIONAL_TOAST_NONCE : NONCE);
   const [route, screen, source] = ROUTES[item.id];
   check(raw.schema_version === 1 && raw.producer === "personal-closeout-normal-route-trace/v1" && raw.probe_id === item.id
-    && typeof raw.route === "string" && (route === "/" ? raw.route === "/" : raw.route.startsWith(route)) && !raw.route.includes("__")
+    && typeof raw.route === "string" && (route === "/" ? ["/", "/index"].includes(raw.route) : raw.route.startsWith(route)) && !raw.route.includes("__")
     && raw.package === manifest.build.package && raw.foreground_package === manifest.build.package
     && raw.root_layout_sha256 === sha(authority.readSource(manifest.source.head, "app/_layout.tsx"))
     && raw.route_source_sha256 === sha(authority.readSource(manifest.source.head, source)), "route_evidence_invalid");
@@ -641,7 +1299,8 @@ export function personalRetainedCoverageInputScope(item, readBytes, authority) {
     if (same(descriptor.log, contracts.node17.log)) tests = descriptor.tests.filter(file => authority.executableClosure(descriptor.head, file).includes(item.id));
   }
   return { source_head: descriptor.head, test_files: tests, module_test_join_ready: tests.length > 0,
-    required_inputs: retainedInputScope(item, descriptor, authority, tests, additional) };
+    required_inputs: retainedInputScope(item, descriptor, authority, tests, additional),
+    branch_authority: item.kind === "source-owned-complete-node-gate" ? "HISTORICAL_ONLY_AFFECTED_COLLECTOR" : "REQUIRES_VALIDATED_COUNTER_PROOF" };
 }
 function retainedNodeGate(item, hashFile, authority) {
   const contracts = retainedContracts(hashFile);
@@ -666,7 +1325,10 @@ function retainedNodeGate(item, hashFile, authority) {
     hashFile(descriptor.review); successfulNodeTotals(log, descriptor.total, "node-spec");
   }
   const required = retainedInputScope(item, descriptor, authority, tests, ["scripts/run-coverage-gate.mjs", "scripts/phase20-subprocess-coverage.mjs"]);
-  return compatibleThresholdInputs(item, descriptor.head, required, hashFile, authority);
+  compatibleThresholdInputs(item, descriptor.head, required, hashFile, authority);
+  // Both pinned Node gates used per-script conversion with container-hit inference.
+  // Their retained assertions are historical; no raw survives to establish branch hits.
+  return false;
 }
 function retainedJestThreshold(item, hashFile, authority) {
   const descriptor = retainedContracts(hashFile).sync101;
@@ -717,7 +1379,10 @@ function sealedPackagingCoverage(item, hashFile, authority) {
   const environment = { ...process.env }; delete environment.NODE_OPTIONS; delete environment.NODE_V8_COVERAGE; delete environment.NODE_TEST_CONTEXT; const root = authority.root ?? process.cwd();
   const recomputed = parse(execFileSync(process.execPath, ["-e", MERGE_V8_SOURCE], { cwd: root, env: environment, input: JSON.stringify({ root, id: item.id, source: bytes.toString("utf8"), scripts }), maxBuffer: 64 * 1024 * 1024, timeout: 120_000 }));
   const summary = istanbul.createCoverageMap(recomputed).fileCoverageFor(path.join(root, item.id)).toSummary().toJSON(); const collected = parse(hashFile(descriptor.coverage));
-  check(completeCollectedMetrics(collected, descriptor.modules) && same(Object.fromEntries(["statements", "branches", "functions", "lines"].map(metric => [metric, summary[metric]])), Object.fromEntries(["statements", "branches", "functions", "lines"].map(metric => [metric, (collected.files ?? collected)[item.id][metric]]))), "sealed_coverage_mismatch");
+  check(completeCollectedMetrics(collected, descriptor.modules), "sealed_coverage_mismatch");
+  // Preserve the original counters as historical claims. Corrected raw merging
+  // may change the branch graph; only the recomputed counters supply authority.
+  if (!["statements", "branches", "functions", "lines"].every(metric => summary[metric].pct === 100)) return false;
   const required = retainedInputScope(item, { ...descriptor, tests: seal.tests.files }, authority, seal.tests.files, [...seal.source.files, ...seal.source.dependencies].map(value => value.path).concat(wheel));
   return compatibleThresholdInputs(item, descriptor.head, required, hashFile, authority);
 }
@@ -727,25 +1392,46 @@ const path = require("node:path");
 const input = JSON.parse(fs.readFileSync(0, "utf8"));
 const requireFromRoot = require("node:module").createRequire(path.join(input.root, "package.json"));
 const convert = requireFromRoot("v8-to-istanbul");
+const { mergeScriptCovs } = requireFromRoot("@bcoe/v8-coverage");
 const coverage = requireFromRoot("istanbul-lib-coverage").createCoverageMap({});
 (async () => {
-  for (const script of input.scripts) {
-    const converter = convert(path.join(input.root, input.id), 0, { source: input.source });
-    await converter.load();
-    converter.applyCoverage(script.functions);
-    coverage.merge(converter.toIstanbul());
-  }
+  const merged = mergeScriptCovs(input.scripts);
+  const converter = convert(path.join(input.root, input.id), 0, { source: input.source });
+  await converter.load();
+  converter.applyCoverage(merged.functions);
+  coverage.merge(converter.toIstanbul());
   process.stdout.write(JSON.stringify(coverage.toJSON()));
 })().catch(error => { process.stderr.write(String(error.message)); process.exitCode = 1; });`;
+function quality107RawScope(item, run, quality107, hashFile) {
+  if (quality107 === null) return;
+  const capsule = quality107.capsule; const witness = quality107.witness;
+  check(item.kind === "raw-v8-coverage" && item.id === capsule.subject.path && item.runs.length === 1
+    && same(item.coverage_artifact, capsule.coverage) && same(run.raw_v8, capsule.raw), "quality107_raw_binding_invalid");
+  let selected = 0; let excluded = 0;
+  const dependencies = new Map(parse(hashFile(capsule.original_before)).installed_dependencies.map(value => [value.path, value]));
+  for (const descriptor of run.raw_v8) {
+    const raw = parse(hashFile(descriptor));
+    const admitted = witness.bindings.bindings.filter(value => same(value.raw, descriptor));
+    const rejected = witness.excluded.records.filter(value => same(value.raw, descriptor));
+    check(raw.result.filter(script => script.url === capsule.raw_workspace_subject_url).length === admitted.length
+      && rejected.every(value => raw.result.filter(script => script.url === value.url).length === 1), "quality107_raw_binding_invalid");
+    for (const binding of witness.bindings.actualDependencyBindings.filter(value => same(value.raw, descriptor))) check(same(binding.dependency, dependencies.get(binding.dependency.path))
+      && raw.result.some(script => script.url === binding.url), "quality107_tool_binding_invalid");
+    selected += admitted.length; excluded += rejected.length;
+  }
+  check(selected === 115 && excluded === 3, "quality107_raw_binding_invalid");
+}
 function composedCoverage(item, hashFile, authority) {
-  check(exact(item, ["kind", "id", "coverage_artifact", "runs"]) && Array.isArray(item.runs) && item.runs.length >= 2
+  check(exact(item, ["kind", "id", "coverage_artifact", "runs"]) && Array.isArray(item.runs) && item.runs.length >= (item.kind === "raw-v8-coverage" ? 1 : 2)
     && unique(item.runs.map(run => run.execution?.path)), "coverage_composition_invalid");
-  const scripts = []; const streamHashes = new Set(); const executions = new Set();
+  const scripts = []; const streamHashes = new Map(); const streamPaths = new Set(); const executions = new Set();
   let source;
   for (const run of item.runs) {
     check(exact(run, ["execution", "raw_v8", "source_bindings"]) && Array.isArray(run.raw_v8) && run.raw_v8.length > 0
       && Array.isArray(run.source_bindings), "coverage_composition_invalid");
-    const { receipt, executionReportSha } = hostExecution(run.execution, hashFile, authority);
+    const { receipt, executionReportSha, fixtureSubjectUrls, quality107, producerScope } = hostExecution(run.execution, hashFile, authority);
+    quality107RawScope(item, run, quality107, hashFile);
+    check(receipt.coverage_subject === undefined || receipt.coverage_subject === item.id, "coverage_scope_invalid");
     const actual = parse(hashFile(receipt.actual_execution));
     check(!executions.has(receipt.actual_execution.sha256) && actual.schema_version === 1 && actual.exit_code === 0
       && actual.execution_context_head === receipt.source_head && actual.started_at === receipt.started_at && actual.finished_at === receipt.finished_at
@@ -757,17 +1443,21 @@ function composedCoverage(item, hashFile, authority) {
     const bytes = authority.readSource(testedHead, item.id);
     check(bytes.equals(authority.readSource(authority.source.head, item.id)) && receipt.source_inputs.some(input => input.path === item.id && input.sha256 === sha(bytes)), "coverage_source_mismatch");
     const binding = run.source_bindings.filter(value => value.id === item.id);
-    check(binding.length === 1 && exact(binding[0], ["id", "url", "sha256"]) && binding[0].sha256 === sha(bytes)
-      && typeof binding[0].url === "string" && binding[0].url.startsWith("file:"), "coverage_source_binding_invalid");
+    const allowed = fixtureSubjectUrls.get(item.id);
+    check(binding.length > 0 && unique(binding.map(value => value.url)) && (allowed === undefined ? new Set(binding.map(value => value.url.split(/[?#]/u)[0])).size === 1 : binding.every(value => allowed.has(value.url)))
+      && binding.every(value => exact(value, ["id", "url", "sha256"]) && value.sha256 === sha(bytes)
+      && typeof value.url === "string" && value.url.startsWith("file:")), "coverage_source_binding_invalid");
     const text = bytes.toString("utf8");
     check(!/\/\/[#@]\s*sourceMappingURL=/u.test(text), "coverage_source_map_unsupported");
     source = text;
     let selected = 0;
     for (const descriptor of run.raw_v8) {
-      check(!streamHashes.has(descriptor.sha256), "coverage_stream_reused"); streamHashes.add(descriptor.sha256);
+      const registered = producerScope !== null && VERIFIED_PRODUCER_SCOPES.has(producerScope) && producerScope.physical_raw_bindings.some(binding => same(binding, descriptor));
+      check(!streamPaths.has(descriptor.path) && (!streamHashes.has(descriptor.sha256) || registered && streamHashes.get(descriptor.sha256) === true), "coverage_stream_reused");
+      streamPaths.add(descriptor.path); streamHashes.set(descriptor.sha256, registered);
       const raw = parse(hashFile(descriptor));
       check(Array.isArray(raw.result), "coverage_raw_v8_invalid");
-      for (const script of raw.result.filter(value => value.url === binding[0].url)) {
+      for (const script of raw.result.filter(value => binding.some(input => input.url === value.url))) {
         check(Array.isArray(script.functions) && script.functions.length > 0 && script.functions.every(fn => Array.isArray(fn.ranges) && fn.ranges.length > 0
           && fn.ranges.every(range => Number.isSafeInteger(range.startOffset) && Number.isSafeInteger(range.endOffset)
             && range.startOffset >= 0 && range.endOffset >= range.startOffset && range.endOffset <= text.length
@@ -784,8 +1474,15 @@ function composedCoverage(item, hashFile, authority) {
   const recomputed = parse(execFileSync(process.execPath, ["-e", MERGE_V8_SOURCE], { cwd: root, env: environment,
     input: JSON.stringify({ root, id: item.id, source, scripts }), maxBuffer: 64 * 1024 * 1024, timeout: 120_000 }));
   const expected = parse(hashFile(item.coverage_artifact)); const target = path.join(root, item.id);
-  const matches = Object.keys(expected).filter(key => key === item.id || key.endsWith("/" + item.id));
-  check(matches.length === 1 && recomputed[target] && isDeepStrictEqual({ ...expected[matches[0]], path: item.id }, { ...recomputed[target], path: item.id }), "coverage_composition_mismatch");
+  const files = object(expected.files) ? expected.files : expected;
+  const matches = Object.keys(files).filter(key => key === item.id || key.endsWith("/" + item.id));
+  if (matches.length === 1 && object(files[matches[0]].statements)) {
+    const actual = istanbul.createCoverageMap(recomputed).fileCoverageFor(target).toSummary().toJSON();
+    check((expected.files === undefined || Array.isArray(expected.failures) && expected.failures.length === 0)
+      && ["statements", "branches", "functions", "lines"].every(metric => isDeepStrictEqual(actual[metric], files[matches[0]][metric])), "coverage_composition_mismatch");
+    return ["statements", "branches", "functions", "lines"].every(metric => actual[metric].pct === 100);
+  }
+  check(matches.length === 1 && recomputed[target] && isDeepStrictEqual({ ...files[matches[0]], path: item.id }, { ...recomputed[target], path: item.id }), "coverage_composition_mismatch");
   const metrics = istanbul.createCoverageMap(recomputed).fileCoverageFor(target).toSummary().toJSON();
   return ["statements", "branches", "functions", "lines"].every(metric => metrics[metric].pct === 100);
 }
@@ -793,12 +1490,13 @@ function coverageProof(item, hashFile, authority) {
   if (item.kind === "source-owned-complete-node-gate") return retainedNodeGate(item, hashFile, authority);
   if (item.kind === "source-owned-jest-threshold") return retainedJestThreshold(item, hashFile, authority);
   if (item.kind === "sealed-packaging-coverage") return sealedPackagingCoverage(item, hashFile, authority);
-  if (item.kind === "composed-coverage") return composedCoverage(item, hashFile, authority);
+  if (["composed-coverage", "raw-v8-coverage"].includes(item.kind)) return composedCoverage(item, hashFile, authority);
   if (item.kind === "inherited-complete-gate") return inheritedCompleteGate(item, hashFile, authority);
   if (item.kind === "inherited-tool-threshold") return inheritedToolThreshold(item, hashFile, authority);
   const execution = hostExecution(item.execution, hashFile, authority);
   check(same(item.source_inputs, execution.receipt.source_inputs) && item.source_inputs.some(x => x.path === item.id), "coverage_inputs_invalid");
   check(Array.isArray(execution.receipt.coverage_artifacts) && execution.receipt.coverage_artifacts.some(binding => same(binding, item.coverage_artifact)), "coverage_execution_binding_invalid");
+  if (execution.receipt.runner !== "jest") { hashFile(item.coverage_artifact); return false; }
   const raw = parse(hashFile(item.coverage_artifact));
   const files = object(raw.files) ? raw.files : raw;
   if (object(raw.files)) check(Array.isArray(raw.failures) && raw.failures.length === 0, "coverage_counters_invalid");
@@ -828,6 +1526,18 @@ export function validatePersonalCoverageProof(item, readBytes, authority) {
   check(object(item) && safePath(item.id) && typeof readBytes === "function" && object(authority)
     && typeof authority.readSource === "function" && typeof authority.sourceClosure === "function", "coverage_authority_invalid");
   return coverageProof(item, boundReader(readBytes), authority);
+}
+/** Actual fault-context URLs only; this does not assert coverage or native acceptance. */
+export function personalCoverageFixtureSubjectBindings(execution, readBytes, authority) {
+  const result = hostExecution(execution, boundReader(readBytes), authority);
+  check(result.receipt.fixture_overrides !== undefined, "fixture_override_scope_invalid");
+  return [...result.fixtureSubjectUrls].flatMap(([id, urls]) => [...urls].map(url => ({ id, url,
+    sha256: sha(authority.readSource(result.testedHead, id)) })));
+}
+export function validatePersonalHostExecution(execution, readBytes, authority) {
+  const result = hostExecution(execution, boundReader(readBytes), authority);
+  return { source_head: result.receipt.source_head, tested_source_head: result.testedHead,
+    assertion_count: result.assertions.length, coverage_only: result.receipt.coverage_only === true };
 }
 function boundManifest(binding, hashFile, primary, authority) {
   if (binding === undefined) return primary;
@@ -1032,7 +1742,7 @@ export function validatePersonalCloseoutEvidence(profile, evidence, readBytes, a
   for (const id of profile.required_route_probes) if (!evidence.route_probes.some(x => x.id === id)) missing.push("route:" + id);
   check(Array.isArray(evidence.integrity) && unique(evidence.integrity.map(x => x.id)), "integrity_evidence_invalid");
   for (const item of evidence.integrity) {
-    check((["inherited-complete-gate", "inherited-tool-threshold", "composed-coverage"].includes(item.kind) || exact(item, ["id", "coverage_artifact", "execution", "source_inputs"])) && profile.critical_integrity_files.includes(item.id), "coverage_scope_invalid");
+    check((["inherited-complete-gate", "inherited-tool-threshold", "composed-coverage", "raw-v8-coverage", "source-owned-complete-node-gate", "source-owned-jest-threshold", "sealed-packaging-coverage"].includes(item.kind) || exact(item, ["id", "coverage_artifact", "execution", "source_inputs"])) && profile.critical_integrity_files.includes(item.id), "coverage_scope_invalid");
     if (!coverageProof(item, hashFile, authority)) missing.push("coverage:" + item.id);
   }
   for (const id of profile.critical_integrity_files) if (!evidence.integrity.some(x => x.id === id)) missing.push("coverage:" + id);
@@ -1049,7 +1759,7 @@ function rootReader(root) {
     check(lstatSync(cursor).isFile(), "binding_invalid"); return readFileSync(cursor);
   };
 }
-export function collectPersonalCloseoutAuthority(root, readBytes, now = Date.now()) {
+export function collectPersonalCloseoutAuthority(root, readBytes, now = Date.now(), { producerAdmissionIndex } = {}) {
   const git = resolveV12GitExecution({ env: {} });
   const devices = process.env.PERSONAL_CLOSEOUT_DEVICE_BINDINGS === undefined ? {} : JSON.parse(process.env.PERSONAL_CLOSEOUT_DEVICE_BINDINGS);
   const ownerReviewBindings = process.env.PERSONAL_CLOSEOUT_OWNER_REVIEW_BINDINGS === undefined ? {} : JSON.parse(process.env.PERSONAL_CLOSEOUT_OWNER_REVIEW_BINDINGS);
@@ -1085,7 +1795,8 @@ export function collectPersonalCloseoutAuthority(root, readBytes, now = Date.now
     };
     files.forEach(visit); return [...selected].sort();
   };
-  return { now, source, ownerReviewBindings, contract: v12ContractSourceDigests(root), requirementIds: inputs.matrix.rows.map(x => x.requirement_id),
+  const verifyProducerCaptureScope = producerAdmissionIndex === undefined ? undefined : createRootProducerCaptureCapability(producerAdmissionIndex, { readBytes, readSource, sourceClosure, root, now });
+  return { now, source, ownerReviewBindings, ...(verifyProducerCaptureScope === undefined ? {} : { verifyProducerCaptureScope }), contract: v12ContractSourceDigests(root), requirementIds: inputs.matrix.rows.map(x => x.requirement_id),
     registry: parse(readBytes("src/testing/phase20VisualStateRegistry.json")), selectors: createV12RowSelectorTable({ inputs, root }),
     hostOnly: [], readSource, sourceClosure,
     legacyRegistry: commit => readPersonalCoverageRegistry(file => readSource(commit, file)),
@@ -1172,10 +1883,12 @@ export function personalCloseoutExitCode(result) {
   return result.status === "PERSONAL_USE_VERIFIED" ? 0 : 1;
 }
 export function runPersonalCloseoutCli(args, io = process, root = process.cwd()) {
-  check(Array.isArray(args) && args.length === 2 && args[0] === "--evidence", "arguments_invalid");
+  check(Array.isArray(args) && [2, 6].includes(args.length) && args[0] === "--evidence"
+    && (args.length === 2 || args[2] === "--admission-index" && args[4] === "--admission-sha256"), "arguments_invalid");
+  const producerAdmissionIndex = args.length === 2 ? undefined : producerBinding({ path: args[3], sha256: args[5] });
   const readBytes = rootReader(path.resolve(root));
   const evidence = parse(readBytes(args[1]));
-  const authority = collectPersonalCloseoutAuthority(path.resolve(root), readBytes);
+  const authority = collectPersonalCloseoutAuthority(path.resolve(root), readBytes, Date.now(), { producerAdmissionIndex });
   const profile = validatePersonalCloseoutProfile(parse(readBytes(PROFILE_PATH)), authority.requirementIds);
   const result = validatePersonalCloseoutEvidence(profile, evidence, readBytes, authority);
   io.stdout.write(JSON.stringify(result) + "\n"); return personalCloseoutExitCode(result);

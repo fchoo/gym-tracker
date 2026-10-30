@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import filesystem from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -305,4 +307,47 @@ test("CLI subprocess errors are bounded and never execute device work", () => {
     const result = spawnSync(process.execPath, [script, ...args], { env, encoding: "utf8" });
     assert.equal(result.status, 1); assert.match(result.stderr, /^v12_rollback_[a-z_]+\s*$/u);
   }
+});
+
+test("rollback rejects incomplete lease and digest metadata before invoking the transport", async t => {
+  for (const lease of [{}, { lease_id: null, native_execution: "EXECUTED" }, { lease_id: "b".repeat(48), native_execution: "PREPARED" }]) {
+    const f = fixture(t); writeFileSync(f.requestPath, JSON.stringify({ ...f.request, lease }));
+    await assert.rejects(runV12NativeRollbackBridge(f.options, f.dependencies), /native_request_invalid/u);
+    assert.equal(f.calls.length, 0);
+  }
+  const f = fixture(t); delete f.manifest.build.apk.signature_sha256; writeFileSync(f.build, JSON.stringify(f.manifest));
+  await assert.rejects(runV12NativeRollbackBridge(f.options, f.dependencies), /identity_invalid/u);
+  assert.equal(f.calls.length, 0);
+});
+
+test("rollback rejects a storage adapter that reports an operations directory as a regular file", async t => {
+  const f = fixture(t); const actualStat = filesystem.lstatSync;
+  const mock = t.mock.method(filesystem, "lstatSync", (file, options) => {
+    const result = actualStat(file, options);
+    if (file === path.join(f.root, "artifacts") && f.dependencies.validationComplete === true) {
+      return { ...result, isSymbolicLink: () => false, isDirectory: () => false };
+    }
+    return result;
+  });
+  syncBuiltinESMExports();
+  t.after(() => { mock.mock.restore(); syncBuiltinESMExports(); });
+  const resolve = f.dependencies.resolveTools;
+  f.dependencies.resolveTools = (...args) => { f.dependencies.validationComplete = true; return resolve(...args); };
+  await assert.rejects(runV12NativeRollbackBridge(f.options, f.dependencies), /operations_path_invalid/u);
+  assert.equal(f.calls.length, 0);
+});
+
+test("rollback rejects an absent failure code and a deadline crossed during final lease validation", async t => {
+  const invalid = fixture(t); const command = invalid.dependencies.command;
+  invalid.dependencies.command = (exe, args, options) => {
+    if (args.join(" ").includes("result.json")) return { status: 0, stdout: Buffer.from(JSON.stringify({ schema_version: 1, producer: "v12-native-rollback-bridge/v1", arm: invalid.controls.arm, failure: null })) };
+    return command(exe, args, options);
+  };
+  await assert.rejects(runV12NativeRollbackBridge(invalid.options, invalid.dependencies), /native_result_invalid/u);
+  assert.equal(existsSync(path.join(invalid.operationDir, "compatible-archive.gtbk")), false);
+  const late = fixture(t); let clock = 1_000; let runtimes = 0;
+  late.dependencies.now = () => clock;
+  late.dependencies.runtime = () => ({ async withLease(_lease, operation) { if (++runtimes === 2) clock = 181_001; return operation(); } });
+  await assert.rejects(runV12NativeRollbackBridge(late.options, late.dependencies), /native_timeout/u);
+  assert.equal(existsSync(path.join(late.operationDir, "compatible-archive.gtbk")), false);
 });

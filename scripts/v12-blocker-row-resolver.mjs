@@ -438,6 +438,46 @@ export function resolveV12PerformanceGates(observation) {
   return gates;
 }
 
+/** Classify observations without granting retained native-evidence authority. */
+export function classifyV12AccessibilityObservations(observations) {
+  ensure(Array.isArray(observations), 'accessibility_schema_invalid');
+  try { observations = structuredClone(observations); } catch { fail('accessibility_schema_invalid'); }
+  const configKeys = new Set(); const gates = { targets: [], 'input-focus': [], motion: [] };
+  const targetGeometry = [];
+  observations.forEach((observation, ordinal) => {
+    const configKey = observation.native_receipts.configuration_sha256; ensure(!configKeys.has(configKey), 'accessibility_configuration_duplicate'); configKeys.add(configKey);
+    const configuration = observation.configuration;
+    ensure(configuration?.font_scale === 2 && Number.isFinite(configuration.density) && configuration.density > 0
+      && Number.isFinite(configuration.content_bounds?.width) && configuration.content_bounds.width > 0 && Number.isFinite(configuration.content_bounds?.height) && configuration.content_bounds.height > 0
+      && [configuration.insets?.top, configuration.insets?.bottom, configuration.ime_bounds?.top, configuration.ime_bounds?.bottom].every(Number.isFinite)
+      && configuration.root === observation.root && configuration.motion_mode === observation.motion_mode
+      && configuration.operation === observation.operation && configuration.fixture_id === observation.fixture_id
+      && configuration.state_id === observation.state_id, 'accessibility_configuration_invalid');
+    const base = observation.native_execution !== 'EXECUTED' ? 'NOT_RUN' : observation.restored_settings === undefined ? 'REVIEW_REQUIRED' : observation.restored_settings !== true ? 'FAIL' : 'PASS';
+    const targets = observation.targets;
+    ensure(Array.isArray(targets) && targets.length > 0 && targets.every(t => typeof t.id === 'string' && t.id.length > 0) && new Set(targets.map(t => t.id)).size === targets.length, 'accessibility_selector_invalid');
+    targets.forEach(target => targetGeometry.push({ root: observation.root, state_id: observation.state_id, configuration_id: observation.configuration.id, id: target.id, bounds_dp: target.bounds_dp, overlap: target.overlap }));
+    const targetPass = targets.every(t => typeof t.name === 'string' && t.name.length && typeof t.role === 'string' && t.role.length && typeof t.state === 'string' && t.non_color_cue === true && Number.isFinite(t.bounds_dp?.width) && t.bounds_dp.width >= 48 && Number.isFinite(t.bounds_dp?.height) && t.bounds_dp.height >= 48 && (t.overlap === false || t.bounds_dp.overlap === false));
+    const interactions = observation.interactions;
+    exactIds(interactions?.map(x => x.input), ['touch', 'software-keyboard', 'hardware-keyboard', 'dpad'], 'accessibility_input_selectors_invalid');
+    const modal = observation.modal;
+    const inputPass = interactions.every(x => typeof x.focus_before === 'string' && typeof x.focus_after === 'string' && x.focus_before !== x.focus_after && x.action === 'activate' && x.command_count === x.callback_count && x.command_count > 0 && HASH.test(x.callback_receipt_sha256 ?? '') && HASH.test(x.event_receipt_sha256 ?? '') && HASH.test(x.image_hash ?? ''))
+      && modal?.focus_ring_dp === 3 && modal.focus_offset_dp === 3 && modal.background_isolated === true && modal.restores_invoker === true;
+    const motion = observation.motion; const motionPass = motion?.mode === observation.motion_mode && motion.destination === observation.state_id && motion.callback_count > 0 && motion.frame_callback_count > 0 && HASH.test(motion.source_facts_sha256 ?? '') && HASH.test(motion.behavior_receipt_sha256 ?? '');
+    for (const [gate, passed] of Object.entries({ targets: targetPass, 'input-focus': inputPass, motion: motionPass })) gates[gate].push({ ordinal, configuration_sha256: configKey, result: base === 'PASS' ? passed ? 'PASS' : 'FAIL' : base });
+  });
+  return Object.freeze({ gates, targetGeometry });
+}
+
+export function validateV12FunctionalSourceHashes(value, contract, root = process.cwd()) {
+  let flowSha256; let sourceHashes;
+  try { flowSha256 = value.flow_sha256; sourceHashes = structuredClone(value.source_sha256); }
+  catch { fail('source_hash_invalid'); }
+  ensure(flowSha256 === sha(readFileSync(path.join(root, contract.flow))) && same(Object.keys(sourceHashes ?? {}), contract.sources)
+    && contract.sources.every(file => sourceHashes[file] === sha(readFileSync(path.join(root, file)))), 'source_hash_invalid');
+  return true;
+}
+
 /** Resolve the complete source graph once; every leaf is tied to actual bytes. */
 export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), readArtifact, attended, allowTestCalendarFixture = false } = {}) {
   const table = createV12RowSelectorTable({ inputs, root });
@@ -498,8 +538,7 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     ensure(mapping.identity.configuration_id === manifest.configuration.id && mapping.identity.certificate_sha256 === manifest.build.apk.certificate_sha256 && mapping.identity.settings_sha256 === manifest.device.settings_sha256, 'configuration_invalid');
     exactIds(mapping.case_ids, ids, 'functional_selectors_invalid');
     exactIds(mapping.observations?.map(x => x.case_id), ids, 'functional_selectors_invalid');
-    ensure(mapping.flow_sha256 === sha(readFileSync(path.join(root, contract.flow))) && same(Object.keys(mapping.source_sha256 ?? {}), contract.sources)
-      && contract.sources.every(file => mapping.source_sha256[file] === sha(readFileSync(path.join(root, file)))), 'source_hash_invalid');
+    validateV12FunctionalSourceHashes(mapping, contract, root);
     const xml = bytes(full(xmlPath)).toString('utf8'); const tests = parseV12SourceJUnit(xml, ids);
     const reports = [...xml.matchAll(/(?:<\?xml[^?]*\?>)?<testsuite\b[^>]*>[\s\S]*?<\/testsuite>\s*/gu)].map(match => match[0]);
     ensure(reports.length === ids.length, 'functional_junit_reports_invalid');
@@ -852,30 +891,7 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
       && Array.isArray(semantics.observations) && Array.isArray(semantics.shell_receipts), 'accessibility_schema_invalid');
     validateV12AccessibilityProducer(semantics.observations, { source_tree_sha256: manifest.source.tree_sha256, fixture_sha256: manifest.fixtures.registry_sha256 }, code => fail(code));
     try { validateV12ShellRequirementEvidence(semantics.shell_receipts, manifest); } catch { fail('shell_receipt_invalid'); }
-    const configKeys = new Set(); const gates = { targets: [], 'input-focus': [], motion: [] };
-    const targetGeometry = [];
-    semantics.observations.forEach((observation, ordinal) => {
-      const configKey = observation.native_receipts.configuration_sha256; ensure(!configKeys.has(configKey), 'accessibility_configuration_duplicate'); configKeys.add(configKey);
-      const configuration = observation.configuration;
-      ensure(configuration?.font_scale === 2 && Number.isFinite(configuration.density) && configuration.density > 0
-        && Number.isFinite(configuration.content_bounds?.width) && configuration.content_bounds.width > 0 && Number.isFinite(configuration.content_bounds?.height) && configuration.content_bounds.height > 0
-        && [configuration.insets?.top, configuration.insets?.bottom, configuration.ime_bounds?.top, configuration.ime_bounds?.bottom].every(Number.isFinite)
-        && configuration.root === observation.root && configuration.motion_mode === observation.motion_mode
-        && configuration.operation === observation.operation && configuration.fixture_id === observation.fixture_id
-        && configuration.state_id === observation.state_id, 'accessibility_configuration_invalid');
-      const base = observation.native_execution !== 'EXECUTED' ? 'NOT_RUN' : observation.restored_settings === undefined ? 'REVIEW_REQUIRED' : observation.restored_settings !== true ? 'FAIL' : 'PASS';
-      const targets = observation.targets;
-      ensure(Array.isArray(targets) && targets.length > 0 && targets.every(t => typeof t.id === 'string' && t.id.length > 0) && new Set(targets.map(t => t.id)).size === targets.length, 'accessibility_selector_invalid');
-      targets.forEach(target => targetGeometry.push({ root: observation.root, state_id: observation.state_id, configuration_id: observation.configuration.id, id: target.id, bounds_dp: target.bounds_dp, overlap: target.overlap }));
-      const targetPass = targets.every(t => typeof t.name === 'string' && t.name.length && typeof t.role === 'string' && t.role.length && typeof t.state === 'string' && t.non_color_cue === true && Number.isFinite(t.bounds_dp?.width) && t.bounds_dp.width >= 48 && Number.isFinite(t.bounds_dp?.height) && t.bounds_dp.height >= 48 && (t.overlap === false || t.bounds_dp.overlap === false));
-      const interactions = observation.interactions;
-      exactIds(interactions?.map(x => x.input), ['touch', 'software-keyboard', 'hardware-keyboard', 'dpad'], 'accessibility_input_selectors_invalid');
-      const modal = observation.modal;
-      const inputPass = interactions.every(x => typeof x.focus_before === 'string' && typeof x.focus_after === 'string' && x.focus_before !== x.focus_after && x.action === 'activate' && x.command_count === x.callback_count && x.command_count > 0 && HASH.test(x.callback_receipt_sha256 ?? '') && HASH.test(x.event_receipt_sha256 ?? '') && HASH.test(x.image_hash ?? ''))
-        && modal?.focus_ring_dp === 3 && modal.focus_offset_dp === 3 && modal.background_isolated === true && modal.restores_invoker === true;
-      const motion = observation.motion; const motionPass = motion?.mode === observation.motion_mode && motion.destination === observation.state_id && motion.callback_count > 0 && motion.frame_callback_count > 0 && HASH.test(motion.source_facts_sha256 ?? '') && HASH.test(motion.behavior_receipt_sha256 ?? '');
-      for (const [gate, passed] of Object.entries({ targets: targetPass, 'input-focus': inputPass, motion: motionPass })) gates[gate].push({ ordinal, configuration_sha256: configKey, result: base === 'PASS' ? passed ? 'PASS' : 'FAIL' : base });
-    });
+    const { gates, targetGeometry } = classifyV12AccessibilityObservations(semantics.observations);
     ensure(same(geometry.targets, targetGeometry), 'accessibility_geometry_binding_invalid');
     const accessibilityArtifacts = expectedV12AccessibilityMembers(json(V12_PHASE14_CLOSURE_REGISTRY));
     for (const [id, observations] of Object.entries(gates)) leaf(`accessibility:${id}`, 'accessibility-gate', id, combineV12SourceResults(observations.map(o => o.result)), ['semantics/accessibility.json', 'geometry/hit-targets.json'], { observations });

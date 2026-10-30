@@ -1479,7 +1479,7 @@ test("the v1.2 build branch publishes bounded identity fields without changing h
   assert.match(script, /manifest_version: 2/u);
 });
 
-test("the sole v1.2 validator rejects untyped row claims and seals only a validator-owned 172-row ledger", () => {
+test("the sole v1.2 validator rejects untyped row claims and unissued 172-row seal DTOs", () => {
   const inputs = loadV12ContractInputs();
   const manifest = v12LiveManifest();
   const evidence = inputs.matrix.rows.map((row) => ({
@@ -1510,9 +1510,8 @@ test("the sole v1.2 validator rejects untyped row claims and seals only a valida
   });
   assert.throws(() => sealV12FinalEvidence({ mode: "preseal", run_id: manifest.run_id, ledger: normal, writeImmutableJson: () => {} }), /v12_final_explicit_final_mode_required/u);
   const writes = new Map();
-  const final = sealV12FinalEvidence({ mode: "final", run_id: manifest.run_id, ledger: normal, writeImmutableJson: (file, value) => writes.set(file, value) });
-  assert.equal(writes.size, 2);
-  assert.equal(final.release_authorized, false);
+  assert.throws(() => sealV12FinalEvidence({ mode: "final", run_id: manifest.run_id, ledger: normal, writeImmutableJson: (file, value) => writes.set(file, value) }), /v12_final_seal_ledger_unissued/u);
+  assert.equal(writes.size, 0);
   assert.match(generateV12ParityReport({ ledger: normal }), /READY/u);
   const testWrites = new Map();
   assert.throws(() => sealV12FinalEvidence({ mode: "final", run_id: manifest.run_id,

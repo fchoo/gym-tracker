@@ -8,6 +8,7 @@ import test from "node:test";
 
 import {
   createV12RunManifest,
+  createV12RunId,
   executeV12RunManifestCli,
   parseV12RunManifestCliArgs,
   validateV12RunManifest,
@@ -199,3 +200,70 @@ test("canonicalizes non-zero millisecond CLI timestamps to an exact UTC run iden
     rmSync(fixture.root, { recursive: true, force: true });
   }
 });
+
+
+const candidate=()=>structuredClone(createV12RunManifest({input:buildInput()}));
+
+test('manifest validation captures an APK path getter once before every path and canonical check',()=>{
+ const value=candidate(),path=value.build.apk.path;value.evidence_origin='test';let reads=0;
+ Object.defineProperty(value.build.apk,'path',{enumerable:true,get:()=>++reads<=2?path:'../../foreign.apk'});
+ const result=validateV12RunManifest(value);assert.equal(reads,1);assert.equal(result.build.apk.path,path);assert.equal(result.evidence_origin,'test');assert.ok(Object.isFrozen(result.build.apk));assert.notEqual(result,value);assert.notEqual(result.build,value.build);
+});
+test('manifest validation preserves existing root and nested class prototype rejection',()=>{
+ class Foreign{constructor(fields){Object.assign(this,fields)}}
+ const value=candidate();assert.throws(()=>validateV12RunManifest(new Foreign(value)),/^Error: v12_run_manifest_exact_keys_invalid$/u);
+ for(const [key,error]of [['source','source_invalid'],['planning','planning_invalid'],['prototype','prototype_invalid'],['fixtures','fixtures_invalid'],['build','live_identity_invalid'],['device','live_identity_invalid'],['configuration','live_identity_invalid']]){
+  const value=candidate();value[key]=new Foreign(value[key]);assert.throws(()=>validateV12RunManifest(value),e=>e.message==='v12_run_manifest_'+error);
+ }
+ const nested=candidate();nested.build.apk=new Foreign(nested.build.apk);assert.throws(()=>validateV12RunManifest(nested),/v12_run_manifest_live_identity_invalid/u);
+ const getter=candidate();Object.defineProperty(getter.build,'apk',{enumerable:true,get:()=>new Foreign(candidate().build.apk)});assert.throws(()=>validateV12RunManifest(getter),/v12_run_manifest_live_identity_invalid/u);
+});
+test('null-prototype source data remains valid and arrays and Date sections keep their field errors',()=>{
+ const value=candidate();value.source=Object.assign(Object.create(null),value.source);const result=validateV12RunManifest(value);assert.equal(Object.getPrototypeOf(result.source),null);assert.equal(result.source.head,value.source.head);
+ for(const replacement of [[],new Date()]){const value=candidate();value.source=replacement;assert.throws(()=>validateV12RunManifest(value),/v12_run_manifest_source_invalid/u)}
+});
+test('throwing getters fail boundedly and cyclic or non-data fields keep their schema errors',()=>{
+ const value=candidate();Object.defineProperty(value.build.apk,'path',{enumerable:true,get(){throw Error('fixture-getter')}});assert.throws(()=>validateV12RunManifest(value),/^Error: v12_run_manifest_canonical_invalid$/u);
+ const cyclic=candidate();Object.defineProperty(cyclic.build.apk,'sha256',{enumerable:true,value:cyclic});assert.throws(()=>validateV12RunManifest(cyclic),/v12_run_manifest_live_identity_invalid/u);
+ const pre=candidate();pre.source.package_json_sha256=()=>{};assert.throws(()=>validateV12RunManifest(pre),/v12_run_manifest_source_invalid/u);
+});
+test('top-level live mode and nested source getters are each captured once',()=>{
+ const value=candidate();let modeReads=0,sourceReads=0;const source=value.source;
+ Object.defineProperty(value,'mode',{enumerable:true,get:()=>++modeReads===1?'live':'prebuild_schema_fixture'});Object.defineProperty(value,'source',{enumerable:true,get:()=>{sourceReads++;return source}});
+ const result=validateV12RunManifest(value);assert.equal(modeReads,1);assert.equal(sourceReads,1);assert.equal(result.mode,'live');source.head='c'.repeat(40);assert.notEqual(result.source.head,source.head);
+});
+
+
+test("manifest creation captures its APK path once before origin and schema normalization", () => {
+  const input = buildInput(); const expected = input.build.apk.path; let reads = 0;
+  Object.defineProperty(input.build.apk, "path", { enumerable: true, get: () => ++reads <= 2 ? expected : "../../foreign.apk" });
+  const result = createV12RunManifest({ input });
+  assert.equal(reads, 1); assert.equal(result.build.apk.path, expected); assert.ok(Object.isFrozen(result.build.apk));
+  class Foreign { constructor(fields) { Object.assign(this, fields); } }
+  const invalid = buildInput(); invalid.build.apk = new Foreign(invalid.build.apk);
+  assert.throws(() => createV12RunManifest({ input: invalid }), /v12_run_manifest_live_identity_invalid/u);
+  assert.throws(() => createV12RunManifest({ input: buildInput({ evidence_origin: "test" }) }), /v12_run_manifest_origin_invalid/u);
+});
+
+test("public run identity derivation requires a primitive hexadecimal head and preserves the UTC prefix", () => {
+  assert.equal(createV12RunId("2026-10-14T12:34:56Z", HEAD), `phase20-20261014T123456Z-${HEAD.slice(0, 12)}`);
+  for (const head of [undefined, null, [HEAD], new String(HEAD), 1, "bad"]) {
+    assert.throws(() => createV12RunId("2026-10-14T12:34:56Z", head), /v12_run_manifest_source_invalid/u);
+  }
+  const input = buildInput(); input.source.head = [HEAD];
+  assert.throws(() => createV12RunManifest({ input }), /v12_run_manifest_source_invalid/u);
+});
+
+test("manifest validation and public CLI selection reject array-coerced run identities", () => {
+  const manifest = structuredClone(createV12RunManifest({ input: buildInput() }));
+  manifest.run_id = [manifest.run_id];
+  assert.throws(() => validateV12RunManifest(manifest), /v12_run_manifest_exact_keys_invalid/u);
+  assert.throws(() => parseV12RunManifestCliArgs(["--run", manifest.run_id, "--verify-build-only"]), /v12_run_manifest_cli_invalid/u);
+});
+
+for (const [section, key] of [["build", "package"], ["build", "version_name"], ["configuration", "id"]]) {
+  test(`manifest ${section}.${key} requires a primitive string rather than an array-coerced value`, () => {
+    const input = buildInput(); input[section][key] = [input[section][key]];
+    assert.throws(() => createV12RunManifest({ input }), /v12_run_manifest_live_identity_invalid/u);
+  });
+}

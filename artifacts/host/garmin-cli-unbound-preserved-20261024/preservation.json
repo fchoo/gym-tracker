@@ -1,0 +1,105 @@
+{
+  "reason": "not in reviewed CLI descriptor raw set; preserved outside sealed raw directory",
+  "files": [
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-62971-1792767010204-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-62971-1792767010204-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-63007-1792767007883-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-63007-1792767007883-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-64294-1792767007790-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-64294-1792767007790-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-64340-1792767007833-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-64340-1792767007833-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-64379-1792767007874-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-64379-1792767007874-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-64414-1792767008367-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-64414-1792767008367-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-64760-1792767009855-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-64760-1792767009855-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-65730-1792767009646-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-65730-1792767009646-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-65777-1792767009683-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-65777-1792767009683-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-65795-1792767009729-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-65795-1792767009729-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-65832-1792767009767-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-65832-1792767009767-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-65868-1792767009807-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-65868-1792767009807-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-65886-1792767009847-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-65886-1792767009847-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-65946-1792767010178-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-65946-1792767010178-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-66041-1792767010052-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-66041-1792767010052-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-66072-1792767010093-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-66072-1792767010093-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-66090-1792767010132-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-66090-1792767010132-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-66125-1792767010169-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-66125-1792767010169-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-66280-1792767017120-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-66280-1792767017120-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    },
+    {
+      "original": "artifacts/host/garmin-cli-coverage/raw/._coverage-66298-1792767017078-0.json",
+      "preserved": "artifacts/host/garmin-cli-unbound-preserved-20261024/._coverage-66298-1792767017078-0.json",
+      "sha256": "af59d77d5960864152a6096f7aeef073dbfbb007b241713a178e32aa5abe0fdb"
+    }
+  ]
+}

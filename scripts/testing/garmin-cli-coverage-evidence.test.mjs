@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 import { collectPhase20SubprocessCoverage, runPhase20SubprocessCoverage } from "../phase20-subprocess-coverage.mjs";
-import { assertGarminCliProcessReceipt, GARMIN_CLI_EVIDENCE_DIRECTORY, GARMIN_CLI_EVIDENCE_SHA256, loadGarminCliCoverageEvidence } from "../garmin-cli-coverage-evidence.mjs";
+import { assertGarminCliProcessReceipt, GARMIN_CLI_EVIDENCE_DIRECTORY, GARMIN_CLI_EVIDENCE_SHA256, GARMIN_CACHED_CLI_SUPPLEMENT, loadGarminCliCoverageEvidence } from "../garmin-cli-coverage-evidence.mjs";
 
 const root = process.cwd();
 const evidence = process.env.PHASE20_GARMIN_CLI_COVERAGE_DIRECTORY ?? path.join(root, GARMIN_CLI_EVIDENCE_DIRECTORY);
@@ -19,6 +19,15 @@ function fixture(t) {
   t.after(() => rmSync(target, { recursive: true, force: true }));
   const copiedEvidence = path.join(target, GARMIN_CLI_EVIDENCE_DIRECTORY);
   cpSync(evidence, copiedEvidence, { recursive: true });
+  const supplementDirectory = path.dirname(GARMIN_CACHED_CLI_SUPPLEMENT.path);
+  mkdirSync(path.dirname(path.join(target, supplementDirectory)), { recursive: true });
+  cpSync(path.join(root, supplementDirectory), path.join(target, supplementDirectory), { recursive: true });
+  const supplemental = JSON.parse(readFileSync(path.join(root, GARMIN_CACHED_CLI_SUPPLEMENT.path)));
+  for (const binding of [supplemental.execution, supplemental.before, supplemental.after, supplemental.report,
+    supplemental.tool_before, supplemental.tool_after, supplemental.dependencies_before, supplemental.dependencies_after]) {
+    mkdirSync(path.dirname(path.join(target, binding.path)), { recursive: true });
+    writeFileSync(path.join(target, binding.path), readFileSync(path.join(root, binding.path)));
+  }
   // Fault injection modifies only this disposable copy. The reviewed original
   // keeps its immutable modes and hash-bound bytes throughout the suite.
   const makeWritable = directory => {

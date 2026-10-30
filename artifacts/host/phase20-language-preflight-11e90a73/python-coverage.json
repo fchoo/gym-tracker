@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "suite": "phase18-garmin-python",
+  "status": "passed",
+  "runtime": {
+    "name": "python",
+    "version": "3.14"
+  },
+  "coverage_engine": "coverage.py",
+  "sources": [
+    {
+      "path": "modules/garmin-connect/android/src/main/python/garmin_bridge.py",
+      "sha256": "123b20dd5958cc5eff5adda6eb65a552832458e928b65a404ac10cd24198bb8a"
+    }
+  ],
+  "test": {
+    "path": "modules/garmin-connect/android/src/test/python/test_garmin_bridge.py",
+    "sha256": "045895a49423085254479c5b5b8a458c9c68006c401fe8d6581271c38149c1f5"
+  },
+  "tests_run": 19,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "required_cases": [
+    "test_account_namespace_is_locally_generated_and_survives_profile_rename",
+    "test_login_mfa_and_reads_use_only_the_fixed_operations",
+    "test_unknown_operations_and_malformed_inputs_never_reach_the_client",
+    "test_restore_rotation_and_logout_keep_tokens_out_of_dispatch_results",
+    "test_force_refresh_rotates_the_persistable_record_without_exposing_tokens",
+    "test_authentication_and_restore_failures_are_context_specific",
+    "test_read_failures_are_distinct_bounded_and_single_attempt",
+    "test_malformed_or_forbidden_provider_json_is_rejected_without_echo",
+    "test_bounded_helpers_and_default_factory_cover_rejection_edges",
+    "test_session_state_and_auth_validation_fail_closed",
+    "test_activity_refresh_and_adversarial_branches_are_bounded",
+    "test_module_entrypoints_and_retry_headers_fail_closed",
+    "test_phase20_recovery_extension_control_flow_covers_restore_rejection_and_complete_reads"
+  ],
+  "executed_cases": [
+    "test_account_namespace_is_locally_generated_and_survives_profile_rename",
+    "test_activity_refresh_and_adversarial_branches_are_bounded",
+    "test_adversarial_control_injects_every_failure_once_and_fences_late_results",
+    "test_adversarial_control_rejects_invalid_or_out_of_sequence_actions",
+    "test_adversarial_control_uses_the_real_bridge_seam_without_live_transport",
+    "test_adversarial_controlled_client_refresh_rotates_only_the_di_token",
+    "test_authentication_and_restore_failures_are_context_specific",
+    "test_bounded_helpers_and_default_factory_cover_rejection_edges",
+    "test_force_refresh_rotates_the_persistable_record_without_exposing_tokens",
+    "test_login_mfa_and_reads_use_only_the_fixed_operations",
+    "test_logout_and_reauth_reuse_a_stable_opaque_namespace_for_the_same_account",
+    "test_malformed_or_forbidden_provider_json_is_rejected_without_echo",
+    "test_module_entrypoints_and_retry_headers_fail_closed",
+    "test_phase20_recovery_extension_control_flow_covers_restore_rejection_and_complete_reads",
+    "test_phase20_rejection_and_recovery_extensions_are_operation_backed",
+    "test_read_failures_are_distinct_bounded_and_single_attempt",
+    "test_restore_rotation_and_logout_keep_tokens_out_of_dispatch_results",
+    "test_session_state_and_auth_validation_fail_closed",
+    "test_unknown_operations_and_malformed_inputs_never_reach_the_client"
+  ],
+  "missing_cases": [],
+  "coverage": {
+    "lines": {
+      "covered": 542,
+      "missed": 0,
+      "total": 542,
+      "percent": 100.0
+    },
+    "branches": {
+      "covered": 206,
+      "missed": 0,
+      "total": 206,
+      "percent": 100.0
+    }
+  },
+  "missing_lines": [],
+  "missing_branches": []
+}

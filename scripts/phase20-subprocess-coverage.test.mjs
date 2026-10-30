@@ -1509,13 +1509,13 @@ test("native final identity re-reads Git, APK, signature, installed bytes, setti
       "  *\"version\"*) printf 'Android Debug Bridge version 1.0.41\\n' ;;",
       "  *\"ro.product.model\"*) printf 'Coverage Device\\n' ;;",
       "  *\"pm list packages\"*) printf 'package:com.fchoo.gymtracker.devtest\\n' ;;",
-      "  *\"pm path\"*) printf 'package:/data/app/coverage/base.apk\\n' ;;",
+      "  *\"pm path\"*) printf 'package:/data/app/~~coverage==/com.fchoo.gymtracker.devtest-coverage==/base.apk\\n' ;;",
       "  *\"exec-out cat\"*) printf '\\120\\113\\003\\004\\252\\273\\314\\335' ;;",
       `  *\"sha256sum\"*) printf '${createHash("sha256").update(apkBytes).digest("hex")}  /data/app/coverage/base.apk\\n' ;;`,
       "  *\"font_scale\"*) printf '1.0\\n' ;;",
       "  *\"ui_night_mode\"*) printf '0\\n' ;;",
       "  *\"animator_duration_scale\"*) printf '1.0\\n' ;;",
-      "  *\"sh -c\"*) printf 'clear\\n' ;;",
+      "  *\"[ ! -e \"*) printf 'clear\\n' ;;",
       "  *) exit 1 ;;",
       "esac",
       "",
@@ -1547,7 +1547,6 @@ test("native final identity re-reads Git, APK, signature, installed bytes, setti
     process.env.ANDROID_SDK_ROOT = sdk;
     process.env.V12_DEVICE_SERIAL = serial;
     const gitExecution = resolveV12GitExecution();
-    assert.equal(verifyV12FinalNativeIdentity(manifest, { root, gitExecution }), true);
     const finalRunId = `phase20-20261018T000000Z-${head.slice(0, 12)}`;
     const finalManifest = createV12RunManifest({ input: {
       requested_run_id: finalRunId,
@@ -1561,6 +1560,7 @@ test("native final identity re-reads Git, APK, signature, installed bytes, setti
       device: manifest.device,
       configuration: { id: "AP-L-C390-P-F100" },
     } });
+    assert.equal(verifyV12FinalNativeIdentity(finalManifest, { root, gitExecution }), true);
     assert.equal(validateV12FinalProductionIdentity(finalManifest, {
       root,
       gitExecution,
@@ -1614,7 +1614,17 @@ test("production-shaped retained evidence completes preseal and final readiness"
     return;
   }
   const archiveRoot = realpathSync(process.env.V12_PHASE20_COVERAGE_FIXTURE);
-  const sourceRoot = realpathSync(process.env.V12_PHASE20_COVERAGE_SOURCE_ROOT ?? process.cwd());
+  const sourceBindingFile = path.join(archiveRoot, ".planning/verification/frozen-production-sources.json");
+  const sourceBinding = existsSync(sourceBindingFile)
+    ? JSON.parse(readFileSync(sourceBindingFile, "utf8")) : undefined;
+  const sourceRoot = realpathSync(sourceBinding?.source_root ?? process.env.V12_PHASE20_COVERAGE_SOURCE_ROOT ?? process.cwd());
+  if (sourceBinding !== undefined) {
+    assert.equal(sourceBinding.schema_version, 1);
+    assert.equal(sourceBinding.test_only, true);
+    for (const [relative, expectedHash] of Object.entries(sourceBinding.files)) {
+      assert.equal(sha256(readFileSync(path.join(sourceRoot, relative))), expectedHash, `frozen fixture source changed: ${relative}`);
+    }
+  }
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "v12-retained-production-")));
   fs.cpSync(archiveRoot, root, { recursive: true, dereference: false });
   const runId = readdirSync(path.join(root, "artifacts/native/v1.2"))
@@ -1622,11 +1632,15 @@ test("production-shaped retained evidence completes preseal and final readiness"
   assert.ok(runId);
   const runRoot = path.join(root, "artifacts/native/v1.2", runId);
   const saved = new Map();
+  const savedModes = new Map();
   const created = [];
   const protectedRuntimeDirectories = [];
   const save = (relative) => {
     const file = path.join(root, relative);
-    if (!saved.has(relative)) saved.set(relative, existsSync(file) ? readFileSync(file) : null);
+    if (!saved.has(relative)) {
+      saved.set(relative, existsSync(file) ? readFileSync(file) : null);
+      if (existsSync(file)) savedModes.set(relative, fs.statSync(file).mode & 0o777);
+    }
     return file;
   };
   const writeJson = (relative, value) => {
@@ -2065,7 +2079,7 @@ test("production-shaped retained evidence completes preseal and final readiness"
       "  *\"font_scale\"*) printf '1.0\\n' ;;",
       "  *\"ui_night_mode\"*) printf '0\\n' ;;",
       "  *\"animator_duration_scale\"*) printf '1.0\\n' ;;",
-      "  *\"sh -c\"*) printf 'clear\\n' ;;",
+      "  *\"[ ! -e \"*) printf 'clear\\n' ;;",
       "  *) exit 1 ;;",
       "esac",
       "",
@@ -2212,6 +2226,16 @@ test("production-shaped retained evidence completes preseal and final readiness"
       const mappingBytes = readFileSync(path.join(root, mappingRelative));
       mappingMember.sha256 = sha256(mappingBytes);
       mappingMember.size_bytes = mappingBytes.length;
+      for (const sdkPath of [sdkBinding.attestation.receipt_path, sdkBinding.attestation.jar_path]) {
+        const prefix = `artifacts/native/v1.2/${runId}/`;
+        assert.ok(sdkPath.startsWith(prefix));
+        const sdkArtifact = sdkPath.slice(prefix.length);
+        const sdkMember = publication.members.find(({ artifact }) => artifact === sdkArtifact);
+        assert.ok(sdkMember, `prepared SDK member must have publication ownership: ${sdkArtifact}`);
+        const sdkBytes = readFileSync(path.join(root, sdkPath));
+        sdkMember.sha256 = sha256(sdkBytes);
+        sdkMember.size_bytes = sdkBytes.length;
+      }
       writeJson(publicationRelative, publication);
     }
     const verifier = new URL("./verify-v12-native-evidence.mjs", import.meta.url).pathname;
@@ -2300,6 +2324,10 @@ test("production-shaped retained evidence completes preseal and final readiness"
       assert.match(specialResult.stderr, /v12_preflight_artifact_invalid/u);
       rmSync(special);
     }
+    process.stderr.write("[retained verifier test] all behavior assertions passed\n");
+  } catch (error) {
+    process.stderr.write(`[retained verifier test] body failure: ${error.message}\n`);
+    throw error;
   } finally {
     for (const output of [
       `artifacts/native/v1.2/${runId}/preseal-validation.json`,
@@ -2318,7 +2346,9 @@ test("production-shaped retained evidence completes preseal and final readiness"
       if (bytes === null) rmSync(file, { recursive: true, force: true });
       else {
         mkdirSync(path.dirname(file), { recursive: true });
+        if (existsSync(file)) chmodSync(file, 0o600);
         writeFileSync(file, bytes);
+        if (savedModes.has(relative)) chmodSync(file, savedModes.get(relative));
       }
     }
     for (const directory of protectedRuntimeDirectories) mkdirSync(directory, { recursive: true });

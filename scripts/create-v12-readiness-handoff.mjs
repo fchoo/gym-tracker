@@ -41,7 +41,7 @@ function hash(value, label) { if (typeof value !== "string" || !SHA256.test(valu
 function timestamp(value, label) { if (typeof value !== "string" || !ISO_TIMESTAMP.test(value) || !Number.isFinite(Date.parse(value))) fail(`${label} must be an ISO timestamp.`); }
 const digest = value => createHash("sha256").update(value).digest("hex");
 
-function identity(value) {
+export function validateV12ReadinessIdentity(value) {
   keys(value, ["apk_sha256", "apk_signature_sha256", "config_sha256", "device_sha256", "installed_apk_sha256", "run_id", "source_tree_sha256"], "evidence identity");
   if (typeof value.run_id !== "string" || !RUN_ID.test(value.run_id)) fail("evidence identity run ID is malformed.");
   for (const field of ["source_tree_sha256", "apk_sha256", "apk_signature_sha256", "installed_apk_sha256", "device_sha256", "config_sha256"]) hash(value[field], `evidence identity ${field}`);
@@ -97,18 +97,50 @@ function sameCanonicalVerdictCounts(actual, expected, label) {
   return VERDICTS.every(verdict => actual[verdict] === expected[verdict]);
 }
 
-function readiness(verdictCounts, gates, reviewedPolicy) {
+/** Classify validated observation counts and gates; this never authorizes release. */
+export function classifyV12Readiness({ verdict_counts: countsInput, gates: gatesInput, reviewed_policy: policyInput = null } = {}) {
+  if (!plain(countsInput)) fail("readiness verdict counts must be an object.");
+  if (!Array.isArray(gatesInput)) fail("readiness gates are missing.");
+  const gateInputs = Array.from(gatesInput);
+  for (const gate of gateInputs) if (!plain(gate)) fail("readiness gate must be an object.");
+  if (policyInput !== null && !plain(policyInput)) fail("reviewed policy must be an object.");
+  let snapshot;
+  try { snapshot = structuredClone({ verdictCounts: countsInput, gates: gateInputs, reviewedPolicy: policyInput }); }
+  catch { fail("readiness inputs cannot be snapshotted."); }
+  const { verdictCounts, gates, reviewedPolicy } = snapshot;
+  keys(verdictCounts, VERDICTS, "readiness verdict counts");
+  if (!Object.values(verdictCounts).every(value => Number.isSafeInteger(value) && value >= 0)) fail("readiness verdict counts are malformed.");
+  if (Object.values(verdictCounts).reduce((total, value) => total + value, 0) !== 172) fail("readiness verdict counts must total 172.");
+  if (gates.length < REQUIRED_GATES.length) fail("readiness gates are missing.");
+  const gateIds = new Set();
+  for (const gate of gates) {
+    keys(gate, ["evidence_sha256", "id", "verdict"], "readiness gate");
+    if (typeof gate.id !== "string" || gateIds.has(gate.id) || !VERDICTS.includes(gate.verdict)) fail("readiness gate is malformed.");
+    gateIds.add(gate.id); hash(gate.evidence_sha256, "readiness gate evidence");
+  }
+  if (REQUIRED_GATES.some(gate => !gateIds.has(gate))) fail("a required readiness gate is missing.");
+  policy(reviewedPolicy, false);
   const gatesPass = gates.every(gate => gate.verdict === "PASS");
   if (!gatesPass || verdictCounts.NOT_RUN > 0 || verdictCounts.FAIL > 0 || verdictCounts.REVIEW_REQUIRED > 0 || verdictCounts.N_A_REVIEWED > 0) return "NOT_READY";
   if (verdictCounts.ACCEPTED_EXCEPTION > 0) return reviewedPolicy === null ? "NOT_READY" : "CONDITIONALLY_READY";
   return "READY";
 }
 
+/** Project validated rollback state onto readiness without granting release. */
+export function classifyV12RollbackReadiness({ rollback: rollbackInput, readiness: evidenceReadiness } = {}) {
+  if (!plain(rollbackInput)) fail("rollback must be an object.");
+  let rollbackSnapshot;
+  try { rollbackSnapshot = structuredClone(rollbackInput); } catch { fail("rollback cannot be snapshotted."); }
+  const rollbackEvidence = rollback(rollbackSnapshot);
+  if (!["READY", "CONDITIONALLY_READY", "NOT_READY"].includes(evidenceReadiness)) fail("rollback readiness is malformed.");
+  return rollbackEvidence.status === "NOT_VERIFIED" ? "NOT_READY" : evidenceReadiness;
+}
+
 function finalEvidence(value) {
   keys(value, FINAL_KEYS, "final evidence");
   if (value.schema_version !== 3 || value.evidence_origin !== "native" || value.release_authorized !== false
     || !RUN_ID.test(value.run_id ?? "") || value.identity?.run_id !== value.run_id) fail("final evidence envelope is malformed.");
-  identity(value.identity);
+  validateV12ReadinessIdentity(value.identity);
   if (!Array.isArray(value.rows) || value.rows.length !== 172) fail("final evidence must contain exactly 172 rows.");
   const rowIds = new Set();
   const phaseCounts = Object.fromEntries(Object.keys(REQUIRED_PHASE_COUNTS).map(phase => [phase, 0]));
@@ -143,7 +175,7 @@ function finalEvidence(value) {
   if (!sameCanonicalVerdictCounts(value.verdict_counts, expectedCounts, "final evidence verdict counts")
     || value.accepted_exception_count !== expectedCounts.ACCEPTED_EXCEPTION) fail("final evidence verdict counts are malformed.");
   const reviewedPolicy = policy(value.policy, expectedCounts.ACCEPTED_EXCEPTION > 0);
-  if (value.readiness !== readiness(expectedCounts, value.gates, reviewedPolicy)) fail("final evidence readiness is malformed.");
+  if (value.readiness !== classifyV12Readiness({ verdict_counts: expectedCounts, gates: value.gates, reviewed_policy: reviewedPolicy })) fail("final evidence readiness is malformed.");
   return value;
 }
 
@@ -158,7 +190,7 @@ export function buildV12ReadinessHandoff({ final_evidence: finalEvidenceInput, r
     suite: "v12-readiness-handoff",
     run_id: evidence.run_id,
     generated_at: generatedAt,
-    readiness: rollbackEvidence.status === "NOT_VERIFIED" ? "NOT_READY" : evidence.readiness,
+    readiness: classifyV12RollbackReadiness({ rollback: rollbackEvidence, readiness: evidence.readiness }),
     release_authorized: false,
     identity: evidence.identity,
     verdict_counts: evidence.verdict_counts,
@@ -185,12 +217,12 @@ export function validateV12ReadinessHandoff(handoff, { final_evidence: expectedF
     || JSON.stringify(handoff.exceptions) !== JSON.stringify(evidence.exceptions)
     || JSON.stringify(handoff.gates) !== JSON.stringify(evidence.gates)
     || JSON.stringify(handoff.policy) !== JSON.stringify(evidence.policy)
-    || handoff.readiness !== (handoff.rollback.status === "NOT_VERIFIED" ? "NOT_READY" : evidence.readiness)
+    || handoff.readiness !== classifyV12RollbackReadiness({ rollback: handoff.rollback, readiness: evidence.readiness })
     || handoff.final_evidence_sha256 !== digest(JSON.stringify(evidence))) fail("handoff does not preserve final evidence.");
   return handoff;
 }
 
-function safeFile(root, relative) {
+export function resolveV12ReadinessArtifact(root, relative) {
   if (typeof relative !== "string" || path.isAbsolute(relative) || relative.includes("\\")
     || path.posix.normalize(relative) !== relative || relative.split("/").some(part => !part || part === "." || part === "..")) fail("path is unsafe.");
   const base = path.resolve(root); let cursor = base;
@@ -205,9 +237,11 @@ function safeFile(root, relative) {
 }
 
 function readJson(root, relative) {
-  const bytes = readFileSync(safeFile(root, relative));
+  const bytes = readFileSync(resolveV12ReadinessArtifact(root, relative));
+  let value;
+  try { value = JSON.parse(bytes.toString("utf8")); } catch { fail("artifact is not valid JSON."); }
   assertV12ArtifactPrivacySafe(relative, bytes);
-  try { return JSON.parse(bytes.toString("utf8")); } catch { fail("artifact is not valid JSON."); }
+  return value;
 }
 
 function verifiedFinalPublication(root, runId) {
@@ -223,22 +257,28 @@ function verifiedFinalPublication(root, runId) {
   }
   for (const member of members) {
     if (!plain(member) || !SHA256.test(member.sha256 ?? "")
-      || digest(readFileSync(safeFile(root, `${base}/${member.artifact}`))) !== member.sha256) fail("final atomic publication member hash is invalid.");
+      || digest(readFileSync(resolveV12ReadinessArtifact(root, `${base}/${member.artifact}`))) !== member.sha256) fail("final atomic publication member hash is invalid.");
   }
   const evidence = readJson(root, `${base}/final-evidence.json`);
-  const handoffFile = safeFile(root, `${base}/readiness-handoff.md`);
+  const handoffFile = resolveV12ReadinessArtifact(root, `${base}/readiness-handoff.md`);
   const handoffBytes = readFileSync(handoffFile);
   let handoff; try { handoff = JSON.parse(handoffBytes.toString("utf8")); } catch { fail("artifact is not valid JSON."); }
   validateV12ReadinessHandoff(handoff, { final_evidence: evidence });
   return Object.freeze({ evidence, handoff, handoffBytes });
 }
 
+export function validateV12ReadinessMirrorDestination(root, directory) {
+  const base = path.resolve(root);
+  const resolved = path.resolve(directory);
+  if (!resolved.startsWith(`${base}${path.sep}`)) fail("path is unsafe.");
+  return resolved;
+}
+
 export function writeV12VerifiedReadinessMirror({ root = process.cwd(), runId } = {}) {
   if (!RUN_ID.test(runId ?? "")) fail("CLI arguments are malformed.");
   const verified = verifiedFinalPublication(root, runId);
-  const directory = path.resolve(root, ".planning/phases/20-native-acceptance");
+  const directory = validateV12ReadinessMirrorDestination(root, path.resolve(root, ".planning/phases/20-native-acceptance"));
   const base = path.resolve(root);
-  if (!directory.startsWith(`${base}${path.sep}`)) fail("path is unsafe.");
   let cursor = base;
   for (const part of path.relative(base, directory).split(path.sep)) {
     cursor = path.join(cursor, part);

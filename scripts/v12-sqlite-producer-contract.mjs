@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
+const FORBIDDEN_RECEIPT_KEY = /(?:serial|payload|route|logcat|adb|sql|row|record|verdict|seal|secret|token|email|path)/iu;
 
 export const V12_SQLITE_FAILURE_CODES = Object.freeze([
   'marker_timeout',
@@ -14,7 +15,8 @@ export const V12_SQLITE_FAILURE_CODES = Object.freeze([
 function fail(code) { throw new Error(`v12_sqlite_producer_${code}`); }
 function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 function exactKeys(value, keys) {
-  return object(value) && Object.keys(value).sort().join('|') === [...keys].sort().join('|');
+  return object(value) && Object.keys(value).every(key => !FORBIDDEN_RECEIPT_KEY.test(key))
+    && Object.keys(value).sort().join('|') === [...keys].sort().join('|');
 }
 function digest(value) { return createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
 
@@ -33,7 +35,6 @@ function privacySafe(value, path = 'receipt') {
   if (Array.isArray(value)) return value.forEach((item, index) => privacySafe(item, `${path}[${index}]`));
   if (!object(value)) return;
   for (const [key, item] of Object.entries(value)) {
-    if (/(?:serial|payload|route|logcat|adb|sql|row|record|verdict|seal|secret|token|email|path)/iu.test(key)) fail(`privacy_invalid:${path}.${key}`);
     privacySafe(item, `${path}.${key}`);
   }
 }
@@ -60,10 +61,14 @@ function validSourceFacts(value, expectedCount) {
 }
 
 export function assertV12AcceptanceNativeContractResult(input, expectedCaseIds) {
-  const cases = Array.isArray(input?.cases) ? input.cases : [];
+  let snapshot;
+  try { snapshot = structuredClone(input); }
+  catch { fail('v12_result_invalid'); }
+  const cases = Array.isArray(snapshot?.cases) ? snapshot.cases : [];
   const validCases = Array.isArray(expectedCaseIds)
     && cases.length === expectedCaseIds.length
     && cases.every((entry, index) => exactKeys(entry, ['id', 'status', 'code', 'counts', 'sourceFacts'])
+      && typeof entry.id === 'string'
       && entry.id === expectedCaseIds[index]
       && entry.status === 'passed'
       && entry.code === 'v12_acceptance_case_passed'
@@ -71,17 +76,17 @@ export function assertV12AcceptanceNativeContractResult(input, expectedCaseIds) 
       && Number.isSafeInteger(entry.counts.sourceCases)
       && entry.counts.sourceCases > 0
       && validSourceFacts(entry.sourceFacts, entry.counts.sourceCases));
-  if (!exactKeys(input, ['schemaVersion', 'contractVersion', 'status', 'total', 'passed', 'failed', 'skipped', 'cases'])
-    || input.schemaVersion !== 1
-    || input.contractVersion !== 1
-    || input.status !== 'passed'
-    || input.total !== expectedCaseIds.length
-    || input.passed !== expectedCaseIds.length
-    || input.failed !== 0
-    || input.skipped !== 0
+  if (!exactKeys(snapshot, ['schemaVersion', 'contractVersion', 'status', 'total', 'passed', 'failed', 'skipped', 'cases'])
+    || snapshot.schemaVersion !== 1
+    || snapshot.contractVersion !== 1
+    || snapshot.status !== 'passed'
+    || snapshot.total !== expectedCaseIds.length
+    || snapshot.passed !== expectedCaseIds.length
+    || snapshot.failed !== 0
+    || snapshot.skipped !== 0
     || !validCases) fail('v12_result_invalid');
-  privacySafe(input);
-  return Object.freeze(structuredClone(input));
+  privacySafe(snapshot);
+  return Object.freeze(snapshot);
 }
 
 export function classifyV12SqliteNativeFailure(value) {

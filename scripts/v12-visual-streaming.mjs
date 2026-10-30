@@ -28,6 +28,7 @@ const SAFE_SHARD = /^[a-z0-9][a-z0-9._-]*$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const ENTRY = /^\d{8}\.json$/u;
 const READ_CHUNK_BYTES = 64 * 1024;
+const MAX_HEADER_BYTES = 1024 * 1024;
 const MAX_ARRAY_ITEM_BYTES = 16 * 1024 * 1024;
 export const V12_VISUAL_BATCH_WINDOW = 4;
 
@@ -117,13 +118,19 @@ function removeTree(directory) {
   rmSync(directory, { recursive: true, force: false });
 }
 
+/** Inspect a leaf stat without bypassing its caller's ancestor checks. */
+export function assertV12StreamingLeafStat(stat) {
+  if (stat?.isSymbolicLink()) fail("path_invalid");
+  return stat;
+}
+
 function removeStagedArtifact(stage, artifact, { recursive = false } = {}) {
   const safe = relativeArtifact(artifact);
   const target = path.join(stage, safe);
   assertInside(stage, target);
   const stat = lstatSync(target, { throwIfNoEntry: false });
   if (stat === undefined) return;
-  if (stat.isSymbolicLink()) fail("path_invalid");
+  assertV12StreamingLeafStat(stat);
   if (recursive) {
     if (!stat.isDirectory()) fail("path_invalid");
     removeTree(target);
@@ -159,7 +166,7 @@ function validMember(runRoot, stage, member) {
     const file = path.join(base, member.artifact);
     assertInside(base, file);
     const stat = lstatSync(file, { throwIfNoEntry: false });
-    if (stat?.isSymbolicLink()) fail("path_invalid");
+    assertV12StreamingLeafStat(stat);
     if (stat === undefined) continue;
     if (!stat.isFile() || stat.size !== member.size_bytes || fileSha256(file) !== member.sha256) return false;
     found = true;
@@ -167,13 +174,13 @@ function validMember(runRoot, stage, member) {
   return found;
 }
 
-function processAlive(pid) {
+export function isV12StreamingProcessAlive(pid) {
   if (!Number.isSafeInteger(pid) || pid < 1) return false;
   try { process.kill(pid, 0); return true; }
   catch (error) { return error?.code === "EPERM"; }
 }
 
-function processBirthSha256(pid) {
+export function readV12StreamingProcessBirthSha256(pid) {
   if (!Number.isSafeInteger(pid) || pid < 1) return null;
   const result = spawnSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
     encoding: "utf8", timeout: 5_000, maxBuffer: 16 * 1024, stdio: ["ignore", "pipe", "ignore"],
@@ -183,8 +190,8 @@ function processBirthSha256(pid) {
 }
 
 function claimOwnerAlive(owner) {
-  if (!processAlive(owner.pid)) return false;
-  const observed = processBirthSha256(owner.pid);
+  if (!isV12StreamingProcessAlive(owner.pid)) return false;
+  const observed = readV12StreamingProcessBirthSha256(owner.pid);
   return observed === null || observed === owner.process_birth_sha256;
 }
 
@@ -202,7 +209,7 @@ function acquireClaim(runRoot, runId, shard) {
   const claims = ensureDirectory(runRoot, path.join(runRoot, ".claims"));
   const claim = path.join(claims, `${shard}.json`);
   const nonce = randomBytes(16).toString("hex");
-  const processBirth = processBirthSha256(process.pid);
+  const processBirth = readV12StreamingProcessBirthSha256(process.pid);
   if (processBirth === null) fail("claim_conflict");
   const owner = `${JSON.stringify({ schema_version: 2, run_id: runId, shard, pid: process.pid, process_birth_sha256: processBirth, nonce })}\n`;
   for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -238,7 +245,7 @@ function atomicJson(base, file, value) {
   syncDirectory(path.dirname(file));
 }
 
-function writeStreamFile(base, file, writer) {
+export function writeV12StreamingFile(base, file, writer) {
   assertInside(base, file);
   ensureParents(base, file);
   if (existsSync(file)) unlinkSync(file);
@@ -262,8 +269,8 @@ function readPrefix(file, marker) {
   const chunks = [];
   let size = 0;
   try {
-    while (size <= 1024 * 1024) {
-      const chunk = Buffer.allocUnsafe(READ_CHUNK_BYTES);
+    while (size < MAX_HEADER_BYTES) {
+      const chunk = Buffer.allocUnsafe(Math.min(READ_CHUNK_BYTES, MAX_HEADER_BYTES - size));
       const read = readSync(descriptor, chunk, 0, chunk.length, null);
       if (read === 0) break;
       chunks.push(chunk.subarray(0, read)); size += read;
@@ -275,6 +282,15 @@ function readPrefix(file, marker) {
   fail("json_invalid");
 }
 
+/** Capture a plain header value before exposing it to its caller. */
+export function validateV12VisualJsonHeader(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) fail("json_invalid");
+  let snapshot;
+  try { snapshot = structuredClone(value); } catch { fail("json_invalid"); }
+  return Object.freeze(snapshot);
+}
+
 export function readV12VisualJsonHeader({ file, firstArrayKey } = {}) {
   if (typeof file !== "string" || typeof firstArrayKey !== "string" || !/^[a-z_]+$/u.test(firstArrayKey)) fail("arguments_invalid");
   const marker = Buffer.from(`${JSON.stringify(firstArrayKey)}:[`);
@@ -283,8 +299,7 @@ export function readV12VisualJsonHeader({ file, firstArrayKey } = {}) {
     const prefix = readPrefix(file, marker).toString("utf8");
     value = JSON.parse(`${prefix}${JSON.stringify(firstArrayKey)}:[]}`);
   } catch { fail("json_invalid"); }
-  if (!value || typeof value !== "object" || Array.isArray(value)) fail("json_invalid");
-  return value;
+  return validateV12VisualJsonHeader(value);
 }
 
 export function* iterateV12VisualJsonArray({ file, arrayKey, maxItemBytes = MAX_ARRAY_ITEM_BYTES } = {}) {
@@ -486,16 +501,18 @@ function appendBatch({ runRoot, paths, definition, state, records, window, membe
 }
 
 function* journalEntries(paths) {
-  for (let ordinal = 0; ; ordinal += 1) {
-    const file = path.join(paths.batches, `${String(ordinal).padStart(8, "0")}.json`);
-    if (!existsSync(file)) return;
+  let ordinal = 0;
+  let file = path.join(paths.batches, `${String(ordinal).padStart(8, "0")}.json`);
+  while (existsSync(file)) {
     yield readBatch(file);
+    ordinal += 1;
+    file = path.join(paths.batches, `${String(ordinal).padStart(8, "0")}.json`);
   }
 }
 
 function writeIndex({ runRoot, stage, paths, definition, indexHeader }) {
   const file = path.join(stage, definition.index_relative);
-  const descriptor = writeStreamFile(stage, file, (write) => {
+  const descriptor = writeV12StreamingFile(stage, file, (write) => {
     const fields = Object.entries(indexHeader).map(([key, value]) => `${JSON.stringify(key)}:${JSON.stringify(value)}`);
     write(`{${fields.join(",")},"windows":[\n`);
     let first = true;
@@ -540,7 +557,7 @@ function writeManifest({ runRoot, stage, paths, definition, indexMember, executi
   const pending = path.join(stage, "manifest.pending");
   if (existsSync(pending)) unlinkSync(pending);
   const identity = publicationIdentity(runRoot);
-  writeStreamFile(stage, pending, (write) => {
+  writeV12StreamingFile(stage, pending, (write) => {
     write(`${JSON.stringify({ schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: definition.run_id, shard: definition.shard, identity }).slice(0, -1)}`);
     if (executionOrigin !== undefined) write(`,"execution_origin":${JSON.stringify(executionOrigin)}`);
     write(',"completed":true');
@@ -593,6 +610,12 @@ function publicationHeader(file, runId, shard) {
   return header;
 }
 
+/** Validate a publication count without granting publication authority. */
+export function validateV12StreamingPublicationMemberCount(count) {
+  if (!Number.isSafeInteger(count) || count < 1) fail("manifest_invalid");
+  return count;
+}
+
 function verifyPublication({ runRoot, stage, runId, shard, manifestFile }) {
   publicationHeader(manifestFile, runId, shard);
   let count = 0;
@@ -603,7 +626,7 @@ function verifyPublication({ runRoot, stage, runId, shard, manifestFile }) {
     if (lstatSync(staged, { throwIfNoEntry: false })?.isFile()) stagedMemberCount += 1;
     count += 1;
   }
-  if (count < 1) fail("manifest_invalid");
+  validateV12StreamingPublicationMemberCount(count);
   if (isDirectory(stage)) {
     const stagedManifestCount = path.resolve(manifestFile) === path.resolve(stage, "manifest.json") ? 1 : 0;
     if (countStageFiles(stage) !== stagedMemberCount + stagedManifestCount) fail("stage_member_invalid");
@@ -621,6 +644,43 @@ function acceptPublishedStageManifest(stage, finalManifest) {
   if (finalStat === undefined || finalStat.isSymbolicLink() || !finalStat.isFile()
     || stat.size !== finalStat.size || fileSha256(stagedManifest) !== fileSha256(finalManifest)) fail("manifest_mismatch");
   unlinkSync(stagedManifest); syncDirectory(stage);
+}
+
+function validateCompletedInventory({ runRoot, stage, manifestFile, indexRelative, indexHeader,
+  resultKey, totalCount, batchWindow, validateBatch, validateComplete, uniqueKey }) {
+  let indexMember;
+  for (const { value } of iterateV12VisualJsonArray({ file: manifestFile, arrayKey: "members" })) indexMember = value;
+  if (indexMember?.artifact !== indexRelative) fail("inventory_invalid");
+  if (!validMember(runRoot, stage, indexMember)) fail("manifest_member_invalid");
+  const stagedIndex = path.join(stage, indexRelative);
+  const file = existsSync(stagedIndex) ? stagedIndex : path.join(runRoot, indexRelative);
+  const { windows: _windows, ...retainedHeader } = readV12VisualJsonHeader({ file, firstArrayKey: "windows" });
+  if (JSON.stringify(retainedHeader) !== JSON.stringify(indexHeader)) fail("inventory_invalid");
+  const records = iterateV12VisualJsonArray({ file, arrayKey: resultKey });
+  const keys = new Set();
+  let offset = 0; let ordinal = 0;
+  try {
+    for (const { value: window } of iterateV12VisualJsonArray({ file, arrayKey: "windows" })) {
+      const count = Math.min(batchWindow, totalCount - offset);
+      if (count < 1 || window?.ordinal !== ordinal || window.offset !== offset || window.count !== count) fail("inventory_invalid");
+      const batch = [];
+      for (let index = 0; index < count; index += 1) {
+        const entry = records.next();
+        if (entry.done) fail("inventory_invalid");
+        batch.push(entry.value.value);
+        if (typeof uniqueKey === "function") {
+          const key = uniqueKey(entry.value.value);
+          if (typeof key !== "string" || !/^[a-f0-9]{32,64}$/u.test(key)) fail("unique_key_invalid");
+          if (keys.has(key)) fail("duplicate_invalid");
+          keys.add(key);
+        }
+      }
+      if (validateBatch({ records: batch, window, count, ordinal, offset }, offset) !== true) fail("inventory_invalid");
+      offset += count; ordinal += 1;
+    }
+    if (offset !== totalCount || !records.next().done
+      || validateComplete({ itemCount: offset, batchCount: ordinal }) !== true) fail("inventory_invalid");
+  } finally { records.return(); }
 }
 
 function publishMember(runRoot, stage, member) {
@@ -703,7 +763,7 @@ export function executeV12VisualStreamingShard({
     || !Number.isSafeInteger(batchWindow) || batchWindow < 1 || batchWindow > 512 || typeof expectedWindow !== "function"
     || typeof processWindow !== "function" || typeof validateBatch !== "function"
     || typeof validateComplete !== "function"
-    || typeof indexHeader !== "object" || Array.isArray(indexHeader) || !["records", "results"].includes(resultKey)) fail("arguments_invalid");
+    || indexHeader === null || typeof indexHeader !== "object" || Array.isArray(indexHeader) || !["records", "results"].includes(resultKey)) fail("arguments_invalid");
   relativeArtifact(indexRelative);
   const runRoot = runRootFor(root, runId);
   assertInside(runRoot, path.join(runRoot, indexRelative));
@@ -712,10 +772,12 @@ export function executeV12VisualStreamingShard({
   const staging = path.join(runRoot, ".staging");
   const stage = path.join(staging, shard);
   const finalManifest = path.join(runRoot, "publication", `${shard}.json`);
-  try {
+  const executeAttempt = () => {
     if (existsSync(finalManifest)) {
-      acceptPublishedStageManifest(stage, finalManifest);
       const memberCount = verifyPublication({ runRoot, stage, runId, shard, manifestFile: finalManifest });
+      validateCompletedInventory({ runRoot, stage, manifestFile: finalManifest, indexRelative, indexHeader,
+        resultKey, totalCount, batchWindow, validateBatch, validateComplete, uniqueKey });
+      acceptPublishedStageManifest(stage, finalManifest);
       if (existsSync(stage)) removeTree(stage); removeEmpty(staging);
       if (existsSync(paths.journal)) removeTree(paths.journal); removeEmpty(paths.streamRoot);
       return Object.freeze({ ...indexHeader, [resultKey === "records" ? "capture_count" : "comparison_count"]: totalCount,
@@ -726,6 +788,9 @@ export function executeV12VisualStreamingShard({
     ensureDirectory(runRoot, stage);
     const stagedManifest = path.join(stage, "manifest.json");
     if (existsSync(stagedManifest)) {
+      verifyPublication({ runRoot, stage, runId, shard, manifestFile: stagedManifest });
+      validateCompletedInventory({ runRoot, stage, manifestFile: stagedManifest, indexRelative, indexHeader,
+        resultKey, totalCount, batchWindow, validateBatch, validateComplete, uniqueKey });
       const completed = completePublication({ runRoot, stage, paths, runId, shard, manifestFile: stagedManifest });
       return Object.freeze({ ...indexHeader, [resultKey === "records" ? "capture_count" : "comparison_count"]: totalCount,
         batch_count: Math.ceil(totalCount / batchWindow), member_count: completed.member_count, resumed: true });
@@ -767,12 +832,16 @@ export function executeV12VisualStreamingShard({
     const completed = completePublication({ runRoot, stage, paths, runId, shard, manifestFile: completedManifest });
     return Object.freeze({ ...indexHeader, [resultKey === "records" ? "capture_count" : "comparison_count"]: totalCount,
       batch_count: state.batchCount, member_count: completed.member_count, resumed: resumedItemCount > 0 });
+  };
+  let result;
+  try { result = executeAttempt();
   } catch (error) {
-    if (!existsSync(path.join(stage, "manifest.json"))) {
+    if (!existsSync(finalManifest) && !existsSync(path.join(stage, "manifest.json"))) {
       if (existsSync(stage)) removeTree(stage); removeEmpty(staging);
       if (existsSync(paths.journal)) removeTree(paths.journal); removeEmpty(paths.streamRoot);
       writeFailure(runRoot, runId, shard, error);
     }
     throw error;
   } finally { release(); }
+  return result;
 }

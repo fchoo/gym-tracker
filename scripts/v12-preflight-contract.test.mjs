@@ -12,6 +12,8 @@ import {
   validateV12FinalNativeIdentity,
   validateV12FinalProductionIdentity,
   validateV12ProductionPublicationOrigins,
+  validateV12ArtifactConfinement,
+  validateV12ExpectedPublicationMembers,
   V12_NATIVE_PROVENANCE_REGISTRY,
 } from "./verify-v12-native-evidence.mjs";
 import { digestV12CanonicalRestorationSnapshot } from "./v12-device-settings-contract.mjs";
@@ -21,6 +23,29 @@ import { createHash } from "node:crypto";
 
 const RUN_ID = "phase20-20261014T031137Z-5917481c1fd1";
 const h = (letter) => letter.repeat(64);
+
+test("artifact confinement rejects outside and sibling-prefix destinations before file access", () => {
+  const root=path.resolve(tmpdir(),"v12-confined-artifacts"),child=path.join(root,"owned","evidence.json");
+  assert.equal(validateV12ArtifactConfinement({root,resolvedPath:root}),root);
+  assert.equal(validateV12ArtifactConfinement({root,resolvedPath:child}),child);
+  for(const resolvedPath of [path.join(path.dirname(root),"outside.json"),`${root}-other/evidence.json`,path.join(root,"..","escape.json"),"relative.json",undefined,null]){
+    assert.throws(()=>validateV12ArtifactConfinement({root,resolvedPath}),/v12_preflight_path_invalid/u);
+  }
+  for(const value of [undefined,{}, {root:"",resolvedPath:child}, {root:null,resolvedPath:child}])assert.throws(()=>validateV12ArtifactConfinement(value),/v12_preflight_path_invalid/u);
+});
+
+test("expected-member registry validation preserves owned ordering and rejects unusable policies", () => {
+  const registry={sqlite:["sqlite/migration.json","sqlite/portability.json"]},before=structuredClone(registry);
+  const members=validateV12ExpectedPublicationMembers({shard:"sqlite",registry});
+  assert.deepEqual(members,registry.sqlite);assert.notEqual(members,registry.sqlite);assert.equal(Object.isFrozen(members),true);assert.deepEqual(registry,before);
+  for(const value of [undefined,{}, {shard:1,registry},{shard:"sqlite",registry:null},{shard:"sqlite",registry:[]},{shard:"unknown",registry},
+    {shard:"sqlite",registry:{sqlite:null}},{shard:"sqlite",registry:{sqlite:[]}},{shard:"sqlite",registry:{sqlite:["sqlite/a.json","sqlite/a.json"]}},
+    {shard:"sqlite",registry:{sqlite:["../escape.json"]}},{shard:"sqlite",registry:{sqlite:["sqlite\\invalid.json"]}}]){
+    assert.throws(()=>validateV12ExpectedPublicationMembers(value),/v12_preflight_artifact_set_invalid/u);
+  }
+  assert.deepEqual(validateV12ExpectedPublicationMembers({shard:"sqlite",registry:Object.assign(Object.create(null),registry)}),registry.sqlite);
+});
+
 function v12LiveManifest(runId = RUN_ID) {
   return {
     schema_version: 1, run_id: runId, mode: "live", evidence_origin: "native", created_at: "2026-10-14T03:11:37Z",
@@ -120,12 +145,11 @@ test("preseal binds every adapter shard to its expected action and production do
 });
 
 test("final native identity requires current source, retained APK bytes, signature, installed bytes, settings, and device", () => {
+  const canonical = v12LiveManifest();
   const manifest = {
-    run_id: RUN_ID,
-    evidence_origin: "native",
-    source: { head: "a".repeat(40), tree_sha256: h("b") },
-    build: { package: "com.fchoo.gymtracker.devtest", apk: { path: "artifacts/native/v1.2-acceptance/app.apk", sha256: h("c"), size_bytes: 3, signature_sha256: h("d"), certificate_sha256: h("e") } },
-    device: { installed_apk_sha256: h("c"), identity_sha256: h("f"), settings_sha256: h("1"), restoration_sha256: h("1") },
+    ...canonical,
+    build: { ...canonical.build, apk: { ...canonical.build.apk, sha256: h("c"), size_bytes: 3, signature_sha256: h("d"), certificate_sha256: h("e") } },
+    device: { ...canonical.device, installed_apk_sha256: h("c"), identity_sha256: h("f"), settings_sha256: h("1"), restoration_sha256: h("1") },
   };
   const observed = { source_head: manifest.source.head, source_tree_sha256: manifest.source.tree_sha256,
     apk_sha256: manifest.build.apk.sha256, apk_size_bytes: 3, signature_sha256: manifest.build.apk.signature_sha256,
@@ -237,6 +261,7 @@ test("final identity re-reads retained APK bytes, signature, source and device",
 
 test("final device state re-reads the canonical restoration settings and both lease paths", () => {
   const calls = [];
+  const installedApkPath = "/data/app/~~controlled==/com.fchoo.gymtracker.devtest-control==/base.apk";
   const executeAdb = (...args) => {
     calls.push(args);
     const command = args.join(" ");
@@ -244,12 +269,12 @@ test("final device state re-reads the canonical restoration settings and both le
     if (command === "shell getprop ro.product.cpu.abi") return "arm64-v8a\n";
     if (command === "shell getprop ro.build.version.sdk") return "36\n";
     if (command === "shell getprop ro.product.model") return "controlled\n";
-    if (command === "shell pm path com.fchoo.gymtracker.devtest") return "package:/data/app/controlled/base.apk\n";
-    if (command === "shell sha256sum /data/app/controlled/base.apk") return `${h("8")}  /data/app/controlled/base.apk\n`;
+    if (command === "shell pm path com.fchoo.gymtracker.devtest") return `package:${installedApkPath}\n`;
+    if (command === `shell sha256sum ${installedApkPath}`) return `${h("8")}  ${installedApkPath}\n`;
     if (command === "shell settings get system font_scale") return "1.15\n";
     if (command === "shell settings get secure ui_night_mode") return "1\n";
     if (command === "shell settings get global animator_duration_scale") return "0.5\n";
-    if (command.startsWith("shell sh -c ")) return "clear\n";
+    if (command.startsWith("shell [ ! -e ")) return "clear\n";
     throw new Error(`unexpected command: ${command}`);
   };
 
@@ -262,7 +287,8 @@ test("final device state re-reads the canonical restoration settings and both le
     animator_duration_scale: "0.5",
   }));
   assert.equal(state.lease_state, "clear");
-  const leaseProbe = calls.find((args) => args[0] === "shell" && args[1] === "sh");
+  assert.ok(calls.some(args => args.join(" ") === `shell sha256sum ${installedApkPath}`));
+  const leaseProbe = calls.find((args) => args[0] === "shell" && args[1].startsWith("[ ! -e "));
   assert.match(leaseProbe.at(-1), /gym-tracker-v12-native-lease/u);
   assert.match(leaseProbe.at(-1), /gym-tracker-v12-visual/u);
 });
