@@ -11,7 +11,7 @@ requires:
     provides: committed native-acceptance contracts, readiness evidence, and build tooling
 provides:
   - one frozen-source development-test release-variant APK with retained and installed byte identity
-  - immutable V12 build-only run phase20-20261014T065837Z-335e0563d57f
+  - fresh same-SM-S916B run phase20-20261022T113830Z-898ae5f2cacc; prior 3550e7f3 and 335e0563 runs preserved invalidated
   - exact Phase 20 integrity coverage registration and native-safe contract repairs
 affects: [20-09, native-evidence, acceptance-shards]
 actuals:
@@ -33,10 +33,10 @@ key-files:
     - scripts/create-v12-run-manifest.mjs
     - src/domains/running/commands.ts
 key-decisions:
-  - "The only authoritative Phase 20 artifact is the frozen 335e0563 development-test build bound to phase20-20261014T065837Z-335e0563d57f."
+  - "The 3550e7f3 run and prior 335e0563 artifact are invalidated and preserved, never reused; current observations require a fresh build after corrective coverage/review gates close."
   - "The prior c530ca0f build/run remains preserved as invalidated pre-SQLite-producer-hardening evidence and is not reused."
   - "Phase 20 source freeze permits no subsequent implementation edits before shard evidence; Plan 20-09 is next."
-requirements-completed: [VER-01, VER-11, VER-13]
+requirements-completed: []
 coverage:
   - id: D1
     description: Exact Phase 20 integrity registration and full pinned host verification.
@@ -54,12 +54,16 @@ coverage:
     requirement: VER-13
     verification:
       - kind: other
-        ref: node scripts/create-v12-run-manifest.mjs --run phase20-20261014T065837Z-335e0563d57f --verify-build-only
-        status: pass
+        ref: new final-source Samsung build/run pending;898 native failure retained and retry forbidden
+        status: pending
     human_judgment: false
 duration: 4h 19m
-completed: 2026-10-14
-status: complete
+completed: 2026-10-22
+status: corrective_native_gates_pending
+host_gates_valid: false
+current_implementation_sha: 6c6bc04d7cc7b40628a224a9b385b65363044367
+invalidated_run_id: phase20-20261022T113830Z-898ae5f2cacc
+native_build_valid: false
 ---
 
 > Current personal scope (2026-10-30): this historical gate/build plan is removed from active acceptance under [the necessity reassessment](../../verification/TEST-NECESSITY-REASSESSMENT-20261030.md). The status, invalidated runs and results below retain their historical meanings; they do not authorize a new build or test.
@@ -67,7 +71,40 @@ status: complete
 
 # Phase 20 Plan 08: Frozen development-test APK and immutable V12 build-only identity Summary
 
-**A single Android development-test release-variant APK was rebuilt from frozen source 335e0563, installed by data-preserving replacement, byte-verified, and bound to immutable run `phase20-20261014T065837Z-335e0563d57f`. This supersedes the archived pre-SQLite-producer-hardening build-only run and is the only run Plan 20-09 may consume.**
+## Current Corrective Status — 2026-10-22
+
+**Plan20-08 is reopened for native-discovered corrective gates.** Build7899 passed at898ae5f2, but its first native SQLite stage failed and later source corrections invalidate that run. The898 and3550 APKs and immutable failure receipts remain preserved history, not valid current acceptance or retry inputs. Current progress/framing corrections are integrated through6c6bc04d; CNGdebug-access correction and final targeted source audits remain pending.
+
+The pre-native verified source snapshot is `898ae5f2cacca08f3457af1d66d3c573c09cd68c`; current corrective HEAD is `6c6bc04d7cc7b40628a224a9b385b65363044367`. The following host/audit scores belong to the preserved898 snapshot, not an unexecuted current-source audit. The final application gate at `73e1e41a` passed 347 suites / 5,010 tests and all 166 integrity modules at exact 100% statements/branches/functions/lines; explicit unchanged-production-input proof permits inheritance without rerunning that aggregate. Runtime/executor/receipt corrections are complete. The final unchanged-source Linux task 68798 passed 649 Phase 20 tests, 172 Phase 18 tests and 10 pidfd tests with zero skips, and every one of the 17 critical Node modules plus pidfd reached exact 100% all four metrics. Independent exact-source review is clean 100/100, zero findings; source security is 49/49 closed, score 100, zero open threats/risks.
+
+Current predecessor, typecheck, boundary and pinned Node 24.19.0 / npm 11.17.0 / Temurin 17.0.20+8 / API36 / Build Tools36 / NDK27.1.12297006 / Maestro2.8.0 preflight passes. Source tree is `d95c10ebb84195fefd7cad9d9aa9768cd94b927f09b5d30f3e87d92ab1545f65`; host receipt is `artifacts/native/host/phase20-final-898ae5f2cacc/host-receipt.json`, SHA-256 `cecf2e5caa3153b6352987014eb4847c3fc655824603190a141626a477757181`. Protected `.coverage` is unchanged; completed Linux evidence is retained and its VM stopped.
+
+The owner connected/unlocked/authorized the SM-S916B. Existing builder task7899 passed physical preflight, completed the release-variant development-test build in 7m57s, replacement-installed it without touching production data, and verified retained/installed APK byte equality. Fresh run is `phase20-20261022T113830Z-898ae5f2cacc`; APK SHA-256 is `4d517126d2a76343e537ff97087e8c5fb07f9c687d23d6c4e7bd6e6132c66d40` (93,278,447 bytes). Package/profile is `com.fchoo.gymtracker.devtest` / development-test, signature SHA-256 `779b75b032a8f23d45d558b304ab6276bf5894001fa1fafb79c17eaf8f89a272`, certificate SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. Device identity is `84aabfed05f6f03b4fb2b3d9ef00ce26a0c18e6bcfcaa975b673c1c836815de0`; actual device OS is Android17/API37, while compile/target/build tools remain pinned API36. Settings/restoration hashes agree. Both device serial bindings remain ephemeral and are never logged. Native pipeline58825 failed its first SQLite producer with `v12_sqlite_marker_timeout`; `failures/sqlite.json` is immutable and `retry_allowed:false`. Real diagnostics confirmed rejected source progress prefixes, duplicate same-nonce registry execution, unsafe/unbound result framing, and missing devtest `run-as` access (`not debuggable`). Parent transport/single-flight repairs and canonical case/operation progress are integrated through6c6bc04d;245 agent tests,12 parser/registry tests,7 framing tests and36 launcher tests passed zero-skipped focused scopes with the affected helper/V12 metrics exactly100. No budgets or heartbeat are changed. CNGdebug-access implementation remains active; a fresh audited build/run is required after it closes. Plans20-09–20-12, seven same-Samsung attended observations, final seal/goal/Nyquist and signed production delivery remain incomplete; this acceptance APK is not presented as the finished product.
+
+## Preserved Corrective Build — invalidated 3550e7f3
+
+The following table is historical build identity only. The earlier `335e0563` APK/build record was preserved under `artifacts/native/v1.2-invalidated-builds/source-335e0563d57f/`; neither build is current acceptance evidence.
+
+| Current fact | Verified value |
+|---|---|
+| Implementation SHA | `3550e7f3f76059d2b430ecb2e63f4093383f23ed` |
+| Source-tree SHA-256 | `fbb462ba15ae1450cfe4edd73f8ffab8e52f8d022a634bf0dfcdc337dcb4b5f0` |
+| Immutable run manifest | `artifacts/native/v1.2/phase20-20261021T150646Z-3550e7f3f760/build.json` |
+| Manifest SHA-256 | `442aa2c991ba17d39398182c74a631121e187d4e4cba4f5dc03f819a87c816e8` |
+| APK and installed-byte SHA-256 | `a394c2f2f01972351bdd93f37054513044ee3c75ce7d89e83ce0d23b58b5fd5a` (identical) |
+| Signature-report SHA-256 | `779b75b032a8f23d45d558b304ab6276bf5894001fa1fafb79c17eaf8f89a272` |
+| Certificate SHA-256 | `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` |
+| Package/profile | `com.fchoo.gymtracker.devtest`, development-test, release variant |
+| Source gates | Clean exact-SHA review; security 49/49 closed, zero open/flags; typecheck and boundary lint passed |
+| Build/install | Pinned Node/npm/Temurin/API36/Build Tools36/NDK toolchain; standalone ARM64 Chaquopy/Python lock validated; `adb install -r`, signature and alignment verified |
+
+The first current-source prebuild attempt produced no APK/run because the shell lacked the already-approved public OAuth configuration. The existing registration was verified against the retained APK and supplied without printing its values. The exited failed claim and log were preserved under `artifacts/native/v1.2-invalidated-builds/pre-artifact-attempt-3550e7f3/` before the successful pre-artifact retry. No application source or dependency changed for that recovery.
+
+The successful build is an acceptance-only artifact, not a production delivery or native PASS. Plans 20-09 through 20-12 still must complete their observations, attended gate and final seal. The final consolidated host-coverage pass is separately in progress; the historical host scores below are not relabeled as current-source proof.
+
+## Historical Build Record — superseded and invalidated
+
+**The remaining historical sections record the prior 335e0563 build and must not be used by current Plan 20-09 or final acceptance.**
 
 ## Performance
 
@@ -187,11 +224,11 @@ None. The `--coverageThreshold={}` literal in `scripts/run-coverage-gate.mjs` is
 
 ## User Setup Required
 
-None. The installed development-test app remains on emulator-5554 with existing data preserved; later attended evidence remains governed by its own plans.
+Connect and unlock the SM-S916B and authorize USB debugging. Later Garmin foreground authentication/MFA and the seven same-artifact attended observations remain physical/account-owner actions; no credentials should be supplied in chat. Existing production data must be preserved.
 
 ## Next Phase Readiness
 
-Plan 20-09 is next. It must consume only `phase20-20261014T065837Z-335e0563d57f` and its immutable `build.json`; any later implementation-source change invalidates this run and requires a new source freeze/build/run under the plan authority.
+The historical `335e0563` and `3550e7f3` runs are invalidated, not next-plan inputs. Plan20-09 now consumes only `phase20-20261022T113830Z-898ae5f2cacc`; native pipeline task58825 serializes the remaining existing plans and checks encrypted-session existence before Garmin's immutable producer. Do not duplicate the active pipeline, edit source, replan, or rerun the passing host application aggregate without actual input invalidation.
 
 ## Self-Check: PASSED
 
