@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 
 const mockNavigationKeyEpoch = jest.fn<() => number>(() => 0);
-jest.mock("expo-modules-core", () => ({
-  requireNativeModule: () => ({ getNavigationKeyEpoch: mockNavigationKeyEpoch }),
-}));
+jest.mock("expo-modules-core", () => {
+  const actual = jest.requireActual<typeof import("expo-modules-core")>("expo-modules-core");
+  return {
+    ...actual,
+    requireNativeModule: (name: string) => name === "AndroidViewFocus"
+      ? { getNavigationKeyEpoch: mockNavigationKeyEpoch }
+      : actual.requireNativeModule(name),
+  };
+});
 
 import {
   markKeyboardFocusModality,

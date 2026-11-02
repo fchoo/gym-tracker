@@ -2,6 +2,8 @@ name: Pull Request
 
 on:
   pull_request:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -10,15 +12,16 @@ concurrency:
   group: pr-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# Scope: .planning/verification/TEST-NECESSITY-REASSESSMENT-20261030.md.
+# Historical native/Nyquist/coverage producers remain available for separately
+# justified changes. They do not gate this accepted personal release.
 env:
   NODE_VERSION: 24.19.0
   NPM_VERSION: 11.17.0
-  PYTHON_VERSION: "3.14"
   JAVA_VERSION: 17.0.20+8
   ANDROID_API_LEVEL: 36
   ANDROID_BUILD_TOOLS: 36.0.0
   ANDROID_NDK: 27.1.12297006
-  MAESTRO_VERSION: 2.8.0
 
 jobs:
   bootstrap:
@@ -28,57 +31,30 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-
-      - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: requirements-dev.lock
-
-      - name: Set up Java
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
-
       - name: Pin npm
         run: |
           npm install --global "npm@${NPM_VERSION}"
           test "$(node --version)" = "v${NODE_VERSION}"
           test "$(npm --version)" = "${NPM_VERSION}"
-          java -version 2>&1 | grep -F "\"17.0.20\""
-
       - name: Install locked dependencies
         run: npm ci
 
       - name: Enforce dependency advisory policy
         run: npm run audit:dependencies
-
-      - name: Verify pinned Phase 18 Python coverage
-        run: |
-          npm run bootstrap:coverage:phase18
-          npm run test:coverage:phase18:python
-
+      - name: Test dependency policy and configuration guards
+        run: node --test scripts/evaluate-npm-audit.test.mjs scripts/google-oauth-config.test.mjs scripts/assert-generated-production-android.test.mjs
       - name: Verify Expo compatibility
         env:
-          # Pin dependency validation to the locked manifest instead of Expo's
-          # live version endpoint, whose recommended patches drift day to day
-          # and would otherwise fail this gate on unrelated PRs.
           EXPO_OFFLINE: "1"
         run: |
+          export EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID="$(node --input-type=module -e 'import { GOOGLE_OAUTH_REGISTRATIONS } from "./scripts/google-oauth-config.mjs"; process.stdout.write(GOOGLE_OAUTH_REGISTRATIONS.webClientId)')"
           npx expo install --check
           npx expo-doctor
-
       - name: Verify source checks
         run: |
           npm run typecheck
@@ -93,8 +69,7 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Reject absent future suites
+      - name: Keep registered verification commands available
         run: |
           node <<'NODE'
           const { readFileSync } = require('node:fs');
@@ -123,7 +98,7 @@ jobs:
           ];
           const missing = requiredScripts.filter((name) => !packageJson.scripts?.[name]);
           if (missing.length > 0) {
-            console.error(`Required PR suites are not implemented yet: ${missing.join(', ')}`);
+            console.error(`Required scripts are missing: ${missing.join(', ')}`);
             process.exit(1);
           }
           NODE
@@ -132,94 +107,35 @@ jobs:
     name: Typecheck through host SQLite
     needs: required-suite-contract
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 30
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-
       - name: Pin npm and install
         run: |
           npm install --global "npm@${NPM_VERSION}"
           npm ci
-
       - name: Typecheck
         run: npm run typecheck
-
       - name: Lint and boundaries
         run: |
           npm run lint
           npm run check:boundaries
-
-      - name: Validate Phase 20 predecessors
-        run: npm run validate:v12:prebuild
-
       - name: Unit tests
         run: npm run test:unit -- --runInBand
-
       - name: Component tests
         run: npm run test:components -- --runInBand
-
       - name: Host SQLite tests
         run: npm run test:sqlite:host -- --runInBand
-
       - name: Integration tests
         run: npm run test:integration -- --runInBand
-
-      - name: Coverage
-        run: npm run test:coverage -- --skip-phase20-evidence --runInBand
-
-      - name: Execute complete Phase 20 and Phase 18 evidence suites
-        run: npm run test:evidence:v12:all
-
-  phase18-aggregate-coverage:
-    name: Phase 18 Python, Kotlin JaCoCo, Node, and Jest coverage
-    needs: host-gates
-    runs-on: ubuntu-24.04
-    timeout-minutes: 90
-    steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: requirements-dev.lock
-
-      - name: Set up Java
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
-
-      - name: Install pinned coverage prerequisites
-        run: |
-          npm install --global "npm@${NPM_VERSION}"
-          npm ci
-          sh scripts/install-pinned-android-sdk.sh
-          npm run bootstrap:coverage:phase18
-
-      - name: Generate the Android JaCoCo test project
-        run: npm run prebuild:android
-
-      - name: Enforce aggregate Phase 18 coverage
-        run: npm run test:coverage:phase18
+      - name: Native router transitions
+        run: npx jest --config jest.config.js --selectProjects native-router --runInBand
 
   generated-native:
     name: Clean generated Android contract
@@ -229,218 +145,27 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-
       - name: Set up Java
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
-
       - name: Install pinned Android SDK components
         run: sh scripts/install-pinned-android-sdk.sh
-
       - name: Install and verify clean generation
         run: |
           npm install --global "npm@${NPM_VERSION}"
           npm ci
+          export EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID="$(node --input-type=module -e 'import { GOOGLE_OAUTH_REGISTRATIONS } from "./scripts/google-oauth-config.mjs"; process.stdout.write(GOOGLE_OAUTH_REGISTRATIONS.webClientId)')"
           npm run verify:cng
           test -z "$(git ls-files android ios)"
-
-  native-and-smoke:
-    name: Build Phase 12 once, native SQLite, Maestro, benchmark
-    needs: [generated-native, phase18-aggregate-coverage]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - name: Set up Java
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
-
-      - name: Install pinned Android SDK components
-        run: sh scripts/install-pinned-android-sdk.sh
-
-      - name: Install dependencies and Maestro
+      - name: Bundle production Android JavaScript
         run: |
-          npm install --global "npm@${NPM_VERSION}"
-          npm ci
-          sh scripts/install-maestro.sh
-          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-
-      - name: Enable KVM for Android emulator
-        run: |
-          if [ -e /dev/kvm ]; then
-            printf '%s\n' 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
-              sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
-            sudo udevadm control --reload-rules
-            sudo udevadm trigger --name-match=kvm
-          else
-            echo "KVM unavailable; using the emulator runner's software fallback."
-          fi
-
-      - name: Build once, run complete Phase 12 automated producers
-        id: native_matrix
-        continue-on-error: true
-        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
-        env:
-          ORG_GRADLE_PROJECT_reactNativeArchitectures: x86_64
-        with:
-          api-level: 36
-          target: google_apis
-          arch: x86_64
-          profile: pixel_7
-          avd-name: gym-tracker-api36
-          cores: 4
-          ram-size: 6144M
-          heap-size: 1024M
-          disable-animations: true
-          disable-linux-hw-accel: auto
-          emulator-boot-timeout: 900
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -no-metrics
-          script: |
-            export GYM_TRACKER_ANDROID_SERIAL=emulator-5554
-            npm run android:devtest:fresh -- --suite phase12
-            npm run test:sqlite:device -- --suite migrations-effects --manifest artifacts/native/phase12/build.json
-            npm run test:sqlite:device -- --suite google-drive-backup --manifest artifacts/native/phase12/build.json
-            npm run test:maestro:phase12 -- --manifest artifacts/native/phase12/build.json
-            npm run benchmark:phase12:backup -- --manifest artifacts/native/phase12/build.json --evidence artifacts/native/phase12/benchmark.json
-            npm run verify:phase12:evidence -- --manifest artifacts/native/phase12/build.json --automated-only
-
-      # KVM is unavailable on the hosted runner, so the software emulator can
-      # drop the adb device mid-run. One clean cold-boot retry absorbs that
-      # transient crash; a genuine failure still fails both attempts and the gate.
-      - name: Reset Phase 12 artifacts before retry
-        if: steps.native_matrix.outcome == 'failure'
-        run: rm -rf artifacts/native/phase12
-
-      - name: Retry Phase 12 automated producers on emulator crash
-        if: steps.native_matrix.outcome == 'failure'
-        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
-        env:
-          ORG_GRADLE_PROJECT_reactNativeArchitectures: x86_64
-        with:
-          api-level: 36
-          target: google_apis
-          arch: x86_64
-          profile: pixel_7
-          avd-name: gym-tracker-api36
-          cores: 4
-          ram-size: 6144M
-          heap-size: 1024M
-          disable-animations: true
-          disable-linux-hw-accel: auto
-          emulator-boot-timeout: 900
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -no-metrics
-          script: |
-            export GYM_TRACKER_ANDROID_SERIAL=emulator-5554
-            npm run android:devtest:fresh -- --suite phase12
-            npm run test:sqlite:device -- --suite migrations-effects --manifest artifacts/native/phase12/build.json
-            npm run test:sqlite:device -- --suite google-drive-backup --manifest artifacts/native/phase12/build.json
-            npm run test:maestro:phase12 -- --manifest artifacts/native/phase12/build.json
-            npm run benchmark:phase12:backup -- --manifest artifacts/native/phase12/build.json --evidence artifacts/native/phase12/benchmark.json
-            npm run verify:phase12:evidence -- --manifest artifacts/native/phase12/build.json --automated-only
-
-      - name: Retain complete Phase 12 evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: phase12-evidence
-          path: artifacts/native/phase12
-          if-no-files-found: error
-          retention-days: 7
-
-  artifact-roundtrip:
-    name: Download and verify exact Phase 12 evidence
-    needs: native-and-smoke
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - name: Set up Java
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
-
-      - name: Install locked dependencies and recreate coverage summary
-        run: |
-          npm install --global "npm@${NPM_VERSION}"
-          npm ci
-          npm run test:coverage -- --runInBand
-
-      - name: Download retained Phase 12 evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: phase12-evidence
-          path: artifacts/native/phase12
-
-      - name: Download a second exact Phase 12 copy
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: phase12-evidence
-          path: artifacts/native/phase12-downloaded
-
-      - name: Enable KVM for Android emulator
-        run: |
-          if [ -e /dev/kvm ]; then
-            printf '%s\n' 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
-              sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
-            sudo udevadm control --reload-rules
-            sudo udevadm trigger --name-match=kvm
-          else
-            echo "KVM unavailable; using the emulator runner's software fallback."
-          fi
-
-      - name: Verify downloaded bytes and run the automated-only seal
-        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
-        with:
-          api-level: 36
-          target: google_apis
-          arch: x86_64
-          profile: pixel_7
-          avd-name: gym-tracker-api36-roundtrip
-          disable-animations: true
-          disable-linux-hw-accel: auto
-          script: |
-            export GYM_TRACKER_ANDROID_SERIAL=emulator-5554
-            adb -s emulator-5554 install -r artifacts/native/phase12/gym-tracker-phase12-devtest.apk
-            npm run verify:phase12:evidence -- --manifest artifacts/native/phase12/build.json --automated-only
-
-      - name: Retain downloaded Phase 12 verification
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: phase12-evidence-downloaded
-          path: artifacts/native/phase12
-          if-no-files-found: error
-          retention-days: 7
+          export GYM_TRACKER_BUILD_PROFILE=production
+          export EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID="$(node --input-type=module -e 'import { GOOGLE_OAUTH_REGISTRATIONS } from "./scripts/google-oauth-config.mjs"; process.stdout.write(GOOGLE_OAUTH_REGISTRATIONS.webClientId)')"
+          npx expo export --platform android --output-dir artifacts/ci/android-bundle

@@ -93,21 +93,21 @@ describe("actual normal route observations", () => {
       { nonce: "a".repeat(32), pathname: "/", nonce_kind: "normal" },
       { nonce: "a".repeat(32), pathname: "/session/owned-session/correct", nonce_kind: "normal" },
     ]);
-    expect(records[1].sequence).toBeGreaterThan(records[0].sequence);
+    expect(records[1]!.sequence).toBeGreaterThan(records[0]!.sequence);
     expect(lines.join("\n")).not.toMatch(/password|do-not-retain|closeoutRouteNonce|\?/u);
   });
 
   it("preserves an actually observed index pathname rather than inventing slash", async () => {
     mockPathname = "/index";
     await render(<RouteObservationHarness params={{ closeoutRouteNonce: "a".repeat(32) }} />);
-    expect(JSON.parse(lines[0].slice("GYM_TRACKER_V12_NORMAL_ROUTE_OBSERVATION:".length)).pathname).toBe("/index");
+    expect(JSON.parse(lines[0]!.slice("GYM_TRACKER_V12_NORMAL_ROUTE_OBSERVATION:".length)).pathname).toBe("/index");
   });
 
   it.each(["/more/removed-sessions", "/more/manual-encrypted-backup", "/more/data-and-recovery", "/session/owned-session", "/completion/owned-session"])(
     "emits the actual allowed normal pathname: %s", async pathname => {
       mockPathname = pathname;
       await render(<RouteObservationHarness params={{ closeoutRouteNonce: "a".repeat(32) }} />);
-      expect(JSON.parse(lines[0].slice("GYM_TRACKER_V12_NORMAL_ROUTE_OBSERVATION:".length)))
+      expect(JSON.parse(lines[0]!.slice("GYM_TRACKER_V12_NORMAL_ROUTE_OBSERVATION:".length)))
         .toMatchObject({ pathname, nonce: "a".repeat(32), nonce_kind: "normal" });
     },
   );
@@ -158,7 +158,7 @@ describe("actual normal route observations", () => {
     expect(request).not.toBeNull();
     mockPathname = "/workout/owned-session";
     const view = await render(<RouteObservationHarness params={params} request={request} />);
-    const record = JSON.parse(lines[0].slice("GYM_TRACKER_V12_NORMAL_ROUTE_OBSERVATION:".length));
+    const record = JSON.parse(lines[0]!.slice("GYM_TRACKER_V12_NORMAL_ROUTE_OBSERVATION:".length));
     expect(record).toMatchObject({ nonce: "b".repeat(48), nonce_kind: "functional", pathname: "/workout/owned-session" });
     lines.length = 0;
     mockPathname = "/session/owned-session";

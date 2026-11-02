@@ -118,7 +118,7 @@ describe("workout outcome closeout behavior", () => {
     const input = { sessionId: session.id, sessionExerciseId: exercise.id, expectedExerciseRevision: exercise.revision, effort: "on_target" as const, recordedAtMs: 1_786_853_720_000 };
     await expectConflict(repository.recordExerciseEffort({ ...input, expectedExerciseRevision: exercise.revision + 1 }), "exercise_effort_conflict");
     await expect(repository.recordExerciseEffort(input)).resolves.toEqual({ sessionExerciseId: exercise.id, effort: "on_target", revision: exercise.revision + 1 });
-    await expectConflict(repository.recordExerciseEffort({ ...input, effort: "too_easy" }), "exercise_effort_already_recorded");
+    await expectConflict(repository.recordExerciseEffort({ ...input, effort: "easy" }), "exercise_effort_already_recorded");
     expect(await kernel.queryAll("SELECT effort, revision FROM session_exercises WHERE id = ?", [exercise.id]))
       .toEqual([{ effort: "on_target", revision: exercise.revision + 1 }]);
   });

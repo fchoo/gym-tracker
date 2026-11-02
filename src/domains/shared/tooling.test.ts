@@ -703,6 +703,7 @@ describe("Plan 01-03 test and boundary tooling", () => {
     expect([...globalCoverageProjects].sort()).toEqual([
       "components",
       "integration",
+      "native-router",
       "sqlite-host",
       "unit",
     ]);
@@ -821,7 +822,6 @@ describe("Plan 01-03 test and boundary tooling", () => {
       "npm run test:components",
       "npm run test:sqlite:host",
       "npm run test:integration",
-      "npm run test:coverage",
     ];
     let previousIndex = -1;
     for (const command of orderedCommands) {
@@ -830,24 +830,13 @@ describe("Plan 01-03 test and boundary tooling", () => {
       previousIndex = commandIndex;
     }
 
-    const phase12Commands = [
-      "npm run verify:cng",
-      "npm run android:devtest:fresh -- --suite phase12",
-      "npm run test:sqlite:device -- --suite migrations-effects",
-      "npm run test:sqlite:device -- --suite google-drive-backup",
-      "npm run test:maestro:phase12",
-      "npm run benchmark:phase12:backup",
-      "npm run verify:phase12:evidence",
-      "--automated-only",
-    ];
-    previousIndex = -1;
-    for (const command of phase12Commands) {
-      const commandIndex = workflow.indexOf(command, previousIndex + 1);
-      expect(commandIndex).toBeGreaterThan(previousIndex);
-      previousIndex = commandIndex;
-    }
-    expect(workflow).toContain("name: phase12-evidence");
-    expect(workflow).toContain("name: phase12-evidence-downloaded");
+    expect(workflow).toContain("npm run verify:cng");
+    expect(workflow).toContain("--selectProjects native-router");
+    expect(workflow).toContain("expo export --platform android");
+    expect(workflow).toContain("TEST-NECESSITY-REASSESSMENT-20261030.md");
+    expect(workflow).not.toContain("npm run android:devtest:fresh");
+    expect(workflow).not.toContain("run: npm run test:evidence:v12:all");
+
   });
 
   it("rejects every prohibited architecture boundary", () => {

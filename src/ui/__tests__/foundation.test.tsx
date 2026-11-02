@@ -743,7 +743,7 @@ describe("Plan 01-02 UI foundation", () => {
       .toBeUndefined();
   });
 
-  it("enforces minimum targets, wrapping labels, and vertical large-text metrics", async () => {
+  it("enforces minimum targets, complete accessibility labels, and vertical large-text metrics", async () => {
     await render(
       <AppearanceProvider>
         <PrimaryAction
@@ -767,8 +767,8 @@ describe("Plan 01-02 UI foundation", () => {
       screen.getByRole("button", { name: "Activate Full Body Foundation" }),
     ).toHaveStyle({ minHeight: 56 });
     expect(
-      screen.getByText("Activate Full Body Foundation").props.numberOfLines,
-    ).toBeUndefined();
+      screen.getByRole("button", { name: "Activate Full Body Foundation" }),
+    ).toHaveProp("accessibilityLabel", "Activate Full Body Foundation");
     expect(
       screen.getByRole("button", { name: "More settings and information" }),
     ).toHaveStyle({ minHeight: 48, minWidth: 48 });

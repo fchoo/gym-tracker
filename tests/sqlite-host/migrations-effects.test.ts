@@ -3223,7 +3223,7 @@ describe("Plan 01-06 native migration suite selection", () => {
     expect(route).toContain(
       "console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);",
     );
-    expect(route).toContain("setState({ status: \"finished\", result });");
+    expect(route).toContain("setState({ status: \"finished\", runId, suite: selectedSuite, result });");
     expect(route).not.toContain("migrationsEffects?: MigrationsEffectsContractResult");
     expect(migrationsContract).toContain("finalizeUnusedStatementsBeforeClosing: false");
     expect(migrationsContract).toContain("migration_statement_rollback_${phase}_${statementIndex}_${safeErrorCode(error)}");

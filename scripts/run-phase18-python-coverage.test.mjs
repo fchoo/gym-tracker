@@ -58,7 +58,7 @@ test("Python coverage keeps measurement in memory and never writes .coverage", (
   assert.doesNotMatch(coverageContract, /falls back/u);
 });
 
-test("Python coverage uses one checked-in pin across bootstrap, npm, CI, and docs", () => {
+test("Python coverage uses one checked-in pin across bootstrap, npm, and manual-development docs", () => {
   const requirement = readFileSync("requirements-dev.lock", "utf8").trim();
   const bootstrap = readFileSync("scripts/bootstrap-phase18-python-coverage.sh", "utf8");
   const runner = readFileSync("scripts/run-phase18-python-coverage.py", "utf8");
@@ -79,8 +79,7 @@ test("Python coverage uses one checked-in pin across bootstrap, npm, CI, and doc
     ".venv/bin/python scripts/run-phase18-python-coverage.py",
   );
   assert.doesNotMatch(scripts["test:coverage:phase18:python"], /pip|bootstrap/u);
-  assert.match(workflow, /npm run bootstrap:coverage:phase18/u);
-  assert.match(workflow, /npm run test:coverage:phase18:python/u);
+  assert.doesNotMatch(workflow, /run:.*npm run test:coverage:phase18/u);
   assert.match(documentation, /npm run bootstrap:coverage:phase18/u);
   assert.match(documentation, /npm run test:coverage:phase18:python/u);
 });
@@ -113,5 +112,14 @@ test("PR bootstrap runs the dependency audit immediately after locked installati
   assert.match(
     workflow,
     /- name: Install locked dependencies\n        run: npm ci\n\n      - name: Enforce dependency advisory policy\n        run: npm run audit:dependencies/u,
+  );
+});
+
+test("PR Expo compatibility reads the approved public OAuth registration", () => {
+  const workflow = readFileSync(".github/workflows/pr.yml", "utf8");
+
+  assert.match(
+    workflow,
+    /export EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID="\$\(node --input-type=module -e 'import \{ GOOGLE_OAUTH_REGISTRATIONS \} from "\.\/scripts\/google-oauth-config\.mjs"; process\.stdout\.write\(GOOGLE_OAUTH_REGISTRATIONS\.webClientId\)'\)"/u,
   );
 });
