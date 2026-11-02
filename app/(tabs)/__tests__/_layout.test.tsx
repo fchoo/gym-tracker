@@ -2,6 +2,7 @@ import {
   act,
   fireEvent,
   render,
+  waitFor,
 } from "@testing-library/react-native";
 import {
   describe,
@@ -12,14 +13,243 @@ import {
 } from "@jest/globals";
 import React from "react";
 import { Dimensions } from "react-native";
+import { SafeAreaInsetsContext } from "react-native-safe-area-context";
 
-import { AppearanceProvider } from "../../../src/ui/theme";
-import RootTabsLayout from "../_layout";
+import {
+  AppearanceProvider,
+  createMemoryAppearanceStore,
+  sizes,
+  themes,
+  type ThemeColors,
+} from "../../../src/ui/theme";
+import RootTabsLayout, { RootSettingsContent } from "../_layout";
+
+type SettingsContentProps = React.ComponentProps<typeof import("../../../src/ui/screens/SettingsScreen").AppSettingsContent>;
+const mockObserveSettings = jest.fn<(props: SettingsContentProps) => void>();
 
 let mockRenderedWidth = 839;
 let mockFontScale = 1;
+let mockPathname = "/";
 const mockNavigate = jest.fn();
+const mockPush = jest.fn();
 let mockSelectedRouteIndex = 0;
+let mockInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+const mockReadRestAlertPreferences = jest.fn(async () => ({
+  soundEnabled: true,
+  vibrationEnabled: true,
+}));
+const mockSetRestAlertPreferences = jest.fn(async (preferences: {
+  soundEnabled: boolean;
+  vibrationEnabled: boolean;
+}) => ({
+  preferences,
+}));
+const mockOpenRestNotificationSettings = jest.fn();
+const mockRuntime = {
+  launchState: "trusted" as "trusted" | "booting" | "failed",
+  notificationPermission: "granted" as const,
+  openRestNotificationSettings: mockOpenRestNotificationSettings,
+  readRestAlertPreferences: mockReadRestAlertPreferences,
+  setRestAlertPreferences: mockSetRestAlertPreferences,
+  workoutRefreshGeneration: 0,
+};
+const mockHeadingFocus = {
+  calendar: jest.fn(),
+  index: jest.fn(),
+  library: jest.fn(),
+  progress: jest.fn(),
+};
+const mockSettingsTriggerFocus = {
+  calendar: jest.fn(),
+  index: jest.fn(),
+  library: jest.fn(),
+  progress: jest.fn(),
+};
+const mockRemovedSessionsTriggerFocus = jest.fn();
+
+jest.mock("../index", () => {
+  const React = require("react") as typeof import("react");
+  const {
+    Pressable,
+    View,
+  } = require("react-native") as typeof import("react-native");
+  const { useRootSettingsController } = require("../../../src/ui/shell/AppRootShell") as typeof import("../../../src/ui/shell/AppRootShell");
+  const { useRootHeadingRef } = require("../../../src/ui/shell/rootFocus") as typeof import("../../../src/ui/shell/rootFocus");
+  return {
+    __esModule: true,
+    default: () => {
+      const headingRef = useRootHeadingRef("index");
+      const settingsTriggerRef = React.useRef<{ focus?: () => void } | null>(null);
+      const { openRootSettings } = useRootSettingsController();
+      React.useEffect(() => {
+        if (headingRef !== undefined) {
+          headingRef.current = { focus: mockHeadingFocus.index };
+        }
+        settingsTriggerRef.current = { focus: mockSettingsTriggerFocus.index };
+      }, [headingRef]);
+      return (
+        <View>
+          <View accessibilityLabel="Workout" accessibilityRole="header" testID="root-route-index" />
+          <Pressable
+            accessibilityLabel="Open App Settings"
+            accessibilityRole="button"
+            onPress={() => openRootSettings({
+              root: "index",
+              triggerRef: settingsTriggerRef,
+            })}
+          />
+        </View>
+      );
+    },
+  };
+});
+
+jest.mock("../calendar", () => {
+  const React = require("react") as typeof import("react");
+  const {
+    Pressable,
+    View,
+  } = require("react-native") as typeof import("react-native");
+  const { useRootSettingsController } = require("../../../src/ui/shell/AppRootShell") as typeof import("../../../src/ui/shell/AppRootShell");
+  const { useRootHeadingRef } = require("../../../src/ui/shell/rootFocus") as typeof import("../../../src/ui/shell/rootFocus");
+  return {
+    __esModule: true,
+    default: () => {
+      const headingRef = useRootHeadingRef("calendar");
+      const settingsTriggerRef = React.useRef<{ focus?: () => void } | null>(null);
+      const { openRootSettings } = useRootSettingsController();
+      React.useEffect(() => {
+        if (headingRef !== undefined) {
+          headingRef.current = { focus: mockHeadingFocus.calendar };
+        }
+        settingsTriggerRef.current = { focus: mockSettingsTriggerFocus.calendar };
+      }, [headingRef]);
+      return (
+        <View>
+          <View accessibilityLabel="Calendar" accessibilityRole="header" testID="root-route-calendar" />
+          <Pressable
+            accessibilityLabel="Open App Settings"
+            accessibilityRole="button"
+            onPress={() => openRootSettings({
+              root: "calendar",
+              triggerRef: settingsTriggerRef,
+            })}
+          />
+        </View>
+      );
+    },
+  };
+});
+
+jest.mock("../library", () => {
+  const React = require("react") as typeof import("react");
+  const {
+    Pressable,
+    View,
+  } = require("react-native") as typeof import("react-native");
+  const { useRootSettingsController } = require("../../../src/ui/shell/AppRootShell") as typeof import("../../../src/ui/shell/AppRootShell");
+  const { useRootHeadingRef } = require("../../../src/ui/shell/rootFocus") as typeof import("../../../src/ui/shell/rootFocus");
+  return {
+    __esModule: true,
+    default: () => {
+      const headingRef = useRootHeadingRef("library");
+      const settingsTriggerRef = React.useRef<{ focus?: () => void } | null>(null);
+      const { openRootSettings } = useRootSettingsController();
+      React.useEffect(() => {
+        if (headingRef !== undefined) {
+          headingRef.current = { focus: mockHeadingFocus.library };
+        }
+        settingsTriggerRef.current = { focus: mockSettingsTriggerFocus.library };
+      }, [headingRef]);
+      return (
+        <View>
+          <View accessibilityLabel="Library" accessibilityRole="header" testID="root-route-library" />
+          <Pressable
+            accessibilityLabel="Open App Settings"
+            accessibilityRole="button"
+            onPress={() => openRootSettings({
+              root: "library",
+              triggerRef: settingsTriggerRef,
+            })}
+          />
+        </View>
+      );
+    },
+  };
+});
+
+jest.mock("../progress", () => {
+  const React = require("react") as typeof import("react");
+  const {
+    Pressable,
+    View,
+  } = require("react-native") as typeof import("react-native");
+  const { useRootSettingsController } = require("../../../src/ui/shell/AppRootShell") as typeof import("../../../src/ui/shell/AppRootShell");
+  const { useRootHeadingRef } = require("../../../src/ui/shell/rootFocus") as typeof import("../../../src/ui/shell/rootFocus");
+  return {
+    __esModule: true,
+    default: () => {
+      const headingRef = useRootHeadingRef("progress");
+      const settingsTriggerRef = React.useRef<{ focus?: () => void } | null>(null);
+      const { openRootSettings } = useRootSettingsController();
+      React.useEffect(() => {
+        if (headingRef !== undefined) {
+          headingRef.current = { focus: mockHeadingFocus.progress };
+        }
+        settingsTriggerRef.current = { focus: mockSettingsTriggerFocus.progress };
+      }, [headingRef]);
+      return (
+        <View>
+          <View accessibilityLabel="Progress" accessibilityRole="header" testID="root-route-progress" />
+          <Pressable
+            accessibilityLabel="Open App Settings"
+            accessibilityRole="button"
+            onPress={() => openRootSettings({
+              root: "progress",
+              triggerRef: settingsTriggerRef,
+            })}
+          />
+        </View>
+      );
+    },
+  };
+});
+
+jest.mock("../../../src/ui/screens/SettingsScreen", () => {
+  const React = require("react") as typeof import("react");
+  const { Pressable, View } = require("react-native") as typeof import("react-native");
+
+  return {
+    __esModule: true,
+    AppSettingsContent: (props: SettingsContentProps) => {
+      const { onOpenDataAndRecovery, onOpenRemovedSessions, removedSessionsTriggerRef, dataAndRecoveryTriggerRef } = props;
+      mockObserveSettings(props);
+      React.useEffect(() => {
+        if (removedSessionsTriggerRef !== undefined) {
+          removedSessionsTriggerRef.current = { focus: mockRemovedSessionsTriggerFocus } as unknown as import("react-native").View;
+        }
+        if (dataAndRecoveryTriggerRef !== undefined) {
+          dataAndRecoveryTriggerRef.current = {} as import("react-native").View;
+        }
+      }, [dataAndRecoveryTriggerRef, removedSessionsTriggerRef]);
+
+      return (
+        <View>
+          <Pressable
+            accessibilityLabel="Removed sessions"
+            accessibilityRole="button"
+            onPress={onOpenRemovedSessions}
+          />
+          <Pressable
+            accessibilityLabel="Data and recovery"
+            accessibilityRole="button"
+            onPress={onOpenDataAndRecovery}
+          />
+        </View>
+      );
+    },
+  };
+});
 
 jest.mock("../../../src/ui/layout/AdaptiveScreen", () => ({
   classifyWidth: () =>
@@ -41,6 +271,7 @@ jest.mock("expo-router", () => {
       tabBarPosition?: "bottom" | "left";
     };
     tabBar: (props: {
+      insets: typeof mockInsets;
       navigation: {
         emit: () => { defaultPrevented: boolean };
         navigate: () => void;
@@ -65,6 +296,7 @@ jest.mock("expo-router", () => {
         testID: "root-tabs",
       },
       tabBar({
+        insets: mockInsets,
         navigation: {
           emit: () => ({ defaultPrevented: false }),
           navigate: mockNavigate,
@@ -87,18 +319,69 @@ jest.mock("expo-router", () => {
     );
   }
 
-  Tabs.Screen = () => null;
+  const activeRouteName = () => {
+    if (mockPathname === "/" || mockPathname === "/index") {
+      return "index";
+    }
+    if (mockPathname.startsWith("/calendar")) {
+      return "calendar";
+    }
+    if (mockPathname.startsWith("/library")) {
+      return "library";
+    }
+    if (mockPathname.startsWith("/progress")) {
+      return "progress";
+    }
+    return ["index", "calendar", "library", "progress"][mockSelectedRouteIndex] ?? "index";
+  };
 
-  return { Tabs };
+  Tabs.Screen = ({
+    name,
+  }: Readonly<{
+    name: string;
+  }>) => {
+    if (name !== activeRouteName()) {
+      return null;
+    }
+    if (name === "index") {
+      const Route = require("../index").default as React.ComponentType;
+      return <Route />;
+    }
+    if (name === "calendar") {
+      const Route = require("../calendar").default as React.ComponentType;
+      return <Route />;
+    }
+    if (name === "library") {
+      const Route = require("../library").default as React.ComponentType;
+      return <Route />;
+    }
+    if (name === "progress") {
+      const Route = require("../progress").default as React.ComponentType;
+      return <Route />;
+    }
+    return null;
+  };
+
+  return {
+    __esModule: true,
+    Tabs,
+    router: {
+      push: (...args: [string]) => mockPush(...args),
+    },
+    usePathname: () => mockPathname,
+    useRouter: () => ({
+      push: (...args: [string]) => mockPush(...args),
+    }),
+  };
 });
 
 jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
-  useWorkoutAppRuntime: () => ({ launchState: "trusted" }),
+  useWorkoutAppRuntime: () => mockRuntime,
 }));
 
 describe("RootTabsLayout adaptive navigator placement", () => {
   const destinationLabels = [
-    "Today",
+    "Workout",
     "Calendar",
     "Library",
     "Progress",
@@ -119,7 +402,23 @@ describe("RootTabsLayout adaptive navigator placement", () => {
 
   beforeEach(() => {
     mockNavigate.mockReset();
+    mockPush.mockReset();
+    mockReadRestAlertPreferences.mockClear();
+    mockObserveSettings.mockClear();
+    mockRuntime.workoutRefreshGeneration = 0;
+    mockSetRestAlertPreferences.mockClear();
+    mockOpenRestNotificationSettings.mockClear();
     mockSelectedRouteIndex = 0;
+    mockInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+    mockRuntime.launchState = "trusted";
+    mockPathname = "/";
+    for (const focus of Object.values(mockHeadingFocus)) {
+      focus.mockReset();
+    }
+    for (const focus of Object.values(mockSettingsTriggerFocus)) {
+      focus.mockReset();
+    }
+    mockRemovedSessionsTriggerFocus.mockReset();
     setRenderedDimensions(839, 1);
   });
 
@@ -127,9 +426,9 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     ["bottom", 360, 720, "compact"],
     ["bottom", 600, 900, "medium"],
     ["bottom", 839, 900, "medium boundary"],
-    ["left", 840, 900, "expanded boundary"],
-    ["left", 1024, 900, "expanded portrait"],
-    ["left", 1280, 720, "expanded landscape"],
+    ["bottom", 840, 900, "expanded boundary"],
+    ["bottom", 1024, 900, "expanded portrait"],
+    ["bottom", 1280, 720, "expanded landscape"],
   ])(
     "uses %s navigator placement for %s at %idp",
     async (tabBarPosition, width, _height, _layout) => {
@@ -145,19 +444,17 @@ describe("RootTabsLayout adaptive navigator placement", () => {
         "tabBarPosition",
         tabBarPosition,
       );
-      const position = tabBarPosition === "left" ? "rail" : "bottom";
-      expect(rendered.getByTestId(`root-navigation-${position}`))
-        .toHaveProp("accessibilityLabel", `Root navigation ${position}`);
-      expect(rendered.queryByTestId(
-        `root-navigation-${position === "rail" ? "bottom" : "rail"}`,
-      )).not.toBeOnTheScreen();
+      expect(rendered.getByTestId("root-navigation-bottom"))
+        .toHaveProp("accessibilityLabel", "Root navigation bottom");
+      expect(rendered.queryByTestId("root-navigation-rail"))
+        .not.toBeOnTheScreen();
       expect(rendered.getAllByRole("tab")).toHaveLength(
         destinationLabels.length,
       );
       expect(
         rendered.getAllByRole("tab").map((tab) => tab.props.accessibilityLabel),
       ).toEqual(destinationLabels);
-      expect(rendered.getByRole("tab", { name: "Today" })).toBeSelected();
+      expect(rendered.getByRole("tab", { name: "Workout" })).toBeSelected();
       expect(rendered.getByTestId("root-tab-scene")).toHaveStyle({
         flex: 1,
         height: "100%",
@@ -167,7 +464,83 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     },
   );
 
-  it("uses a two-row bottom bar only when 200% text cannot fit full labels", async () => {
+  it.each([
+    ["Light", themes.light],
+    ["Dark", themes.dark],
+  ] as Array<["Light" | "Dark", ThemeColors]>)(
+    "integrates the authoritative %s paper-nav selection treatment",
+    async (appearance, colors) => {
+      mockSelectedRouteIndex = 1;
+      const rendered = await render(
+        <AppearanceProvider store={createMemoryAppearanceStore(appearance)}>
+          <RootTabsLayout />
+        </AppearanceProvider>,
+      );
+
+      const selected = rendered.getByRole("tab", { name: "Calendar" });
+      expect(rendered.getByTestId("root-navigation-bottom")).toHaveStyle({
+        backgroundColor: colors.paper,
+        borderColor: colors.line,
+      });
+      expect(selected).toBeSelected();
+      expect(rendered.getByTestId("root-tab-label-underline-calendar", { includeHiddenElements: true })).toHaveStyle({
+        backgroundColor: colors.orange,
+        height: 3,
+      });
+      expect(rendered.getByTestId("root-tab-label-calendar")).toHaveStyle({
+        color: colors.ink,
+        fontSize: 16,
+        fontWeight: "400",
+        lineHeight: 22,
+      });
+      expect(
+        selected.queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
+      ).toBe(colors.ink);
+      expect(rendered.getByTestId("root-tab-label-underline-index", { includeHiddenElements: true })).toHaveStyle({
+        backgroundColor: "transparent",
+        height: 3,
+      });
+      expect(rendered.getByTestId("root-tab-label-index")).toHaveStyle({ color: colors.quiet });
+      expect(
+        rendered.getByRole("tab", { name: "Workout" })
+          .queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
+      ).toBe(colors.quiet);
+
+      await fireEvent(selected, "focus");
+      expect(selected).toHaveStyle({
+        outlineColor: colors.blue,
+        outlineWidth: sizes.focusRing,
+      });
+      expect(selected).toBeSelected();
+    },
+  );
+
+  it.each(["trusted", "booting", "failed"] as const)("forwards live navigator bottom insets once while launch is %s", async (launchState) => {
+    mockRuntime.launchState = launchState;
+    mockInsets = { top: 11, right: 0, bottom: 24, left: 0 };
+    const layout = () => (
+      <SafeAreaInsetsContext.Provider value={{ top: 11, right: 0, bottom: 40, left: 0 }}>
+        <AppearanceProvider><RootTabsLayout /></AppearanceProvider>
+      </SafeAreaInsetsContext.Provider>
+    );
+    const rendered = await render(layout());
+    for (const bottom of [24, 0, 36.5]) {
+      await act(async () => {
+        mockInsets = { ...mockInsets, bottom };
+        await rendered.rerender(layout());
+      });
+      expect(rendered.getByTestId("root-navigation-bottom"))
+        .toHaveStyle({ paddingBottom: bottom, backgroundColor: themes.light.paper });
+      expect(rendered.getByTestId("app-root-shell")).toHaveStyle({ flex: 1, paddingBottom: undefined });
+      for (const label of destinationLabels) {
+        const tab = rendered.getByRole("tab", { name: label });
+        expect(tab).toHaveProp("accessibilityState", { disabled: launchState !== "trusted", selected: label === "Workout" });
+        expect(tab).toHaveStyle({ minHeight: 64, minWidth: 48 });
+      }
+    }
+  });
+
+  it("uses remeasured single-line font fitting in one bottom row at 200% text", async () => {
     setRenderedDimensions(360, 2);
     const rendered = await render(
       <AppearanceProvider>
@@ -178,32 +551,69 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     const navigation = rendered.getByTestId("root-navigation-bottom");
     expect(navigation).toHaveProp(
       "accessibilityLabel",
-      "Root navigation bottom two rows",
+      "Root navigation bottom",
     );
-    expect(navigation).toHaveStyle({
-      flexDirection: "row",
-      flexWrap: "wrap",
-    });
-    expect(
-      rendered.getAllByRole("tab").map((tab) => tab.props.accessibilityLabel),
-    ).toEqual(destinationLabels);
-    for (const label of destinationLabels) {
-      expect(rendered.getByRole("tab", { name: label })).toHaveStyle({
-        minHeight: 64,
-        minWidth: 48,
-        width: "50%",
-      });
-    }
-
-    await act(async () => {
-      setRenderedDimensions(360, 1);
-    });
-
-    expect(navigation).toHaveProp("accessibilityLabel", "Root navigation bottom");
     expect(navigation).toHaveStyle({
       flexDirection: "row",
       flexWrap: undefined,
     });
+    expect(
+      rendered.getAllByRole("tab").map((tab) => tab.props.accessibilityLabel),
+    ).toEqual(destinationLabels);
+    // Real native event shape verifies the fit contract, not final Android pixels.
+    for (const [index, label] of destinationLabels.entries()) {
+      const destination = ["index", "calendar", "library", "progress"][index];
+      expect(rendered.getByRole("tab", { name: label })).toHaveStyle({
+        minHeight: 64,
+        minWidth: 48,
+      });
+      let text = rendered.getByTestId(`root-tab-label-${destination}`);
+      expect(text).toHaveTextContent(label, { exact: true });
+      expect(text).toHaveProp("numberOfLines", 1);
+      expect(text).toHaveProp("adjustsFontSizeToFit", false);
+      expect(text.props.minimumFontScale).toBeUndefined();
+      expect(text).toHaveProp("allowFontScaling", true);
+      expect(text.props.maxFontSizeMultiplier).toBeUndefined();
+      expect(text).toHaveStyle({
+        fontFamily: "ArchivoVariable",
+        fontSize: 16,
+        lineHeight: 22,
+        width: "100%",
+        flexShrink: 1,
+      });
+      expect(rendered.getByTestId(`root-tab-label-container-${destination}`))
+        .toHaveStyle({ width: "100%", alignSelf: "stretch" });
+      await fireEvent(text, "layout", { nativeEvent: { layout: { width: 76 } } });
+      text = rendered.getByTestId(`root-tab-label-${destination}`);
+      const probe = () => rendered.getByTestId(`root-tab-label-probe-${destination}`, { includeHiddenElements: true });
+      await fireEvent(probe(), "textLayout", { nativeEvent: { lines: [{ text: label, width: 120, height: 44 }] } });
+      expect(text).toHaveStyle({ fontSize: 9.75, lineHeight: 22 });
+      await fireEvent(probe(), "textLayout", { nativeEvent: { lines: [{ text: label, width: 72, height: 44 }] } });
+      await fireEvent(text, "textLayout", { nativeEvent: { lines: [{ text: label, width: 72, height: 44 }] } });
+      expect(rendered.getByTestId(`root-tab-label-underline-${destination}`, { includeHiddenElements: true }))
+        .toHaveStyle({ width: 72, height: 3 });
+    }
+
+    // Live system scaling must discard the prior fitted font and underline.
+    await act(async () => {
+      setRenderedDimensions(360, 1);
+      rendered.rerender(<AppearanceProvider><RootTabsLayout /></AppearanceProvider>);
+    });
+    for (const destination of ["index", "calendar", "library", "progress"]) {
+      expect(rendered.getByTestId(`root-tab-label-${destination}`)).toHaveStyle({ fontSize: 16 });
+      expect(rendered.getByTestId(`root-tab-label-underline-${destination}`, { includeHiddenElements: true }))
+        .toHaveStyle({ width: 0 });
+    }
+    await act(async () => {
+      setRenderedDimensions(360, 2);
+      rendered.rerender(<AppearanceProvider><RootTabsLayout /></AppearanceProvider>);
+    });
+    for (const destination of ["index", "calendar", "library", "progress"]) {
+      expect(rendered.getByTestId(`root-tab-label-${destination}`)).toHaveStyle({ fontSize: 16 });
+      expect(rendered.getByTestId(`root-tab-label-underline-${destination}`, { includeHiddenElements: true }))
+        .toHaveStyle({ width: 0 });
+    }
+    expect(rendered.queryByTestId("root-navigation-rail")).not.toBeOnTheScreen();
   });
 
   it("keeps one accessible route state through live resize and D-pad activation", async () => {
@@ -215,7 +625,7 @@ describe("RootTabsLayout adaptive navigator placement", () => {
 
     const library = rendered.getByRole("tab", { name: "Library" });
     await fireEvent(library, "focus");
-    expect(library).toHaveStyle({ outlineWidth: 2 });
+    expect(library).toHaveStyle({ outlineWidth: sizes.focusRing });
     await fireEvent(library, "keyDown", {
       nativeEvent: { key: "Enter" },
     });
@@ -224,29 +634,35 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     await act(async () => {
       mockSelectedRouteIndex = 2;
       setRenderedWidth(840);
+      rendered.rerender(
+        <AppearanceProvider>
+          <RootTabsLayout />
+        </AppearanceProvider>,
+      );
     });
 
     expect(rendered.getByTestId("root-tabs")).toHaveProp(
       "tabBarPosition",
-      "left",
+      "bottom",
     );
-    expect(rendered.getByTestId("root-navigation-rail"))
-      .toHaveProp("accessibilityLabel", "Root navigation rail");
-    expect(rendered.queryByTestId("root-navigation-bottom"))
+    expect(rendered.getByTestId("root-navigation-bottom"))
+      .toHaveProp("accessibilityLabel", "Root navigation bottom");
+    expect(rendered.queryByTestId("root-navigation-rail"))
       .not.toBeOnTheScreen();
     expect(rendered.getAllByRole("tab")).toHaveLength(
       destinationLabels.length,
     );
     expect(rendered.getByRole("tab", { name: "Library" })).toBeSelected();
     expect(rendered.getByRole("tab", { name: "Library" })).toHaveStyle({
-      minHeight: 72,
+      minHeight: 64,
       minWidth: 48,
-      outlineWidth: 2,
+      outlineWidth: sizes.focusRing,
     });
-    expect(rendered.getByText("Library").props.numberOfLines).toBeUndefined();
+    expect(rendered.getByTestId("root-tab-label-library")).toHaveProp("numberOfLines", 1);
+    expect(rendered.getByTestId("root-tab-label-library")).toHaveProp("adjustsFontSizeToFit", false);
     expect(rendered.getByTestId("root-tabs")).toHaveStyle({
       flex: 1,
-      flexDirection: "row",
+      flexDirection: "column",
     });
 
     await act(async () => {
@@ -265,5 +681,104 @@ describe("RootTabsLayout adaptive navigator placement", () => {
       destinationLabels.length,
     );
     expect(rendered.getByRole("tab", { name: "Library" })).toBeSelected();
+  });
+
+  it("keeps settings reads fenced across loading transitions and handles rejected reads", async () => {
+    const removedSessionsTriggerRef = React.createRef<import("react-native").View>();
+    const dataAndRecoveryTriggerRef = React.createRef<import("react-native").View>();
+    const settings = () => (
+      <RootSettingsContent onNavigate={jest.fn()} onRegisterOrigin={jest.fn()} removedSessionsTriggerRef={removedSessionsTriggerRef} dataAndRecoveryTriggerRef={dataAndRecoveryTriggerRef} />
+    );
+    let resolveRead!: (preferences: { soundEnabled: boolean; vibrationEnabled: boolean }) => void;
+    mockReadRestAlertPreferences.mockImplementationOnce(() => new Promise((resolve) => { resolveRead = resolve; }));
+    const rendered = await render(settings());
+    expect(mockObserveSettings.mock.calls.at(-1)?.[0].restAlertPreferencesLoading).toBe(true);
+    mockRuntime.launchState = "booting";
+    await rendered.rerender(settings());
+    expect(mockObserveSettings.mock.calls.at(-1)?.[0].restAlertPreferencesLoading).toBe(false);
+    await act(async () => resolveRead({ soundEnabled: false, vibrationEnabled: false }));
+    expect(mockObserveSettings.mock.calls.at(-1)?.[0].preferences).toEqual({ soundEnabled: true, vibrationEnabled: true });
+
+    mockRuntime.launchState = "trusted";
+    mockReadRestAlertPreferences.mockImplementationOnce(async () => { throw new Error("read unavailable"); });
+    await rendered.rerender(settings());
+    await waitFor(() => expect(mockObserveSettings.mock.calls.at(-1)?.[0].restAlertPreferencesLoading).toBe(false));
+    const next = { soundEnabled: false, vibrationEnabled: true };
+    await act(async () => {
+      const saved = await mockObserveSettings.mock.calls.at(-1)?.[0].onChangeRestAlertPreferences(next);
+      expect(saved).toEqual({ preferences: next });
+    });
+    expect(mockSetRestAlertPreferences).toHaveBeenCalledWith(next);
+    expect(mockObserveSettings.mock.calls.at(-1)?.[0].preferences).toEqual(next);
+    await rendered.unmount();
+  });
+
+  it("keeps the root-header settings trigger wired through its open and close flow", async () => {
+    const rendered = await render(
+      <AppearanceProvider>
+        <RootTabsLayout />
+      </AppearanceProvider>,
+    );
+    await fireEvent.press(rendered.getByRole("button", { name: "Open App Settings" }));
+    expect(rendered.getByRole("header", { name: "App Settings" })).toBeOnTheScreen();
+    await fireEvent.press(rendered.getByRole("button", { name: "Close App Settings" }));
+
+    expect(rendered.queryByRole("header", { name: "App Settings" })).toBeNull();
+    await waitFor(() => expect(mockSettingsTriggerFocus.index)
+      .toHaveBeenCalledTimes(1));
+  });
+
+  it("captures deep-route origin in production and restores exact or heading focus on return", async () => {
+    const rendered = await render(
+      <AppearanceProvider>
+        <RootTabsLayout />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(rendered.getByRole("button", { name: "Open App Settings" }));
+    await fireEvent.press(rendered.getByRole("button", { name: "Removed sessions" }));
+    expect(mockPush).toHaveBeenCalledWith("/more/removed-sessions");
+
+    await act(async () => {
+      mockPathname = "/more/removed-sessions";
+      rendered.rerender(
+        <AppearanceProvider>
+          <RootTabsLayout />
+        </AppearanceProvider>,
+      );
+    });
+
+    await act(async () => {
+      mockPathname = "/";
+      rendered.rerender(
+        <AppearanceProvider>
+          <RootTabsLayout />
+        </AppearanceProvider>,
+      );
+    });
+    expect(mockRemovedSessionsTriggerFocus).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(rendered.getByRole("button", { name: "Open App Settings" }));
+    await fireEvent.press(rendered.getByRole("button", { name: "Data and recovery" }));
+    expect(mockPush).toHaveBeenCalledWith("/more/data-and-recovery");
+
+    await act(async () => {
+      mockPathname = "/more/data-and-recovery";
+      rendered.rerender(
+        <AppearanceProvider>
+          <RootTabsLayout />
+        </AppearanceProvider>,
+      );
+    });
+
+    await act(async () => {
+      mockPathname = "/";
+      rendered.rerender(
+        <AppearanceProvider>
+          <RootTabsLayout />
+        </AppearanceProvider>,
+      );
+    });
+    expect(mockHeadingFocus.index).toHaveBeenCalledTimes(1);
   });
 });

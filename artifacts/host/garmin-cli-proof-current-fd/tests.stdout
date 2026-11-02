@@ -1,0 +1,192 @@
+TAP version 13
+# Subtest: hashes toolchain files and recursive trees, including symlink target bytes
+ok 1 - hashes toolchain files and recursive trees, including symlink target bytes
+  ---
+  duration_ms: 9.921834
+  type: 'test'
+  ...
+# Subtest: reuses verified cross-build inputs and repairs bad cache bytes only from matching origins
+ok 2 - reuses verified cross-build inputs and repairs bad cache bytes only from matching origins
+  ---
+  duration_ms: 2.374583
+  type: 'test'
+  ...
+# Subtest: rejects archive traversal and duplicates before extracting input files
+ok 3 - rejects archive traversal and duplicates before extracting input files
+  ---
+  duration_ms: 1.950125
+  type: 'test'
+  ...
+# Subtest: cross-builds deterministic wheel contents with declared Android libffi, metadata and RECORD
+ok 4 - cross-builds deterministic wheel contents with declared Android libffi, metadata and RECORD
+  ---
+  duration_ms: 1890.455959
+  type: 'test'
+  ...
+# Subtest: seals a digest-matched wheel and preserves failed output hashes without publishing
+ok 5 - seals a digest-matched wheel and preserves failed output hashes without publishing
+  ---
+  duration_ms: 1540.310375
+  type: 'test'
+  ...
+# Subtest: build CLI requires explicit pinned toolchain, cache, new work and output paths
+ok 6 - build CLI requires explicit pinned toolchain, cache, new work and output paths
+  ---
+  duration_ms: 109.438042
+  type: 'test'
+  ...
+# Subtest: round-trips deterministic stored ZIPs, filters APK members, and reads locked tar sources
+ok 7 - round-trips deterministic stored ZIPs, filters APK members, and reads locked tar sources
+  ---
+  duration_ms: 896.964916
+  type: 'test'
+  ...
+# Subtest: reads large filtered archives through a finite file and removes input files on success and error
+ok 8 - reads large filtered archives through a finite file and removes input files on success and error
+  ---
+  duration_ms: 473.364625
+  type: 'test'
+  ...
+# Subtest: rejects every host, wrong-machine, wrong-class and non-shared ELF before tool invocation
+ok 9 - rejects every host, wrong-machine, wrong-class and non-shared ELF before tool invocation
+  ---
+  duration_ms: 0.462959
+  type: 'test'
+  ...
+# Subtest: accepts AArch64 Android shared objects and reports dependencies and init export
+ok 10 - accepts AArch64 Android shared objects and reports dependencies and init export
+  ---
+  duration_ms: 1.239584
+  type: 'test'
+  ...
+# Subtest: requires Android API <=24, 16KB ELF alignment, Android SONAMEs and reviewed relative runpaths
+ok 11 - requires Android API <=24, 16KB ELF alignment, Android SONAMEs and reviewed relative runpaths
+  ---
+  duration_ms: 10.317042
+  type: 'test'
+  ...
+# /Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/zipfile.py:1505: UserWarning: Duplicate name: 'lib/arm64-v8a/libpython3.13.so'
+#   return self._open_to_write(zinfo, force_zip64=force_zip64)
+# Subtest: rejects the retained APK defect: only a Darwin CFFI backend
+ok 12 - rejects the retained APK defect: only a Darwin CFFI backend
+  ---
+  duration_ms: 0.773959
+  type: 'test'
+  ...
+# Subtest: requires unique digest-bound CFFI, curl wrapper, libffi and C++ dependency binaries
+ok 13 - requires unique digest-bound CFFI, curl wrapper, libffi and C++ dependency binaries
+  ---
+  duration_ms: 0.49075
+  type: 'test'
+  ...
+# Subtest: checks the complete local wheelset, not just filenames
+ok 14 - checks the complete local wheelset, not just filenames
+  ---
+  duration_ms: 613.326917
+  type: 'test'
+  ...
+# Subtest: checks both APK requirements archives and actual ARM64 embedded Python
+ok 15 - checks both APK requirements archives and actual ARM64 embedded Python
+  ---
+  duration_ms: 2072.176292
+  type: 'test'
+  ...
+# Subtest: checker CLI requires an explicit target and NDK without any device access
+ok 16 - checker CLI requires an explicit target and NDK without any device access
+  ---
+  duration_ms: 224.310834
+  type: 'test'
+  ...
+# Subtest: rejects a Python runtime dependency absent from the actual APK ARM64 libraries
+ok 17 - rejects a Python runtime dependency absent from the actual APK ARM64 libraries
+  ---
+  duration_ms: 624.208959
+  type: 'test'
+  ...
+# Subtest: recursively inspects actual ARM64 runtime dependencies once, including cycles and system names
+ok 18 - recursively inspects actual ARM64 runtime dependencies once, including cycles and system names
+  ---
+  duration_ms: 628.032333
+  type: 'test'
+  ...
+# Subtest: does not resolve Python dependencies from requirements, another ABI, or an unapproved system name
+ok 19 - does not resolve Python dependencies from requirements, another ABI, or an unapproved system name
+  ---
+  duration_ms: 2493.344917
+  type: 'test'
+  ...
+# Subtest: rejects ambiguous or non-flat runtime archive members before dependency lookup
+ok 20 - rejects ambiguous or non-flat runtime archive members before dependency lookup
+  ---
+  duration_ms: 2433.329625
+  type: 'test'
+  ...
+# Subtest: retains ELF platform, ABI, API, alignment and dynamic guards for every reachable runtime library
+ok 21 - retains ELF platform, ABI, API, alignment and dynamic guards for every reachable runtime library
+  ---
+  duration_ms: 4232.4445
+  type: 'test'
+  ...
+# Subtest: rejects every malformed lock and provenance boundary
+ok 22 - rejects every malformed lock and provenance boundary
+  ---
+  duration_ms: 3.566208
+  type: 'test'
+  ...
+# Subtest: rejects CFFI source installs which can compile a host backend
+ok 23 - rejects CFFI source installs which can compile a host backend
+  ---
+  duration_ms: 0.138209
+  type: 'test'
+  ...
+# Subtest: accepts only the reviewed Python 3.13 ARM64 Garmin dependency graph
+ok 24 - accepts only the reviewed Python 3.13 ARM64 Garmin dependency graph
+  ---
+  duration_ms: 0.512583
+  type: 'test'
+  ...
+# Subtest: rejects a changed client commit, wheel hash, or unreviewed package
+ok 25 - rejects a changed client commit, wheel hash, or unreviewed package
+  ---
+  duration_ms: 0.287084
+  type: 'test'
+  ...
+# Subtest: requires the exact complete local artifact set before packaging
+ok 26 - requires the exact complete local artifact set before packaging
+  ---
+  duration_ms: 5.381917
+  type: 'test'
+  ...
+# Subtest: resolves only digest-matched official sources
+ok 27 - resolves only digest-matched official sources
+  ---
+  duration_ms: 0.482542
+  type: 'test'
+  ...
+# Subtest: materializes local cross-build plus fetched official artifacts without host building
+ok 28 - materializes local cross-build plus fetched official artifacts without host building
+  ---
+  duration_ms: 62.193375
+  type: 'test'
+  ...
+# Subtest: fails closed on artifact downloads, metadata, hashes and interrupted publication
+ok 29 - fails closed on artifact downloads, metadata, hashes and interrupted publication
+  ---
+  duration_ms: 7.800708
+  type: 'test'
+  ...
+# Subtest: lock CLI validates default and explicit paths and rejects missing materialize directories
+ok 30 - lock CLI validates default and explicit paths and rejects missing materialize directories
+  ---
+  duration_ms: 147.670625
+  type: 'test'
+  ...
+1..30
+# tests 30
+# suites 0
+# pass 30
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 18684.369625

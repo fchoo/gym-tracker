@@ -35,4 +35,14 @@ describe("Expo haptics adapter", () => {
       createExpoHapticsAdapter().committed(),
     ).resolves.toBeUndefined();
   });
+
+  it("surfaces advisory cue failures so the UI can show non-blocking feedback", async () => {
+    mockedImpact.mockResolvedValueOnce();
+    await expect(createExpoHapticsAdapter().cue()).resolves.toBeUndefined();
+    expect(mockedImpact).toHaveBeenLastCalledWith(ImpactFeedbackStyle.Light);
+
+    mockedImpact.mockRejectedValueOnce(new Error("haptics_unavailable"));
+    await expect(createExpoHapticsAdapter().cue())
+      .rejects.toThrow("haptics_unavailable");
+  });
 });

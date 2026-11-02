@@ -10,6 +10,7 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { usePhase20VisualScrollReporter } from "../../testing/phase20VisualContext";
 
 import {
   sizes,
@@ -18,6 +19,12 @@ import {
 } from "../theme";
 
 export type WidthClass = "compact" | "medium" | "expanded";
+
+export type MeasuredScrollRequest = Readonly<{
+  targetKey: string;
+  y: number;
+  animated: boolean;
+}>;
 
 export function classifyWidth(width: number): WidthClass {
   if (width < 600) {
@@ -49,10 +56,12 @@ type AdaptiveScreenProps = Readonly<{
   width?: number;
   constrainActiveWork?: boolean;
   scrollable?: boolean;
+  contentPaddingTop?: number;
   testID?: string;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   scrollOffset?: number;
   scrollRestoreKey?: string;
+  measuredScrollRequest?: MeasuredScrollRequest;
   onRequestBack?: () => void;
   refreshing?: boolean;
   onRefresh?: () => void;
@@ -66,22 +75,42 @@ export function AdaptiveScreen({
   width: widthOverride,
   constrainActiveWork = false,
   scrollable = true,
+  contentPaddingTop = space[4],
   testID = "adaptive-screen",
   onScroll,
   scrollOffset = 0,
   scrollRestoreKey,
+  measuredScrollRequest,
   onRequestBack,
   refreshing = false,
   onRefresh,
 }: AdaptiveScreenProps) {
   const scrollViewRef = React.useRef<ScrollView>(null);
+  const reportVisualScroll = usePhase20VisualScrollReporter();
+  const forcedEvidenceScrollRef = React.useRef(false);
   const previousScrollRestoreKeyRef = React.useRef(scrollRestoreKey);
+  const completedMeasuredScrollKeysRef = React.useRef(new Set<string>());
   const { width: windowWidth } = useWindowDimensions();
   const { colors } = useAppTheme();
   const width = widthOverride ?? windowWidth;
   const widthClass = classifyWidth(width);
   const horizontalInset = horizontalInsetFor(widthClass);
   const hasTwoPanes = secondary !== undefined && widthClass !== "compact";
+  const scrollNativeID = `${testID}-scroll`;
+  const handleScroll = React.useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { x, y } = event.nativeEvent.contentOffset;
+    reportVisualScroll?.({ native_id: scrollNativeID, x, y });
+    onScroll?.(event);
+  }, [onScroll, reportVisualScroll, scrollNativeID]);
+  const initializeEvidenceScroll = React.useCallback(() => {
+    if (reportVisualScroll === null || forcedEvidenceScrollRef.current) return;
+    forcedEvidenceScrollRef.current = true;
+    scrollViewRef.current?.scrollTo({
+      animated: false,
+      x: 0,
+      y: Number.isFinite(scrollOffset) ? Math.max(0, scrollOffset) : 0,
+    });
+  }, [reportVisualScroll, scrollOffset]);
 
   React.useEffect(() => {
     if (onRequestBack === undefined) {
@@ -110,6 +139,25 @@ export function AdaptiveScreen({
       y: scrollOffset,
     });
   }, [scrollOffset, scrollRestoreKey]);
+  React.useEffect(() => {
+    if (
+      !scrollable
+      || measuredScrollRequest === undefined
+      || completedMeasuredScrollKeysRef.current.has(
+        measuredScrollRequest.targetKey,
+      )
+    ) {
+      return;
+    }
+    completedMeasuredScrollKeysRef.current.add(measuredScrollRequest.targetKey);
+    scrollViewRef.current?.scrollTo({
+      animated: measuredScrollRequest.animated,
+      x: 0,
+      y: Number.isFinite(measuredScrollRequest.y)
+        ? Math.max(0, measuredScrollRequest.y)
+        : 0,
+    });
+  }, [measuredScrollRequest, scrollable]);
   const content = (
     <View
       accessibilityLabel={`${widthClass} layout`}
@@ -118,7 +166,8 @@ export function AdaptiveScreen({
         scrollable ? styles.scrollableContent : styles.fillContent,
         {
           paddingHorizontal: horizontalInset,
-          paddingVertical: space[4],
+          paddingTop: contentPaddingTop,
+          paddingBottom: space[4],
         },
         hasTwoPanes && styles.contentTwoPane,
         constrainActiveWork && styles.centeredContent,
@@ -128,6 +177,7 @@ export function AdaptiveScreen({
       <View
         style={[
           styles.primaryRegion,
+          !scrollable && styles.fillContent,
           hasTwoPanes && styles.pane,
           constrainActiveWork && styles.activeWork,
         ]}
@@ -169,12 +219,15 @@ export function AdaptiveScreen({
       {scrollable ? (
         <>
           <ScrollView
+            automaticallyAdjustKeyboardInsets
             contentContainerStyle={[
               styles.scrollContent,
               dock !== undefined && styles.scrollContentWithDock,
             ]}
             keyboardShouldPersistTaps="handled"
-            onScroll={onScroll}
+            nativeID={scrollNativeID}
+            onLayout={initializeEvidenceScroll}
+            onScroll={handleScroll}
             refreshControl={onRefresh === undefined ? undefined : (
               <RefreshControl
                 onRefresh={onRefresh}
@@ -184,7 +237,7 @@ export function AdaptiveScreen({
             )}
             ref={scrollViewRef}
             scrollEventThrottle={16}
-            testID={`${testID}-scroll`}
+            testID={scrollNativeID}
           >
             {content}
           </ScrollView>

@@ -244,7 +244,7 @@ describe("schedule editor tracer", () => {
     expect(saveSchedule).not.toHaveBeenCalled();
     expect(screen.getAllByText("Strength B").at(-1)).toBeOnTheScreen();
     expect(screen.queryByText("Position 2 of 2")).not.toBeOnTheScreen();
-    expect(screen.queryByRole("button", { name: "Move Strength B up" }))
+    expect(screen.queryByRole("button", { name: "Move Strength B earlier" }))
       .not.toBeOnTheScreen();
 
     await fireEvent.press(screen.getByRole("button", {
@@ -460,9 +460,9 @@ describe("schedule binding editor", () => {
     );
     expect(weekdayHandle).toHaveProp(
       "accessibilityActions",
-      expect.arrayContaining([{ name: "increment", label: "Move up" }]),
+      expect.arrayContaining([{ name: "increment", label: "Move earlier" }]),
     );
-    expect(screen.queryByRole("button", { name: "Move Strength B up" }))
+    expect(screen.queryByRole("button", { name: "Move Strength B earlier" }))
       .not.toBeOnTheScreen();
     expect(screen.queryByText("Position 2 of 3")).not.toBeOnTheScreen();
     await fireEvent(
@@ -669,6 +669,38 @@ describe("schedule editor and Today expansion", () => {
     }));
     expect(screen.queryByRole("header", { name: "Save this schedule?" }))
       .not.toBeOnTheScreen();
+  });
+
+  it("refreshes factual revisions after a stale schedule save without losing the draft", async () => {
+    const refreshed = scheduleSnapshot({
+      planRevision: 9,
+      scheduleRevision: 8,
+    });
+    const loadSchedule = jest.fn<
+      React.ComponentProps<typeof ScheduleEditorScreen>["loadSchedule"]
+    >()
+      .mockResolvedValueOnce(scheduleSnapshot())
+      .mockResolvedValueOnce(refreshed);
+    const saveSchedule = jest.fn<
+      React.ComponentProps<typeof ScheduleEditorScreen>["saveSchedule"]
+    >().mockRejectedValueOnce({ code: "schedule_preview_conflict" });
+    await renderEditor({ loadSchedule, saveSchedule });
+
+    await fireEvent.changeText(
+      await screen.findByLabelText("Schedule timezone"),
+      "Australia/Sydney",
+    );
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Save schedule",
+    }));
+    await fireEvent.press(screen.getAllByRole("button", {
+      name: "Save schedule",
+    }).at(-1)!);
+
+    expect(await screen.findByText("Schedule preview refreshed"))
+      .toBeOnTheScreen();
+    await waitFor(() => expect(loadSchedule).toHaveBeenCalledTimes(2));
+    expect(screen.getByDisplayValue("Australia/Sydney")).toBeOnTheScreen();
   });
 
   it("creates and cancels Rest day and Skip overrides without silent writes", async () => {

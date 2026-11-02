@@ -4,7 +4,6 @@ import {
 } from "react-native";
 
 import {
-  REST_NOTIFICATION_CHANNEL_ID,
   REST_NOTIFICATION_CHANNEL_IDS,
   type RestAlertPreferences,
   type RestNotificationPermission,
@@ -15,6 +14,7 @@ import {
 } from "./restNotificationReconciler";
 
 const REST_VIBRATION_PATTERN = [0, 180] as const;
+const REST_COMPLETION_SOUND = "rest_complete.wav";
 const DEFAULT_REST_ALERT_PREFERENCES: RestAlertPreferences = Object.freeze({
   soundEnabled: true,
   vibrationEnabled: true,
@@ -40,7 +40,9 @@ function channelInputFor(preferences: RestAlertPreferences) {
     importance: Notifications.AndroidImportance.DEFAULT,
     showBadge: false,
     enableLights: false,
-    sound: preferences.soundEnabled ? "default" : null,
+    // Android channels retain their original sound; v3 uses the bundled cue.
+    // https://docs.expo.dev/versions/latest/sdk/notifications/#set-custom-notification-sounds
+    sound: preferences.soundEnabled ? REST_COMPLETION_SOUND : null,
     enableVibrate: preferences.vibrationEnabled,
     vibrationPattern: preferences.vibrationEnabled
       ? [...REST_VIBRATION_PATTERN]
@@ -125,7 +127,7 @@ export function createExpoRestNotificationAdapter(): RestNotificationPort {
             restRevision: request.restRevision,
             endsAtMs: request.endsAtMs,
           },
-          sound: preferences.soundEnabled ? "default" : false,
+          sound: preferences.soundEnabled ? REST_COMPLETION_SOUND : false,
           vibrate: preferences.vibrationEnabled
             ? [...REST_VIBRATION_PATTERN]
             : [],

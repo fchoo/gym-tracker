@@ -26,9 +26,14 @@ export type SecureBackupCommands = Readonly<{
   createSecureBackup(input: Readonly<{
     password: string;
     signal?: AbortSignal;
-  }>): Promise<BackupArchiveHandle>;
+  }>): Promise<SecureBackupArchiveHandle>;
   discardSecureBackup(archive: BackupArchiveHandle): Promise<void>;
   shareSecureBackup(archive: BackupArchiveHandle): Promise<void>;
+}>;
+
+export type SecureBackupArchiveHandle = BackupArchiveHandle & Readonly<{
+  createdAtMs: number;
+  displayName: string;
 }>;
 
 export class BackupCommandError extends Error {
@@ -124,8 +129,9 @@ export function createBackupCommands(
       let handle: BackupArchiveHandle | undefined;
       try {
         throwIfAborted(input.signal);
+        const createdAtMs = dependencies.nowMs();
         const snapshot = await dependencies.collector.collect({
-          createdAtMs: dependencies.nowMs(),
+          createdAtMs,
           snapshotId: dependencies.snapshotId(),
         });
         throwIfAborted(input.signal);
@@ -149,7 +155,11 @@ export function createBackupCommands(
           archiveId: snapshot.snapshotId,
         });
         throwIfAborted(input.signal);
-        return handle;
+        return Object.freeze({
+          ...handle,
+          createdAtMs,
+          displayName: `${snapshot.snapshotId}.gtbk`,
+        });
       } catch (error) {
         if (handle !== undefined) {
           try {

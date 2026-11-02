@@ -1,0 +1,83 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+  id 'jacoco'
+}
+
+group = 'com.fchoo.gymtracker'
+version = '0.1.0'
+
+def GARMIN_CHAQUOPY_VERSION = '17.0.0'
+def GARMIN_PYTHON_VERSION = '3.13'
+def GARMIN_ABI = 'arm64-v8a'
+
+android {
+  namespace "expo.modules.garminconnect"
+  defaultConfig {
+    minSdk 24
+    versionCode 1
+    versionName '0.1.0'
+    ndk {
+      abiFilters GARMIN_ABI
+    }
+  }
+}
+
+// Chaquopy can only be applied once, to the generated Android app module.
+// withGarminConnectModule.ts consumes these exact declarations when it wires
+// the local module into Expo CNG.
+ext.garminConnectPython = [
+  chaquopyVersion: GARMIN_CHAQUOPY_VERSION,
+  pythonVersion: GARMIN_PYTHON_VERSION,
+  abi: GARMIN_ABI,
+]
+
+dependencies {
+  compileOnly 'com.chaquo.python.runtime:chaquopy_java:17.0.0'
+  testImplementation 'junit:junit:4.13.2'
+}
+
+jacoco {
+  toolVersion = '0.8.13'
+}
+
+tasks.withType(Test).configureEach {
+  jacoco.includeNoLocationClasses = true
+  jacoco.excludes = ['jdk.internal.*']
+}
+
+tasks.register('phase18GarminKotlinCoverageReport', JacocoReport) {
+  dependsOn tasks.named('testDebugUnitTest')
+  executionData.from(fileTree(layout.buildDirectory).include('jacoco/testDebugUnitTest.exec'))
+  sourceDirectories.from(files('src/main/java'))
+  classDirectories.from(files(fileTree(layout.buildDirectory.dir('tmp/kotlin-classes/debug')) {
+    include 'expo/modules/garminconnect/GarminConnectModule.class'
+    include 'expo/modules/garminconnect/GarminConnectModuleKt.class'
+    // Pure JVM cases only. Platform/Runner and the typed Coroutine callback are
+    // measured separately by src/test/host/readiness, never on this runtime path.
+    include 'expo/modules/garminconnect/GarminTransportReadinessKt.class'
+    include 'expo/modules/garminconnect/GarminConnectPlatformBindings.class'
+    include 'expo/modules/garminconnect/GarminEvidenceAuthorizationController*.class'
+    include 'expo/modules/garminconnect/GarminEvidenceExecutionIdentity.class'
+    include 'expo/modules/garminconnect/GarminClientWorker.class'
+    include 'expo/modules/garminconnect/GarminClientWorkerKt.class'
+    include 'expo/modules/garminconnect/GarminPythonContainers.class'
+    include 'expo/modules/garminconnect/GarminPythonKind.class'
+    include 'expo/modules/garminconnect/ChaquopyGarminPythonDispatcher.class'
+    include 'expo/modules/garminconnect/GarminAdversarialSuiteRunner*.class'
+    include 'expo/modules/garminconnect/GarminTokenStore.class'
+    include 'expo/modules/garminconnect/AndroidGarminAtomicWriter.class'
+    include 'expo/modules/garminconnect/AndroidKeystoreGarminTokenCipher.class'
+    include 'expo/modules/garminconnect/GarminEvidenceArmStore.class'
+    include 'expo/modules/garminconnect/GarminStoredSessionEvidenceRunner.class'
+    include 'expo/modules/garminconnect/GarminAdversarialRotationGate.class'
+    include 'expo/modules/garminconnect/GarminRuntimeInfo*.class'
+    include 'expo/modules/garminconnect/GarminBenchmarkRuntimeInfo.class'
+  }))
+  reports {
+    xml.required = true
+    xml.outputLocation = layout.buildDirectory.file('reports/jacoco/phase18-garmin-kotlin.xml')
+    html.required = false
+    csv.required = false
+  }
+}

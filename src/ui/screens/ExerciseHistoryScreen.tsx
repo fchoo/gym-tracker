@@ -10,10 +10,13 @@ import {
   type TextStyle,
 } from "react-native";
 
-import type {
-  EffectiveMetricHistorySet,
-  ExerciseMetricHistory,
+import {
+  type EffectiveMetricHistorySet,
+  type ExerciseMetricHistory,
 } from "../../domains/history";
+import {
+  projectLoadMetricHistorySeries,
+} from "../../domains/history/metricHistory";
 import {
   formatMetricDuration,
   roundMetricAggregateForPresentation,
@@ -29,12 +32,18 @@ import {
 import {
   ContentCard,
   EmptyState,
+  FocusClearanceProvider,
+  FocusablePressable,
   PrimaryAction,
   ScreenHeader,
   SecondaryAction,
   SectionHeader,
   SkeletonBlock,
 } from "../components";
+import {
+  FactualHistoryChart,
+  type ProgressFactualSeries,
+} from "../components/FactualHistoryChart";
 import {
   space,
   typeScale,
@@ -46,6 +55,7 @@ export type ExerciseHistoryScreenProps = Readonly<{
   exerciseName: string;
   loadExerciseHistory(exerciseId: string): Promise<ExerciseMetricHistory>;
   onBack(): void;
+  onOpenSource?(sessionId: string, sourceRevision: number): void;
   width?: number;
 }>;
 
@@ -110,7 +120,43 @@ function longDate(localDate: string): string {
 }
 
 function visitText(set: EffectiveMetricHistorySet, kind: "Warm-up" | "Working"): string {
-  return `${kind} visit · ${longDate(set.localDate)} · ${kind === "Warm-up" ? "W" : "Set "}${set.setOrdinal + 1}`;
+  return `${kind} visit · ${longDate(set.displayLocalDate ?? set.localDate)} · ${kind === "Warm-up" ? "W" : "Set "}${set.setOrdinal + 1}`;
+}
+
+function isValidSourceRevision(value: number | undefined): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function sourceIdentityKey(set: EffectiveMetricHistorySet): string | null {
+  return !isValidSourceRevision(set.sourceRevision)
+    ? null
+    : `${set.sessionId}\u0000${set.sourceRevision}`;
+}
+
+function SourceAction({
+  onOpenSource,
+  set,
+}: Readonly<{
+  onOpenSource?: ExerciseHistoryScreenProps["onOpenSource"];
+  set: EffectiveMetricHistorySet;
+}>) {
+  const { colors } = useAppTheme();
+  const sourceRevision = set.sourceRevision;
+  if (onOpenSource === undefined || !isValidSourceRevision(sourceRevision)) {
+    return (
+      <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Source unavailable</Text>
+    );
+  }
+  return (
+    <FocusablePressable
+      accessibilityLabel="Open source"
+      accessibilityRole="button"
+      onPress={() => onOpenSource(set.sessionId, sourceRevision)}
+      style={[styles.sourceAction, { borderColor: colors.focusRing }]}
+    >
+      <Text style={[typeScale.secondary as TextStyle, { color: colors.focusRing }]}>Open source</Text>
+    </FocusablePressable>
+  );
 }
 
 function MetricSummary({
@@ -137,11 +183,92 @@ function MetricSummary({
   );
 }
 
-export function ExerciseHistoryScreen({
+function formatRelative(value: number | null): string {
+  return value === null || !Number.isFinite(value) || value <= 0
+    ? "—"
+    : `${Number(value.toFixed(3))}× bodyweight`;
+}
+
+function LoadHistory({
+  exerciseName,
+  onOpenSource,
+  segment,
+}: Readonly<{
+  exerciseName: string;
+  onOpenSource?: ExerciseHistoryScreenProps["onOpenSource"];
+  segment: ExerciseMetricHistory["segments"][number];
+}>) {
+  const { colors } = useAppTheme();
+  const load = projectLoadMetricHistorySeries(segment, "load");
+  const [view, setView] = useState<"load" | "relative">("load");
+  if (load === null) return null;
+  const selected = view === "relative"
+    ? projectLoadMetricHistorySeries(segment, "relative") ?? load
+    : load;
+  const series: ProgressFactualSeries = Object.freeze({
+    distanceMeters: 0,
+    fasterIsLower: false,
+    metricLabel: `${exerciseName} ${view === "relative" ? "relative strength" : "load"}`,
+    directionLabel: "Higher comparable load is better.",
+    rangeLabel: "All time",
+    unitLabel: view === "relative" ? "bodyweight ratio" : "kg",
+    currentTargetSeconds: selected.currentTarget,
+    points: Object.freeze(selected.points.map((point) => Object.freeze({
+      activityId: null,
+      workoutSessionId: point.sessionId,
+      evidence: "workout_session" as const,
+      localDate: point.localDate,
+      sourceRevision: point.sourceRevision,
+      status: "accepted_current" as const,
+      statusLabel: point.statusLabel,
+      targetAtDateSeconds: point.targetAtDate,
+      timeBasis: "elapsed" as const,
+      valueSeconds: point.value,
+      basisLabel: view === "relative" ? point.basisDisclosure : null,
+    }))),
+  });
+  return <View style={styles.loadHistory}>
+    <View accessibilityLabel="History view" style={styles.historyViewControls}>
+      <FocusablePressable
+        accessibilityLabel="Load"
+        accessibilityRole="button"
+        accessibilityState={{ selected: view === "load" }}
+        onPress={() => setView("load")}
+        style={[styles.historyViewControl, { borderColor: colors.focusRing }]}
+      >
+        <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Load</Text>
+      </FocusablePressable>
+      {load.relativeAvailable ? <FocusablePressable
+        accessibilityLabel="Relative"
+        accessibilityRole="button"
+        accessibilityState={{ selected: view === "relative" }}
+        onPress={() => setView("relative")}
+        style={[styles.historyViewControl, { borderColor: colors.focusRing }]}
+      >
+        <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Relative</Text>
+      </FocusablePressable> : null}
+    </View>
+    <FactualHistoryChart
+      formatValue={view === "relative"
+        ? formatRelative
+        : (value) => value === null ? "—" : `${Number(value.toFixed(3))} kg`}
+      {...(onOpenSource === undefined ? {} : {
+        onOpenSource: (source: Parameters<NonNullable<React.ComponentProps<typeof FactualHistoryChart>["onOpenSource"]>>[0]) => {
+          if ("sessionId" in source) onOpenSource(source.sessionId, source.sourceRevision);
+        },
+      })}
+      series={series}
+    />
+    {view === "relative" ? <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Bodyweight-relative strength is a view only and never changes targets.</Text> : null}
+  </View>;
+}
+
+function ExerciseHistoryScreenContent({
   exerciseId,
   exerciseName,
   loadExerciseHistory,
   onBack,
+  onOpenSource,
   width,
 }: ExerciseHistoryScreenProps) {
   const { colors } = useAppTheme();
@@ -208,6 +335,38 @@ export function ExerciseHistoryScreen({
     );
   }
 
+  if (history.freshness === "updating" || history.freshness === "unavailable") {
+    const updating = history.freshness === "updating";
+    return (
+      <AdaptiveScreen
+        {...adaptiveWidth}
+        onRequestBack={onBack}
+        primary={(
+          <View style={styles.screen}>
+            <ScreenHeader backAction={onBack} title="Exercise history" />
+            <EmptyState
+              body={updating
+                ? "Saved history is being recalculated. No final values are shown until one source-coherent projection is current."
+                : "Your saved workouts were not changed. Retry loading this history."}
+              heading={updating
+                ? "Updating exercise history"
+                : "Exercise history unavailable"}
+              primaryAction={(
+                <PrimaryAction
+                  label={updating
+                    ? "Refresh exercise history"
+                    : "Retry exercise history"}
+                  onPress={() => setRetryGeneration((value) => value + 1)}
+                />
+              )}
+            />
+          </View>
+        )}
+        testID="exercise-history-screen"
+      />
+    );
+  }
+
   if (history.segments.length === 0) {
     return (
       <AdaptiveScreen
@@ -234,6 +393,8 @@ export function ExerciseHistoryScreen({
   }
 
   const warmupLabel = `${warmupsVisible ? "Hide" : "Show"} ${history.warmupVisits.length} warm-up ${history.warmupVisits.length === 1 ? "visit" : "visits"}`;
+  const resolvedExerciseName = history.exerciseName ?? exerciseName;
+  const seenNonLoadSourceIdentities = new Set<string>();
   return (
     <AdaptiveScreen
       {...adaptiveWidth}
@@ -245,7 +406,7 @@ export function ExerciseHistoryScreen({
             <Text style={[typeScale.sectionTitle as TextStyle, {
               color: colors.textPrimary,
             }]}>
-              {exerciseName}
+              {resolvedExerciseName}
             </Text>
             <Text style={[typeScale.body as TextStyle, {
               color: colors.textSecondary,
@@ -274,17 +435,36 @@ export function ExerciseHistoryScreen({
                   value={observationText(segment.last?.observation ?? null)}
                 />
               </View>
+              <LoadHistory
+                exerciseName={resolvedExerciseName}
+                onOpenSource={onOpenSource}
+                segment={segment}
+              />
               <View style={styles.visitList}>
-                {segment.comparableSets.map((set) => (
-                  <Text
-                    key={set.setId}
-                    style={[typeScale.secondary as TextStyle, {
-                      color: colors.contentCardTextSecondary,
-                    }]}
-                  >
-                    {visitText(set, "Working")} · {observationText(set.observation)}
-                  </Text>
-                ))}
+                {segment.comparableSets.map((set) => {
+                  const sourceKey = segment.identity.profile === "load_reps"
+                    ? null
+                    : sourceIdentityKey(set);
+                  const showSourceAction = sourceKey === null
+                    || !seenNonLoadSourceIdentities.has(sourceKey);
+                  if (sourceKey !== null) {
+                    seenNonLoadSourceIdentities.add(sourceKey);
+                  }
+                  return (
+                    <View
+                      key={set.setId}
+                    >
+                      <Text style={[typeScale.secondary as TextStyle, {
+                        color: colors.contentCardTextSecondary,
+                      }]}>
+                        {visitText(set, "Working")} · {observationText(set.observation)}
+                      </Text>
+                      {segment.identity.profile === "load_reps" || !showSourceAction
+                        ? null
+                        : <SourceAction onOpenSource={onOpenSource} set={set} />}
+                    </View>
+                  );
+                })}
               </View>
             </ContentCard>
           ))}
@@ -321,14 +501,47 @@ export function ExerciseHistoryScreen({
   );
 }
 
+export function ExerciseHistoryScreen(props: ExerciseHistoryScreenProps) {
+  return (
+    <FocusClearanceProvider clearance={3}>
+      <ExerciseHistoryScreenContent {...props} />
+    </FocusClearanceProvider>
+  );
+}
+
 const styles = StyleSheet.create({
+  historyViewControl: {
+    alignItems: "center",
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 48,
+    paddingHorizontal: space[2],
+  },
+  historyViewControls: {
+    flexDirection: "row",
+    gap: space[2],
+  },
   introduction: {
     gap: space[1],
+  },
+  loadHistory: {
+    gap: space[2],
   },
   screen: {
     gap: space[4],
     maxWidth: 960,
     width: "100%",
+  },
+  sourceAction: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: "center",
+    minHeight: 48,
+    paddingHorizontal: space[2],
   },
   summaries: {
     gap: space[2],

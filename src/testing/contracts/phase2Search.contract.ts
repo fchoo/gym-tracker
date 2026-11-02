@@ -28,6 +28,9 @@ import {
 } from "./phase2Content.contract";
 
 export const PHASE2_SEARCH_CONTRACT_VERSION = 1 as const;
+/** Current accepted catalogs include instruction sets, introduced in schema 37. */
+const CURRENT_CATALOG_SEARCH_SCHEMA_VERSION = 37;
+const HISTORICAL_SEARCH_SCHEMA_VERSION = 5;
 
 export const PHASE2_SEARCH_CASE_IDS = [
   "search-accepted-punctuation-alias",
@@ -185,12 +188,34 @@ function sameKeys(
     && actual.every((key, index) => key === allowed[index]);
 }
 
-async function migrateSearch(kernel: SqliteKernel): Promise<void> {
+async function migrateSearchThrough(
+  kernel: SqliteKernel,
+  version: number,
+): Promise<void> {
   await createMigrationRunner({
-    databaseName: "phase2-search",
+    databaseName: `phase2-search-v${version}`,
     kernel,
-    migrations: migrations.filter((migration) => migration.version <= 5),
+    migrations: migrations.filter((migration) => migration.version <= version),
+    recoveryBackup: {
+      async createAndValidate(request) {
+        return {
+          backupId: "phase2-search-contract",
+          databaseName: request.databaseName,
+          fromVersion: request.fromVersion,
+          toVersion: request.toVersion,
+          validated: true,
+        };
+      },
+    },
   }).run();
+}
+
+async function migrateHistoricalSearch(kernel: SqliteKernel): Promise<void> {
+  await migrateSearchThrough(kernel, HISTORICAL_SEARCH_SCHEMA_VERSION);
+}
+
+async function migrateCurrentCatalogSearch(kernel: SqliteKernel): Promise<void> {
+  await migrateSearchThrough(kernel, CURRENT_CATALOG_SEARCH_SCHEMA_VERSION);
 }
 
 async function insertSearchSeedInTransaction(
@@ -270,7 +295,7 @@ async function removeIndexedTerm(
 
 const contractCases: Record<Phase2SearchContractCaseId, ContractCase> = {
   async "search-accepted-punctuation-alias"({ kernel }, adapter) {
-    await migrateSearch(kernel);
+    await migrateCurrentCatalogSearch(kernel);
     const catalog = await parseAcceptedPhase2Catalog(adapter.sha256);
     await createContentRepository(kernel).importAcceptedCatalog({
       catalog,
@@ -284,13 +309,18 @@ const contractCases: Record<Phase2SearchContractCaseId, ContractCase> = {
     const sourceCount = await kernel.queryAll<{ count: number }>(
       "SELECT COUNT(*) AS count FROM exercise_catalog_sources",
     );
+    const [instructionTable] = await kernel.queryAll<{ name: string }>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+      ["exercise_instruction_sets"],
+    );
     const page = requirePage(
       await createLibrarySearchRepository(kernel).searchExercises({
         query: "café / bench (press): OR",
       }),
     );
     invariant(
-      sourceCount[0]?.count === 310
+      instructionTable?.name === "exercise_instruction_sets"
+      && sourceCount[0]?.count === 310
       && page.items.length === 1
       && page.items[0]?.exerciseId === "phase2-search-punctuation-alias"
       && page.items[0].canonicalName === "Horizontal Barbell Press"
@@ -303,7 +333,7 @@ const contractCases: Record<Phase2SearchContractCaseId, ContractCase> = {
   },
 
   async "search-fts-trigram-short-query"({ kernel }) {
-    await migrateSearch(kernel);
+    await migrateHistoricalSearch(kernel);
     const [capability] = await kernel.queryAll<{ fts5_enabled: number }>(
       "SELECT sqlite_compileoption_used('ENABLE_FTS5') AS fts5_enabled",
     );
@@ -328,7 +358,7 @@ const contractCases: Record<Phase2SearchContractCaseId, ContractCase> = {
   },
 
   async "search-rank-and-page"({ kernel }) {
-    await migrateSearch(kernel);
+    await migrateHistoricalSearch(kernel);
     for (const seed of [
       { id: "rank-exact", name: "Press" },
       { id: "rank-prefix", name: "Press Machine" },
@@ -382,7 +412,7 @@ const contractCases: Record<Phase2SearchContractCaseId, ContractCase> = {
   },
 
   async "search-parity-integrity"({ kernel }) {
-    await migrateSearch(kernel);
+    await migrateHistoricalSearch(kernel);
     await insertSearchSeed(kernel, {
       id: "phase2-search-integrity",
       name: "Integrity Cable Crossover",
@@ -415,7 +445,7 @@ const contractCases: Record<Phase2SearchContractCaseId, ContractCase> = {
   },
 
   async "search-idempotent-rebuild"({ kernel }) {
-    await migrateSearch(kernel);
+    await migrateHistoricalSearch(kernel);
     await insertSearchSeed(kernel, {
       id: "phase2-search-rebuild",
       name: "Rebuild Alpha Press",
@@ -450,7 +480,7 @@ const contractCases: Record<Phase2SearchContractCaseId, ContractCase> = {
   },
 
   async "search-source-rollback"({ kernel }) {
-    await migrateSearch(kernel);
+    await migrateHistoricalSearch(kernel);
     await insertSearchSeed(kernel, {
       id: "phase2-search-prior",
       name: "Safe Prior Press",

@@ -13,8 +13,24 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
+import {
+  assertV12GitExecutionAttestation,
+  resolveV12GitExecution,
+} from "./v12-native-execution-origin.mjs";
+import { loadV12VisualAuthority } from "./v12-visual-authority.mjs";
+
 const excludedSourcePath =
-  /^(?:android|ios|node_modules|artifacts|\.planning|\.gsd|\.expo|\.gradle|\.kotlin|\.cache|coverage|dist|web-build)(?:\/|$)|^modules\/[^/]+\/android\/build(?:\/|$)|(?:^|\/)\.metro-health-check|\.tsbuildinfo$/;
+  /^\.coverage$|^(?:node_modules|artifacts|\.planning|\.gsd|\.expo|\.gradle|\.kotlin|\.cache|coverage(?:-[^/.]+)?|dist|web-build)(?:\/|$)|^modules\/[^/]+\/android\/build(?:\/|$)|(?:^|\/)\.metro-health-check|\.tsbuildinfo$/;
+
+const V12_PLANNING_PATHS = Object.freeze({
+  matrix_sha256: ".planning/design/v1.2-prototype-parity-matrix.json",
+  requirements_sha256: ".planning/REQUIREMENTS.md",
+  source_manifest_sha256: ".planning/design/v1.2-browser-evidence/source-manifest.json",
+  owner_brief_sha256: ".planning/v1.2-OWNER-BRIEF.md",
+  ui_spec_sha256: ".planning/phases/20-native-acceptance/20-UI-SPEC.md",
+  deviations_sha256: ".planning/design/v1.2-DEVIATIONS.md",
+});
+const V12_FIXTURE_REGISTRY = ".planning/design/v1.2-browser-evidence/serial-walk.json";
 
 function normalizedFileMode(mode) {
   return (mode & 0o111) === 0 ? "644" : "755";
@@ -38,6 +54,69 @@ function digestFiles(files) {
   return hash.digest("hex");
 }
 
+function safeRegularFile(root, relative, code) {
+  if (typeof relative !== "string" || relative.length === 0 || path.isAbsolute(relative)
+    || relative.includes("\\") || path.posix.normalize(relative) !== relative
+    || relative.split("/").some(part => !part || part === "." || part === "..")) throw new Error(code);
+  const base = path.resolve(root); let cursor = base;
+  if (lstatSync(base).isSymbolicLink() || !lstatSync(base).isDirectory()) throw new Error(code);
+  for (const part of relative.split("/")) {
+    cursor = path.join(cursor, part);
+    const stat = lstatSync(cursor, { throwIfNoEntry: false });
+    if (stat === undefined || stat.isSymbolicLink()) throw new Error(code);
+  }
+  if (!lstatSync(cursor).isFile()) throw new Error(code);
+  return cursor;
+}
+
+function fileSha256(root, relative, code) {
+  return createHash("sha256").update(readFileSync(safeRegularFile(root, relative, code))).digest("hex");
+}
+
+function sourceGit({ gitExecution = undefined, expectedGitAttestation = undefined, env = process.env } = {}) {
+  const execution = gitExecution ?? resolveV12GitExecution({ env });
+  if (expectedGitAttestation !== undefined) {
+    assertV12GitExecutionAttestation(expectedGitAttestation, { execution });
+  }
+  return execution;
+}
+
+export function v12ContractSourceDigests(root = process.cwd(), { approvedSourceRoot = process.env.V12_APPROVED_SOURCE_ROOT } = {}) {
+  const planning = Object.freeze(Object.fromEntries(
+    Object.entries(V12_PLANNING_PATHS).map(([key, relative]) => [key, fileSha256(root, relative, "v12_contract_planning_invalid")]),
+  ));
+  let manifest;
+  try { manifest = JSON.parse(readFileSync(safeRegularFile(root, V12_PLANNING_PATHS.source_manifest_sha256, "v12_contract_prototype_invalid"), "utf8")); }
+  catch (error) { if (error instanceof Error && error.message.startsWith("v12_contract_")) throw error; throw new Error("v12_contract_prototype_invalid"); }
+  if (manifest?.schema_version !== 2 || manifest.revision !== 18 || !Array.isArray(manifest.sources)
+    || manifest.sources.length < 2) {
+    throw new Error("v12_contract_prototype_invalid");
+  }
+  const sourceById = new Map(manifest.sources.map(source => [source.id, source]));
+  const approvedJson = sourceById.get("approved-json"); const approvedHtml = sourceById.get("approved-hybrid-html");
+  if (!approvedJson || !approvedHtml) throw new Error("v12_contract_prototype_invalid");
+  let approvalSha256;
+  let htmlSha256;
+  if (typeof approvedSourceRoot === "string" && approvedSourceRoot.length > 0) {
+    const approvedRoot = path.resolve(approvedSourceRoot);
+    approvalSha256 = fileSha256(approvedRoot, approvedJson.filename, "v12_contract_prototype_invalid");
+    htmlSha256 = fileSha256(approvedRoot, approvedHtml.filename, "v12_contract_prototype_invalid");
+    if (approvalSha256 !== approvedJson.sha256 || htmlSha256 !== approvedHtml.sha256) throw new Error("v12_contract_prototype_invalid");
+  } else {
+    let authority;
+    try { authority = loadV12VisualAuthority({ root, externalRoot: "" }); }
+    catch { throw new Error("v12_contract_prototype_invalid"); }
+    approvalSha256 = authority.source_hashes["approved-json"];
+    htmlSha256 = authority.source_hashes["approved-hybrid-html"];
+    if (approvalSha256 !== approvedJson.sha256 || htmlSha256 !== approvedHtml.sha256) throw new Error("v12_contract_prototype_invalid");
+  }
+  return Object.freeze({
+    planning,
+    prototype: Object.freeze({ revision: 18, approval_sha256: approvalSha256, html_sha256: htmlSha256 }),
+    fixtures: Object.freeze({ registry_sha256: fileSha256(root, V12_FIXTURE_REGISTRY, "v12_contract_fixtures_invalid") }),
+  });
+}
+
 function currentFile(root, filePath) {
   const absolutePath = path.join(root, filePath);
   const details = lstatSync(absolutePath);
@@ -58,9 +137,10 @@ function currentFile(root, filePath) {
   };
 }
 
-export function sourceTreeUntrackedPaths(root = process.cwd()) {
+export function sourceTreeUntrackedPaths(root = process.cwd(), options = {}) {
+  const git = sourceGit(options);
   return execFileSync(
-    "git",
+    git.executable,
     ["ls-files", "-z", "--others", "--exclude-standard"],
     { cwd: root, maxBuffer: 16 * 1024 * 1024 },
   ).toString("utf8").split("\0")
@@ -71,9 +151,10 @@ export function sourceTreeUntrackedPaths(root = process.cwd()) {
     );
 }
 
-export function sourceTreeSha256(root = process.cwd()) {
+export function sourceTreeSha256(root = process.cwd(), options = {}) {
+  const git = sourceGit(options);
   const files = execFileSync(
-    "git",
+    git.executable,
     ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
     { cwd: root, maxBuffer: 16 * 1024 * 1024 },
   ).toString("utf8").split("\0")
@@ -83,9 +164,10 @@ export function sourceTreeSha256(root = process.cwd()) {
   return digestFiles(files);
 }
 
-export function sourceTreeSha256AtHead(head, root = process.cwd()) {
+export function sourceTreeSha256AtHead(head, root = process.cwd(), options = {}) {
+  const git = sourceGit(options);
   const entries = execFileSync(
-    "git",
+    git.executable,
     ["ls-tree", "-rz", "--full-tree", head],
     { cwd: root, maxBuffer: 16 * 1024 * 1024 },
   ).toString("utf8").split("\0")
@@ -107,28 +189,48 @@ export function sourceTreeSha256AtHead(head, root = process.cwd()) {
     .filter(({ type, filePath }) =>
       type === "blob" && !excludedSourcePath.test(filePath)
     );
-  const trackedPaths = new Set(entries.map(({ filePath }) => filePath));
-  return digestFiles([
-    ...entries.map(({ rawMode, hash, filePath }) => ({
+  return digestFiles(entries.map(({ rawMode, hash, filePath }) => ({
       filePath,
       type: rawMode === "120000" ? "symlink" : "file",
       mode: rawMode === "100755" ? "755" : rawMode === "120000" ? "000" : "644",
       contents: execFileSync(
-        "git",
+        git.executable,
         ["cat-file", "blob", hash],
         { cwd: root, maxBuffer: 64 * 1024 * 1024 },
       ),
-    })),
-    ...sourceTreeUntrackedPaths(root)
-      .filter((filePath) => !trackedPaths.has(filePath))
-      .map((filePath) => currentFile(root, filePath)),
-  ]);
+    })));
+}
+
+export function assertCleanCommittedTree(head, root = process.cwd(), options = {}) {
+  const git = sourceGit(options);
+  const currentHead = execFileSync(
+    git.executable,
+    ["rev-parse", "HEAD"],
+    { cwd: root, encoding: "utf8" },
+  ).trim();
+  if (head !== currentHead) {
+    throw new Error("source digest head does not match the checked-out commit.");
+  }
+  const status = execFileSync(
+    git.executable,
+    ["status", "--porcelain", "--untracked-files=all"],
+    { cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+  ).split(/\r?\n/u).filter(Boolean).map((line) => line.slice(3));
+  const sourceChanges = status.filter((filePath) =>
+    !excludedSourcePath.test(filePath)
+  );
+  if (sourceChanges.length > 0) {
+    throw new Error(
+      `dirty implementation tree prevents an exact source digest: ${sourceChanges.join(", ")}`,
+    );
+  }
 }
 
 async function executeMain() {
   const args = process.argv.slice(2);
   let head;
   let assertNoUntracked = false;
+  let assertClean = false;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === "--head") {
@@ -138,19 +240,35 @@ async function executeMain() {
       head = argument.slice("--head=".length);
     } else if (argument === "--assert-no-untracked") {
       assertNoUntracked = true;
+    } else if (argument === "--assert-clean") {
+      assertClean = true;
     } else {
       throw new Error(`unknown argument: ${argument}`);
     }
   }
-  const untracked = sourceTreeUntrackedPaths();
+  const gitExecution = resolveV12GitExecution();
+  let expectedGitAttestation;
+  if (process.env.V12_GIT_ATTESTATION_PATH !== undefined) {
+    try { expectedGitAttestation = JSON.parse(readFileSync(process.env.V12_GIT_ATTESTATION_PATH, "utf8")); }
+    catch { throw new Error("retained Git attestation is invalid."); }
+    assertV12GitExecutionAttestation(expectedGitAttestation, { execution: gitExecution });
+  }
+  const gitOptions = { gitExecution, expectedGitAttestation };
+  const untracked = sourceTreeUntrackedPaths(process.cwd(), gitOptions);
   if (assertNoUntracked && untracked.length > 0) {
     throw new Error(
       `untracked implementation files prevent an exact source digest: ${untracked.join(", ")}`,
     );
   }
+  if (assertClean) {
+    if (head === undefined) {
+      throw new Error("--assert-clean requires --head.");
+    }
+    assertCleanCommittedTree(head, process.cwd(), gitOptions);
+  }
   process.stdout.write(head === undefined
-    ? sourceTreeSha256()
-    : sourceTreeSha256AtHead(head));
+    ? sourceTreeSha256(process.cwd(), gitOptions)
+    : sourceTreeSha256AtHead(head, process.cwd(), gitOptions));
 }
 
 const isMain = process.argv[1] !== undefined

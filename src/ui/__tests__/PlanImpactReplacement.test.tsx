@@ -189,6 +189,9 @@ describe("Plan impact day removal", () => {
       await fireEvent.press(
         screen.getByRole("button", { name: "Remove day" }),
       );
+      await fireEvent.press(screen.getAllByRole("button", {
+        name: "Remove day",
+      }).at(-1)!);
 
       await waitFor(() => expect(removeDay).toHaveBeenCalledTimes(1));
       expect(removeDay).toHaveBeenCalledWith(expect.objectContaining({
@@ -215,6 +218,34 @@ describe("Plan impact day removal", () => {
     },
   );
 
+  it("requires a final confirmation before a reviewed day removal writes", async () => {
+    const removeDay = jest.fn<
+      React.ComponentProps<typeof PlanDayRemovalScreen>["removeDay"]
+    >(async () => ({
+      outcome: "committed",
+      planId: preview.planId,
+      planRevision: 5,
+      scheduleRevision: 8,
+      currentWorkoutUnaffected: true,
+      invalidations: [],
+    }));
+    await renderDayRemoval({ removeDay });
+
+    await fireEvent.press(await screen.findByRole("radio", {
+      name: "Remove binding",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Remove day" }));
+
+    expect(await screen.findByRole("header", {
+      name: "Remove future plan day?",
+    })).toBeOnTheScreen();
+    expect(removeDay).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Keep reviewing",
+    }));
+    expect(removeDay).not.toHaveBeenCalled();
+  });
+
   it("keeps the effective-date choice unchanged when its calendar is cancelled", async () => {
     const { screenProps } = await renderDayRemoval();
 
@@ -239,6 +270,9 @@ describe("Plan impact day removal", () => {
     expect(screen.getByRole("button", { name: "Effective date" }))
       .toHaveTextContent("2026-08-19");
     await fireEvent.press(screen.getByRole("button", { name: "Remove day" }));
+    await fireEvent.press(screen.getAllByRole("button", {
+      name: "Remove day",
+    }).at(-1)!);
     await waitFor(() => expect(screenProps.removeDay).toHaveBeenCalledWith(
       expect.objectContaining({
         choice: {
@@ -286,6 +320,9 @@ describe("Plan impact day removal", () => {
     await fireEvent.press(
       screen.getByRole("button", { name: "Remove day" }),
     );
+    await fireEvent.press(screen.getAllByRole("button", {
+      name: "Remove day",
+    }).at(-1)!);
 
     expect(await screen.findByText(
       "Impact changed. Review the current preview before trying again.",
@@ -301,6 +338,9 @@ describe("Plan impact day removal", () => {
     await fireEvent.press(
       screen.getByRole("button", { name: "Remove day" }),
     );
+    await fireEvent.press(screen.getAllByRole("button", {
+      name: "Remove day",
+    }).at(-1)!);
     await waitFor(() => expect(removeDay).toHaveBeenCalledTimes(2));
     expect(removeDay.mock.calls[1]![0]).toEqual(expect.objectContaining({
       expectedPlanRevision: 5,
@@ -704,6 +744,21 @@ describe("Exercise replacement", () => {
       screen.getByRole("button", { name: "Save replacement" }),
     );
 
+    expect(await screen.findByRole("header", {
+      name: "Replace future plan exercises?",
+    })).toBeOnTheScreen();
+    expect(replaceExercise).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Keep reviewing",
+    }));
+    expect(replaceExercise).not.toHaveBeenCalled();
+    await fireEvent.press(
+      screen.getByRole("button", { name: "Save replacement" }),
+    );
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Replace exercises",
+    }));
+
     await waitFor(() => expect(replaceExercise).toHaveBeenCalledTimes(1));
     expect(replaceExercise).toHaveBeenCalledWith(expect.objectContaining({
       planId: replacementPreview.planId,
@@ -752,6 +807,9 @@ describe("Exercise replacement", () => {
     await fireEvent.press(
       screen.getByRole("button", { name: "Save replacement" }),
     );
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Replace exercises",
+    }));
 
     expect(await screen.findByText(
       "Replacement could not be saved. Your review is still here. Try again.",
@@ -765,6 +823,9 @@ describe("Exercise replacement", () => {
       }));
     await fireEvent.press(
       screen.getByRole("button", { name: "Save replacement" }),
+    );
+    await fireEvent.press(
+      screen.getByRole("button", { name: "Replace exercises" }),
     );
     await waitFor(() => expect(replaceExercise).toHaveBeenCalledTimes(2));
   });

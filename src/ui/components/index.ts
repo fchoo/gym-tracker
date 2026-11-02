@@ -12,6 +12,7 @@ import {
   Ellipsis,
   Eye,
   EyeOff,
+  Info,
   LibraryBig,
   RotateCcw,
   Settings,
@@ -22,23 +23,34 @@ import {
 } from "lucide-react-native";
 import React, {
   Children,
+  createContext,
+  useContext,
   forwardRef,
+  useCallback,
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
 } from "react";
 import {
-  Modal,
+  AccessibilityInfo,
+  findNodeHandle,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
+  type LayoutChangeEvent,
   type PressableProps,
   type PressableStateCallbackType,
+  type StyleProp,
+  type TextLayoutEvent,
   type TextStyle,
   type ViewStyle,
 } from "react-native";
+
+import { SafeAreaInsetsContext } from "react-native-safe-area-context";
 
 import {
   radius,
@@ -47,7 +59,19 @@ import {
   type AppearancePreference,
   typeScale,
   useAppTheme,
+  workoutTypeScale,
 } from "../theme";
+import {
+  useBottomSheetFocusRegistration,
+  useFocusClearance,
+  type BottomSheetFocusableRef,
+} from "./bottomSheetFocus";
+import { BottomSheet } from "./BottomSheet";
+import { ActionLabel, isCompactActionLabel } from "./ActionLabel";
+import { ConfirmationDialog } from "./ConfirmationDialog";
+import { rootTabNativeID } from "../shell/rootFocus";
+import { fitTabLabelFontSize } from "./tabLabelFit";
+import { markKeyboardFocusModality, markPointerFocusModality, shouldShowFocusRing } from "./focusVisibility";
 
 export {
   ImpactPreview,
@@ -62,6 +86,7 @@ export {
 } from "./RestAlertSettingsSheet";
 export {
   M3SearchField,
+  type M3SearchFieldHandle,
   type M3SearchFieldProps,
   type M3SearchFieldState,
 } from "./M3SearchField";
@@ -69,16 +94,25 @@ export {
   M3FilterChip,
   type M3FilterChipProps,
 } from "./M3FilterChip";
+export {
+  NavigationRow,
+  type NavigationRowIcon,
+  type NavigationRowProps,
+} from "./NavigationRow";
+export { FocusClearanceProvider } from "./bottomSheetFocus";
 
 type ActionProps = Readonly<{
   label: string;
+  visibleLabel?: string | undefined;
   onPress: () => void;
   accessibilityHint?: string;
   accessibilityActions?: PressableProps["accessibilityActions"];
   onAccessibilityAction?: PressableProps["onAccessibilityAction"];
   busy?: boolean;
   disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
   testID?: string;
+  nativeID?: string;
 }>;
 
 function actionAccessibilityState(
@@ -176,6 +210,7 @@ export function ContentCard({
           borderColor,
           opacity: disabled ? 0.62 : 1,
           outlineColor: colors.focusRing,
+          outlineOffset: focused ? sizes.focusClearance : 0,
           outlineStyle: "solid",
           outlineWidth: focused ? sizes.focusRing : 0,
         },
@@ -187,23 +222,39 @@ export function ContentCard({
   );
 }
 
-export function ActionCluster({
-  children,
-  style,
-  testID,
-}: Readonly<{
-  children: React.ReactNode;
-  style?: ViewStyle;
-  testID?: string;
-}>) {
-  return h(
-    View,
-    {
-      style: [styles.actionCluster, style],
-      testID,
-    },
-    children,
+const ActionRowContext = createContext(false);
+
+function actionRowChildren(children: React.ReactNode): React.ReactNode[] {
+  return Children.toArray(children).flatMap((child) =>
+    React.isValidElement<{ children?: React.ReactNode }>(child) && child.type === React.Fragment
+      ? actionRowChildren(child.props.children)
+      : [child],
   );
+}
+
+/** Related decisions share one row; each action keeps its touch and focus target. */
+export function ActionRow({ children, style, testID }: Readonly<{
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+  testID?: string | undefined;
+}>) {
+  return h(View, { style: [style, styles.actionRow], testID },
+    h(ActionRowContext.Provider, { value: true },
+      actionRowChildren(children).map((child, index) => h(View, {
+        key: React.isValidElement(child) ? child.key ?? index : index,
+        style: styles.actionCell,
+      }, child)),
+    ),
+  );
+}
+
+/** Intrinsic sidebar actions must leave the sibling title its available width. */
+export function ActionCluster({ children, style, testID }: Readonly<{
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+  testID?: string | undefined;
+}>) {
+  return h(View, { style: [styles.actionCluster, style], testID }, children);
 }
 
 export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
@@ -213,15 +264,22 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
       onBlur,
       onFocus,
       onKeyDown,
+      onPointerDown,
       onPress,
+      onTouchStart,
       style,
       ...props
     },
     ref,
   ) {
     const { colors } = useAppTheme();
+    const focusClearance = useFocusClearance();
     const [focused, setFocused] = useState(false);
+    const [preferredFocus, setPreferredFocus] = useState(false);
+    const focusRegistration = useBottomSheetFocusRegistration();
+    const internalRef = useRef<View | null>(null);
     const isDisabled = disabled === true;
+    const participatesInFocusTrap = props.focusable !== false && !isDisabled;
     const keyboardProps = onKeyDown === undefined
       ? onPress === null || onPress === undefined
         ? {}
@@ -230,25 +288,112 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
             () => (onPress as unknown as () => void)(),
           )
       : { onKeyDown };
+    const onActionKeyDown = (keyboardProps as FocusablePressableProps).onKeyDown;
+    const requestFocus = useCallback(() => {
+      setPreferredFocus(true);
+      internalRef.current?.setNativeProps?.({ hasTVPreferredFocus: true });
+      internalRef.current?.focus?.();
+      let node: number | null = null;
+      try {
+        node = findNodeHandle(internalRef.current);
+      } catch {
+        // Host renderers and caller-owned focus seams may not expose a native handle.
+      }
+      if (typeof node === "number" && node > 0) {
+        AccessibilityInfo.setAccessibilityFocus(node);
+      }
+    }, []);
+    const registrationRef = useRef({ focus: () => undefined }) as BottomSheetFocusableRef;
+    registrationRef.current = {
+      focus: () => {
+        markKeyboardFocusModality();
+        setFocused(true);
+        requestFocus();
+      },
+    };
+
+    useImperativeHandle(ref, () => ({
+      // Restoring focus after a touch-opened modal must preserve touch modality.
+      focus: requestFocus,
+      setNativeProps: (nativeProps: Readonly<Record<string, unknown>>) => {
+        internalRef.current?.setNativeProps?.(nativeProps);
+      },
+    }) as unknown as View, [requestFocus]);
+
+    useEffect(() => {
+      if (focusRegistration === null || !participatesInFocusTrap) {
+        return;
+      }
+      return focusRegistration.register(registrationRef);
+    }, [focusRegistration, participatesInFocusTrap, registrationRef]);
+
+    const setPressableRef = useCallback((node: View | null) => {
+      internalRef.current = node;
+      if (typeof ref === "function") {
+        ref(node);
+        return;
+      }
+      if (ref !== null) {
+        ref.current = node;
+      }
+    }, [ref]);
+
+    const captionChild = React.isValidElement<{ children?: React.ReactNode; style?: StyleProp<TextStyle>; numberOfLines?: number; accessibilityElementsHidden?: boolean }>(props.children)
+      && props.children.type === Text && typeof props.children.props.children === "string"
+      && props.accessibilityRole === "button" && props.children.props.numberOfLines === undefined
+      && props.children.props.accessibilityElementsHidden !== true
+      && isCompactActionLabel(props.accessibilityLabel ?? String(props.children.props.children))
+      ? props.children : null;
+    const captionStyle = captionChild === null ? undefined : StyleSheet.flatten(captionChild.props.style);
+    const children = captionChild === null ? props.children : h(ActionLabel, {
+      label: props.accessibilityLabel ?? String(captionChild.props.children),
+      visibleLabel: String(captionChild.props.children),
+      color: typeof captionStyle?.color === "string" ? captionStyle.color : colors.textPrimary,
+      typography: captionStyle,
+    });
 
     return h(Pressable, {
       ...props,
+      children,
       disabled: isDisabled,
+      hasTVPreferredFocus: preferredFocus,
       ...keyboardProps,
+      onKeyDown: onActionKeyDown === undefined ? undefined : (event: { nativeEvent: { key: string } }) => {
+        markKeyboardFocusModality();
+        setFocused(!isDisabled);
+        onActionKeyDown(event);
+      },
+      onPointerDown: (event: Parameters<NonNullable<PressableProps["onPointerDown"]>>[0]) => {
+        markPointerFocusModality();
+        setFocused(false);
+        setPreferredFocus(false);
+        onPointerDown?.(event);
+      },
+      onTouchStart: (event: Parameters<NonNullable<PressableProps["onTouchStart"]>>[0]) => {
+        markPointerFocusModality();
+        setFocused(false);
+        setPreferredFocus(false);
+        onTouchStart?.(event);
+      },
       onBlur: (event: Parameters<NonNullable<PressableProps["onBlur"]>>[0]) => {
         setFocused(false);
         onBlur?.(event);
       },
       onFocus: (event: Parameters<NonNullable<PressableProps["onFocus"]>>[0]) => {
-        setFocused(true);
+        setFocused(!isDisabled && shouldShowFocusRing());
+        setPreferredFocus(false);
+        if (focusRegistration !== null && participatesInFocusTrap) {
+          focusRegistration.onFocus(registrationRef);
+        }
         onFocus?.(event);
       },
       onPress,
-      ref,
+      ref: setPressableRef,
       style: (state: PressableStateCallbackType) => [
         typeof style === "function" ? style(state) : style,
         {
           outlineColor: colors.focusRing,
+          outlineOffset: focused ? focusClearance : 0,
           outlineStyle: "solid",
           outlineWidth: focused ? sizes.focusRing : 0,
         },
@@ -282,35 +427,29 @@ function iconElement(
   });
 }
 
-function actionText(label: string, color: string) {
-  return h(
-    Text,
-    {
-      style: [
-        typeScale.bodyStrong as TextStyle,
-        styles.actionLabel,
-        { color },
-      ],
-    },
-    label,
-  );
+function actionText(label: string, color: string, visibleLabel?: string) {
+  return h(ActionLabel, { label, color, visibleLabel });
 }
 
 export const PrimaryAction = forwardRef<View, ActionProps>(
   function PrimaryActionElement(
     {
       label,
+      visibleLabel,
       onPress,
       accessibilityHint,
       accessibilityActions,
       onAccessibilityAction,
       busy = false,
       disabled = false,
+      style,
       testID,
+      nativeID,
     },
     ref,
   ) {
     const { colors } = useAppTheme();
+    const inRow = useContext(ActionRowContext);
     const isDisabled = disabled || busy;
 
     return h(
@@ -326,9 +465,12 @@ export const PrimaryAction = forwardRef<View, ActionProps>(
         ...keyboardActivationProps(isDisabled, onPress),
         onAccessibilityAction,
         onPress,
+        nativeID,
         ref,
         style: ({ pressed }: { pressed: boolean }) => [
           styles.primaryAction,
+          inRow && styles.rowAction,
+          style,
           {
             backgroundColor: pressed ? colors.actionPressed : colors.action,
             opacity: isDisabled ? 0.62 : 1,
@@ -336,7 +478,45 @@ export const PrimaryAction = forwardRef<View, ActionProps>(
         ],
         testID,
       },
-      actionText(label, colors.onAction),
+      actionText(label, colors.onAction, visibleLabel),
+    );
+  },
+);
+
+/** Workout-root-only primary action. Orange is reserved for this hierarchy. */
+export const WorkoutPrimaryAction = forwardRef<View, ActionProps>(
+  function WorkoutPrimaryActionElement(
+    { label, visibleLabel, onPress, accessibilityHint, busy = false, disabled = false, style, testID },
+    ref,
+  ) {
+    const { colors } = useAppTheme();
+    const inRow = useContext(ActionRowContext);
+    const isDisabled = disabled || busy;
+    return h(
+      FocusablePressable,
+      {
+        accessibilityHint,
+        accessibilityLabel: label,
+        accessibilityRole: "button",
+        accessibilityState: actionAccessibilityState(disabled, busy),
+        disabled: isDisabled,
+        focusable: !isDisabled,
+        ...keyboardActivationProps(isDisabled, onPress),
+        onPress,
+        ref,
+        style: ({ pressed }: { pressed: boolean }) => [
+          styles.primaryAction,
+          inRow && styles.rowAction,
+          styles.workoutPrimaryAction,
+          style,
+          {
+            backgroundColor: pressed ? colors.workoutPrimaryActionPressed : colors.workoutPrimaryAction,
+            opacity: isDisabled ? 0.62 : 1,
+          },
+        ],
+        testID,
+      },
+      h(ActionLabel, { label, visibleLabel, color: colors.onWorkoutPrimaryAction, typography: workoutTypeScale.emphasis as TextStyle }),
     );
   },
 );
@@ -347,16 +527,20 @@ export const SecondaryAction = forwardRef<
 >(function SecondaryActionElement(
   {
     label,
+    visibleLabel,
     onPress,
     accessibilityHint,
     busy = false,
     disabled = false,
     destructive = false,
+    style,
     testID,
+    nativeID,
   },
   ref,
 ) {
   const { colors } = useAppTheme();
+  const inRow = useContext(ActionRowContext);
   const isDisabled = disabled || busy;
   const foreground = destructive ? colors.destructive : colors.textPrimary;
 
@@ -371,9 +555,12 @@ export const SecondaryAction = forwardRef<
       focusable: !isDisabled,
       ...keyboardActivationProps(isDisabled, onPress),
       onPress,
+      nativeID,
       ref,
       style: ({ pressed }: { pressed: boolean }) => [
         styles.secondaryAction,
+        inRow && styles.rowAction,
+        style,
         {
           backgroundColor: pressed ? colors.surfaceSubtle : colors.surface,
           borderColor: destructive ? colors.destructive : colors.divider,
@@ -382,7 +569,7 @@ export const SecondaryAction = forwardRef<
       ],
       testID,
     },
-    actionText(label, foreground),
+    actionText(label, foreground, visibleLabel),
   );
 });
 
@@ -392,6 +579,7 @@ const actionIcons = {
   clear: X,
   favorite: Star,
   hide: EyeOff,
+  info: Info,
   more: Ellipsis,
   moveDown: ArrowDown,
   moveUp: ArrowUp,
@@ -412,6 +600,7 @@ export const IconAction = forwardRef<
     accessibilityHint?: string;
     busy?: boolean;
     disabled?: boolean;
+    nativeID?: string | undefined;
     selected?: boolean;
     tone?: "default" | "card";
     testID?: string;
@@ -424,6 +613,7 @@ export const IconAction = forwardRef<
     accessibilityHint,
     busy = false,
     disabled = false,
+    nativeID,
     selected = false,
     tone = "default",
     testID,
@@ -456,6 +646,7 @@ export const IconAction = forwardRef<
       disabled: isDisabled,
       focusable: !isDisabled,
       ...keyboardActivationProps(isDisabled, onPress),
+      nativeID,
       onPress,
       ref,
       style: ({ pressed }: { pressed: boolean }) => [
@@ -472,17 +663,30 @@ export const IconAction = forwardRef<
   );
 });
 
-export function ScreenHeader({
-  title,
-  eyebrow,
-  action,
-  backAction,
-}: Readonly<{
+export const ScreenHeader = forwardRef<View, Readonly<{
   title: string;
   eyebrow?: string;
   action?: React.ReactNode;
+  actions?: readonly React.ReactNode[];
   backAction?: () => void;
-}>) {
+  backActionLabel?: string;
+  backActionRef?: React.Ref<View>;
+  backActionTestID?: string;
+  titleStyle?: StyleProp<TextStyle>;
+  /** Deep Library routes opt into the Phase 17 64dp header track. */
+  density?: "standard" | "deep";
+}>>(function ScreenHeader({
+  title,
+  eyebrow,
+  action,
+  actions,
+  backAction,
+  backActionLabel = "Go back",
+  backActionRef,
+  backActionTestID,
+  density = "standard",
+  titleStyle,
+}, ref) {
   const { colors } = useAppTheme();
   const copy = [
     eyebrow === undefined
@@ -499,46 +703,64 @@ export function ScreenHeader({
           eyebrow,
         ),
     h(
-      Text,
+      View,
       {
+        accessibilityLabel: title,
         accessibilityRole: "header",
+        accessible: true,
+        focusable: true,
         key: "title",
-        style: [
-          typeScale.screenTitle as TextStyle,
-          { color: colors.textPrimary },
-        ],
+        ref,
       },
-      title,
+      h(
+        Text,
+        {
+          style: [
+            typeScale.screenTitle as TextStyle,
+            titleStyle,
+            { color: colors.textPrimary },
+          ],
+        },
+        title,
+      ),
     ),
   ];
 
   return h(
     View,
-    { style: styles.screenHeader },
+    { style: [styles.screenHeader, density === "deep" && styles.screenHeaderDeep] },
     backAction === undefined
       ? null
       : h(IconAction, {
-          accessibilityLabel: "Go back",
+          accessibilityLabel: backActionLabel,
           icon: "back",
           onPress: backAction,
+          ref: backActionRef,
+          ...(backActionTestID === undefined
+            ? {}
+            : { testID: backActionTestID }),
         }),
     h(View, { style: styles.headerCopy }, ...copy),
-    action === undefined
+    action === undefined && actions === undefined
       ? null
-      : h(View, { style: styles.headerAction }, action),
+      : h(View, { style: styles.headerAction, testID: "screen-header-actions" }, ...(actions ?? [action])),
   );
-}
+});
 
 export function SectionHeader({
   title,
   supportingText,
   action,
   tone = "default",
+  titleStyle,
+  supportingTextStyle,
 }: Readonly<{
   title: string;
   supportingText?: string;
   action?: React.ReactNode;
   tone?: "default" | "card";
+  titleStyle?: StyleProp<TextStyle>;
+  supportingTextStyle?: StyleProp<TextStyle>;
 }>) {
   const { colors } = useAppTheme();
   const primary = tone === "card" ? colors.contentCardText : colors.textPrimary;
@@ -558,6 +780,7 @@ export function SectionHeader({
           accessibilityRole: "header",
           style: [
             typeScale.sectionTitle as TextStyle,
+            titleStyle,
             { color: primary },
           ],
         },
@@ -570,6 +793,7 @@ export function SectionHeader({
             {
               style: [
                 typeScale.body as TextStyle,
+                supportingTextStyle,
                 { color: secondary },
               ],
             },
@@ -583,11 +807,15 @@ export function SectionHeader({
 export function EmptyState({
   heading,
   body,
+  headingStyle,
+  bodyStyle,
   primaryAction,
   secondaryAction,
 }: Readonly<{
   heading: string;
   body: string;
+  headingStyle?: StyleProp<TextStyle>;
+  bodyStyle?: StyleProp<TextStyle>;
   primaryAction: React.ReactNode;
   secondaryAction?: React.ReactNode;
 }>) {
@@ -602,6 +830,7 @@ export function EmptyState({
         accessibilityRole: "header",
         style: [
           typeScale.sectionTitle as TextStyle,
+          headingStyle,
           { color: colors.textPrimary },
         ],
       },
@@ -612,6 +841,7 @@ export function EmptyState({
       {
         style: [
           typeScale.body as TextStyle,
+          bodyStyle,
           { color: colors.textSecondary },
         ],
       },
@@ -637,12 +867,19 @@ export function InlineNotice({
   tone = "neutral",
   card = false,
   action,
+  focusable = false,
+  nativeID,
+  noticeRef,
 }: Readonly<{
   heading: string;
   body: string;
   tone?: NoticeTone;
   card?: boolean;
   action?: React.ReactNode;
+  /** Used by recovery flows that must move assistive focus to this notice. */
+  focusable?: boolean;
+  nativeID?: string;
+  noticeRef?: React.Ref<View>;
 }>) {
   const { colors } = useAppTheme();
   const semanticColor =
@@ -670,6 +907,11 @@ export function InlineNotice({
     View,
     {
       accessibilityLiveRegion: tone === "neutral" ? "none" : "polite",
+      accessibilityRole: focusable ? "header" : undefined,
+      accessible: focusable || undefined,
+      focusable,
+      nativeID,
+      ref: noticeRef,
       style: styles.notice,
     },
     iconElement(noticeIcons[tone], semanticColor, iconLabel),
@@ -835,91 +1077,22 @@ export function ConfirmationSheet({
   onAlternate?: () => void;
   restoreFocusRef?: React.RefObject<View | null>;
 }>) {
-  const { colors, reduceMotion } = useAppTheme();
-  const cancelRef = useRef<View>(null);
-
-  useEffect(() => {
-    if (visible) {
-      cancelRef.current?.focus();
-    }
-  }, [visible]);
-
-  function cancel() {
-    onCancel();
-    restoreFocusRef?.current?.focus();
-  }
-
-  return h(
-    Modal,
-    {
-      animationType: reduceMotion ? "none" : "fade",
-      onRequestClose: cancel,
-      transparent: true,
-      visible,
-    },
-    h(
-      View,
-      { accessibilityViewIsModal: true, style: styles.modalBackdrop },
-        h(
-          ScrollView,
-          {
-            contentContainerStyle: styles.sheetContent,
-            keyboardShouldPersistTaps: "handled",
-            style: [
-              styles.sheet,
-              { backgroundColor: colors.surface },
-            ],
-            testID: "confirmation-sheet-content",
-          },
-        h(
-          View,
-          {
-            accessibilityRole: "header",
-            accessible: true,
-          },
-          h(
-            Text,
-            {
-              style: [
-                typeScale.screenTitle as TextStyle,
-                { color: colors.textPrimary },
-              ],
-            },
-            heading,
-          ),
-        ),
-        h(
-          Text,
-          {
-            style: [
-              typeScale.body as TextStyle,
-              { color: colors.textSecondary },
-            ],
-          },
-          body,
-        ),
-        h(SecondaryAction, {
-          label: cancelLabel,
-          onPress: cancel,
-          ref: cancelRef,
-        }),
-        alternateLabel === undefined || onAlternate === undefined
-          ? null
-          : h(SecondaryAction, {
-              destructive,
-              label: alternateLabel,
-              onPress: onAlternate,
-            }),
-        h(SecondaryAction, {
-          busy: confirmBusy,
-          destructive,
-          label: confirmLabel,
-          onPress: onConfirm,
-          ...(confirmTestID === undefined ? {} : { testID: confirmTestID }),
-        }),
-      ),
-    ),
-  );
+  return h(ConfirmationDialog, {
+    alternateLabel,
+    body,
+    cancelLabel,
+    confirmBusy,
+    confirmLabel,
+    confirmTestID,
+    destructive,
+    heading,
+    onAlternate,
+    onCancel,
+    onConfirm,
+    restoreFocusRef,
+    scrollTestID: "confirmation-sheet-content",
+    visible,
+  });
 }
 
 const appearanceOptions: readonly AppearancePreference[] = [
@@ -938,13 +1111,6 @@ export function AppearanceSheet({
   restoreFocusRef?: React.RefObject<View | null>;
 }>) {
   const { appearance, colors, setAppearance } = useAppTheme();
-  const headingRef = useRef<View>(null);
-
-  useEffect(() => {
-    if (visible) {
-      headingRef.current?.focus();
-    }
-  }, [visible]);
 
   function close() {
     onClose();
@@ -952,93 +1118,59 @@ export function AppearanceSheet({
   }
 
   return h(
-    Modal,
+    BottomSheet,
     {
-      animationType: "fade",
-      onRequestClose: close,
-      transparent: true,
+      heading: "Appearance",
+      onCancel: close,
+      restoreFocusRef,
+      scrollTestID: "appearance-sheet-content",
       visible,
     },
     h(
       View,
-      { accessibilityViewIsModal: true, style: styles.modalBackdrop },
-      h(
-          ScrollView,
-          {
-            contentContainerStyle: styles.sheetContent,
-            keyboardShouldPersistTaps: "handled",
-            style: [
-              styles.sheet,
-              { backgroundColor: colors.surface },
-            ],
-            testID: "appearance-sheet-content",
-          },
+      { accessibilityRole: "radiogroup", style: styles.radioGroup },
+      ...appearanceOptions.map((option) =>
         h(
-          View,
+          FocusablePressable,
           {
-            accessibilityRole: "header",
-            accessible: true,
+            accessibilityLabel: option,
+            accessibilityRole: "radio",
+            accessibilityState: { selected: appearance === option },
             focusable: true,
-            ref: headingRef,
+            key: option,
+            ...keyboardActivationProps(false, () => setAppearance(option)),
+            onPress: () => setAppearance(option),
+            style: [
+              styles.radioOption,
+              {
+                borderColor:
+                  appearance === option ? colors.action : colors.divider,
+              },
+            ],
           },
+          iconElement(
+            appearance === option ? Check : Circle,
+            appearance === option ? colors.action : colors.textSecondary,
+          ),
           h(
             Text,
             {
               style: [
-                typeScale.screenTitle as TextStyle,
+                typeScale.body as TextStyle,
                 { color: colors.textPrimary },
               ],
             },
-            "Appearance",
+            option,
           ),
         ),
-        h(
-          View,
-          { accessibilityRole: "radiogroup", style: styles.radioGroup },
-          ...appearanceOptions.map((option) =>
-            h(
-              FocusablePressable,
-              {
-                accessibilityLabel: option,
-                accessibilityRole: "radio",
-                accessibilityState: { selected: appearance === option },
-                focusable: true,
-                key: option,
-                ...keyboardActivationProps(false, () => setAppearance(option)),
-                onPress: () => setAppearance(option),
-                style: [
-                  styles.radioOption,
-                  {
-                    borderColor:
-                      appearance === option ? colors.action : colors.divider,
-                  },
-                ],
-              },
-              iconElement(
-                appearance === option ? Check : Circle,
-                appearance === option ? colors.action : colors.textSecondary,
-              ),
-              h(
-                Text,
-                {
-                  style: [
-                    typeScale.body as TextStyle,
-                    { color: colors.textPrimary },
-                  ],
-                },
-                option,
-              ),
-            ),
-          ),
-        ),
-        h(SecondaryAction, { label: "Close appearance", onPress: close }),
       ),
     ),
+    h(SecondaryAction, { label: "Close appearance", onPress: close }),
   );
 }
 
 export const rootDestinations = [
-  { name: "index", label: "Today", icon: Dumbbell },
+  { name: "index", label: "Workout", icon: Dumbbell },
   { name: "calendar", label: "Calendar", icon: CalendarDays },
   { name: "library", label: "Library", icon: LibraryBig },
   {
@@ -1048,18 +1180,143 @@ export const rootDestinations = [
   },
 ] as const;
 
-export function rootNavigationUsesTwoRows(
-  width: number,
-  fontScale: number,
-): boolean {
-  const effectiveFontScale = Number.isFinite(fontScale) && fontScale > 0
-    ? fontScale
-    : 1;
-  const minimumTabWidth = Math.max(
-    sizes.minimumTarget,
-    56 * effectiveFontScale + space[2],
+function AppTabLabel({
+  destination,
+  selected,
+}: Readonly<{
+  destination: (typeof rootDestinations)[number];
+  selected: boolean;
+}>) {
+  const { colors } = useAppTheme();
+  const { fontScale } = useWindowDimensions();
+  const baseFontSize = typeScale.body.fontSize;
+  const [columnWidth, setColumnWidth] = useState(0);
+  const [candidate, setCandidate] = useState({ columnWidth: 0, fontScale, fontSize: baseFontSize });
+  useEffect(() => {
+    setCandidate((current) => current.fontScale === fontScale ? current
+      : { ...current, fontScale, fontSize: baseFontSize });
+  }, [baseFontSize, fontScale]);
+  // Resize or system scaling changes restart at the approved baseline.
+  const fontSize = candidate.columnWidth === columnWidth && candidate.fontScale === fontScale
+    ? candidate.fontSize : baseFontSize;
+  const measurementKey = `${columnWidth}:${fontScale}:${fontSize}`;
+  const currentMeasurementKey = useRef(measurementKey);
+  currentMeasurementKey.current = measurementKey;
+  const [probe, setProbe] = useState({ key: "", width: 0 });
+  const [visible, setVisible] = useState({ key: "", width: 0 });
+  const fit = probe.key === measurementKey
+    ? fitTabLabelFontSize(fontSize, probe.width, columnWidth, baseFontSize * 0.5)
+    : null;
+  const labelWidth = fit?.fits && visible.key === measurementKey
+    && Math.abs(visible.width - probe.width) <= 1
+    ? visible.width : 0;
+
+  function glyphWidth(event: TextLayoutEvent): number {
+    const line = event.nativeEvent.lines[0];
+    return event.nativeEvent.lines.length === 1 && line?.text === destination.label
+      && Number.isFinite(line.width) && line.width > 0 ? line.width : 0;
+  }
+
+  function measureColumn(event: LayoutChangeEvent) {
+    if (currentMeasurementKey.current !== measurementKey) {
+      return;
+    }
+    const width = event.nativeEvent.layout.width;
+    if (Number.isFinite(width) && width > 0 && width !== columnWidth) {
+      setColumnWidth(width);
+      setCandidate({ columnWidth: width, fontScale, fontSize: baseFontSize });
+      setProbe({ key: "", width: 0 });
+      setVisible({ key: "", width: 0 });
+    }
+  }
+
+  function measureProbe(event: TextLayoutEvent) {
+    if (currentMeasurementKey.current !== measurementKey) {
+      return;
+    }
+    const width = glyphWidth(event);
+    setProbe({ key: measurementKey, width });
+    const next = fitTabLabelFontSize(fontSize, width, columnWidth, baseFontSize * 0.5);
+    if (next !== null && next.fontSize !== fontSize) {
+      setCandidate({ columnWidth, fontScale, fontSize: next.fontSize });
+    }
+  }
+
+  function measureLabel(event: TextLayoutEvent) {
+    if (currentMeasurementKey.current === measurementKey) {
+      setVisible({ key: measurementKey, width: glyphWidth(event) });
+    }
+  }
+
+  const nativeTextProps = {
+    allowFontScaling: true,
+    adjustsFontSizeToFit: false,
+    numberOfLines: 1,
+  };
+  const typography = [typeScale.body as TextStyle, { fontSize }];
+
+  return h(
+    View,
+    {
+      style: styles.appTabLabelContainer,
+      testID: `root-tab-label-container-${destination.name}`,
+    },
+    // A horizontal scroll content has unconstrained intrinsic width, without an
+    // arbitrary large fixture width. It never scrolls or participates in a11y.
+    // RN Android autofit separately mutates measurement and draw size spans;
+    // plain Text avoids that disagreement and keeps the scaled 22sp line track.
+    h(ScrollView, {
+      accessible: false,
+      accessibilityElementsHidden: true,
+      importantForAccessibility: "no-hide-descendants",
+      focusable: false,
+      horizontal: true,
+      pointerEvents: "none",
+      scrollEnabled: false,
+      showsHorizontalScrollIndicator: false,
+      style: styles.appTabLabelProbe,
+      testID: `root-tab-label-probe-container-${destination.name}`,
+    }, h(Text, {
+      ...nativeTextProps,
+      accessible: false,
+      accessibilityElementsHidden: true,
+      importantForAccessibility: "no-hide-descendants",
+      key: measurementKey,
+      onTextLayout: measureProbe,
+      style: typography,
+      testID: `root-tab-label-probe-${destination.name}`,
+    }, destination.label)),
+    h(
+      Text,
+      {
+        ...nativeTextProps,
+        // Remount to request fresh line events even if RN deduplicates identical
+        // glyph metrics when only the column changed (including first layout).
+        key: `${columnWidth}:${fontScale}`,
+        onLayout: measureColumn,
+        onTextLayout: measureLabel,
+        style: [
+          ...typography,
+          styles.appTabLabel,
+          { color: selected ? colors.ink : colors.quiet },
+        ],
+        testID: `root-tab-label-${destination.name}`,
+      },
+      destination.label,
+    ),
+    // Revision 18's underline follows verified full-label advance, not its box.
+    h(View, {
+      accessible: false,
+      accessibilityElementsHidden: true,
+      importantForAccessibility: "no-hide-descendants",
+      pointerEvents: "none",
+      style: [
+        styles.appTabLabelUnderline,
+        { backgroundColor: selected ? colors.orange : "transparent", width: labelWidth },
+      ],
+      testID: `root-tab-label-underline-${destination.name}`,
+    }),
   );
-  return width < rootDestinations.length * minimumTabWidth;
 }
 
 type AppTabsProps = Readonly<{
@@ -1076,20 +1333,21 @@ type AppTabsProps = Readonly<{
     navigate(name: string): void;
   };
   disabled?: boolean;
-  compactLayout?: "single-row" | "two-row";
-  position?: "bottom" | "rail";
+  insets?: Readonly<{ bottom: number }>;
 }>;
 
 export function AppTabs({
   state,
   navigation,
   disabled = false,
-  compactLayout = "single-row",
-  position = "bottom",
+  insets,
 }: AppTabsProps) {
   const { colors } = useAppTheme();
-  const twoRowBottomLayout =
-    position === "bottom" && compactLayout === "two-row";
+  const safeAreaInsets = React.useContext(SafeAreaInsetsContext);
+  // Navigator overrides are authoritative, including zero. Direct/loading callers
+  // use context; reserve the inset once on paper, outside the unchanged targets.
+  const bottomInset = insets?.bottom ?? safeAreaInsets?.bottom ?? 0;
+  const paddingBottom = Number.isFinite(bottomInset) && bottomInset > 0 ? bottomInset : 0;
   const tabs = rootDestinations.map((destination) => {
     const route = state.routes.find(
       (candidate) => candidate.name === destination.name,
@@ -1122,12 +1380,11 @@ export function AppTabs({
         disabled,
         focusable: !disabled,
         key: destination.name,
+        nativeID: rootTabNativeID(destination.name),
         ...keyboardActivationProps(disabled, navigate),
         onPress: navigate,
         style: ({ pressed }: { pressed: boolean }) => [
           styles.appTab,
-          position === "rail" && styles.appTabRail,
-            twoRowBottomLayout && styles.appTabTwoRows,
           {
             backgroundColor: pressed ? colors.surfaceSubtle : "transparent",
             opacity: disabled ? 0.62 : 1,
@@ -1136,46 +1393,23 @@ export function AppTabs({
       },
       iconElement(
         destination.icon,
-        selected ? colors.action : colors.textSecondary,
+        selected ? colors.ink : colors.quiet,
       ),
-      h(
-        Text,
-        {
-          style: [
-            typeScale.label as TextStyle,
-            styles.appTabLabel,
-            {
-              color: selected ? colors.action : colors.textSecondary,
-              textAlign: "center",
-            },
-          ],
-        },
-        destination.label,
-      ),
+      h(AppTabLabel, { destination, selected }),
     );
   });
 
   return h(
     View,
     {
-      accessibilityLabel: position === "rail"
-        ? "Root navigation rail"
-        : twoRowBottomLayout
-          ? "Root navigation bottom two rows"
-          : "Root navigation bottom",
+      accessibilityLabel: "Root navigation bottom",
       accessibilityRole: "tablist",
       style: [
         styles.appTabs,
-        position === "rail"
-          ? styles.appTabsRail
-          : twoRowBottomLayout
-            ? styles.appTabsBottomTwoRows
-            : styles.appTabsBottom,
-        { backgroundColor: colors.surface, borderColor: colors.divider },
+        styles.appTabsBottom,
+        { backgroundColor: colors.paper, borderColor: colors.line, paddingBottom },
       ],
-      testID: position === "rail"
-        ? "root-navigation-rail"
-        : "root-navigation-bottom",
+      testID: "root-navigation-bottom",
     },
     ...tabs,
   );
@@ -1349,6 +1583,10 @@ const styles = StyleSheet.create({
     paddingVertical: space[2],
     width: "100%",
   },
+  workoutPrimaryAction: {
+    borderRadius: 16,
+    minHeight: 64,
+  },
   secondaryAction: {
     alignItems: "center",
     borderRadius: radius.standard,
@@ -1374,12 +1612,18 @@ const styles = StyleSheet.create({
     gap: space[2],
     minHeight: sizes.minimumTarget,
   },
+  screenHeaderDeep: {
+    minHeight: sizes.deepRouteHeader,
+  },
   headerCopy: {
     flex: 1,
     gap: space[1],
     minWidth: 0,
   },
   headerAction: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 2,
     marginLeft: "auto",
   },
   sectionHeader: {
@@ -1409,20 +1653,6 @@ const styles = StyleSheet.create({
   skeleton: {
     borderRadius: radius.standard,
   },
-  modalBackdrop: {
-    backgroundColor: "rgba(0, 0, 0, 0.48)",
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    borderTopLeftRadius: radius.emphasized,
-    borderTopRightRadius: radius.emphasized,
-    maxHeight: "90%",
-  },
-  sheetContent: {
-    gap: space[4],
-    padding: space[6],
-  },
   radioGroup: {
     gap: space[2],
   },
@@ -1437,18 +1667,10 @@ const styles = StyleSheet.create({
     paddingVertical: space[2],
   },
   appTabs: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   appTabsBottom: {
     flexDirection: "row",
-  },
-  appTabsBottomTwoRows: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  appTabsRail: {
-    alignSelf: "stretch",
-    width: 112,
   },
   appTab: {
     alignItems: "center",
@@ -1460,18 +1682,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[1],
     paddingVertical: space[2],
   },
-  appTabRail: {
-    flex: 0,
-    minHeight: 72,
-  },
-  appTabTwoRows: {
-    flex: 0,
-    width: "50%",
+  appTabLabelContainer: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    gap: 2,
+    maxWidth: "100%",
+    paddingHorizontal: space[1],
+    width: "100%",
   },
   appTabLabel: {
-    lineHeight: 22,
-    paddingBottom: 2,
-    paddingHorizontal: space[1],
+    alignSelf: "stretch",
+    flexShrink: 1,
+    textAlign: "center",
+    width: "100%",
+  },
+  appTabLabelProbe: {
+    left: 0,
+    opacity: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
+  appTabLabelUnderline: {
+    height: 3,
+    maxWidth: "100%",
   },
   exerciseRow: {
     alignItems: "flex-start",
@@ -1514,6 +1748,15 @@ const styles = StyleSheet.create({
     gap: space[2],
     justifyContent: "flex-end",
   },
+  actionRow: {
+    alignItems: "stretch",
+    flexDirection: "row",
+    flexWrap: "nowrap",
+    gap: space[2],
+    width: "100%",
+  },
+  actionCell: { flexBasis: 0, flexGrow: 1, minWidth: sizes.minimumTarget },
+  rowAction: { flexGrow: 1, width: "100%", paddingHorizontal: space[2] },
 });
 
 export {

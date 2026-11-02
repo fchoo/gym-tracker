@@ -23,9 +23,13 @@ import type {
   OwnedPlanOccurrenceInput,
 } from "../../domains/plans";
 import {
+  SET_MAX_COUNT,
+} from "../../domains/plans";
+import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
 import {
+  ActionRow,
   ConfirmationSheet,
   ContentCard,
   EmptyState,
@@ -126,6 +130,9 @@ type LoadState = "create" | "loading" | "ready" | "error";
 type ExerciseLoadState = "loading" | "ready" | "error";
 type TargetDraft = Readonly<{
   exercise: OwnedPlanEditorExerciseOption;
+  warmupSets: string;
+  warmupLoadKg: string;
+  warmupReps: string;
   workingSets: string;
   restSeconds: string;
   loadKg: string;
@@ -188,6 +195,9 @@ function initialTargetDraft(
 ): TargetDraft {
   return {
     exercise,
+    warmupSets: "0",
+    warmupLoadKg: "0",
+    warmupReps: "5",
     workingSets: "1",
     restSeconds: String(exercise.defaultRestSeconds ?? 90),
     loadKg: "0",
@@ -459,6 +469,14 @@ function resultPlan(
   return result.outcome === "requires_schedule_impact" ? null : result.plan;
 }
 
+function isRevisionConflict(error: unknown): boolean {
+  return typeof error === "object"
+    && error !== null
+    && "code" in error
+    && (error as Readonly<{ code?: unknown }>).code
+      === "owned_plan_revision_conflict";
+}
+
 function move<Value>(
   values: readonly Value[],
   sourceIndex: number,
@@ -526,6 +544,8 @@ export function OwnedPlanEditorScreen({
   const [targetError, setTargetError] = useState(false);
   const [saveBusy, setSaveBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
+  const [revisionConflict, setRevisionConflict] = useState(false);
+  const [reviewLatestError, setReviewLatestError] = useState(false);
   const [impactRequired, setImpactRequired] = useState(false);
   const [dirtyLeaveVisible, setDirtyLeaveVisible] = useState(false);
   const [duplicateVisible, setDuplicateVisible] = useState(false);
@@ -662,6 +682,8 @@ export function OwnedPlanEditorScreen({
   ) => {
     setDraft((current) => current === null ? current : update(current));
     setSaveError(false);
+    setRevisionConflict(false);
+    setReviewLatestError(false);
     setImpactRequired(false);
     setDraftFeedback(null);
   }, []);
@@ -710,9 +732,21 @@ export function OwnedPlanEditorScreen({
       return;
     }
     const workingSets = positiveInteger(targetDraft.workingSets);
+    const warmupSets = nonnegativeInteger(targetDraft.warmupSets);
+    const warmupLoadGrams = grams(targetDraft.warmupLoadKg);
+    const warmupReps = positiveInteger(targetDraft.warmupReps);
     const restSeconds = nonnegativeInteger(targetDraft.restSeconds);
     const metric = buildMetricTarget(targetDraft);
-    if (workingSets === null || restSeconds === null || metric === null) {
+    if (
+      workingSets === null
+      || warmupSets === null
+      || workingSets > SET_MAX_COUNT
+      || warmupSets > SET_MAX_COUNT
+      || warmupLoadGrams === null
+      || warmupReps === null
+      || restSeconds === null
+      || metric === null
+    ) {
       setTargetError(true);
       return;
     }
@@ -725,7 +759,12 @@ export function OwnedPlanEditorScreen({
       ordinal: selectedDay.occurrences.length,
       restSeconds,
       metricIdentity: { ...targetDraft.exercise.metricIdentity },
-      warmups: [],
+      warmups: Array.from({ length: warmupSets }, (_, ordinal) => ({
+        id: nextId("owned-plan-warmup"),
+        ordinal,
+        loadGrams: warmupLoadGrams,
+        reps: warmupReps,
+      })),
       targets: Array.from({ length: workingSets }, (_, ordinal) => ({
         id: nextId("owned-plan-target"),
         ordinal,
@@ -770,6 +809,7 @@ export function OwnedPlanEditorScreen({
     }
     setSaveBusy(true);
     setSaveError(false);
+    setRevisionConflict(false);
     try {
       const result = await savePlan({
         expectedRevision: snapshot.revision,
@@ -798,14 +838,33 @@ export function OwnedPlanEditorScreen({
         onSaved(committed.id);
       }
       return true;
-    } catch {
-      setSaveError(true);
+    } catch (error) {
+      setRevisionConflict(isRevisionConflict(error));
+      setSaveError(!isRevisionConflict(error));
       queueMicrotask(() => errorSummaryRef.current?.focus());
       return false;
     } finally {
       setSaveBusy(false);
     }
   }, [draft, onBack, onSaved, savePlan, snapshot]);
+
+  const reviewLatest = useCallback(async () => {
+    if (snapshot === null) {
+      return;
+    }
+    setReviewLatestError(false);
+    try {
+      const latest = await loadPlan(snapshot.id);
+      if (latest === null) {
+        setReviewLatestError(true);
+        return;
+      }
+      setSnapshot(latest);
+      setRevisionConflict(false);
+    } catch {
+      setReviewLatestError(true);
+    }
+  }, [loadPlan, snapshot]);
 
   const requestBack = useCallback(() => {
     if (dirty) {
@@ -964,6 +1023,7 @@ export function OwnedPlanEditorScreen({
                 : undefined}
               label="Plan name"
               onChangeText={setCreateName}
+              testID="owned-plan-create-name"
               value={createName}
             />
             <PlanEditorTextField
@@ -972,6 +1032,7 @@ export function OwnedPlanEditorScreen({
                 : undefined}
               label="First day name"
               onChangeText={setFirstDayName}
+              testID="owned-plan-create-first-day"
               value={firstDayName}
             />
             {createError
@@ -1059,7 +1120,7 @@ export function OwnedPlanEditorScreen({
       )}
       primary={(
         <>
-          <ScreenHeader title={draft.name} backAction={requestBack} />
+          <ScreenHeader title={draft.name} backAction={requestBack} backActionTestID="owned-plan-editor-back" />
           {snapshot.lifecycle === "draft" ? (
             <InlineNotice
               body={missingRequirement}
@@ -1095,9 +1156,10 @@ export function OwnedPlanEditorScreen({
             label="Plan name"
             onChangeText={(name) =>
               updateDraft((current) => ({ ...current, name }))}
+            testID="owned-plan-editor-name"
             value={draft.name}
           />
-          <View style={styles.scheduleActions}>
+          <ActionRow>
             <SecondaryAction
               disabled={invalidDraft}
               label="Schedule"
@@ -1116,7 +1178,7 @@ export function OwnedPlanEditorScreen({
                 }
               }}
             />
-          </View>
+          </ActionRow>
           {invalidDraft ? (
             <Text style={[
               typeScale.body as TextStyle,
@@ -1159,6 +1221,52 @@ export function OwnedPlanEditorScreen({
               />
             </View>
           ) : null}
+          {revisionConflict ? (
+            <View
+              accessibilityRole="alert"
+              accessible
+              focusable
+              ref={errorSummaryRef}
+              style={[
+                styles.errorSummary,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.timerAttention,
+                },
+              ]}
+            >
+              <Text style={[
+                typeScale.bodyStrong as TextStyle,
+                { color: colors.textPrimary },
+              ]}>
+                Plan changed elsewhere
+              </Text>
+              <Text style={[
+                typeScale.body as TextStyle,
+                { color: colors.textPrimary },
+              ]}>
+                Your draft is still here and was not saved over the latest plan.
+              </Text>
+              {reviewLatestError ? (
+                <Text style={[
+                  typeScale.secondary as TextStyle,
+                  { color: colors.textPrimary },
+                ]}>
+                  The latest plan could not be loaded. Try reviewing again.
+                </Text>
+              ) : null}
+              <ActionRow><SecondaryAction
+                label="Review latest"
+                onPress={() => {
+                  void reviewLatest();
+                }}
+              />
+              <SecondaryAction
+                label="Keep editing"
+                onPress={() => setRevisionConflict(false)}
+              /></ActionRow>
+            </View>
+          ) : null}
           {impactRequired ? (
             <InlineNotice
               body="The active schedule and current workout were not changed. Structural schedule impact is deferred to Plan 02-18."
@@ -1166,7 +1274,7 @@ export function OwnedPlanEditorScreen({
               tone="attention"
             />
           ) : null}
-          <View style={styles.lifecycleActions}>
+          <ActionRow>
             <SecondaryAction
               busy={lifecycleBusy}
               label="Duplicate plan"
@@ -1191,7 +1299,7 @@ export function OwnedPlanEditorScreen({
                 ref={archiveActionRef}
               />
             )}
-          </View>
+          </ActionRow>
           <ContentCard testID="owned-plan-days-card">
             <SectionHeader
               supportingText={`${draft.days.length} ${
@@ -1393,6 +1501,7 @@ export function OwnedPlanEditorScreen({
       alternateLabel="Discard"
       body="Your edits are still here. Choose whether to save the complete plan, discard the local draft, or keep editing."
       cancelLabel="Keep editing"
+      confirmBusy={saveBusy}
       confirmLabel="Save changes"
       heading="Save changes?"
       onAlternate={() => {
@@ -1495,7 +1604,30 @@ function TargetEditor({
         title={draft.exercise.name}
         tone="card"
       />
-      {integerField("workingSets", "Working sets")}
+      {profile === "load_reps" ? (
+        <>
+          <SemanticNumberField
+            kind="integer"
+            label="Warm-up sets"
+            maximum={SET_MAX_COUNT}
+            minimum={0}
+            onChangeText={(warmupSets) => onChange({ ...draft, warmupSets })}
+            tone="card"
+            value={draft.warmupSets}
+          />
+          {decimalField("warmupLoadKg", "Warm-up load (kg)")}
+          {integerField("warmupReps", "Warm-up reps")}
+        </>
+      ) : null}
+      <SemanticNumberField
+        kind="integer"
+        label="Working sets"
+        maximum={SET_MAX_COUNT}
+        minimum={1}
+        onChangeText={(workingSets) => onChange({ ...draft, workingSets })}
+        tone="card"
+        value={draft.workingSets}
+      />
       {profile === "load_reps" || profile === "added_load_reps" ? (
         <>
           {decimalField("loadKg", profile === "load_reps"

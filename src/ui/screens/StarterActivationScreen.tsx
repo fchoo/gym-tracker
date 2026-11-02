@@ -28,6 +28,7 @@ import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
 import {
+  ActionRow,
   ConfirmationSheet,
   CalendarField,
   FocusablePressable,
@@ -452,25 +453,6 @@ function CompletePreview({
           ))}
         </View>
       ))}
-      <SectionHeader title="Progression summary" />
-      <Text style={[
-        typeScale.body as TextStyle,
-        { color: colors.textSecondary },
-      ]}>
-        {template.progressionSummary}
-      </Text>
-      <SectionHeader title="Source notes" />
-      {template.sourceNotes.map((note) => (
-        <Text
-          key={note.id}
-          style={[
-            typeScale.body as TextStyle,
-            { color: colors.textSecondary },
-          ]}
-        >
-          {note.text}
-        </Text>
-      ))}
     </>
   );
 }
@@ -492,6 +474,7 @@ export function StarterActivationScreen({
     "loading" | "ready" | "missing" | "error"
   >("loading");
   const [retryGeneration, setRetryGeneration] = useState(0);
+  const initializedTemplateId = useRef<string | null>(null);
   const [startLocalDate, setStartLocalDate] = useState("");
   const [mode, setMode] = useState<Mode>("weekday");
   const [weekdayBindings, setWeekdayBindings] = useState<
@@ -521,12 +504,15 @@ export function StarterActivationScreen({
         setState("missing");
         return;
       }
-      setStartLocalDate(value.startLocalDate);
-      setMode(suggestedMode(value.template));
-      setWeekdayBindings(suggestedWeekdayBindings(value.template));
-      setRotationBindings(suggestedRotationBindings(value.template));
-      setCopyIntent(null);
-      setSelectedPlanId(null);
+      if (initializedTemplateId.current !== templateId) {
+        initializedTemplateId.current = templateId;
+        setStartLocalDate(value.startLocalDate);
+        setMode(suggestedMode(value.template));
+        setWeekdayBindings(suggestedWeekdayBindings(value.template));
+        setRotationBindings(suggestedRotationBindings(value.template));
+        setCopyIntent(null);
+        setSelectedPlanId(null);
+      }
       setState("ready");
     }).catch(() => {
       if (active) {
@@ -637,8 +623,12 @@ export function StarterActivationScreen({
       } as StarterActivationCommand);
       setCommitted(result);
       onActivated(result.plan.id);
-    } catch {
+    } catch (error) {
       setActivationError(true);
+      if (error instanceof Error
+        && error.message === "starter_schedule_revision_conflict") {
+        setRetryGeneration((value) => value + 1);
+      }
     } finally {
       setBusy(false);
     }
@@ -690,6 +680,11 @@ export function StarterActivationScreen({
             ) : null}
             {activeWorkout === null ? (
               <>
+                <InlineNotice
+                  body="Strength plan activation affects only the reviewed Strength schedule. Any Running plan remains unchanged."
+                  heading="Reviewed schedule impact"
+                  tone="attention"
+                />
                 <SectionHeader title="Schedule setup" />
                 <CalendarField
                   defaultDate={preview.startLocalDate}
@@ -737,7 +732,7 @@ export function StarterActivationScreen({
               <InlineNotice
                 action={
                   <View style={styles.blockActions}>
-                    <PrimaryAction
+                    <ActionRow><PrimaryAction
                       label="Resume"
                       onPress={() => onResume(activeWorkout.sessionId)}
                     />
@@ -757,7 +752,7 @@ export function StarterActivationScreen({
                           setRetryGeneration((value) => value + 1)
                         );
                       }}
-                    />
+                    /></ActionRow>
                   </View>
                 }
                 body="Finish the current workout before switching plans."

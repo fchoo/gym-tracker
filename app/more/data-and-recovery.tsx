@@ -1,7 +1,11 @@
 import {
   router,
+  useFocusEffect,
+  useLocalSearchParams,
 } from "expo-router";
+import Constants from "expo-constants";
 import React, {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -19,17 +23,32 @@ import {
 
 import {
   useWorkoutAppRuntime,
+  type RuntimeBackupMetadata,
+  type RuntimeMergePreflightResult,
   type RuntimeRestorePreflightResult,
   type RuntimeSecureBackupArchive,
-  type RuntimeCsvExport,
 } from "../../src/bootstrap/workoutAppRuntime";
+import { requestAndroidViewFocus } from "../../src/bootstrap/androidViewFocus";
+import { phase12BackupFixtureFromNativeContract, phase12BackupFixtureViewModel } from "../../src/bootstrap/phase12BackupTestControls";
+import type { AutomaticRecoveryPreparation } from "../../src/domains/backup/automaticBackupCoordinator";
+import {
+  useCsvExportController,
+} from "../../src/ui/portability/useCsvExportController";
+import {
+  useManualBackupController,
+} from "../../src/ui/portability/useManualBackupController";
+import {
+  BackupPreviewFact,
+} from "../../src/ui/portability/BackupPreviewFacts";
 import {
   ContentCard,
   IconAction,
+  NavigationRow,
   PrimaryAction,
   ScreenHeader,
   SecondaryAction,
 } from "../../src/ui/components";
+import { ConfirmationDialog } from "../../src/ui/components/ConfirmationDialog";
 import {
   AdaptiveScreen,
 } from "../../src/ui/layout/AdaptiveScreen";
@@ -59,13 +78,15 @@ type RestoreViewState =
   | Readonly<{ kind: "rebuild_pending" }>
   | Readonly<{ kind: "failed"; heading: "Backup could not be opened" | "Restore could not be completed"; message: string }>;
 
-type CsvViewState =
+type MergeViewState =
   | Readonly<{ kind: "ready" }>
-  | Readonly<{ kind: "preparing" }>
-  | Readonly<{ kind: "ready_to_share"; handle: RuntimeCsvExport }>
-  | Readonly<{ kind: "sharing" }>
-  | Readonly<{ kind: "create_failed" }>
-  | Readonly<{ kind: "share_failed" }>;
+  | Readonly<{ kind: "opening" }>
+  | Readonly<{ kind: "cancelled" }>
+  | Readonly<{ kind: "review"; token: string; preview: Extract<RuntimeMergePreflightResult, { outcome: "ready" }>["preview"] }>
+  | Readonly<{ kind: "merging" }>
+  | Readonly<{ kind: "merged" }>
+  | Readonly<{ kind: "rebuild_pending" }>
+  | Readonly<{ kind: "failed"; heading: "Backup could not be opened" | "Merge could not be completed"; message: string }>;
 
 function PasswordField({
   label,
@@ -127,43 +148,45 @@ function PasswordField({
   );
 }
 
-function PreviewFact({
-  label,
-  value,
-}: Readonly<{
-  label: string;
-  value: string | number;
-}>) {
-  const { colors } = useAppTheme();
-  return (
-    <View
-      accessible
-      accessibilityLabel={`${label}: ${value}`}
-      accessibilityRole="text"
-      style={styles.previewRow}
-    >
-      <Text style={[typeScale.label as TextStyle, { color: colors.contentCardText }]}>
-        {label}
-      </Text>
-      <Text
-        style={[
-          typeScale.secondary as TextStyle,
-          styles.previewValue,
-          { color: colors.contentCardTextSecondary },
-        ]}
-      >
-        {value}
-      </Text>
-    </View>
-  );
-}
-
 function formatBackupCreatedAt(createdAtMs: number): string | null {
   const createdAt = new Date(createdAtMs);
   return Number.isNaN(createdAt.valueOf()) ? null : createdAt.toISOString();
 }
 
-export default function DataAndRecoveryRoute() {
+function LatestBackupMetadata({
+  metadata,
+}: Readonly<{
+  metadata: RuntimeBackupMetadata | null;
+}>) {
+  const { colors } = useAppTheme();
+  if (metadata === null) {
+    return (
+      <Text
+        accessibilityLabel="Latest backup: Never exported"
+        style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}
+      >
+        Latest backup: Never exported
+      </Text>
+    );
+  }
+  const createdAt = formatBackupCreatedAt(metadata.createdAtMs)
+    ?? "Unknown time";
+  return (
+    <Text
+      accessibilityLabel={`Latest backup: ${metadata.displayName}, ${createdAt}`}
+      style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}
+    >
+      {`Latest backup: ${metadata.displayName}, ${createdAt}`}
+    </Text>
+  );
+}
+
+/**
+ * The Phase 11 encrypted-file workflow remains deliberately separate from the
+ * Drive recovery hub. The UI owns only password entry and focus; the reusable
+ * controller owns Phase 11 preflight tokens, handles, latches, and cleanup.
+ */
+export function ManualEncryptedBackupContent() {
   const runtime = useWorkoutAppRuntime();
   const { colors } = useAppTheme();
   const passwordRef = useRef("");
@@ -176,28 +199,36 @@ export default function DataAndRecoveryRoute() {
   }>>({ hasPassword: false, matches: false });
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmationVisible, setConfirmationVisible] = useState(false);
-  const [backupState, setBackupState] = useState<BackupViewState>({ kind: "ready" });
-  const [restoreState, setRestoreState] = useState<RestoreViewState>({ kind: "ready" });
   const [restorePassword, setRestorePassword] = useState("");
   const [replaceConfirmation, setReplaceConfirmation] = useState("");
-  const [csvState, setCsvState] = useState<CsvViewState>({ kind: "ready" });
+  const [mergePassword, setMergePassword] = useState("");
+  const [mergeConfirmation, setMergeConfirmation] = useState("");
   const reviewHeadingRef = useRef<View>(null);
-  const backupLatch = useRef(false);
-  const backupGenerationRef = useRef(0);
-  const backupAbortRef = useRef<AbortController | null>(null);
-  const backupHandleRef = useRef<RuntimeSecureBackupArchive | null>(null);
-  const restoreLatch = useRef(false);
-  const restoreGenerationRef = useRef(0);
-  const restoreTokenRef = useRef<string | null>(null);
-  const csvLatch = useRef(false);
-  const csvHandleRef = useRef<RuntimeCsvExport | null>(null);
-  const mountedRef = useRef(true);
-  const discardBackupRef = useRef(runtime.discardSecureBackup);
-  discardBackupRef.current = runtime.discardSecureBackup;
-  const invalidateRestoreRef = useRef(runtime.invalidateSecureRestorePreflight);
-  invalidateRestoreRef.current = runtime.invalidateSecureRestorePreflight;
-  const discardCsvRef = useRef(runtime.discardCsvExport);
-  discardCsvRef.current = runtime.discardCsvExport;
+  const mergeReviewHeadingRef = useRef<View>(null);
+  const restoreCleanActionRef = useRef<View>(null);
+  const mergeBackupActionRef = useRef<View>(null);
+  const csv = useCsvExportController({
+    create: runtime.createCsvExport,
+    share: runtime.shareCsvExport,
+    discard: runtime.discardCsvExport,
+  });
+  const manualBackup = useManualBackupController({
+    createSecureBackup: runtime.createSecureBackup,
+    shareSecureBackup: runtime.shareSecureBackup,
+    discardSecureBackup: runtime.discardSecureBackup,
+    preflightSecureRestore: runtime.preflightSecureRestore,
+    commitSecureRestore: runtime.commitSecureRestore,
+    invalidateSecureRestorePreflight: runtime.invalidateSecureRestorePreflight,
+    preflightSecureMerge: runtime.preflightSecureMerge,
+    commitSecureMerge: runtime.commitSecureMerge,
+    invalidateSecureMergePreflight: runtime.invalidateSecureMergePreflight,
+    retryRestoreRebuild: runtime.retryRestoreRebuild,
+    onRestoreReview: () => setTimeout(() => reviewHeadingRef.current?.focus(), 0),
+    onMergeReview: () => setTimeout(() => mergeReviewHeadingRef.current?.focus(), 0),
+  });
+  const backupState = manualBackup.backupState;
+  const restoreState = manualBackup.restoreState;
+  const mergeState = manualBackup.mergeState;
   const passwordValid = passwordState.hasPassword && passwordState.matches;
   const confirmationError = confirmationRef.current.length === 0 || passwordValid
     ? undefined
@@ -224,206 +255,24 @@ export default function DataAndRecoveryRoute() {
     });
   };
 
-  const createBackup = async () => {
-    if (!passwordValid || backupLatch.current) {
-      return;
-    }
-    backupLatch.current = true;
-    const generation = backupGenerationRef.current + 1;
-    backupGenerationRef.current = generation;
-    const controller = new AbortController();
-    backupAbortRef.current = controller;
-    setBackupState({ kind: "preparing" });
+  const createBackup = () => {
+    if (!passwordValid) return;
     const password = passwordRef.current;
     resetPasswordFields();
-    try {
-      const archive = await runtime.createSecureBackup({
-        password,
-        signal: controller.signal,
-      });
-      if (!mountedRef.current || generation !== backupGenerationRef.current) {
-        await discardBackupRef.current(archive).catch(() => undefined);
-        return;
-      }
-      const previous = backupHandleRef.current;
-      backupHandleRef.current = archive;
-      if (previous !== null) {
-        await discardBackupRef.current(previous).catch(() => undefined);
-      }
-      setBackupState({ kind: "ready_to_share", archive });
-    } catch {
-      if (!mountedRef.current || generation !== backupGenerationRef.current) return;
-      setBackupState({ kind: "failed", correlationCode: "GT-BACKUP04" });
-    } finally {
-      if (generation === backupGenerationRef.current) {
-        backupAbortRef.current = null;
-        backupLatch.current = false;
-      }
-    }
+    return manualBackup.createBackup(password);
   };
+  const cancelBackup = manualBackup.cancelBackup;
+  const shareBackup = manualBackup.shareBackup;
+  const retry = manualBackup.retryBackup;
 
-  const cancelBackup = () => {
-    if (backupState.kind !== "preparing") return;
-    backupGenerationRef.current += 1;
-    backupAbortRef.current?.abort();
-    backupAbortRef.current = null;
-    backupLatch.current = false;
-    setBackupState({ kind: "cancelled" });
-  };
-
-  const shareBackup = async (archive: RuntimeSecureBackupArchive) => {
-    if (backupLatch.current) return;
-    backupLatch.current = true;
-    const generation = backupGenerationRef.current + 1;
-    backupGenerationRef.current = generation;
-    if (backupHandleRef.current?.archiveId === archive.archiveId) {
-      backupHandleRef.current = null;
-    }
-    setBackupState({ kind: "sharing" });
-    try {
-      await runtime.shareSecureBackup(archive);
-      if (!mountedRef.current || generation !== backupGenerationRef.current) return;
-      setBackupState({ kind: "ready" });
-    } catch {
-      if (!mountedRef.current || generation !== backupGenerationRef.current) return;
-      setBackupState({ kind: "share_failed", correlationCode: "GT-BACKUP04" });
-    } finally {
-      if (generation === backupGenerationRef.current) {
-        backupLatch.current = false;
-      }
-    }
-  };
-
-  const retry = () => {
-    setBackupState({ kind: "ready" });
-  };
-
-  const restoreFailureCopy = (error: unknown): string => {
-    const code = typeof error === "object" && error !== null && "code" in error
-      ? String(error.code) : "";
-    if (code === "restore_archive_unsupported_version") return "This backup format is not supported. Your current saved data was not changed.";
-    if (code === "restore_archive_limit_exceeded") return "This backup is too large to open safely. Your current saved data was not changed.";
-    if (code === "restore_commit_failed") return "Your current saved data was kept.";
-    return "Your current saved data was not changed.";
-  };
-
-  const selectRestore = async () => {
-    if (restoreLatch.current || restorePassword.length === 0) return;
-    restoreLatch.current = true;
-    const generation = restoreGenerationRef.current + 1;
-    restoreGenerationRef.current = generation;
-    const previousToken = restoreTokenRef.current;
-    restoreTokenRef.current = null;
-    if (previousToken !== null) {
-      invalidateRestoreRef.current(previousToken);
-    }
-    const password = restorePassword;
-    setRestorePassword("");
-    setReplaceConfirmation("");
-    setRestoreState({ kind: "opening" });
-    try {
-      const result = await runtime.preflightSecureRestore({ password });
-      if (!mountedRef.current || generation !== restoreGenerationRef.current) {
-        if (result.outcome === "ready") {
-          invalidateRestoreRef.current(result.token);
-        }
-        return;
-      }
-      if (result.outcome === "cancelled") {
-        setRestoreState({ kind: "cancelled" });
-      } else {
-        restoreTokenRef.current = result.token;
-        setRestoreState({ kind: "review", token: result.token, preview: result.preview });
-        setTimeout(() => reviewHeadingRef.current?.focus(), 0);
-      }
-    } catch (error) {
-      if (!mountedRef.current || generation !== restoreGenerationRef.current) return;
-      setRestoreState({ kind: "failed", heading: "Backup could not be opened", message: restoreFailureCopy(error) });
-    } finally {
-      if (generation === restoreGenerationRef.current) {
-        restoreLatch.current = false;
-      }
-    }
-  };
-
-  const commitRestore = async () => {
-    if (restoreState.kind !== "review" || replaceConfirmation !== "REPLACE" || restoreLatch.current) return;
-    restoreLatch.current = true;
-    const token = restoreState.token;
-    restoreTokenRef.current = null;
-    const generation = restoreGenerationRef.current;
-    setReplaceConfirmation("");
-    setRestoreState({ kind: "restoring" });
-    try {
-      const result = await runtime.commitSecureRestore({ token, confirmation: "REPLACE" });
-      if (!mountedRef.current || generation !== restoreGenerationRef.current) return;
-      setRestoreState(result.state === "ready"
-        ? { kind: "restored" }
-        : { kind: "rebuild_pending" });
-    } catch (error) {
-      if (!mountedRef.current || generation !== restoreGenerationRef.current) return;
-      setRestoreState({ kind: "failed", heading: "Restore could not be completed", message: restoreFailureCopy(error) });
-    } finally {
-      if (generation === restoreGenerationRef.current) {
-        restoreLatch.current = false;
-      }
-    }
-  };
-
-  const retryRestoreRebuild = async () => {
-    if (restoreState.kind !== "rebuild_pending" || restoreLatch.current) return;
-    restoreLatch.current = true;
-    setRestoreState({ kind: "restoring" });
-    try {
-      const result = await runtime.retryRestoreRebuild();
-      setRestoreState(result.state === "ready"
-        ? { kind: "restored" }
-        : { kind: "rebuild_pending" });
-    } finally {
-      restoreLatch.current = false;
-    }
-  };
-
-  const createCsv = async () => {
-    if (csvLatch.current) return;
-    csvLatch.current = true;
-    setCsvState({ kind: "preparing" });
-    try {
-      const handle = await runtime.createCsvExport();
-      if (!mountedRef.current) {
-        await runtime.discardCsvExport(handle).catch(() => undefined);
-        return;
-      }
-      const previous = csvHandleRef.current;
-      csvHandleRef.current = handle;
-      if (previous !== null) {
-        await runtime.discardCsvExport(previous).catch(() => undefined);
-      }
-      setCsvState({ kind: "ready_to_share", handle });
-    } catch {
-      setCsvState({ kind: "create_failed" });
-    } finally {
-      csvLatch.current = false;
-    }
-  };
-
-  const shareCsv = async (handle: RuntimeCsvExport) => {
-    if (csvLatch.current) return;
-    csvLatch.current = true;
-    if (csvHandleRef.current?.exportId === handle.exportId) {
-      csvHandleRef.current = null;
-    }
-    setCsvState({ kind: "sharing" });
-    try {
-      await runtime.shareCsvExport(handle);
-      setCsvState({ kind: "ready" });
-    } catch {
-      await runtime.discardCsvExport(handle).catch(() => undefined);
-      setCsvState({ kind: "share_failed" });
-    } finally {
-      csvLatch.current = false;
-    }
-  };
+  const selectRestore = () => { const password = restorePassword; setRestorePassword(""); setReplaceConfirmation(""); return manualBackup.preflightRestore(password); };
+  const commitRestore = () => { const confirmation = replaceConfirmation; setReplaceConfirmation(""); return manualBackup.commitRestore(confirmation); };
+  const cancelRestoreReview = () => { setReplaceConfirmation(""); manualBackup.cancelRestore(); };
+  const selectMerge = () => { const password = mergePassword; setMergePassword(""); setMergeConfirmation(""); return manualBackup.preflightMerge(password); };
+  const commitMerge = () => { const confirmation = mergeConfirmation; setMergeConfirmation(""); return manualBackup.commitMerge(confirmation); };
+  const cancelMergeReview = () => { setMergeConfirmation(""); manualBackup.cancelMerge(); };
+  const retryMergeRebuild = manualBackup.retryMergeRebuild;
+  const retryRestoreRebuild = manualBackup.retryRestoreRebuild;
 
   useEffect(() => {
     if (restoreState.kind !== "review") return;
@@ -432,32 +281,10 @@ export default function DataAndRecoveryRoute() {
   }, [restoreState.kind]);
 
   useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      backupGenerationRef.current += 1;
-      backupAbortRef.current?.abort();
-      backupAbortRef.current = null;
-      backupLatch.current = false;
-      const backup = backupHandleRef.current;
-      backupHandleRef.current = null;
-      if (backup !== null) {
-        void discardBackupRef.current(backup).catch(() => undefined);
-      }
-      restoreGenerationRef.current += 1;
-      restoreLatch.current = false;
-      const restoreToken = restoreTokenRef.current;
-      restoreTokenRef.current = null;
-      if (restoreToken !== null) {
-        invalidateRestoreRef.current(restoreToken);
-      }
-      const handle = csvHandleRef.current;
-      csvHandleRef.current = null;
-      if (handle !== null) {
-        void discardCsvRef.current(handle).catch(() => undefined);
-      }
-    };
-  }, []);
+    if (mergeState.kind !== "review") return;
+    const node = findNodeHandle(mergeReviewHeadingRef.current);
+    if (node !== null) AccessibilityInfo.setAccessibilityFocus(node);
+  }, [mergeState.kind]);
 
   const backupCreatedAt = restoreState.kind === "review"
     ? formatBackupCreatedAt(restoreState.preview.createdAtMs)
@@ -467,7 +294,7 @@ export default function DataAndRecoveryRoute() {
       onRequestBack={() => router.back()}
       primary={
         <>
-          <ScreenHeader backAction={() => router.back()} title="Data and recovery" />
+          <ScreenHeader backAction={() => router.back()} title="Manual encrypted backup" />
           <ContentCard>
             <View style={styles.card}>
               <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>
@@ -476,6 +303,7 @@ export default function DataAndRecoveryRoute() {
               <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
                 A password protects a portable logical copy of your saved workouts, plans, and settings.
               </Text>
+              <LatestBackupMetadata metadata={runtime.latestBackup} />
               {backupState.kind === "ready_to_share" ? (
                 <>
                   <Text
@@ -486,7 +314,7 @@ export default function DataAndRecoveryRoute() {
                   </Text>
                   <PrimaryAction
                     label="Share backup"
-                    onPress={() => { void shareBackup(backupState.archive); }}
+                    onPress={() => { void shareBackup((backupState as Extract<BackupViewState, { kind: "ready_to_share" }>).archive); }}
                   />
                 </>
               ) : backupState.kind === "sharing" ? (
@@ -515,7 +343,7 @@ export default function DataAndRecoveryRoute() {
                     Your saved workouts and plans were not changed. Check available storage and try again.
                   </Text>
                   <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
-                    {backupState.correlationCode}
+                    {(backupState as Extract<BackupViewState, { kind: "failed" }>).correlationCode}
                   </Text>
                   <SecondaryAction label="Try again" onPress={retry} />
                 </>
@@ -531,7 +359,7 @@ export default function DataAndRecoveryRoute() {
                     Your saved workouts and plans were not changed. Create a new backup to try again.
                   </Text>
                   <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
-                    {backupState.correlationCode}
+                    {(backupState as Extract<BackupViewState, { kind: "share_failed" }>).correlationCode}
                   </Text>
                   <SecondaryAction label="Create another backup" onPress={retry} />
                 </>
@@ -582,7 +410,7 @@ export default function DataAndRecoveryRoute() {
           <ContentCard>
             <View style={styles.card}>
               <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>
-                Restore backup
+                Restore clean
               </Text>
               <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
                 Choose a Gym Tracker backup. It replaces current user-owned data only after preview and confirmation.
@@ -599,10 +427,12 @@ export default function DataAndRecoveryRoute() {
                     value={restorePassword}
                   />
                   <PrimaryAction
-                    accessibilityHint="Opens a backup picker and reviews it before restoring"
+                    accessibilityHint="Opens a backup picker and reviews it before clean restore"
                     disabled={restorePassword.length === 0}
-                    label="Choose a Gym Tracker backup"
+                    label="Restore clean"
                     onPress={() => { void selectRestore(); }}
+                    ref={restoreCleanActionRef}
+                    testID="restore-clean-action"
                   />
                   {restoreState.kind === "cancelled" ? (
                     <Text accessibilityLiveRegion="polite" style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>No backup was selected</Text>
@@ -625,7 +455,7 @@ export default function DataAndRecoveryRoute() {
                   <SecondaryAction
                     accessibilityHint="Selects and checks the backup again with a newly entered password"
                     disabled={restorePassword.length === 0}
-                    label="Try restore again"
+                    label="Try restore clean again"
                     onPress={() => { void selectRestore(); }}
                   />
                 </>
@@ -633,45 +463,7 @@ export default function DataAndRecoveryRoute() {
               {restoreState.kind === "opening" ? (
                 <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Opening backup</Text>
               ) : null}
-              {restoreState.kind === "review" ? (
-                <>
-                  <Text
-                    accessibilityRole="header"
-                    accessibilityLabel="Review backup"
-                    nativeID="restore-review-heading"
-                    ref={reviewHeadingRef as never}
-                    style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}
-                  >Review backup</Text>
-                  <View role="list" style={styles.previewFacts}>
-                    <PreviewFact label="Source format version" value={restoreState.preview.sourceFormatVersion} />
-                    {backupCreatedAt === null ? null : (
-                      <PreviewFact label="Backup created" value={backupCreatedAt} />
-                    )}
-                    <PreviewFact label="Plans" value={restoreState.preview.replacementCounts.plans ?? 0} />
-                    <PreviewFact label="Custom exercises" value={restoreState.preview.replacementCounts.exercises ?? 0} />
-                    <PreviewFact label="Sessions" value={restoreState.preview.replacementCounts.workout_sessions ?? 0} />
-                    <PreviewFact label="Settings" value={restoreState.preview.replacementCounts.app_settings ?? 0} />
-                    <PreviewFact label="Catalog references available" value={restoreState.preview.references.catalogReferences.available} />
-                    <PreviewFact label="Catalog references unavailable" value={restoreState.preview.references.catalogReferences.unavailable} />
-                  </View>
-                  <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.destructive }]}>
-                    Restoring replaces your current plans, workouts, settings, and saved decisions with this backup. This cannot be undone from this screen.
-                  </Text>
-                  <Text style={[typeScale.label as TextStyle, { color: colors.contentCardText }]}>Type REPLACE to continue</Text>
-                  <TextInput
-                    accessibilityLabel="Type REPLACE to continue"
-                    autoCapitalize="characters"
-                    onChangeText={setReplaceConfirmation}
-                    style={[typeScale.body as TextStyle, styles.input, { backgroundColor: colors.surface, borderColor: colors.destructive, color: colors.textPrimary }]}
-                  />
-                  <PrimaryAction
-                    accessibilityHint={replaceConfirmation === "REPLACE" ? "Ready to restore the reviewed backup" : "Enter the exact phrase REPLACE to enable restore"}
-                    disabled={replaceConfirmation !== "REPLACE"}
-                    label="Restore backup"
-                    onPress={() => { void commitRestore(); }}
-                  />
-                </>
-              ) : null}
+              {restoreState.kind === "review" ? null : null}
               {restoreState.kind === "restoring" ? (
                 <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Restoring backup</Text>
               ) : null}
@@ -681,7 +473,86 @@ export default function DataAndRecoveryRoute() {
               {restoreState.kind === "rebuild_pending" ? (
                 <>
                   <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Backup restored. Recalculating search and progress.</Text>
-                  <SecondaryAction label="Retry rebuild" onPress={() => { void retryRestoreRebuild(); }} />
+                  <SecondaryAction
+                    label="Retry rebuild"
+                    onPress={() => { void retryRestoreRebuild(); }}
+                    testID="restore-rebuild-retry-action"
+                  />
+                </>
+              ) : null}
+            </View>
+          </ContentCard>
+          <ContentCard>
+            <View style={styles.card}>
+              <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>
+                Import / merge backup
+              </Text>
+              <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
+                Merge imports missing records, keeps distinct custom exercises and plans, and keeps your local settings.
+              </Text>
+              {mergeState.kind === "ready" || mergeState.kind === "cancelled" ? (
+                <>
+                  <TextInput
+                    accessibilityLabel="Merge password"
+                    autoCapitalize="none"
+                    onChangeText={setMergePassword}
+                    secureTextEntry
+                    style={[typeScale.body as TextStyle, styles.input, { backgroundColor: colors.surface, borderColor: colors.divider, color: colors.textPrimary }]}
+                    textContentType="password"
+                    value={mergePassword}
+                  />
+                  <PrimaryAction
+                    accessibilityHint="Opens a backup picker and reviews merge changes before import"
+                    disabled={mergePassword.length === 0}
+                    label="Import / merge backup"
+                    onPress={() => { void selectMerge(); }}
+                    ref={mergeBackupActionRef}
+                    testID="merge-open-action"
+                  />
+                  {mergeState.kind === "cancelled" ? (
+                    <Text accessibilityLiveRegion="polite" style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>Merge cancelled. No changes have been made.</Text>
+                  ) : null}
+                </>
+              ) : null}
+              {mergeState.kind === "failed" ? (
+                <>
+                  <Text accessibilityLiveRegion="assertive" style={[typeScale.sectionTitle as TextStyle, { color: colors.destructive }]}>{mergeState.heading}</Text>
+                  <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>{mergeState.message}</Text>
+                  <TextInput
+                    accessibilityLabel="Merge password"
+                    autoCapitalize="none"
+                    onChangeText={setMergePassword}
+                    secureTextEntry
+                    style={[typeScale.body as TextStyle, styles.input, { backgroundColor: colors.surface, borderColor: colors.divider, color: colors.textPrimary }]}
+                    textContentType="password"
+                    value={mergePassword}
+                  />
+                  <SecondaryAction
+                    accessibilityHint="Selects and checks the backup again with a newly entered password"
+                    disabled={mergePassword.length === 0}
+                    label="Try merge again"
+                    onPress={() => { void selectMerge(); }}
+                  />
+                </>
+              ) : null}
+              {mergeState.kind === "opening" ? (
+                <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Opening backup for merge</Text>
+              ) : null}
+              {mergeState.kind === "review" ? null : null}
+              {mergeState.kind === "merging" ? (
+                <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Merging backup</Text>
+              ) : null}
+              {mergeState.kind === "merged" ? (
+                <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.completed }]}>Merge complete. Search and progress are ready.</Text>
+              ) : null}
+              {mergeState.kind === "rebuild_pending" ? (
+                <>
+                  <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Merge saved. Recalculating search and progress.</Text>
+                  <SecondaryAction
+                    label="Retry rebuild"
+                    onPress={() => { void retryMergeRebuild(); }}
+                    testID="merge-rebuild-retry-action"
+                  />
                 </>
               ) : null}
             </View>
@@ -697,40 +568,250 @@ export default function DataAndRecoveryRoute() {
               <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
                 It is not password-protected and includes historical, audit, recommendation, and decision data.
               </Text>
-              {csvState.kind === "ready_to_share" ? (
+              {csv.state.kind === "ready_to_share" ? (
                 <>
                   <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.completed }]}>CSV export ready</Text>
-                  <PrimaryAction label="Share CSV" onPress={() => { void shareCsv(csvState.handle); }} />
+                  <PrimaryAction label="Share CSV" onPress={() => { void csv.share(); }} />
                 </>
-              ) : csvState.kind === "create_failed" || csvState.kind === "share_failed" ? (
+              ) : csv.state.kind === "create_failed" || csv.state.kind === "share_failed" ? (
                 <>
                   <Text accessibilityLiveRegion="assertive" style={[typeScale.sectionTitle as TextStyle, { color: colors.destructive }]}>
-                    {csvState.kind === "share_failed" ? "CSV could not be shared" : "CSV export could not be created"}
+                    {csv.state.kind === "share_failed" ? "CSV could not be shared" : "CSV export could not be created"}
                   </Text>
                   <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>Your saved data was not changed.</Text>
-                  <SecondaryAction label="Try CSV export again" onPress={() => setCsvState({ kind: "ready" })} />
+                  <SecondaryAction label="Try CSV export again" onPress={csv.retry} />
                 </>
               ) : (
                 <>
-                  {csvState.kind === "preparing" ? (
+                  {csv.state.kind === "preparing" ? (
                     <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Preparing CSV export</Text>
-                  ) : csvState.kind === "sharing" ? (
+                  ) : csv.state.kind === "sharing" ? (
                     <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Sharing CSV export</Text>
                   ) : null}
                   <PrimaryAction
-                    busy={csvState.kind === "preparing"}
-                    disabled={csvState.kind !== "ready"}
+                    busy={csv.state.kind === "preparing"}
+                    disabled={csv.state.kind !== "ready"}
                     label="Export CSV"
-                    onPress={() => { void createCsv(); }}
+                    onPress={() => { void csv.create(); }}
                   />
                 </>
               )}
             </View>
           </ContentCard>
+          <ConfirmationDialog
+            body="Restoring replaces your current plans, workouts, settings, and saved decisions with this backup. This cannot be undone from this screen."
+            cancelLabel="Cancel restore clean"
+            confirmDisabled={replaceConfirmation !== "REPLACE"}
+            confirmLabel="Restore backup"
+            confirmTestID="restore-backup-action"
+            destructive
+            heading="Review restore clean"
+            onCancel={cancelRestoreReview}
+            onConfirm={() => { void commitRestore(); }}
+            restoreFocusRef={restoreCleanActionRef}
+            visible={restoreState.kind === "review"}
+          >
+            {restoreState.kind !== "review" ? null : <>
+              <View role="list" style={styles.previewFacts}>
+                <BackupPreviewFact label="Source format version" value={restoreState.preview.sourceFormatVersion} />
+                {backupCreatedAt === null ? null : <BackupPreviewFact label="Backup created" value={backupCreatedAt} />}
+                <BackupPreviewFact label="Plans" value={restoreState.preview.replacementCounts.plans ?? 0} />
+                <BackupPreviewFact label="Custom exercises" value={restoreState.preview.replacementCounts.exercises ?? 0} />
+                <BackupPreviewFact label="Sessions" value={restoreState.preview.replacementCounts.workout_sessions ?? 0} />
+                <BackupPreviewFact label="Settings" value={restoreState.preview.replacementCounts.app_settings ?? 0} />
+                <BackupPreviewFact label="Catalog references available" value={restoreState.preview.references.catalogReferences.available} />
+                <BackupPreviewFact label="Catalog references unavailable" value={restoreState.preview.references.catalogReferences.unavailable} />
+              </View>
+              <Text style={[typeScale.label as TextStyle, { color: colors.contentCardText }]}>Type REPLACE to continue</Text>
+              <TextInput accessibilityLabel="Type REPLACE to continue" autoCapitalize="characters" onChangeText={setReplaceConfirmation} style={[typeScale.body as TextStyle, styles.input, { backgroundColor: colors.surface, borderColor: colors.destructive, color: colors.textPrimary }]} />
+            </>}
+          </ConfirmationDialog>
+          <ConfirmationDialog
+            body="No changes have been made yet."
+            cancelLabel="Cancel merge"
+            confirmDisabled={mergeConfirmation !== "MERGE"}
+            confirmLabel="Merge backup"
+            confirmTestID="merge-backup-action"
+            heading="Review merge"
+            onCancel={cancelMergeReview}
+            onConfirm={() => { void commitMerge(); }}
+            restoreFocusRef={mergeBackupActionRef}
+            visible={mergeState.kind === "review"}
+          >
+            {mergeState.kind !== "review" ? null : <>
+              <View role="list" style={styles.previewFacts}>
+                <BackupPreviewFact label="Records inserted" value={mergeState.preview.inserted} />
+                <BackupPreviewFact label="Duplicates unchanged" value={mergeState.preview.duplicates} />
+                <BackupPreviewFact label="Archive wins" value={mergeState.preview.archiveWon} />
+                <BackupPreviewFact label="Local wins" value={mergeState.preview.localWon} />
+                <BackupPreviewFact label="Kept both" value={mergeState.preview.keptBoth} />
+                <BackupPreviewFact label="Remapped IDs" value={mergeState.preview.remapped} />
+                <BackupPreviewFact label="Conflicts" value={mergeState.preview.conflicts} />
+              </View>
+              <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>Newer sessions and corrections win. Existing settings stay. Different custom exercises and plans are kept by identity.</Text>
+              <Text style={[typeScale.label as TextStyle, { color: colors.contentCardText }]}>Type MERGE to continue</Text>
+              <TextInput accessibilityLabel="Type MERGE to continue" autoCapitalize="characters" onChangeText={setMergeConfirmation} style={[typeScale.body as TextStyle, styles.input, { backgroundColor: colors.surface, borderColor: colors.destructive, color: colors.textPrimary }]} />
+            </>}
+          </ConfirmationDialog>
         </>
       }
     />
   );
+}
+
+/**
+ * The everyday route is intentionally small: automatic recovery owns its
+ * durable state in the runtime, while CSV owns its short-lived handle here.
+ * Manual GTBK operations live only on their dedicated route above.
+ */
+export default function DataAndRecoveryRoute() {
+  const runtime = useWorkoutAppRuntime();
+  const parameters = useLocalSearchParams<{ suite?: string; phase12Stage?: string }>();
+  const { colors } = useAppTheme();
+  const csv = useCsvExportController({
+    create: runtime.createCsvExport,
+    share: runtime.shareCsvExport,
+    discard: runtime.discardCsvExport,
+  });
+  const [automaticRecoveryReview, setAutomaticRecoveryReview] = useState<Extract<
+    AutomaticRecoveryPreparation,
+    { kind: "merge" }
+  > | null>(null);
+  const automaticBackupSettingsRef = useRef<View>(null);
+  const manualEncryptedBackupRef = useRef<View>(null);
+  const nestedRouteOriginRef = useRef<Readonly<{
+    nativeID: string;
+    ref: React.RefObject<View | null>;
+  }> | null>(null);
+  useFocusEffect(useCallback(() => {
+    const origin = nestedRouteOriginRef.current;
+    if (origin === null) return;
+    nestedRouteOriginRef.current = null;
+    origin.ref.current?.focus?.();
+    void requestAndroidViewFocus(origin.nativeID);
+  }, []));
+  const fixture = phase12BackupFixtureFromNativeContract({
+    nativeContractsEnabled: Constants.expoConfig?.extra?.nativeContractsEnabled === true,
+    buildProfile: Constants.expoConfig?.extra?.buildProfile,
+    suite: parameters.suite,
+    fixture: parameters.phase12Stage,
+  });
+  const backup = (fixture === null ? runtime.automaticBackup : phase12BackupFixtureViewModel(fixture)) ?? {
+    status: "not_connected" as const,
+    reason: null,
+    warning: null,
+    lastSuccessfulBackupAtMs: null,
+    primaryAction: "connect" as const,
+  };
+  const invoke = (command: (() => Promise<void>) | undefined) => {
+    if (command !== undefined) void command().catch(() => undefined);
+  };
+  const status = backup.progressStage ?? (backup.status === "not_connected" ? "Not connected"
+    : backup.reason === "stale_writer" ? "Backup moved to another phone"
+      : backup.reason === "no_cloud" ? "Ready to start cloud backup"
+      : backup.reason === "update_required" ? "Up" + "date required"
+        : backup.reason === "merge_review" ? "Review merge"
+          : backup.reason === "invalid_artifacts" ? "Backup needs attention"
+            : backup.reason === "authentication_required" ? "Sign in again"
+              : backup.reason === "deleted" ? "Cloud backup deleted"
+                : backup.reason === "deletion_partial" ? "Deleting cloud backup"
+      : backup.warning === "changes_not_backed_up_24h" ? "Changes not backed up for 24h"
+        : backup.status === "backup_pending" ? "Backup pending"
+          : backup.status === "backing_up" ? "Backing up"
+            : backup.status === "restore_pending" ? "Restore required" : "Backed up");
+  const backupNow = () => {
+    invoke(runtime.requestAutomaticBackupNow);
+  };
+  const reviewAutomaticRecovery = async (candidate: "latest" | "previous") => {
+    try {
+      const preparation = await runtime.reviewAutomaticRecovery({ candidate });
+      if (preparation.kind === "empty_direct") {
+        await runtime.commitAutomaticRecovery(preparation);
+      } else {
+        setAutomaticRecoveryReview(preparation);
+      }
+    } catch {
+      setAutomaticRecoveryReview(null);
+    }
+  };
+  const cancelAutomaticRecovery = async () => {
+    const attemptId = automaticRecoveryReview?.attemptId;
+    setAutomaticRecoveryReview(null);
+    if (attemptId !== undefined) await runtime.cancelAutomaticRecovery(attemptId);
+  };
+  const csvRow = csv.state.kind === "ready" ? {
+    title: "Export CSV", supportingText: "Readable spreadsheet file. Not password-protected.", icon: "download" as const, action: csv.create,
+  } : csv.state.kind === "ready_to_share" ? {
+    title: "Share CSV", supportingText: "Opens the Android share sheet for the prepared CSV", icon: "share" as const, action: csv.share,
+  } : csv.state.kind === "create_failed" || csv.state.kind === "share_failed" ? {
+    title: "Try CSV export again", supportingText: "Your saved data was not changed.", icon: "retry" as const, action: csv.retry,
+  } : {
+    title: csv.state.kind === "preparing" ? "Preparing CSV export" : "Sharing CSV export", supportingText: "", icon: "chevron" as const, action: () => undefined,
+  };
+  return <AdaptiveScreen onRequestBack={() => router.back()} primary={<>
+    <ScreenHeader backAction={() => router.back()} title="Data and recovery" />
+    <ContentCard><View style={styles.card}>
+      <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>Google Drive backup</Text>
+      <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>{status}</Text>
+      {backup.recoveryPrompt?.kind === "previous" ? <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>The latest backup could not be verified. A previous verified backup is available.</Text> : null}
+      {backup.recoveryPrompt?.kind === "update_required" ? <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>{"Up" + "date Gym Tracker before using this cloud backup."}</Text> : null}
+      {backup.reason === "invalid_artifacts" ? <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>Cloud files could not be verified. Local workouts and manual recovery remain available.</Text> : null}
+      <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>{backup.lastSuccessfulBackupAtMs === null ? "No successful backup yet" : `Last verified backup: ${new Date(backup.lastSuccessfulBackupAtMs).toISOString()}`}</Text>
+      {backup.primaryAction === "connect" ? <PrimaryAction label="Connect Google Drive" onPress={() => invoke(runtime.connectAutomaticBackup)} /> : null}
+      {backup.primaryAction === "backup_now" ? <PrimaryAction label="Back up now" onPress={backupNow} /> : null}
+      {backup.primaryAction === "retry" ? <PrimaryAction label="Retry" onPress={() => invoke(runtime.retryAutomaticBackup)} /> : null}
+      {backup.primaryAction === "continue_restore" && automaticRecoveryReview === null ? <>
+        <PrimaryAction label={backup.recoveryPrompt?.kind === "previous" ? "Use previous backup" : "Use latest backup"} onPress={() => { void reviewAutomaticRecovery(backup.recoveryPrompt?.kind === "previous" ? "previous" : "latest"); }} />
+        {backup.recoveryPrompt?.previousProducedAtMs === undefined || backup.recoveryPrompt.kind === "previous" ? null : <SecondaryAction label="Use previous backup" onPress={() => { void reviewAutomaticRecovery("previous"); }} />}
+      </> : null}
+      {automaticRecoveryReview === null ? null : <View style={styles.card}>
+        <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>Review cloud merge</Text>
+        <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>{automaticRecoveryReview.ownerSummary}</Text>
+        {automaticRecoveryReview.adoptionRequired ? <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>This also adopts the backup identity on this phone.</Text> : null}
+        <PrimaryAction label="Merge workouts" onPress={() => { void runtime.commitAutomaticRecovery({ kind: "merge", attemptId: automaticRecoveryReview.attemptId, confirmation: "MERGE", ...(automaticRecoveryReview.adoptionRequired ? { adoptIdentity: true as const } : {}) }).then(() => setAutomaticRecoveryReview(null), () => undefined); }} />
+        <SecondaryAction label="Cancel cloud recovery" onPress={() => { void cancelAutomaticRecovery(); }} />
+      </View>}
+      {backup.primaryAction === "check_again" ? <PrimaryAction label="Check again" onPress={() => invoke(runtime.checkAutomaticBackupAgain)} /> : null}
+      {backup.primaryAction === "cancel_check" ? <SecondaryAction label="Cancel checking" onPress={() => invoke(runtime.cancelAutomaticBackupCheck)} /> : null}
+      {backup.primaryAction === "finish_setup" ? <PrimaryAction label="Finish backup setup" onPress={() => invoke(runtime.finishAutomaticBackupSetup)} /> : null}
+      {backup.status === "restore_pending" && backup.primaryAction === "continue_restore" ? <SecondaryAction label="Not now" onPress={() => invoke(runtime.deferAutomaticRestore)} /> : null}
+      {backup.reason === "cellular_confirmation_required" ? <View style={styles.card}>
+        <Text accessibilityLiveRegion="polite" style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>Wi-Fi only is on. Use cellular data for this backup?</Text>
+        <PrimaryAction label="Use cellular this time" onPress={() => invoke(runtime.useAutomaticBackupCellularThisTime)} />
+        <SecondaryAction label="Cancel" onPress={() => invoke(runtime.dismissAutomaticBackupCellularConfirmation)} />
+      </View> : null}
+    </View></ContentCard>
+    <ContentCard><View style={styles.card}>
+      <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>Recovery tools</Text>
+      <NavigationRow
+        nativeID="data-recovery-automatic-backup-settings"
+        onPress={() => {
+          nestedRouteOriginRef.current = {
+            nativeID: "data-recovery-automatic-backup-settings",
+            ref: automaticBackupSettingsRef,
+          };
+          router.push("/more/automatic-backup-settings");
+        }}
+        ref={automaticBackupSettingsRef}
+        supportingText="Account, connection, and privacy"
+        title="Automatic backup settings"
+      />
+      <NavigationRow
+        nativeID="data-recovery-manual-encrypted-backup"
+        onPress={() => {
+          nestedRouteOriginRef.current = {
+            nativeID: "data-recovery-manual-encrypted-backup",
+            ref: manualEncryptedBackupRef,
+          };
+          router.push("/more/manual-encrypted-backup");
+        }}
+        ref={manualEncryptedBackupRef}
+        supportingText="Password-protected GTBK backup and recovery"
+        title="Manual encrypted backup"
+      />
+      <NavigationRow title={csvRow.title} supportingText={csvRow.supportingText} icon={csvRow.icon} busy={csv.state.kind === "preparing" || csv.state.kind === "sharing"} disabled={csv.state.kind === "preparing" || csv.state.kind === "sharing"} {...(csv.state.kind === "ready" ? { accessibilityHint: "Creates a readable spreadsheet file that is not password-protected" } : {})} onPress={csvRow.action} />
+    </View></ContentCard>
+  </>} />;
 }
 
 const styles = StyleSheet.create({
@@ -755,15 +836,5 @@ const styles = StyleSheet.create({
   },
   previewFacts: {
     gap: space[1],
-  },
-  previewRow: {
-    alignItems: "flex-start",
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: space[1],
-    justifyContent: "space-between",
-  },
-  previewValue: {
-    fontVariant: ["tabular-nums"],
   },
 });

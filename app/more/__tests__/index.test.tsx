@@ -66,7 +66,7 @@ describe("MoreRoute Settings ownership", () => {
       </AppearanceProvider>,
     );
 
-    expect(screen.getByRole("header", { name: "Settings" }))
+    expect(screen.getByRole("header", { name: "App Settings" }))
       .toBeOnTheScreen();
     expect(screen.queryByRole("header", { name: "More" }))
       .not.toBeOnTheScreen();

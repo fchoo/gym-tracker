@@ -1,5 +1,40 @@
 # Milestones
 
+## v1.1 In-Workout Editing, Advanced Timing & Drive Backup (Shipped: 2026-10-01)
+
+**Delivered:** A history-safe all-exercise workout flow with advanced timing, portable encrypted merge recovery, and optional single-writer Google Drive replacement backup, installed as a signed production APK on the owner's Samsung.
+
+**Phases completed:** 5 phases, 36 plans, 48 tasks
+
+**Delivery evidence:** Production APK SHA-256 `19d24eded09eb3b293dd101e915820394f030aefbfb8b2c4d9f98f4c966ead8c`; installed bytes matched. Phase 12 attended record approved 2/2 and the development-test namespace was cleaned to zero objects.
+
+**Known verification overrides:** 0 newly acknowledged, 1 carried forward from a prior milestone close (see STATE.md Deferred Items).
+
+**Key accomplishments:**
+
+- Active workouts now render every exercise in one measured, scrollable overview while the current set retains its existing inline editor and commit-gated Complete path.
+- The workout overview now collapses completed history accessibly, opens any compact set in the established editor, and follows only committed authoritative advancement with motion-aware scrolling.
+- All in-progress workout entry points now render the single Workout Overview, including zero-exercise sessions, while the focused/review route and its obsolete navigation contract are removed.
+- Overview-aware Maestro contracts and the Phase 8 native runner preserve workout-loop recovery and accessibility proof across all source gates and five exact-HEAD native flows.
+- Public Add now uses schema-20 scalar receipt evidence, and the complete Task 1 source boundary is verified on a real Expo SQLite artifact.
+- Revision-guarded Replace/Remove commands now preserve completed and undo-backed workout history while replaying canonical scalar v20 receipts atomically.
+- The active workout overview now exposes safe Replace/Remove controls with exact retry and protected-history behavior, proven on a manifest-bound Android build through cold relaunch.
+- Whole-exercise reorder now persists through its own immutable receipt authority, changes only presentation order, and is proven across Android cold relaunch alongside protected completed-history retention.
+- Edited workouts now consume their scheduled day exactly once while progression reads only immutable planned-lineage evidence, and completed native views state `Modified from plan` durably.
+- Completed, divergent owned-plan sessions can now preview and apply their final exercise composition through one revision-bound transaction, while recorded workout history remains untouched.
+- Completed, divergent owned planned workouts now ask an explicit default-No question after their immutable workout record commits, with one aggregate future-plan save path and a safe retry/Keep recovery.
+- Phase 09 now has exact-head source, SQLite, coverage, and Android lifecycle proof for immutable in-workout editing and default-No plan write-back.
+- Cluster-set timing now runs through the separate advanced timing state machine, keeps 3+3+3 as one recorded set, and exposes an accessible active-workout control path.
+- A single accessible advanced-timing configuration sheet now serves both plan authoring and in-workout editing at exercise and set scope, with completed sets read-only and cue delivery kept advisory under D-04.
+- Phase 10 now has exact-head source, coverage, SQLite, and Android lifecycle proof that advanced timing is durable, advisory-only, and independent from v1.0 rest.
+- Warm-up and working-set timing is independently configurable by ordinal in plan authoring and active workouts, with durable SQLite snapshots and protected workout facts unchanged.
+- Schema-22 portable identities, GTBK v2, and a manifest-bound atomic session merge tracer now establish the safe local merge primitive that later conflict and sync phases extend.
+- The portable merge engine now reconciles the full locked D-01 class matrix below the UI, with deterministic planning, one atomic writer transaction, strict integrity coverage, and fresh Expo SQLite proof.
+- Settings now exposes the manual portable-backup surface end to end: one canonical encrypted export, distinct Restore clean and Import / merge backup actions, preview-before-commit merge review, and manifest-bound native UI evidence.
+- Phase 11 now has fresh 4173c72-bound proof that encrypted GTBK backups restore cleanly or merge atomically, including a validated no-op path for already-present data, with immutable history, deterministic derivative rebuilds, and a fully exercised manual Android recovery path.
+
+---
+
 ## v1.0 Personal-use Gym Tracker (Shipped: 2026-09-14)
 
 **Phases completed:** 7 phases, 83 plans, 161 tasks

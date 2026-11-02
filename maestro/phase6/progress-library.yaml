@@ -30,7 +30,7 @@ tags:
       - tapOn: "Train anyway"
 - tapOn: "Start Full Body A"
 - extendedWaitUntil:
-    visible: "FOCUSED WORKOUT"
+    visible: "WORKOUT OVERVIEW"
     timeout: 30000
 - repeat:
     times: 32

@@ -160,6 +160,19 @@ function scanFile(absolutePath) {
       addViolation(path, "raw writer import");
     }
   }
+
+  // Phase 17 authoring must continue to consume the Phase 13 source authority:
+  // a UI/theme/store import here would create a shadow owner. Creation is also
+  // deliberately inactive; lifecycle activation belongs to the reviewed command.
+  if (path === "src/platform/sqlite/repositories/runningPlanRepository.ts") {
+    if (imports.some((specifier) => /(?:phase17|\/ui\/|\/themes?\/|\/stores?\/|\/providers?\/)/iu.test(specifier))) {
+      addViolation(path, "Running source shadow UI/theme/store import");
+    }
+    const createBody = source.match(/async createInactiveAggregate[\s\S]*?\n    \},/u)?.[0] ?? "";
+    if (/activate(?:Minimum|Running|Plan)|is_active\s*=\s*1/iu.test(createBody)) {
+      addViolation(path, "Running inactive creation activates a plan");
+    }
+  }
 }
 
 const scanPaths = requestedPaths.length > 0

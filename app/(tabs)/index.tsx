@@ -4,6 +4,7 @@ import {
 } from "expo-router";
 import React, {
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -14,8 +15,17 @@ import type {
   ProgressRecommendationReview,
 } from "../../src/domains/progress";
 import { TodayScreen } from "../../src/ui/screens/TodayScreen";
+import { useRootSettingsController } from "../../src/ui/shell/AppRootShell";
+import {
+  rootSettingsTriggerNativeID,
+  useRootHeadingRef,
+} from "../../src/ui/shell/rootFocus";
 
 export default function TodayRoute() {
+  const settingsActionNativeID = rootSettingsTriggerNativeID("index");
+  const headingRef = useRootHeadingRef("index");
+  const settingsActionRef = useRef(null);
+  const rootSettings = useRootSettingsController();
   const runtime = useWorkoutAppRuntime();
   const {
     launchState,
@@ -31,6 +41,12 @@ export default function TodayRoute() {
       : { actionFailure: runtime.actionFailure }),
     ...(runtime.failure === undefined ? {} : { failure: runtime.failure }),
     ...(runtime.view === undefined ? {} : { view: runtime.view }),
+  };
+  const openActiveWorkout = (sessionId: string) => {
+    router.push({
+      pathname: "/workout/[sessionId]",
+      params: { sessionId, returnTo: "/(tabs)" },
+    } as unknown as Href);
   };
   useEffect(() => {
     let active = true;
@@ -80,14 +96,27 @@ export default function TodayRoute() {
       {...optionalStateProps}
       launchState={runtime.launchState}
       pendingRecommendations={pendingRecommendations}
-      onOpenSettings={() => router.push("/more" as Href)}
+      onOpenSettings={() => rootSettings.openRootSettings({
+        root: "index",
+        triggerNativeID: settingsActionNativeID,
+        triggerRef: settingsActionRef,
+      })}
       onReviewSuggestion={() => router.push("/progress" as Href)}
+      onOpenRunningPlan={(planId) => {
+        router.push(`/library/running/${planId}` as Href);
+      }}
+      onSyncGarmin={() => {
+        router.push({
+          pathname: "/garmin",
+          params: { origin: "workout" },
+        } as Href);
+      }}
       onActivatePlan={() => {
         void runtime.activatePlan();
       }}
       onResumeWorkout={(sessionId, expectedRevision) => {
         if (expectedRevision === undefined) {
-          router.push(`/workout/${sessionId}`);
+          openActiveWorkout(sessionId);
           return;
         }
         void runtime.resumePartialWorkout({
@@ -95,7 +124,7 @@ export default function TodayRoute() {
           expectedSessionRevision: expectedRevision,
           resumedAtMs: Date.now(),
         }).then(() => {
-          router.push(`/workout/${sessionId}`);
+          openActiveWorkout(sessionId);
         }).catch(() => undefined);
       }}
       onRetry={runtime.retry}
@@ -106,7 +135,7 @@ export default function TodayRoute() {
             advanceRotation: false,
           }).catch(() => null).then(() => sessionId);
         }).then((sessionId) => {
-          router.push(`/workout/${sessionId}`);
+          openActiveWorkout(sessionId);
         }).catch(() => undefined);
       }}
       onStartPlanDay={(dayId, mode) => {
@@ -127,16 +156,30 @@ export default function TodayRoute() {
             }).catch(() => null)
           ).then(() => sessionId);
         }).then((sessionId) => {
-          router.push(`/workout/${sessionId}`);
+          openActiveWorkout(sessionId);
         }).catch(() => undefined);
       }}
+      onStartOccurrence={(occurrence) => {
+        void runtime.startSelectedStrengthOccurrence(occurrence).then((sessionId) => {
+          const consumeOverride = runtime.scheduleToday?.overrideState === "pending"
+            ? runtime.consumeDateOverride(occurrence.localDate)
+            : Promise.resolve(null);
+          return consumeOverride.catch(() => null).then(() => sessionId);
+        }).then(openActiveWorkout).catch(() => undefined);
+      }}
       planDays={runtime.planDays}
+      {...(runtime.selectedStrengthOccurrence === undefined
+        ? {}
+        : { selectedStrengthOccurrence: runtime.selectedStrengthOccurrence })}
       {...(runtime.scheduleToday === undefined
         ? {}
         : { scheduleToday: runtime.scheduleToday })}
       chooseScheduleTimeZone={(choice) => {
         void runtime.chooseTimeZone(choice).then(() => runtime.refresh());
       }}
+      headingRef={headingRef}
+      settingsActionRef={settingsActionRef}
+      settingsActionNativeID={settingsActionNativeID}
     />
   );
 }

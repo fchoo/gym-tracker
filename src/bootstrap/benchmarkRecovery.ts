@@ -14,7 +14,7 @@ import {
   type SqliteKernel,
 } from "../platform/sqlite";
 
-type BenchmarkSuite = "phase1" | "phase2";
+type BenchmarkSuite = "phase1" | "phase2" | "phase12";
 
 const retainedValidationKernels: SqliteKernel[] = [];
 

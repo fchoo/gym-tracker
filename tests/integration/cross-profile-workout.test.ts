@@ -607,7 +607,7 @@ describe("authoritative cross-profile workout adapters", () => {
       };
       const completed = await completeSet({
         repository: workout,
-        haptics: { committed: assertCommitted },
+        haptics: { committed: assertCommitted, cue: async () => undefined },
         invalidate: assertCommitted,
         drainEffects: assertCommitted,
         input,
@@ -617,7 +617,7 @@ describe("authoritative cross-profile workout adapters", () => {
 
       await expect(completeSet({
         repository: workout,
-        haptics: { committed: jest.fn(async () => undefined) },
+        haptics: { committed: jest.fn(async () => undefined), cue: jest.fn(async () => undefined) },
         invalidate: jest.fn(async () => undefined),
         drainEffects: jest.fn(async () => undefined),
         input,

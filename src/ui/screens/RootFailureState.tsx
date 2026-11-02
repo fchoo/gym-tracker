@@ -10,14 +10,19 @@ import {
 } from "../components";
 
 export type RootLaunchFailure = Readonly<{
-  category: "migration" | "storage";
+  category: "appearance" | "font" | "migration" | "storage";
   code: string;
   correlationCode: string;
   retryable: boolean;
 }>;
 
 function categoryLabel(category: RootLaunchFailure["category"]): string {
-  return category === "migration" ? "Migration" : "Storage";
+  switch (category) {
+    case "appearance": return "Appearance";
+    case "font": return "Font";
+    case "migration": return "Migration";
+    case "storage": return "Storage";
+  }
 }
 
 export function RootFailureState({

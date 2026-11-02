@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Gym Tracker is an Android-first personal workout planner and logger for one owner. It combines a calendar, plan and exercise library, one-tap guided workouts, recoverable rest timing, metric-aware history, and explainable progression recommendations in an offline-first Expo application.
+Gym Tracker is an Android-first personal workout planner and logger for one owner. It combines a calendar, plan and exercise library, one-tap guided workouts, history-safe in-workout editing, advanced set timing, portable encrypted recovery, automatic replacement-phone backup, metric-aware history, and explainable progression recommendations in an offline-first Expo application.
 
 The app should feel like a quiet training instrument. It should be faster and clearer than a spreadsheet or generic tracker without pretending to be a human coach.
 
@@ -10,7 +10,7 @@ The app should feel like a quiet training instrument. It should be faster and cl
 
 Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
 
-_Confirmed still correct at v1.0 close: the shipped app delivers exactly this loop; nothing during delivery shifted the core value._
+_Confirmed still correct at v1.1 close: editing, advanced timing, and backup/recovery extend this loop without moving authority away from local SQLite._
 
 ## Requirements
 
@@ -33,20 +33,76 @@ _Confirmed still correct at v1.0 close: the shipped app delivers exactly this lo
 - ✓ Coherent Material 3 UX across Library, Calendar, plan editing, Progress, Today, and navigation — Phase 6 (v1.0)
 - ✓ Post-candidate UX refinement: cleaner nav/Today, consolidated Settings, compact set editor, set/warm-up removal, rest-timer audio, and a distinctive app icon — Phase 7 (v1.0)
 - ✓ Signed personal-use Android APK/AAB delivery built once and sideloaded unchanged — Phase 5 (v1.0)
+- ✓ Scrollable all-exercise workout overview with history-safe add, replace, remove, reorder, schedule semantics, and explicit default-No plan write-back — Phases 8-9 (v1.1)
+- ✓ Per-repetition cadence and cluster-set timing with independent row configuration, lifecycle recovery, and advisory-only cue delivery — Phase 10 (v1.1)
+- ✓ Stable owner-scoped portable identities plus password-encrypted GTBK restore-clean and previewed atomic merge — Phase 11 (v1.1)
+- ✓ Optional single-active-device Google Drive backup with restore quarantine, verified latest/previous snapshots, writer fencing, and replacement recovery — Phase 12 (v1.1)
+- ✓ Signed production APK/AAB built with the pinned toolchain and installed unchanged on the Samsung SM-S916B — v1.1
 
 ### Active
 
-(None — v1.0 shipped. Populate on the next milestone via /gsd-new-milestone.)
+v1.2 requirements are being planned in `.planning/REQUIREMENTS.md` against the
+owner-approved Revision 18 prototype and `.planning/v1.2-OWNER-BRIEF.md`.
+Implementation is not authorized until the owner reviews the complete milestone.
+
+## Current Milestone: v1.2 Prototype Parity, Concurrent Plans & Garmin Import
+
+**Latest owner decisions:** `.planning/v1.2-OWNER-DECISIONS.md` records one active
+plan per sport, complete cadence/cluster playback retirement without a playback
+compatibility mode, and accepted Calendar deviations DEV-01/DEV-02. The app runs
+standalone with bundled code and no runtime AI agents. The selected Garmin
+transport is Android-embedded Python 3.13 through Chaquopy 17.0 with pinned
+`python-garminconnect` 0.3.17 commit
+`218e72ca5459e014435fc2d94fd18bd601fa0c14`, ARM64 summary/splits/detail JSON.
+There is no Garmin program access, partner API/broker, desktop/Drive transport,
+manual FIT or FIT-decoder prerequisite, runtime-agent requirement, or Hermes
+change in this milestone. Technical proof remains implementation evidence, not a
+product question. See `.planning/research/v1.2/GARMIN-MOBILE-FEASIBILITY.md`.
+
+**Goal:** Reproduce the approved prototype's presentation and interactions in the
+production Android app while preserving SQLite, transaction, history, recovery,
+backup, offline, accessibility, and performance contracts.
+
+**Target features:**
+- Exactly zero or one active Strength plan and zero or one active Running plan,
+  with independent authoritative schedules,
+  versioned structured running sessions, explicit collision/matching rules, and
+  compatible backup/merge/recovery.
+- Exactly four roots: Workout, Calendar, Library, Progress; warm editorial Workout,
+  scan-first Active Workout, and shared Light/Dark/System appearances.
+- Full-height Calendar with pointer-tracked months, spatial week/agenda expansion,
+  shared event cells, non-color statuses, and read-only history routes.
+- Neutral Strength/Running creation chooser and persistent structured running plans.
+- Standalone ARM64 Garmin account sync through the pinned embedded client, with
+  foreground login/MFA, encrypted session recovery, bounded validated JSON,
+  confirmed matching and idempotency; factual Strength/Running progress.
+- Prototype comparison, real SQLite, Android lifecycle/offline, accessibility,
+  performance, and attended Samsung verification before any later release.
+
+**Planning authority:** `.planning/v1.2-OWNER-BRIEF.md` → latest `approved.json`
+revision → rendered `approved-hybrid.html` → earlier draft → prior planning →
+implementation patterns. Shipped domain guarantees remain authoritative.
+Older validated UI decisions above describe historical releases, not v1.2 UI
+overrides. The owner brief supersedes the draft's outstanding design questions and
+`approved.json`'s stale awaiting-owner-review metadata for planning only.
+
+**Session boundary:** All edits stay in the owner-selected Orca worktree at
+`/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp`, with planning edits
+under `.planning/`.
+No production code, build, release, deployment, or phase execution in this session.
+Any necessary prototype deviation must be separately recorded and owner-approved.
 
 ### Out of Scope
 
-- Accounts and cloud synchronization — v1 is single-user and local-first.
+- Multi-user accounts, social sharing, a hosted app backend, and concurrent multi-device sync — still out of scope. *(v1.1 note: optional single-owner Google sign-in for automatic replacement-phone backup is in scope via DATA-10; this is owner-controlled personal storage, not a shared backend or multi-user account system.)*
 - Social profiles, plan sharing, leaderboards, and community features — not part of the personal-use goal.
 - Wear OS — defer until the phone workout loop is proven.
 - Health Connect — defer until the local session model has real usage history.
 - Camera form analysis and generative coaching — outside the trust and complexity boundary.
-- Nutrition, body measurements, and recovery scoring — unrelated to the workout-tracking core.
-- Per-repetition or cluster-set timers — specialized mode deferred from v1.
+- Nutrition, gender, height, and recovery scoring — outside scope. Optional dated
+  bodyweight is in v1.2 solely for relative-strength views, never automatic targets.
+- In-app outdoor/treadmill recording, live GPS tracking, and run recording permissions
+  — Garmin is the recorder; Gym Tracker imports consented activity facts.
 - Exercise media without independently verified licensing and attribution.
 - Screen-reader and switch-scanning assistive technology support — TalkBack and Samsung Universal/Switch Access are not required for this personal-use v1; existing semantic labels remain, while keyboard/D-pad stays release-gated.
 - Public GitHub Release / store promotion ceremony (attended device matrix, owner-approval token, no-rebuild digest gate, Terminal Seal) — retired for personal-use v1 delivery; tracked as V2-05 if public distribution is pursued.
@@ -60,6 +116,7 @@ _Confirmed still correct at v1.0 close: the shipped app delivers exactly this lo
 - The visual direction is a card-light precision instrument using Source Sans 3, IBM Plex Mono numerals, semantic colors, and explicit light/dark tokens.
 - The design and engineering plan passed interactive GStack reviews with no unresolved decisions.
 - **v1.0 shipped (2026-09-14)** as a signed personal-use Android APK/AAB via `personal-apk.yml`. All seven phases are verified; 94/94 v1 requirements complete. Latest signed build: workflow run `34746276143`.
+- **v1.1 shipped (2026-10-01)** as a signed personal-use Android APK/AAB installed on the Samsung SM-S916B. All five phases are verified; 12/12 requirements, 10/10 cross-phase connections, and 5/5 end-to-end flows complete. Production APK SHA-256: `19d24eded09eb3b293dd101e915820394f030aefbfb8b2c4d9f98f4c966ead8c`.
 - **Tech stack as shipped:** Expo SDK 57 (CNG), TypeScript strict, Expo Router, Expo SQLite (FTS5), notifications, Bouncy Castle Argon2id + AES-256-GCM backup crypto, Concept G app icon. Coverage on the final PR gate: 141 suites / 2,473 tests, all 83 integrity-critical files at 100%.
 - Approved design references:
   - `~/.gstack/projects/gym_tracker/designs/approved-20260815/core-workout-flow.png`
@@ -76,10 +133,10 @@ _Confirmed still correct at v1.0 close: the shipped app delivers exactly this lo
 - **Source of truth**: SQLite source facts are authoritative; notifications, projections, recommendations, and UI query caches are replayable or rebuildable derivatives.
 - **Persistence**: Multi-statement writes use repository-owned exclusive transactions; screens never execute SQL.
 - **Offline**: Starting, completing, resuming, and reviewing a workout works in airplane mode.
-- **Security**: Backup archives use integrity protection and password encryption by default; secrets and workout payloads never enter diagnostics.
+- **Security**: Manual GTBK backup archives use integrity protection and password encryption; automatic Drive snapshots are integrity-checked unencrypted JSON protected by Google-account access. Secrets and workout payloads never enter diagnostics.
 - **Performance**: Working-set commit and dock transition p95 is at most 150 ms on the minimum supported Android profile.
 - **Testing**: Integrity-critical domain and application code requires complete branch coverage, real SQLite contract tests, and Android E2E for lifecycle behavior.
-- **Distribution**: Expo CNG generates native projects; GitHub Actions produces private signed candidates promoted unchanged after physical-device digest approval.
+- **Distribution**: Expo CNG generates native projects; signed personal-use APK/AAB bytes are signature-verified and sideloaded unchanged. Public promotion remains deferred under V2-05.
 - **Environment**: The current machine has the pinned Node, Java, Android SDK/adb, API 36 emulator, Maestro, and native verification toolchain. Physical-device availability remains session-dependent.
 
 ## Delivery Milestones
@@ -121,6 +178,15 @@ Add encrypted backup/restore, CSV export, complete adaptive/accessibility verifi
 | Private signed candidate promotion | Exact physical-device-tested bytes become the public release | ⚠️ Revisited v1.0 — replaced by the signed personal-use APK (`personal-apk.yml`); public promotion deferred to V2-05 |
 | Exclude screen-reader and switch-scanning assistive technologies from v1 | The personal-use release does not require TalkBack or OEM switch setup; keyboard/D-pad, focus, labels, large text, reduced motion, non-color cues, and target sizing remain required | ✓ Validated v1.0 |
 | Deliver v1 as a signed personal-use APK, retire the public-release ceremony | Single-owner personal use does not need the attended device matrix, owner-approval token, no-rebuild GitHub Release promotion, or Terminal Seal; the device-free `personal-apk.yml` build is the delivery | ✓ Accepted 2026-09-14 (PR #29; tracked as V2-05) |
+| Use Drive as single-active-device backup, not live sync | The owner has one active phone and needs simple replacement recovery; writer fencing and restore quarantine prevent an old or fresh install from replacing the recovery copy | ✓ Accepted 2026-09-26 (DATA-10) |
+| Protect automatic backup with the Google account only | Removes a separate backup passphrase and gives a WhatsApp-like restore flow; automatic JSON is readable to anyone with Drive access, while manual GTBK remains password-encrypted | ✓ Accepted 2026-09-26 (DATA-10) |
+| Use one scrollable workout overview with history-safe session editing | Keeps the workout loop scan-friendly while add/replace/remove/reorder preserve immutable recorded facts | ✓ Validated Phases 8-9 (v1.1) |
+| Keep advanced set timing separate from between-set rest | Per-rep cadence and cluster gaps remain advisory and cannot redefine committed set or rest facts | ✓ Validated Phase 10 (v1.1) |
+| Use stable owner-scoped identities for portable merge | Restore and merge recognize the same personal records without rewriting immutable history | ✓ Validated Phase 11 (v1.1) |
+| Keep manual GTBK and automatic Drive recovery as separate products | Manual GTBK remains password-encrypted and portable; automatic Drive JSON optimizes replacement-phone recovery without a passphrase | ✓ Validated Phases 11-12 (v1.1) |
+| Limit active plans to one per sport | Strength and Running may coexist, while per-sport uniqueness keeps schedule selection, restore and merge deterministic | ✓ Owner-approved MAP-01 for v1.2 |
+| Retire cadence/cluster runtime behavior | Remove cadence/cluster authoring, callbacks, reconciliation and playback without compatibility mode; preserve ordinary history and between-set rest | ✓ Owner-approved TIM-01 for v1.2 |
+| Embed the pinned Garmin account client in the APK | A standalone ARM64 app can read the owner's activity summary/splits/detail JSON without Garmin program access, a broker, desktop bridge, FIT prerequisite or runtime agent | ✓ Owner-selected v1.2 transport; native proof pending implementation |
 
 ## Evolution
 
@@ -140,4 +206,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with implementation and verification evidence.
 
 ---
-*Last updated: 2026-09-14 after v1.0 milestone completion (delivered as the signed personal-use APK)*
+*Last updated: 2026-10-06 for owner-authorized v1.2 planning; v1.1 delivery history retained.*

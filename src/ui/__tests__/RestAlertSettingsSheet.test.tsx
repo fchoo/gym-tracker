@@ -21,6 +21,28 @@ import {
 } from "../theme";
 
 describe("RestAlertSettingsSheet preference loading", () => {
+  it("uses the shared bottom-sheet frame without changing its authoritative alert controls", async () => {
+    type SheetProps = React.ComponentProps<typeof RestAlertSettingsSheet>;
+    await render(
+      <AppearanceProvider>
+        <RestAlertSettingsSheet
+          notificationPermission="denied"
+          onChange={() => undefined}
+          onClose={() => undefined}
+          onOpenAppearance={() => undefined}
+          onOpenNotificationSettings={() => undefined}
+          preferences={{ soundEnabled: true, vibrationEnabled: false }}
+          visible
+        />
+      </AppearanceProvider>,
+    );
+
+    expect(screen.getByTestId("bottom-sheet-frame")).toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "Rest alerts" })).toBeOnTheScreen();
+    expect(screen.getByRole("switch", { name: "Rest sound" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Open notification settings" }))
+      .toBeOnTheScreen();
+  });
   it("keeps switch-row geometry inert while loading and restores ready behavior", async () => {
     type SheetProps = React.ComponentProps<typeof RestAlertSettingsSheet>;
     const onChange = jest.fn<SheetProps["onChange"]>();

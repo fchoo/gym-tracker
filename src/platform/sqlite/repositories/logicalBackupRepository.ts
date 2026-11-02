@@ -1,7 +1,7 @@
 import {
   LOGICAL_BACKUP_FORMAT_VERSION,
+  logicalBackupTablesForVersion,
   LOGICAL_BACKUP_TABLE_DEFINITIONS,
-  LOGICAL_BACKUP_TABLES,
   parseLogicalBackupSnapshot,
   type LogicalBackupRow,
   type LogicalBackupSnapshot,
@@ -9,8 +9,9 @@ import {
 } from "../../../domains/portability/backupContracts";
 import type {
   SqliteKernel,
-  SqliteTransactionExecutor,
+  SqliteReadTransactionExecutor,
 } from "../sqliteKernel";
+import { runtimeSha256 } from "../../crypto/runtimeSha256";
 
 type LogicalTableName = keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS;
 
@@ -21,15 +22,102 @@ export type LogicalBackupRepository = Readonly<{
   }>): Promise<LogicalBackupSnapshot>;
 }>;
 
+export type LogicalBackupReceipt = Readonly<{
+  requestId: string;
+  requestSha256: string;
+  snapshotId: string;
+  snapshotSha256: string;
+  totalRows: number;
+  committedAtMs: number;
+}>;
+
 export class LogicalBackupRepositoryError extends Error {
   readonly kind = "storage" as const;
   readonly retryable = true;
   readonly correlationCode = "GT-BACKUP02" as const;
 
-  constructor(readonly code: "logical_backup_collection_failed") {
+  constructor(readonly code: "logical_backup_collection_failed" | "logical_backup_request_identity_conflict") {
     super(code);
     this.name = "LogicalBackupRepositoryError";
   }
+}
+
+const SHA256 = /^[a-f0-9]{64}$/u;
+
+type LogicalBackupCollectionInput = Readonly<{
+  snapshotId: string;
+  createdAtMs: number;
+}>;
+
+function collectionInputValid(input: LogicalBackupCollectionInput): boolean {
+  return input.snapshotId.trim().length > 0 && input.snapshotId.length <= 128
+    && Number.isSafeInteger(input.createdAtMs) && input.createdAtMs >= 0;
+}
+
+export async function logicalBackupCollectionIdentity(
+  input: LogicalBackupCollectionInput,
+): Promise<Readonly<{ requestId: string; requestSha256: string }>> {
+  if (!collectionInputValid(input)) {
+    throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
+  }
+  const requestId = `logical-backup:${await runtimeSha256(JSON.stringify({
+    operation: "logical_backup_collection",
+    snapshotId: input.snapshotId,
+  }))}`;
+  const requestSha256 = await runtimeSha256(JSON.stringify({
+    operation: "logical_backup_collection",
+    requestId,
+    snapshotId: input.snapshotId,
+    createdAtMs: input.createdAtMs,
+  }));
+  return Object.freeze({ requestId, requestSha256 });
+}
+
+function nestedLogicalBackupError(error: unknown): LogicalBackupRepositoryError | null {
+  let current: unknown = error;
+  const visited = new Set<unknown>();
+  while (typeof current === "object" && current !== null && !visited.has(current)) {
+    if (current instanceof LogicalBackupRepositoryError) return current;
+    visited.add(current);
+    current = "cause" in current ? current.cause : null;
+  }
+  return null;
+}
+
+async function readReceipt(
+  transaction: SqliteReadTransactionExecutor,
+  requestId: string,
+): Promise<LogicalBackupReceipt | null> {
+  const rows = await transaction.queryAll<Readonly<{
+    request_id: string;
+    request_sha256: string;
+    snapshot_id: string;
+    snapshot_sha256: string;
+    total_rows: number;
+    committed_at_ms: number;
+  }>>(
+    `SELECT request_id, request_sha256, snapshot_id, snapshot_sha256,
+            total_rows, committed_at_ms
+       FROM logical_backup_receipts
+      WHERE request_id = ?`,
+    [requestId],
+  );
+  const row = rows[0];
+  if (rows.length === 0) return null;
+  if (rows.length !== 1 || row === undefined || !SHA256.test(row.request_sha256)
+    || !SHA256.test(row.snapshot_sha256) || !Number.isSafeInteger(row.total_rows)
+    || row.total_rows < 1 || !Number.isSafeInteger(row.committed_at_ms)
+    || row.committed_at_ms < 0) {
+    throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
+  }
+  return Object.freeze({
+    requestId: row.request_id,
+    requestSha256: row.request_sha256,
+    snapshotId: row.snapshot_id,
+    snapshotSha256: row.snapshot_sha256,
+    totalRows: row.total_rows,
+    committedAtMs: row.committed_at_ms,
+  });
 }
 
 function identifier(value: string): string {
@@ -72,6 +160,7 @@ function ownedOccurrenceWhere(alias: string): string {
  * categorically user-owned source facts.
  */
 export const LOGICAL_BACKUP_TABLE_FILTERS = Object.freeze({
+  portable_owner_identity: "1",
   app_settings: "1",
   exercise_owner_preferences: "1",
   exercises: "origin IN ('custom', 'copied')",
@@ -82,6 +171,7 @@ export const LOGICAL_BACKUP_TABLE_FILTERS = Object.freeze({
   taxonomy_terms: "EXISTS (SELECT 1 FROM exercise_taxonomy taxonomy JOIN exercises exercise ON exercise.id = taxonomy.exercise_id WHERE taxonomy.kind = taxonomy_terms.kind AND taxonomy.slug = taxonomy_terms.slug AND exercise.origin IN ('custom', 'copied'))",
   metric_profile_migration_events: "EXISTS (SELECT 1 FROM exercises exercise WHERE exercise.id = metric_profile_migration_events.exercise_id AND exercise.origin IN ('custom', 'copied'))",
   exercise_metric_baselines: "EXISTS (SELECT 1 FROM exercises exercise WHERE exercise.id = exercise_metric_baselines.exercise_id AND exercise.origin IN ('custom', 'copied'))",
+  custom_exercise_mutation_receipts: "1",
   plans: "origin IN ('custom', 'copied')",
   plan_schedules: ownedPlanWhere("plan_schedules"),
   plan_schedule_bindings: "EXISTS (SELECT 1 FROM plan_schedules schedule JOIN plans plan ON plan.id = schedule.plan_id WHERE schedule.id = plan_schedule_bindings.schedule_id AND plan.origin IN ('custom', 'copied'))",
@@ -91,6 +181,7 @@ export const LOGICAL_BACKUP_TABLE_FILTERS = Object.freeze({
   plan_working_set_targets: legacyOccurrenceWhere("plan_working_set_targets"),
   progression_policies: legacyOccurrenceWhere("progression_policies"),
   progression_recommendations: "EXISTS (SELECT 1 FROM plan_working_set_targets target JOIN plan_day_exercises occurrence ON occurrence.id = target.plan_day_exercise_id JOIN plan_days day ON day.id = occurrence.plan_day_id JOIN plans plan ON plan.id = day.plan_id WHERE target.id = progression_recommendations.plan_working_set_target_id AND plan.origin IN ('custom', 'copied'))",
+  progression_recommendation_decision_receipts: "EXISTS (SELECT 1 FROM progression_recommendations recommendation JOIN plan_working_set_targets target ON target.id = recommendation.plan_working_set_target_id JOIN plan_day_exercises occurrence ON occurrence.id = target.plan_day_exercise_id JOIN plan_days day ON day.id = occurrence.plan_day_id JOIN plans plan ON plan.id = day.plan_id WHERE recommendation.id = progression_recommendation_decision_receipts.recommendation_id AND plan.origin IN ('custom', 'copied'))",
   owned_plan_aggregate_states: ownedPlanWhere("owned_plan_aggregate_states"),
   owned_plan_mutation_requests: "EXISTS (SELECT 1 FROM plans plan WHERE plan.id = owned_plan_mutation_requests.result_plan_id AND plan.origin IN ('custom', 'copied')) OR EXISTS (SELECT 1 FROM plans plan WHERE plan.id = owned_plan_mutation_requests.source_plan_id AND plan.origin IN ('custom', 'copied'))",
   owned_plan_starter_sources: ownedPlanWhere("owned_plan_starter_sources"),
@@ -100,6 +191,7 @@ export const LOGICAL_BACKUP_TABLE_FILTERS = Object.freeze({
   owned_plan_working_set_targets: ownedOccurrenceWhere("owned_plan_working_set_targets"),
   owned_plan_progression_policies: ownedOccurrenceWhere("owned_plan_progression_policies"),
   owned_plan_occurrence_sources: ownedOccurrenceWhere("owned_plan_occurrence_sources"),
+  plan_exercise_replacement_receipts: ownedPlanWhere("plan_exercise_replacement_receipts"),
   owned_plan_schedules: ownedPlanWhere("owned_plan_schedules"),
   owned_plan_schedule_versions: "EXISTS (SELECT 1 FROM owned_plan_schedules schedule JOIN plans plan ON plan.id = schedule.plan_id WHERE schedule.id = owned_plan_schedule_versions.schedule_id AND plan.origin IN ('custom', 'copied'))",
   owned_plan_schedule_bindings: "EXISTS (SELECT 1 FROM owned_plan_schedule_versions version JOIN owned_plan_schedules schedule ON schedule.id = version.schedule_id JOIN plans plan ON plan.id = schedule.plan_id WHERE version.id = owned_plan_schedule_bindings.schedule_version_id AND plan.origin IN ('custom', 'copied'))",
@@ -108,13 +200,57 @@ export const LOGICAL_BACKUP_TABLE_FILTERS = Object.freeze({
   owned_plan_schedule_events: "EXISTS (SELECT 1 FROM owned_plan_schedules schedule JOIN plans plan ON plan.id = schedule.plan_id WHERE schedule.id = owned_plan_schedule_events.schedule_id AND plan.origin IN ('custom', 'copied'))",
   starter_plan_activation_requests: "EXISTS (SELECT 1 FROM plans plan WHERE plan.id = starter_plan_activation_requests.result_plan_id AND plan.origin IN ('custom', 'copied'))",
   workout_sessions: "1",
+  workout_session_exercise_edit_receipts: "1",
+  workout_session_exercise_reorder_receipts: "1",
+  workout_session_exercise_rest_default_receipts: "1",
   session_exercises: "1",
   session_sets: "1",
   session_rest_states: "1",
+  session_advanced_timing_states: "1",
   session_undo_snapshots: "1",
   history_session_overlays: "1",
   history_audit_events: "1",
   owned_progression_recommendations: "EXISTS (SELECT 1 FROM owned_plan_working_set_targets target JOIN owned_plan_day_exercises occurrence ON occurrence.id = target.plan_day_exercise_id JOIN plan_days day ON day.id = occurrence.plan_day_id JOIN plans plan ON plan.id = day.plan_id WHERE target.id = owned_progression_recommendations.owned_plan_working_set_target_id AND plan.origin IN ('custom', 'copied'))",
+  owned_progression_recommendation_decision_receipts: "EXISTS (SELECT 1 FROM owned_progression_recommendations recommendation JOIN owned_plan_working_set_targets target ON target.id = recommendation.owned_plan_working_set_target_id JOIN owned_plan_day_exercises occurrence ON occurrence.id = target.plan_day_exercise_id JOIN plan_days day ON day.id = occurrence.plan_day_id JOIN plans plan ON plan.id = day.plan_id WHERE recommendation.id = owned_progression_recommendation_decision_receipts.recommendation_id AND plan.origin IN ('custom', 'copied'))",
+  running_plans: "EXISTS (SELECT 1 FROM plans plan WHERE plan.id = running_plans.plan_id AND plan.origin IN ('custom', 'copied'))",
+  running_session_revisions: "EXISTS (SELECT 1 FROM running_plans root JOIN plans plan ON plan.id = root.plan_id WHERE root.plan_id = running_session_revisions.plan_id AND plan.origin IN ('custom', 'copied'))",
+  running_session_roots: "EXISTS (SELECT 1 FROM running_plans root JOIN plans plan ON plan.id = root.plan_id WHERE root.plan_id = running_session_roots.plan_id AND plan.origin IN ('custom', 'copied'))",
+  running_session_slot_roots: "EXISTS (SELECT 1 FROM running_plans root JOIN plans plan ON plan.id = root.plan_id WHERE root.plan_id = running_session_slot_roots.plan_id AND plan.origin IN ('custom', 'copied'))",
+  running_session_slot_revisions: "EXISTS (SELECT 1 FROM running_session_slot_roots slot JOIN running_plans root ON root.plan_id = slot.plan_id JOIN plans plan ON plan.id = root.plan_id WHERE slot.id = running_session_slot_revisions.slot_root_id AND plan.origin IN ('custom', 'copied'))",
+  running_plan_receipts: "EXISTS (SELECT 1 FROM running_plans root JOIN plans plan ON plan.id = root.plan_id WHERE root.plan_id = running_plan_receipts.plan_id AND plan.origin IN ('custom', 'copied'))",
+  running_plan_events: "EXISTS (SELECT 1 FROM running_plans root JOIN plans plan ON plan.id = root.plan_id WHERE root.plan_id = running_plan_events.plan_id AND plan.origin IN ('custom', 'copied'))",
+  running_goals: "EXISTS (SELECT 1 FROM running_plans root JOIN plans plan ON plan.id = root.plan_id WHERE root.plan_id = running_goals.plan_id AND plan.origin IN ('custom', 'copied'))",
+  running_session_slots: "EXISTS (SELECT 1 FROM running_plans root JOIN plans plan ON plan.id = root.plan_id WHERE root.plan_id = running_session_slots.plan_id AND plan.origin IN ('custom', 'copied'))",
+  running_opportunities: "EXISTS (SELECT 1 FROM running_plans root JOIN plans plan ON plan.id = root.plan_id WHERE root.plan_id = running_opportunities.plan_id AND plan.origin IN ('custom', 'copied'))",
+  schedule_collision_outcomes: "EXISTS (SELECT 1 FROM running_plans root JOIN plans plan ON plan.id = root.plan_id WHERE root.plan_id = (SELECT running.plan_id FROM running_opportunities running WHERE running.id = schedule_collision_outcomes.running_opportunity_id) AND plan.origin IN ('custom', 'copied'))",
+  schedule_collision_receipts: "EXISTS (SELECT 1 FROM schedule_collision_outcomes outcome JOIN running_opportunities running ON running.id = outcome.running_opportunity_id JOIN running_plans root ON root.plan_id = running.plan_id JOIN plans plan ON plan.id = root.plan_id WHERE outcome.request_id = schedule_collision_receipts.request_id AND plan.origin IN ('custom', 'copied'))",
+  schedule_collision_projections: "EXISTS (SELECT 1 FROM schedule_collision_outcomes outcome JOIN running_opportunities running ON running.id = outcome.running_opportunity_id JOIN running_plans root ON root.plan_id = running.plan_id JOIN plans plan ON plan.id = root.plan_id WHERE outcome.id = schedule_collision_projections.outcome_id AND plan.origin IN ('custom', 'copied'))",
+  workout_provenance: "1",
+  workout_receipts: "1",
+  workout_session_schedule_links: "1",
+  workout_schedule_reconciliation_receipts: "1",
+  workout_completed_set_correction_receipts: "1",
+  imported_activities: "1",
+  imported_activity_payloads: "1",
+  imported_activity_references: "1",
+  imported_activity_laps: "1",
+  imported_activity_chunks: "1",
+  imported_activity_receipts: "1",
+  imported_activity_removal_events: "1",
+  imported_activity_identities: "1",
+  imported_activity_events: "1",
+  imported_activity_match_invalidations: "1",
+  imported_activity_revision_proposals: "1",
+  imported_activity_revision_decisions: "1",
+  running_match_events: "1",
+  running_current_matches: "1",
+  running_activity_match_events: "1",
+  running_activity_match_receipts: "1",
+  bodyweight_revisions: "1",
+  bodyweight_tombstones: "1",
+  bodyweight_entries: "1",
+  bodyweight_entry_events: "1",
+  bodyweight_command_receipts: "1",
 } satisfies Readonly<Record<LogicalTableName, string>>);
 
 function whereClause(table: LogicalTableName): string {
@@ -146,11 +282,12 @@ function mapRow(row: Record<string, unknown>): LogicalBackupRow {
 }
 
 async function collectTables(
-  transaction: SqliteTransactionExecutor,
+  transaction: SqliteReadTransactionExecutor,
+  tablesForVersion: readonly LogicalTableName[],
 ): Promise<LogicalBackupSnapshot["tables"]> {
   const tables: Record<string, readonly LogicalBackupRow[]> = {};
-  for (const table of LOGICAL_BACKUP_TABLES) {
-    const rows = await transaction.queryAll(tableQuery(table as LogicalTableName));
+  for (const table of tablesForVersion) {
+    const rows = await transaction.queryAll(tableQuery(table));
     tables[table] = Object.freeze(rows.map(mapRow));
   }
   return Object.freeze(tables);
@@ -164,7 +301,7 @@ type CatalogReferenceRow = Readonly<{
 }>;
 
 async function collectCatalogReferences(
-  transaction: SqliteTransactionExecutor,
+  transaction: SqliteReadTransactionExecutor,
 ): Promise<LogicalBackupSnapshot["catalogReferences"]> {
   const rows = await transaction.queryAll<CatalogReferenceRow>(
     "SELECT 'exercise' AS kind, source.source_namespace, COALESCE(source.upstream_id, source.linked_upstream_id) AS upstream_id, source.source_revision FROM exercise_catalog_sources source WHERE source.exercise_id IN (SELECT exercise_id FROM exercise_owner_preferences UNION SELECT exercise_id FROM session_exercises UNION SELECT occurrence.exercise_id FROM plan_day_exercises occurrence JOIN plan_days day ON day.id = occurrence.plan_day_id JOIN plans plan ON plan.id = day.plan_id WHERE plan.origin IN ('custom', 'copied') UNION SELECT occurrence.exercise_id FROM owned_plan_day_exercises occurrence JOIN plan_days day ON day.id = occurrence.plan_day_id JOIN plans plan ON plan.id = day.plan_id WHERE plan.origin IN ('custom', 'copied')) AND COALESCE(source.upstream_id, source.linked_upstream_id) IS NOT NULL UNION SELECT 'plan' AS kind, source.source_namespace, source.template_id AS upstream_id, CAST(source.source_revision AS TEXT) AS source_revision FROM owned_plan_starter_sources source JOIN plans plan ON plan.id = source.plan_id WHERE plan.origin IN ('custom', 'copied') UNION SELECT 'plan' AS kind, request.source_namespace, request.template_id AS upstream_id, CAST(request.source_revision AS TEXT) AS source_revision FROM starter_plan_activation_requests request JOIN plans plan ON plan.id = request.result_plan_id WHERE plan.origin IN ('custom', 'copied') ORDER BY kind, source_namespace, upstream_id, source_revision",
@@ -197,39 +334,86 @@ export function createLogicalBackupRepository(
 ): LogicalBackupRepository {
   return Object.freeze({
     async collect(input) {
+      const identity = await logicalBackupCollectionIdentity(input);
       try {
         return await kernel.write(async (transaction) => {
-          const [schema] = await transaction.queryAll<{ user_version: number }>(
-            "PRAGMA user_version",
-          );
-          if (schema === undefined || !Number.isSafeInteger(schema.user_version)) {
+          const existing = await readReceipt(transaction, identity.requestId);
+          if (existing !== null && (existing.requestSha256 !== identity.requestSha256
+            || existing.snapshotId !== input.snapshotId)) {
+            throw new LogicalBackupRepositoryError("logical_backup_request_identity_conflict");
+          }
+          const snapshot = await collectLogicalBackupSnapshot(transaction, input);
+          const snapshotSha256 = await runtimeSha256(JSON.stringify(snapshot));
+          if (!SHA256.test(snapshotSha256)) {
             throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
           }
-          const tables = await collectTables(transaction);
-          const catalogReferences = await collectCatalogReferences(transaction);
-          const rowCounts = Object.fromEntries(
-            LOGICAL_BACKUP_TABLES.map((table) => [table, tables[table]!.length]),
-          );
-          return parseLogicalBackupSnapshot({
-            version: LOGICAL_BACKUP_FORMAT_VERSION,
+          if (existing !== null) {
+            if (existing.snapshotSha256 !== snapshotSha256 || existing.totalRows !== snapshot.manifest.totalRows) {
+              throw new LogicalBackupRepositoryError("logical_backup_request_identity_conflict");
+            }
+            return snapshot;
+          }
+          const receipt: LogicalBackupReceipt = Object.freeze({
+            requestId: identity.requestId,
+            requestSha256: identity.requestSha256,
             snapshotId: input.snapshotId,
-            createdAtMs: input.createdAtMs,
-            schemaVersion: schema.user_version,
-            manifest: {
-              catalogReferenceCount: catalogReferences.length,
-              rowCounts,
-              totalRows: Object.values(rowCounts).reduce(
-                (total, count) => total + count,
-                0,
-              ),
-            },
-            tables,
-            catalogReferences,
+            snapshotSha256,
+            totalRows: snapshot.manifest.totalRows,
+            committedAtMs: input.createdAtMs,
           });
+          const inserted = await transaction.execute(
+            `INSERT INTO logical_backup_receipts
+              (request_id, request_sha256, snapshot_id, snapshot_sha256, total_rows, committed_at_ms)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [receipt.requestId, receipt.requestSha256, receipt.snapshotId,
+              receipt.snapshotSha256, receipt.totalRows, receipt.committedAtMs],
+          );
+          if (inserted.changes !== 1) {
+            throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
+          }
+          return snapshot;
         });
-      } catch {
+      } catch (error) {
+        const nested = nestedLogicalBackupError(error);
+        if (nested !== null) throw nested;
         throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
       }
     },
+  });
+}
+
+export async function collectLogicalBackupSnapshot(
+  transaction: SqliteReadTransactionExecutor,
+  input: Readonly<{ snapshotId: string; createdAtMs: number }>,
+): Promise<LogicalBackupSnapshot> {
+  const [schema] = await transaction.queryAll<{ user_version: number }>(
+    "PRAGMA user_version",
+  );
+  if (schema === undefined || !Number.isSafeInteger(schema.user_version)) {
+    throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
+  }
+  const tablesForVersion = logicalBackupTablesForVersion(
+    LOGICAL_BACKUP_FORMAT_VERSION,
+  );
+  const tables = await collectTables(transaction, tablesForVersion);
+  const catalogReferences = await collectCatalogReferences(transaction);
+  const rowCounts = Object.fromEntries(
+    tablesForVersion.map((table) => [table, tables[table]!.length]),
+  );
+  return parseLogicalBackupSnapshot({
+    version: LOGICAL_BACKUP_FORMAT_VERSION,
+    snapshotId: input.snapshotId,
+    createdAtMs: input.createdAtMs,
+    schemaVersion: schema.user_version,
+    manifest: {
+      catalogReferenceCount: catalogReferences.length,
+      rowCounts,
+      totalRows: Object.values(rowCounts).reduce(
+        (total, count) => total + count,
+        0,
+      ),
+    },
+    tables,
+    catalogReferences,
   });
 }

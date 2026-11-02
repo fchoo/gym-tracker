@@ -1,0 +1,35 @@
+{
+  "calendar": {
+    "source_commit": "4afc0043034cecbe6d9f8f9e3282500383c49c9c",
+    "integrated_commit": "6368d9bc",
+    "checks": "affected Calendar cases passed; actual-SQLite timezone cases were not rerun"
+  },
+  "library": {
+    "source_commit": "5e5dfd57e4b93e585ec8e7b9922512256e93b2a5",
+    "guard_correction": "e4e91016e46508d5f6980ecb644adba24b0614f6",
+    "integrated_correction": "a09dd86c",
+    "checks": "component and actual-SQLite link guards passed; six new scheduling-only cases passed after the correction"
+  },
+  "layout": {
+    "source_commits": [
+      "a9ed798cb70da0adcbd45e1f333542b1f9e719b8",
+      "9ae314f4aa1461e169ce8052986f03f285967de3",
+      "30885b7d2967f0d3af182d78808da77e6e490b18"
+    ],
+    "checks": "affected shared sheet/focus cases passed; native keyboard modality correction pending"
+  },
+  "root": {
+    "source_commits": [
+      "276d9829023630130ebf45f52befccdfe76cb41a",
+      "39e8cc1e",
+      "366f06a60a8f5335aa03d6733cc2b56c1e3045f8"
+    ],
+    "checks": "edited-day actual-SQLite start/stale rejection passed; two source-invalidated sheet cases passed; compiler and boundaries passed before review corrections"
+  },
+  "native": {
+    "provisional_source": "366f06a60a8f5335aa03d6733cc2b56c1e3045f8",
+    "provisional_installed": false,
+    "status": "waiting for corrected final-source build",
+    "data_policy": "preserve data; install-update only"
+  }
+}

@@ -292,13 +292,6 @@ type PlanReferenceRow = Readonly<{
   occurrence_revision: number;
 }>;
 
-type ResultEnvelope = Readonly<{
-  requestId: string;
-  kind: "create" | "edit";
-  payload: string;
-  result: CustomExerciseMutationResult;
-}>;
-
 type TransactionOutcome =
   | Readonly<{
       kind: "conflict";
@@ -316,30 +309,14 @@ type CustomExerciseConflictOutcome = Extract<
 >;
 
 type QueryExecutor = Pick<SqliteKernel, "queryAll">;
+type ReceiptExecutor = Pick<SqliteKernel, "queryAll"> | SqliteTransactionExecutor;
+type MutationKind = "create" | "edit" | "hidden" | "favorite" | "copy" | "archive";
 
-const receipts = new WeakMap<SqliteKernel, Map<string, ResultEnvelope>>();
-
-type LifecycleReceipt<Result> = Readonly<{
-  payload: string;
-  result: Result;
+type ReceiptRow = Readonly<{
+  mutation_kind: MutationKind;
+  request_json: string;
+  result_json: string;
 }>;
-
-const hiddenReceipts = new WeakMap<
-  SqliteKernel,
-  Map<string, LifecycleReceipt<CustomExerciseHiddenResult>>
->();
-const favoriteReceipts = new WeakMap<
-  SqliteKernel,
-  Map<string, LifecycleReceipt<CustomExerciseFavoriteResult>>
->();
-const copyReceipts = new WeakMap<
-  SqliteKernel,
-  Map<string, LifecycleReceipt<CustomExerciseCopyResult>>
->();
-const archiveReceipts = new WeakMap<
-  SqliteKernel,
-  Map<string, LifecycleReceipt<CustomExerciseArchiveMutationResult>>
->();
 
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) {
@@ -386,41 +363,47 @@ function exactValues(
     && left.every((value, index) => value === right[index]);
 }
 
-function replayLifecycle<Result extends { outcome: string }>(
-  store: WeakMap<SqliteKernel, Map<string, LifecycleReceipt<Result>>>,
-  kernel: SqliteKernel,
+async function replayReceipt<Result extends { outcome: string }>(
+  executor: ReceiptExecutor,
   requestId: string,
+  kind: MutationKind,
   input: unknown,
-): Result | null {
-  const receipt = store.get(kernel)?.get(requestId);
-  if (receipt === undefined) {
-    return null;
-  }
-  if (receipt.payload !== stableJson(input)) {
+): Promise<Result | null> {
+  const [receipt] = await executor.queryAll<ReceiptRow>(
+    `SELECT mutation_kind, request_json, result_json
+     FROM custom_exercise_mutation_receipts
+     WHERE request_id = ?`,
+    [requestId],
+  );
+  if (receipt === undefined) return null;
+  if (receipt.mutation_kind !== kind || receipt.request_json !== stableJson(input)) {
     throw new CustomExerciseConflictError(
       "custom_exercise_idempotency_conflict",
     );
   }
-  return Object.freeze({
-    ...receipt.result,
-    outcome: "already_committed",
-  }) as Result;
+  try {
+    const result = JSON.parse(receipt.result_json) as Result;
+    if (typeof result !== "object" || result === null) throw new Error("invalid");
+    return Object.freeze({ ...result, outcome: "already_committed" }) as Result;
+  } catch {
+    throw new Error("custom_exercise_receipt_invalid");
+  }
 }
 
-function rememberLifecycle<Result>(
-  store: WeakMap<SqliteKernel, Map<string, LifecycleReceipt<Result>>>,
-  kernel: SqliteKernel,
+async function writeReceipt<Result>(
+  transaction: SqliteTransactionExecutor,
   requestId: string,
+  kind: MutationKind,
   input: unknown,
-  committed: Result,
-): void {
-  const byRequest = store.get(kernel)
-    ?? new Map<string, LifecycleReceipt<Result>>();
-  byRequest.set(requestId, Object.freeze({
-    payload: stableJson(input),
-    result: committed,
-  }));
-  store.set(kernel, byRequest);
+  result: Result,
+  committedAtMs: number,
+): Promise<void> {
+  await transaction.execute(
+    `INSERT INTO custom_exercise_mutation_receipts
+      (request_id, mutation_kind, request_json, result_json, committed_at_ms)
+     VALUES (?, ?, ?, ?, ?)`,
+    [requestId, kind, stableJson(input), JSON.stringify(result), committedAtMs],
+  );
 }
 
 function invalidations(exerciseId: string): readonly string[] {
@@ -475,30 +458,6 @@ function result(
   });
 }
 
-function receiptReplay(
-  kernel: SqliteKernel,
-  kind: ResultEnvelope["kind"],
-  input: StagedCreateCustomExercise | StagedEditCustomExercise,
-): TransactionOutcome | null {
-  const receipt = receipts.get(kernel)?.get(input.requestId);
-  if (receipt === undefined) {
-    return null;
-  }
-  const payload = stableJson(input);
-  if (receipt.kind !== kind || receipt.payload !== payload) {
-    return {
-      kind: "conflict",
-      code: "custom_exercise_idempotency_conflict",
-    };
-  }
-  return {
-    kind: "result",
-    result: Object.freeze({
-      ...receipt.result,
-      outcome: "already_committed",
-    }),
-  };
-}
 
 async function readExercise(
   transaction: QueryExecutor,
@@ -1320,22 +1279,6 @@ async function applyEdit(
   return result(input, input.expectedExerciseRevision + 1);
 }
 
-function rememberReceipt(
-  kernel: SqliteKernel,
-  kind: ResultEnvelope["kind"],
-  input: StagedCreateCustomExercise | StagedEditCustomExercise,
-  committed: CustomExerciseMutationResult,
-): void {
-  const byRequest = receipts.get(kernel) ?? new Map<string, ResultEnvelope>();
-  byRequest.set(input.requestId, Object.freeze({
-    requestId: input.requestId,
-    kind,
-    payload: stableJson(input),
-    result: committed,
-  }));
-  receipts.set(kernel, byRequest);
-}
-
 function throwConflict(outcome: Extract<
   TransactionOutcome,
   { kind: "conflict" }
@@ -1351,15 +1294,16 @@ export function createCustomExerciseRepository(
 ): CustomExerciseRepository {
   return Object.freeze({
     async createCustomExercise(input) {
-      const replay = receiptReplay(kernel, "create", input);
-      if (replay !== null) {
-        if (replay.kind === "conflict") {
-          return throwConflict(replay);
-        }
-        return replay.result;
-      }
+      const replay = await replayReceipt<CustomExerciseMutationResult>(
+        kernel, input.requestId, "create", input,
+      );
+      if (replay !== null) return replay;
       const outcome = await kernel.write<TransactionOutcome>(
         async (transaction) => {
+          const replay = await replayReceipt<CustomExerciseMutationResult>(
+            transaction, input.requestId, "create", input,
+          );
+          if (replay !== null) return { kind: "result", result: replay };
           const existing = await readExercise(
             transaction,
             input.exerciseId,
@@ -1375,29 +1319,31 @@ export function createCustomExerciseRepository(
           if (duplicateConflict !== null) {
             return duplicateConflict;
           }
+          const committed = await applyCreate(transaction, input);
+          await writeReceipt(transaction, input.requestId, "create", input, committed, input.createdAtMs);
           return {
             kind: "result",
-            result: await applyCreate(transaction, input),
+            result: committed,
           };
         },
       );
       if (outcome.kind === "conflict") {
         return throwConflict(outcome);
       }
-      rememberReceipt(kernel, "create", input, outcome.result);
       return outcome.result;
     },
 
     async editCustomExercise(input) {
-      const replay = receiptReplay(kernel, "edit", input);
-      if (replay !== null) {
-        if (replay.kind === "conflict") {
-          return throwConflict(replay);
-        }
-        return replay.result;
-      }
+      const replay = await replayReceipt<CustomExerciseMutationResult>(
+        kernel, input.requestId, "edit", input,
+      );
+      if (replay !== null) return replay;
       const outcome = await kernel.write<TransactionOutcome>(
         async (transaction) => {
+          const replay = await replayReceipt<CustomExerciseMutationResult>(
+            transaction, input.requestId, "edit", input,
+          );
+          if (replay !== null) return { kind: "result", result: replay };
           const exercise = await readExercise(
             transaction,
             input.exerciseId,
@@ -1433,29 +1379,25 @@ export function createCustomExerciseRepository(
               code: "custom_exercise_source_inconsistent",
             };
           }
+          const committed = await applyEdit(transaction, input);
+          await writeReceipt(transaction, input.requestId, "edit", input, committed, input.editedAtMs);
           return {
             kind: "result",
-            result: await applyEdit(transaction, input),
+            result: committed,
           };
         },
       );
       if (outcome.kind === "conflict") {
         return throwConflict(outcome);
       }
-      rememberReceipt(kernel, "edit", input, outcome.result);
       return outcome.result;
     },
 
     async setExerciseHidden(input) {
-      const replay = replayLifecycle(
-        hiddenReceipts,
-        kernel,
-        input.requestId,
-        input,
+      const replay = await replayReceipt<CustomExerciseHiddenResult>(
+        kernel, input.requestId, "hidden", input,
       );
-      if (replay !== null) {
-        return replay;
-      }
+      if (replay !== null) return replay;
       const outcome = await kernel.write<
         | Readonly<{
             kind: "conflict";
@@ -1466,6 +1408,10 @@ export function createCustomExerciseRepository(
             result: CustomExerciseHiddenResult;
           }>
       >(async (transaction) => {
+        const replay = await replayReceipt<CustomExerciseHiddenResult>(
+          transaction, input.requestId, "hidden", input,
+        );
+        if (replay !== null) return { kind: "result", result: replay };
         const exercise = await readExercise(
           transaction,
           input.exerciseId,
@@ -1495,40 +1441,30 @@ export function createCustomExerciseRepository(
           hidden: input.hidden,
           updatedAtMs: input.updatedAtMs,
         });
+        const committed = Object.freeze({
+          outcome: "committed" as const,
+          exerciseId: input.exerciseId,
+          hidden: input.hidden,
+          preferenceRevision,
+          invalidations: invalidations(input.exerciseId),
+        });
+        await writeReceipt(transaction, input.requestId, "hidden", input, committed, input.updatedAtMs);
         return {
           kind: "result",
-          result: Object.freeze({
-            outcome: "committed",
-            exerciseId: input.exerciseId,
-            hidden: input.hidden,
-            preferenceRevision,
-            invalidations: invalidations(input.exerciseId),
-          }),
+          result: committed,
         };
       });
       if (outcome.kind === "conflict") {
         throw new CustomExerciseConflictError(outcome.code);
       }
-      rememberLifecycle(
-        hiddenReceipts,
-        kernel,
-        input.requestId,
-        input,
-        outcome.result,
-      );
       return outcome.result;
     },
 
     async setExerciseFavorite(input) {
-      const replay = replayLifecycle(
-        favoriteReceipts,
-        kernel,
-        input.requestId,
-        input,
+      const replay = await replayReceipt<CustomExerciseFavoriteResult>(
+        kernel, input.requestId, "favorite", input,
       );
-      if (replay !== null) {
-        return replay;
-      }
+      if (replay !== null) return replay;
       const outcome = await kernel.write<
         | Readonly<{
             kind: "conflict";
@@ -1539,6 +1475,10 @@ export function createCustomExerciseRepository(
             result: CustomExerciseFavoriteResult;
           }>
       >(async (transaction) => {
+        const replay = await replayReceipt<CustomExerciseFavoriteResult>(
+          transaction, input.requestId, "favorite", input,
+        );
+        if (replay !== null) return { kind: "result", result: replay };
         const exercise = await readExercise(
           transaction,
           input.exerciseId,
@@ -1568,40 +1508,30 @@ export function createCustomExerciseRepository(
           favorite: input.favorite,
           updatedAtMs: input.updatedAtMs,
         });
+        const committed = Object.freeze({
+          outcome: "committed" as const,
+          exerciseId: input.exerciseId,
+          favorite: input.favorite,
+          preferenceRevision,
+          invalidations: invalidations(input.exerciseId),
+        });
+        await writeReceipt(transaction, input.requestId, "favorite", input, committed, input.updatedAtMs);
         return {
           kind: "result",
-          result: Object.freeze({
-            outcome: "committed",
-            exerciseId: input.exerciseId,
-            favorite: input.favorite,
-            preferenceRevision,
-            invalidations: invalidations(input.exerciseId),
-          }),
+          result: committed,
         };
       });
       if (outcome.kind === "conflict") {
         throw new CustomExerciseConflictError(outcome.code);
       }
-      rememberLifecycle(
-        favoriteReceipts,
-        kernel,
-        input.requestId,
-        input,
-        outcome.result,
-      );
       return outcome.result;
     },
 
     async createCustomCopy(input) {
-      const replay = replayLifecycle(
-        copyReceipts,
-        kernel,
-        input.requestId,
-        input,
+      const replay = await replayReceipt<CustomExerciseCopyResult>(
+        kernel, input.requestId, "copy", input,
       );
-      if (replay !== null) {
-        return replay;
-      }
+      if (replay !== null) return replay;
       const outcome = await kernel.write<
         | Readonly<{
             kind: "conflict";
@@ -1612,6 +1542,10 @@ export function createCustomExerciseRepository(
             result: CustomExerciseCopyResult;
           }>
       >(async (transaction) => {
+        const replay = await replayReceipt<CustomExerciseCopyResult>(
+          transaction, input.requestId, "copy", input,
+        );
+        if (replay !== null) return { kind: "result", result: replay };
         if (await readExercise(transaction, input.exerciseId) !== undefined) {
           return {
             kind: "conflict",
@@ -1646,21 +1580,16 @@ export function createCustomExerciseRepository(
             code: "custom_exercise_revision_conflict",
           };
         }
+        const committed = await applyCustomCopy(transaction, source, input);
+        await writeReceipt(transaction, input.requestId, "copy", input, committed, input.createdAtMs);
         return {
           kind: "result",
-          result: await applyCustomCopy(transaction, source, input),
+          result: committed,
         };
       });
       if (outcome.kind === "conflict") {
         throw new CustomExerciseConflictError(outcome.code);
       }
-      rememberLifecycle(
-        copyReceipts,
-        kernel,
-        input.requestId,
-        input,
-        outcome.result,
-      );
       return outcome.result;
     },
 
@@ -1673,15 +1602,10 @@ export function createCustomExerciseRepository(
     },
 
     async setCustomExerciseArchived(input) {
-      const replay = replayLifecycle(
-        archiveReceipts,
-        kernel,
-        input.requestId,
-        input,
+      const replay = await replayReceipt<CustomExerciseArchiveMutationResult>(
+        kernel, input.requestId, "archive", input,
       );
-      if (replay !== null) {
-        return replay;
-      }
+      if (replay !== null) return replay;
       const outcome = await kernel.write<
         | Readonly<{
             kind: "conflict";
@@ -1692,6 +1616,10 @@ export function createCustomExerciseRepository(
             result: CustomExerciseArchiveMutationResult;
           }>
       >(async (transaction) => {
+        const replay = await replayReceipt<CustomExerciseArchiveMutationResult>(
+          transaction, input.requestId, "archive", input,
+        );
+        if (replay !== null) return { kind: "result", result: replay };
         const preview = await readArchivePreview(transaction, {
           exerciseId: input.exerciseId,
           expectedExerciseRevision: input.expectedExerciseRevision,
@@ -1730,31 +1658,23 @@ export function createCustomExerciseRepository(
         const affectedPlanIds = Object.freeze(
           preview.affectedPlans.map(({ planId }) => planId),
         );
+        const committed = Object.freeze({
+          outcome: "committed" as const,
+          exerciseId: input.exerciseId,
+          archived: input.archived,
+          preferenceRevision,
+          affectedPlanIds,
+          invalidations: lifecycleInvalidations(input.exerciseId, affectedPlanIds),
+        });
+        await writeReceipt(transaction, input.requestId, "archive", input, committed, input.updatedAtMs);
         return {
           kind: "result",
-          result: Object.freeze({
-            outcome: "committed",
-            exerciseId: input.exerciseId,
-            archived: input.archived,
-            preferenceRevision,
-            affectedPlanIds,
-            invalidations: lifecycleInvalidations(
-              input.exerciseId,
-              affectedPlanIds,
-            ),
-          }),
+          result: committed,
         };
       });
       if (outcome.kind === "conflict") {
         throw new CustomExerciseConflictError(outcome.code);
       }
-      rememberLifecycle(
-        archiveReceipts,
-        kernel,
-        input.requestId,
-        input,
-        outcome.result,
-      );
       return outcome.result;
     },
 

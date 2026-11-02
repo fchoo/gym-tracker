@@ -4,6 +4,7 @@ import {
 
 import type {
   CreateCustomExerciseInput,
+  CreateCustomCopyInput,
   EditCustomExerciseInput,
 } from "../domains/library/customExerciseCommands";
 import type {
@@ -144,6 +145,7 @@ export function createCustomExerciseRuntimeAdapter(
       const origin = createCustomCopyEditorOrigin({
         kind: "custom_copy",
         sourceExerciseId: detail.exerciseId,
+        sourceExerciseRevision: detail.exerciseRevision,
         sourceName: detail.name,
         draft: {
           ...editorDraft(detail as ExerciseDetailSnapshot),
@@ -155,13 +157,24 @@ export function createCustomExerciseRuntimeAdapter(
         origin,
       });
     },
-    saveExercise: (input: ExerciseEditorSaveInput) =>
-      input.expectedExerciseRevision === undefined
-        ? runtime.createCustomExercise(createCommandInput(input))
-        : runtime.editCustomExercise(editCommandInput({
-            ...input,
-            expectedExerciseRevision: input.expectedExerciseRevision,
-          })),
+    saveExercise: (input: ExerciseEditorSaveInput) => {
+      if (input.expectedExerciseRevision !== undefined) {
+        return runtime.editCustomExercise(editCommandInput({
+          ...input,
+          expectedExerciseRevision: input.expectedExerciseRevision,
+        }));
+      }
+      if (input.origin.kind === "custom_copy") {
+        return runtime.createCustomCopy({
+          requestId: input.requestId,
+          sourceExerciseId: input.origin.sourceExerciseId,
+          expectedSourceRevision: input.origin.sourceExerciseRevision,
+          exerciseId: input.exerciseId,
+          name: input.name,
+        });
+      }
+      return runtime.createCustomExercise(createCommandInput(input));
+    },
     previewArchive: (detail: ExerciseDetailSnapshot) =>
       runtime.previewCustomExerciseArchive(
         detail.exerciseId,

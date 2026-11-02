@@ -4,11 +4,14 @@
 !.env.example
 
 node_modules/
+.venv/
 .expo/
 dist/
 web-build/
 coverage/
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
 
 .kotlin/
 .metro-health-check*
@@ -21,6 +24,7 @@ yarn-error.*
 /android/
 /ios/
 /modules/*/android/build/
+/modules/garmin-connect/python/garmin-python-artifacts/
 
 artifacts/native/
 

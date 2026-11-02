@@ -1,0 +1,246 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 19 Progress parity semantic journey
+tags:
+  - phase19
+  - progress
+  - phase20-owned-native-evidence
+---
+- assertTrue: ${PHASE19_SCENARIO != ''}
+- launchApp:
+    clearState: false
+    stopApp: true
+- tapOn: "Progress"
+- assertVisible: "Progress"
+- assertVisible: "All"
+- assertVisible: "Strength"
+- assertVisible: "Running"
+- assertVisible: "4 weeks"
+- assertVisible: "12 weeks"
+- assertVisible: "All time"
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'sport-range-retention'}
+    commands:
+      - tapOn: "Strength"
+      - tapOn: "12 weeks"
+      - tapOn: "Running"
+      - assertVisible: "12 weeks"
+      - pressKey: TAB
+      - pressKey: DPAD_LEFT
+      - pressKey: ENTER
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'all-ready'}
+    commands:
+      - tapOn: "All"
+      - assertVisible: "Nearest active goal"
+      - assertVisible: "Latest"
+      - assertVisible: "Best"
+      - assertVisible: "Target"
+      - assertVisible: "Gap"
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'strength-ready'}
+    commands:
+      - tapOn: "Strength"
+      - assertVisible: "Exercise progress"
+      - assertVisible: "Personal history"
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'running-ready'}
+    commands:
+      - tapOn: "Running"
+      - assertVisible: "Running goals"
+      - assertVisible: "Garmin imported"
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'fixed-goal-pacing'}
+    commands:
+      - tapOn: "Running"
+      - assertVisible: "2.4 km"
+      - assertVisible: "11:00"
+      - assertVisible: "Pace 4:35/km"
+      - assertVisible: "400 m 1:50"
+      - assertVisible: "200 m 0:55"
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'unset-goals'}
+    commands:
+      - tapOn: "Running"
+      - assertVisible: "Target unset"
+      - assertVisible: "No effort recorded"
+      - assertVisible: "Set target"
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'loading'}
+    commands:
+      - assertVisible: "Loading progress"
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'empty'}
+    commands:
+      - assertVisible: "No progress history yet"
+      - assertVisible: "Refresh progress"
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'sparse'}
+    commands:
+      - assertVisible: "More data needed"
+      - assertVisible: "One comparable result is not enough to call a trend."
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'rebuild-updating'}
+    commands:
+      - assertVisible: "Updating progress"
+      - assertVisible: "Refresh progress"
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'read-error-retry'}
+    commands:
+      - assertVisible: "Progress could not be loaded"
+      - tapOn: "Retry loading progress"
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'history-data-equivalence'}
+    commands:
+      - tapOn: "Running"
+      - tapOn: "Open history"
+      - assertVisible: "Show history data"
+      - tapOn: "Show history data"
+      - assertVisible: "Hide history data"
+      - pressKey: BACK
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'exercise-history-return'}
+    commands:
+      - tapOn: "Strength"
+      - tapOn: "Open history"
+      - assertVisible: "Personal history"
+      - pressKey: BACK
+      - assertVisible: "Exercise progress"
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'relative-view-basis'}
+    commands:
+      - tapOn: "Strength"
+      - tapOn: "Open history"
+      - tapOn: "Relative"
+      - assertVisible: "Bodyweight-relative strength is a view only and never changes targets."
+      - pressKey: BACK
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'target-editor'}
+    commands:
+      - tapOn: "Running"
+      - tapOn: "Set target"
+      - assertVisible: "Running target"
+      - assertVisible: "Target time"
+      - assertVisible: "Save target"
+      - pressKey: BACK
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'target-success'}
+    commands:
+      - tapOn: "Save target"
+      - assertVisible: "target saved."
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'target-failure'}
+    commands:
+      - tapOn: "Save target"
+      - assertVisible: "Target was not saved"
+      - assertVisible: "Retry saving target"
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'target-stale'}
+    commands:
+      - tapOn: "Save target"
+      - assertVisible: "Target changed since this sheet opened"
+      - assertVisible: "Reload target"
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'target-lost-ack-replay'}
+    commands:
+      - tapOn: "Retry saving target"
+      - assertVisible: "target saved."
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'recommendation-keep'}
+    commands:
+      - tapOn: "Strength"
+      - tapOn: "Review target"
+      - assertVisible: "Current"
+      - assertVisible: "Proposed"
+      - tapOn: "Keep target unchanged"
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'recommendation-use'}
+    commands:
+      - tapOn: "Use target"
+      - assertVisible: "target updated to"
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'recommendation-failure'}
+    commands:
+      - tapOn: "Use target"
+      - assertVisible: "Target decision was not saved"
+      - assertVisible: "Retry target decision"
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'recommendation-stale'}
+    commands:
+      - tapOn: "Use target"
+      - assertVisible: "Recommendation no longer applies"
+      - assertVisible: "Review current target"
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'progress-settings'}
+    commands:
+      - tapOn: "Settings"
+      - assertVisible: "Progress settings"
+      - assertVisible: "No readiness or composite score is calculated."
+      - pressKey: BACK
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'bodyweight-empty'}
+    commands:
+      - tapOn: "Body metrics"
+      - assertVisible: "No bodyweight entries"
+      - assertVisible: "Add first entry"
+      - pressKey: BACK
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'bodyweight-history'}
+    commands:
+      - tapOn: "Body metrics"
+      - assertVisible: "Bodyweight history"
+      - assertVisible: "Edit bodyweight entry"
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'bodyweight-success'}
+    commands:
+      - tapOn: "Save entry"
+      - assertVisible: "Bodyweight entry saved."
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'bodyweight-private-failure'}
+    commands:
+      - tapOn: "Save entry"
+      - assertVisible: "Bodyweight entry was not saved."
+      - assertVisible: "Your saved bodyweight history and workout targets were not changed."
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'bodyweight-stale'}
+    commands:
+      - tapOn: "Delete bodyweight entry"
+      - assertVisible: "Bodyweight entry was not deleted."
+- runFlow:
+    when:
+      true: ${PHASE19_SCENARIO == 'no-write-dismissal'}
+    commands:
+      - tapOn: "Body metrics"
+      - pressKey: BACK
+      - tapOn: "Settings"
+      - pressKey: BACK
+      - assertVisible: "Progress"
+- takeScreenshot: "phase19-${PHASE19_EVIDENCE_ID}-${PHASE19_CONFIGURATION_ID}"

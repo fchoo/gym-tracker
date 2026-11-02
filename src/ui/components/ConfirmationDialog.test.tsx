@@ -1,0 +1,157 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { describe, expect, it, jest } from "@jest/globals";
+import React from "react";
+import { Text, View } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+
+import { ConfirmationDialog } from "./ConfirmationDialog";
+import { AppearanceProvider } from "../theme";
+
+function renderDialog(
+  overrides: Partial<React.ComponentProps<typeof ConfirmationDialog>> = {},
+) {
+  const onCancel = jest.fn();
+  const onConfirm = jest.fn();
+  return render(
+    <SafeAreaProvider initialMetrics={{
+      frame: { height: 900, width: 800, x: 0, y: 0 },
+      insets: { bottom: 16, left: 0, right: 0, top: 24 },
+    }}>
+      <AppearanceProvider>
+        <ConfirmationDialog
+          body="This action cannot be undone."
+          cancelLabel="Keep workout"
+          confirmLabel="Remove workout"
+          heading="Remove workout"
+          onCancel={onCancel}
+          onConfirm={onConfirm}
+          visible
+          {...overrides}
+        />
+      </AppearanceProvider>
+    </SafeAreaProvider>,
+  ).then((result) => ({ ...result, onCancel, onConfirm }));
+}
+
+function BusyDialogHarness({
+  onAlternate = jest.fn(),
+  onCancel = jest.fn(),
+  onConfirm = jest.fn(),
+}: Readonly<{
+  onAlternate?: jest.Mock;
+  onCancel?: jest.Mock;
+  onConfirm?: jest.Mock;
+}>) {
+  const [busy, setBusy] = React.useState(false);
+
+  return (
+    <SafeAreaProvider initialMetrics={{
+      frame: { height: 900, width: 800, x: 0, y: 0 },
+      insets: { bottom: 16, left: 0, right: 0, top: 24 },
+    }}>
+      <AppearanceProvider>
+        <ConfirmationDialog
+          alternateLabel="Discard"
+          body="This action cannot be undone."
+          cancelLabel="Keep editing"
+          confirmBusy={busy}
+          confirmLabel="Save changes"
+          heading="Save changes?"
+          onAlternate={onAlternate}
+          onCancel={onCancel}
+          onConfirm={() => {
+            setBusy(true);
+            onConfirm();
+          }}
+          visible
+        />
+      </AppearanceProvider>
+    </SafeAreaProvider>
+  );
+}
+
+describe("ConfirmationDialog", () => {
+  it("names the consequence, focuses its safe action, and dismisses without writing", async () => {
+    const safeFocus = jest.fn();
+    const restoreFocus = jest.fn();
+    const { onCancel, onConfirm } = await renderDialog({
+      initialFocusRef: { current: { focus: safeFocus } as unknown as View },
+      restoreFocusRef: { current: { focus: restoreFocus } as unknown as View },
+    });
+
+    expect(screen.getByRole("header", { name: "Remove workout" }))
+      .toBeOnTheScreen();
+    expect(safeFocus).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(screen.getByRole("button", { name: "Keep workout" }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
+    await waitFor(() => expect(restoreFocus).toHaveBeenCalledTimes(1));
+  });
+
+  it("prevents duplicate submit while busy", async () => {
+    const { onConfirm } = await renderDialog({ confirmBusy: true });
+    const confirm = screen.getByRole("button", { name: "Remove workout" });
+
+    expect(confirm).toBeDisabled();
+    await fireEvent.press(confirm);
+    await fireEvent.press(confirm);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("keeps a busy destructive command modal through every cancellation ingress", async () => {
+    const { onCancel } = await renderDialog({ confirmBusy: true });
+
+    await fireEvent(
+      screen.getByTestId("bottom-sheet-modal"),
+      "requestClose",
+    );
+    await fireEvent(screen.getByTestId("bottom-sheet-frame"), "keyDown", {
+      nativeEvent: { key: "Escape", preventDefault: jest.fn() },
+    });
+    await fireEvent.press(
+      screen.getByLabelText("Dismiss sheet", { includeHiddenElements: true }),
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Close remove workout" }));
+
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(screen.getByRole("header", { name: "Remove workout" })).toBeOnTheScreen();
+  });
+
+  it("disables the alternate action and all dismissal ingress once confirm goes busy", async () => {
+    const onAlternate = jest.fn();
+    const onCancel = jest.fn();
+    const onConfirm = jest.fn();
+    await render(
+      <BusyDialogHarness
+        onAlternate={onAlternate}
+        onCancel={onCancel}
+        onConfirm={onConfirm}
+      />,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Discard" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Keep editing" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Discard" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Keep editing" }));
+    await fireEvent.press(
+      screen.getByLabelText("Dismiss sheet", { includeHiddenElements: true }),
+    );
+    await fireEvent(
+      screen.getByTestId("bottom-sheet-modal"),
+      "requestClose",
+    );
+    await fireEvent(screen.getByTestId("bottom-sheet-frame"), "keyDown", {
+      nativeEvent: { key: "Escape", preventDefault: jest.fn() },
+    });
+
+    expect(onAlternate).not.toHaveBeenCalled();
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(screen.getByRole("header", { name: "Save changes?" })).toBeOnTheScreen();
+  });
+});

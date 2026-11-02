@@ -1,0 +1,23 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 20 production plan-type chooser visual probe
+tags: [v1.2, phase-20, visual, synthetic-fixture]
+---
+- assertTrue: ${VISUAL_LINK != null && (VISUAL_MODE == 'capture' || VISUAL_MODE == 'reset')}
+- openLink: "${VISUAL_LINK}"
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture'}
+    commands:
+      - extendedWaitUntil:
+          visible: { id: "plan-type-chooser" }
+          timeout: 15000
+      - assertVisible: "What are you training for?"
+      - assertVisible: "Strength"
+      - assertVisible: "Running"
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'reset'}
+    commands:
+      - extendedWaitUntil:
+          visible: { id: "phase20-visual-reset" }
+          timeout: 15000

@@ -41,13 +41,13 @@ describe("Expo rest notification adapter", () => {
       "sound and vibration",
       { soundEnabled: true, vibrationEnabled: true },
       REST_NOTIFICATION_CHANNEL_IDS.soundVibration,
-      { sound: "default", enableVibrate: true, vibrationPattern: [0, 180] },
+      { sound: "rest_complete.wav", enableVibrate: true, vibrationPattern: [0, 180] },
     ],
     [
       "sound only",
       { soundEnabled: true, vibrationEnabled: false },
       REST_NOTIFICATION_CHANNEL_IDS.soundOnly,
-      { sound: "default", enableVibrate: false, vibrationPattern: null },
+      { sound: "rest_complete.wav", enableVibrate: false, vibrationPattern: null },
     ],
     [
       "vibration only",
@@ -61,7 +61,7 @@ describe("Expo rest notification adapter", () => {
       REST_NOTIFICATION_CHANNEL_IDS.silent,
       { sound: null, enableVibrate: false, vibrationPattern: null },
     ],
-  ])("creates a distinct immutable v2 channel for %s", async (
+  ])("creates a distinct immutable preference channel for %s", async (
     _label,
     preferences,
     channelId,
@@ -94,7 +94,7 @@ describe("Expo rest notification adapter", () => {
         importance: Notifications.AndroidImportance.DEFAULT,
         showBadge: false,
         enableLights: false,
-        sound: "default",
+        sound: "rest_complete.wav",
         enableVibrate: true,
         vibrationPattern: [0, 180],
       },
@@ -145,14 +145,14 @@ describe("Expo rest notification adapter", () => {
       "sound and vibration",
       { soundEnabled: true, vibrationEnabled: true },
       REST_NOTIFICATION_CHANNEL_ID,
-      "default",
+      "rest_complete.wav",
       [0, 180],
     ],
     [
       "sound only",
       { soundEnabled: true, vibrationEnabled: false },
       REST_NOTIFICATION_CHANNEL_IDS.soundOnly,
-      "default",
+      "rest_complete.wav",
       [],
     ],
     [
@@ -227,7 +227,7 @@ describe("Expo rest notification adapter", () => {
           restRevision: 3,
           endsAtMs: 100_000,
         },
-        sound: "default",
+        sound: "rest_complete.wav",
         vibrate: [0, 180],
       },
       trigger: {

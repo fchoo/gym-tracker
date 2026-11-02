@@ -1,0 +1,309 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 11 portable merge Data and recovery flow
+tags:
+  - phase-11
+  - portable-merge
+---
+- assertTrue: ${PHASE11_STAGE == 'navigation-cancel' || PHASE11_STAGE == 'restore-clean-fixture' || PHASE11_STAGE == 'merge-review-cancel' || PHASE11_STAGE == 'merge-commit-relaunch'}
+- runFlow:
+    when:
+      true: ${PHASE11_STAGE == 'navigation-cancel'}
+    commands:
+      - launchApp:
+          clearState: false
+          stopApp: true
+          permissions:
+            notifications: deny
+      - assertVisible: "Today"
+      - extendedWaitUntil:
+          visible: "Use Full Body Foundation"
+          timeout: 90000
+      - assertVisible: "Settings"
+      - tapOn: "Settings"
+      - scrollUntilVisible:
+          element:
+            id: "more-data-and-recovery"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn:
+          id: "more-data-and-recovery"
+      - assertVisible: "Create secure backup"
+      - assertVisible: "Latest backup: Never exported"
+      - assertVisible: "Restore clean"
+      - assertVisible: "Import / merge backup"
+      - pressKey: TAB
+      - assertVisible: "Restore password"
+      - tapOn: "Restore password"
+      - inputText: ${PHASE11_BACKUP_PASSWORD}
+      - hideKeyboard
+      - tapOn:
+          id: "restore-clean-action"
+      - extendedWaitUntil:
+          visible: "No backup was selected"
+          timeout: 30000
+      - assertNotVisible: "Review restore clean"
+      - scrollUntilVisible:
+          element:
+            text: "Export CSV"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - assertVisible: "Export CSV"
+- runFlow:
+    when:
+      true: ${PHASE11_STAGE == 'restore-clean-fixture'}
+    commands:
+      - launchApp:
+          clearState: false
+          stopApp: true
+          permissions:
+            notifications: deny
+      - assertVisible: "Today"
+      - extendedWaitUntil:
+          visible: "Use Full Body Foundation"
+          timeout: 90000
+      - tapOn: "Settings"
+      - scrollUntilVisible:
+          element:
+            id: "more-data-and-recovery"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn:
+          id: "more-data-and-recovery"
+      - assertVisible: "Restore clean"
+      - tapOn: "Restore password"
+      - inputText: ${PHASE11_BACKUP_PASSWORD}
+      - hideKeyboard
+      - tapOn:
+          id: "restore-clean-action"
+      - extendedWaitUntil:
+          visible: "Review restore clean"
+          timeout: 60000
+      - assertVisible: "Source format version"
+      - assertVisible: "Sessions"
+      - assertVisible: "Settings"
+      - scrollUntilVisible:
+          element:
+            text: "Type REPLACE to continue"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - assertVisible: "Type REPLACE to continue"
+      - assertVisible: "Restore backup"
+      - assertVisible: "Cancel restore clean"
+      - tapOn: "Type REPLACE to continue"
+      - inputText: "replace"
+      - hideKeyboard
+      - assertVisible: "Restore backup"
+      - eraseText: 7
+      - inputText: "REPLACE"
+      - hideKeyboard
+      - tapOn:
+          id: "restore-backup-action"
+      - extendedWaitUntil:
+          visible: "^(Backup restored. Search and progress are ready.|Backup restored. Recalculating search and progress.)$"
+          timeout: 90000
+      - runFlow:
+          when:
+            visible: "Backup restored. Recalculating search and progress."
+          commands:
+            - tapOn:
+                id: "restore-rebuild-retry-action"
+            - extendedWaitUntil:
+                visible: "^(Backup restored. Search and progress are ready.|Backup restored. Recalculating search and progress.)$"
+                timeout: 90000
+      - assertVisible:
+          text: "^(Backup restored. Search and progress are ready.|Backup restored. Recalculating search and progress.)$"
+      - pressKey: BACK
+      - pressKey: BACK
+      - tapOn: "Calendar"
+      - extendedWaitUntil:
+          visible: "Local Merge Baseline · Base Day"
+          timeout: 60000
+- runFlow:
+    when:
+      true: ${PHASE11_STAGE == 'merge-review-cancel'}
+    commands:
+      - launchApp:
+          clearState: false
+          stopApp: true
+          permissions:
+            notifications: deny
+      - assertVisible: "Today"
+      - extendedWaitUntil:
+          visible: "Use Full Body Foundation"
+          timeout: 90000
+      - tapOn: "Settings"
+      - scrollUntilVisible:
+          element:
+            id: "more-data-and-recovery"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn:
+          id: "more-data-and-recovery"
+      - assertVisible: "Restore clean"
+      - tapOn: "Restore password"
+      - inputText: ${PHASE11_BACKUP_PASSWORD}
+      - hideKeyboard
+      - tapOn:
+          id: "restore-clean-action"
+      - extendedWaitUntil:
+          visible: "Review restore clean"
+          timeout: 60000
+      - scrollUntilVisible:
+          element:
+            text: "Type REPLACE to continue"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Type REPLACE to continue"
+      - inputText: "REPLACE"
+      - hideKeyboard
+      - tapOn:
+          id: "restore-backup-action"
+      - extendedWaitUntil:
+          visible: "^(Backup restored. Search and progress are ready.|Backup restored. Recalculating search and progress.)$"
+          timeout: 90000
+      - scrollUntilVisible:
+          element:
+            text: "Import / merge backup"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - assertVisible: "Import / merge backup"
+      - scrollUntilVisible:
+          element:
+            text: "Merge password"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Merge password"
+      - inputText: ${PHASE11_BACKUP_PASSWORD}
+      - hideKeyboard
+      - tapOn:
+          id: "merge-open-action"
+      - extendedWaitUntil:
+          visible: "Review merge"
+          timeout: 60000
+      - assertVisible: "No changes have been made yet."
+      - assertVisible: "Records inserted"
+      - assertVisible: "Duplicates unchanged"
+      - assertVisible: "Archive wins"
+      - assertVisible: "Local wins"
+      - assertVisible: "Kept both"
+      - assertVisible: "Remapped IDs"
+      - assertVisible: "Conflicts"
+      - scrollUntilVisible:
+          element:
+            text: "Type MERGE to continue"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - assertVisible: "Newer sessions and corrections win. Existing settings stay. Different custom exercises and plans are kept by identity."
+      - assertVisible: "Type MERGE to continue"
+      - assertVisible: "Merge backup"
+      - assertVisible: "Cancel merge"
+      - tapOn:
+          id: "merge-cancel-action"
+      - assertVisible: "Merge cancelled. No changes have been made."
+- runFlow:
+    when:
+      true: ${PHASE11_STAGE == 'merge-commit-relaunch'}
+    commands:
+      - launchApp:
+          clearState: false
+          stopApp: true
+          permissions:
+            notifications: deny
+      - assertVisible: "Today"
+      - extendedWaitUntil:
+          visible: "Use Full Body Foundation"
+          timeout: 90000
+      - tapOn: "Settings"
+      - scrollUntilVisible:
+          element:
+            id: "more-data-and-recovery"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn:
+          id: "more-data-and-recovery"
+      - assertVisible: "Restore clean"
+      - tapOn: "Restore password"
+      - inputText: ${PHASE11_BACKUP_PASSWORD}
+      - hideKeyboard
+      - tapOn:
+          id: "restore-clean-action"
+      - extendedWaitUntil:
+          visible: "Review restore clean"
+          timeout: 60000
+      - scrollUntilVisible:
+          element:
+            text: "Type REPLACE to continue"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Type REPLACE to continue"
+      - inputText: "REPLACE"
+      - hideKeyboard
+      - tapOn:
+          id: "restore-backup-action"
+      - extendedWaitUntil:
+          visible: "^(Backup restored. Search and progress are ready.|Backup restored. Recalculating search and progress.)$"
+          timeout: 90000
+      - scrollUntilVisible:
+          element:
+            text: "Import / merge backup"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - assertVisible: "Import / merge backup"
+      - scrollUntilVisible:
+          element:
+            text: "Merge password"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Merge password"
+      - inputText: ${PHASE11_BACKUP_PASSWORD}
+      - hideKeyboard
+      - tapOn:
+          id: "merge-open-action"
+      - extendedWaitUntil:
+          visible: "Review merge"
+          timeout: 60000
+      - assertVisible: "No changes have been made yet."
+      - scrollUntilVisible:
+          element:
+            text: "Type MERGE to continue"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Type MERGE to continue"
+      - inputText: "merge"
+      - hideKeyboard
+      - assertVisible: "Merge backup"
+      - eraseText: 5
+      - inputText: "MERGE"
+      - hideKeyboard
+      - tapOn:
+          id: "merge-backup-action"
+      - extendedWaitUntil:
+          visible: "^(Merge complete. Search and progress are ready.|Merge saved. Recalculating search and progress.)$"
+          timeout: 90000
+      - runFlow:
+          when:
+            visible: "Merge saved. Recalculating search and progress."
+          commands:
+            - tapOn:
+                id: "merge-rebuild-retry-action"
+            - extendedWaitUntil:
+                visible: "^(Merge complete. Search and progress are ready.|Merge saved. Recalculating search and progress.)$"
+                timeout: 90000
+      - assertVisible:
+          text: "^(Merge complete. Search and progress are ready.|Merge saved. Recalculating search and progress.)$"
+      - assertNotVisible: "Backup could not be opened"
+      - assertNotVisible: "Merge could not be completed"

@@ -1,0 +1,235 @@
+import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import { describe, expect, it, jest } from "@jest/globals";
+import React from "react";
+
+import type { RunningPlanAggregate } from "../../domains/running/contracts";
+import { makeRunningSessionSpec, runningSessionKindLabel, RunningSessionEditorScreen } from "../screens/RunningSessionEditorScreen";
+import { initialRunningSessionFormDraft } from "../components/RunningSessionFields";
+import { AppearanceProvider } from "../theme";
+
+const mockRequestAndroidViewFocus = jest.fn<(nativeID: string) => Promise<boolean>>(async () => true);
+jest.mock("../../bootstrap/androidViewFocus", () => ({
+  requestAndroidViewFocus: (nativeID: string) => mockRequestAndroidViewFocus(nativeID),
+}));
+
+const plan: RunningPlanAggregate = {
+  version: 1, id: "plan-1", name: "Plan", revision: 1, active: false, lifecycle: "inactive", createdAtMs: 1,
+  goal: { version: 1, id: "goal-1", planId: "plan-1", revision: 1, goalDistanceMeters: 5000, trainingDays: ["Monday"], createdAtMs: 1 },
+  sessions: [],
+};
+
+describe("RunningSessionEditorScreen", () => {
+  it("announces and focuses the first invalid field instead of treating validation as a save failure", async () => {
+    const announce = jest.spyOn(require("react-native").AccessibilityInfo, "announceForAccessibility");
+    const view = await render(<AppearanceProvider><RunningSessionEditorScreen
+      loadPlan={jest.fn(async () => plan)}
+      mode="create"
+      onBack={jest.fn()}
+      onSaved={jest.fn()}
+      planId="plan-1"
+      createRequestId={() => "request-validation"}
+      saveSession={jest.fn(async () => ({ plan, sessionRootId: "unused" }))}
+    /></AppearanceProvider>);
+
+    await view.findByRole("header", { name: "New session" });
+    await fireEvent.press(view.getByRole("button", { name: "Save session" }));
+
+    expect(view.getByText("Recovery session needs attention")).toBeOnTheScreen();
+    expect(view.queryByText("Save failed")).not.toBeOnTheScreen();
+    expect(view.getByLabelText("Volume (metres)")).toHaveProp("nativeID", "running-session-recovery-volume");
+    expect(announce).toHaveBeenCalledWith("Running Recovery session needs attention.");
+  });
+
+  it("names every selected session kind truthfully in save recovery messages", () => {
+    expect(runningSessionKindLabel("long_run")).toBe("Long run");
+    expect(runningSessionKindLabel("tempo")).toBe("Tempo");
+    expect(runningSessionKindLabel("intervals")).toBe("Intervals");
+    expect(runningSessionKindLabel("hills")).toBe("Hills");
+    expect(runningSessionKindLabel("fartlek")).toBe("Fartlek");
+  });
+
+  it("serializes only the selected Long run or Progression contextual variant", () => {
+    const longRun = makeRunningSessionSpec({
+      ...initialRunningSessionFormDraft("long_run", "Tuesday"),
+      volume: "12000",
+      target: { mode: "heart_rate_zone", paceMsPerKm: "999", heartRateZone: "2", rpe: "9" },
+      finish: "steady_finish",
+      stages: "9",
+      startTarget: { mode: "rpe", paceMsPerKm: "", heartRateZone: "", rpe: "3" },
+      finishTarget: { mode: "rpe", paceMsPerKm: "", heartRateZone: "", rpe: "8" },
+    });
+    expect(longRun).toEqual(expect.objectContaining({
+      sessionKind: "long_run", advisoryTarget: { heartRateZone: 2 }, contextual: { finish: "steady_finish" },
+    }));
+    expect(longRun).not.toHaveProperty("contextual.stages");
+
+    const progression = makeRunningSessionSpec({
+      ...initialRunningSessionFormDraft("progression", "Thursday"),
+      volume: "9000", stages: "3",
+      startTarget: { mode: "rpe", paceMsPerKm: "", heartRateZone: "", rpe: "4" },
+      finishTarget: { mode: "pace", paceMsPerKm: "290000", heartRateZone: "", rpe: "" },
+      finish: "progression_finish",
+    });
+    expect(progression).toEqual(expect.objectContaining({
+      sessionKind: "progression",
+      contextual: { stages: 3, startTarget: { rpe: 4 }, finishTarget: { paceMsPerKm: 290000 } },
+    }));
+    expect(progression).not.toHaveProperty("advisoryTarget");
+  });
+
+  it("serializes exact Tempo and Intervals branches with selected units and no inactive fields", () => {
+    const tempo = makeRunningSessionSpec({
+      ...initialRunningSessionFormDraft("tempo", "Tuesday"),
+      tempoFormat: "tempo_repeats",
+      repeats: "3",
+      work: "800",
+      workUnit: "distance",
+      recovery: "120000",
+      recoveryUnit: "duration",
+      target: { mode: "pace", paceMsPerKm: "285000", heartRateZone: "4", rpe: "8" },
+    } as never);
+    expect(tempo).toEqual(expect.objectContaining({
+      sessionKind: "tempo",
+      advisoryTarget: { paceMsPerKm: 285000 },
+      contextual: {
+        format: "tempo_repeats",
+        repetitions: 3,
+        work: { distanceMeters: 800 },
+        recovery: { durationMs: 120000 },
+      },
+    }));
+    expect(tempo).not.toHaveProperty("contextual.durationMs");
+
+    const intervals = makeRunningSessionSpec({
+      ...initialRunningSessionFormDraft("intervals", "Thursday"),
+      repeats: "6",
+      work: "60000",
+      workUnit: "duration",
+      recovery: "200",
+      recoveryUnit: "distance",
+      target: { mode: "heart_rate_zone", paceMsPerKm: "300000", heartRateZone: "3", rpe: "8" },
+    } as never);
+    expect(intervals).toEqual(expect.objectContaining({
+      sessionKind: "intervals",
+      advisoryTarget: { heartRateZone: 3 },
+      contextual: {
+        repetitions: 6,
+        work: { durationMs: 60000 },
+        recovery: { distanceMeters: 200 },
+      },
+    }));
+  });
+
+  it("serializes Hills with distinct uphill and return-recovery quantities", () => {
+    const hills = makeRunningSessionSpec({
+      ...initialRunningSessionFormDraft("hills", "Saturday"),
+      repeats: "8",
+      work: "250",
+      workUnit: "distance",
+      recovery: "90000",
+      recoveryUnit: "duration",
+      target: { mode: "rpe", paceMsPerKm: "300000", heartRateZone: "4", rpe: "7" },
+    } as never);
+    expect(hills).toEqual(expect.objectContaining({
+      sessionKind: "hills",
+      advisoryTarget: { rpe: 7 },
+      contextual: { repetitions: 8, work: { distanceMeters: 250 }, returnRecovery: { durationMs: 90000 } },
+    }));
+    expect(hills).not.toHaveProperty("contextual.recovery");
+  });
+
+  it("serializes Fartlek styles without mixing quantity and cue branches", () => {
+    const structured = makeRunningSessionSpec({
+      ...initialRunningSessionFormDraft("fartlek", "Sunday"),
+      repeats: "5", work: "45000", workUnit: "duration", recovery: "150", recoveryUnit: "distance",
+      target: { mode: "rpe", paceMsPerKm: "", heartRateZone: "", rpe: "6" },
+      fastCue: "ignored", easyRecoveryCue: "ignored",
+    } as never);
+    expect(structured).toEqual(expect.objectContaining({ contextual: { format: "structured", repetitions: 5, work: { durationMs: 45000 }, recovery: { distanceMeters: 150 } } }));
+    expect(structured).not.toHaveProperty("contextual.fastCue");
+
+    const unstructured = makeRunningSessionSpec({
+      ...initialRunningSessionFormDraft("fartlek", "Sunday"),
+      fartlekStyle: "unstructured", repeats: "7", fastCue: "lamp posts", easyRecoveryCue: "easy to bridge",
+      target: { mode: "heart_rate_zone", paceMsPerKm: "", heartRateZone: "3", rpe: "" },
+      work: "60000", recovery: "30000",
+    } as never);
+    expect(unstructured).toEqual(expect.objectContaining({ contextual: { format: "unstructured", repetitions: 7, fastCue: "lamp posts", easyRecoveryCue: "easy to bridge" } }));
+    expect(unstructured).not.toHaveProperty("contextual.work");
+  });
+
+  it("keeps create identity UI-only until the committed Recovery command readback", async () => {
+    const saveSession = jest.fn(async () => ({ plan: { ...plan, revision: 2 }, sessionRootId: "session-root-1" }));
+    const onSaved = jest.fn();
+    const view = await render(<AppearanceProvider><RunningSessionEditorScreen
+      loadPlan={jest.fn(async () => plan)}
+      mode="create"
+      onBack={jest.fn()}
+      onSaved={onSaved}
+      planId="plan-1"
+      createRequestId={() => "request-1"}
+      saveSession={saveSession}
+    /></AppearanceProvider>);
+
+    await view.findByRole("header", { name: "New session" });
+    await fireEvent.changeText(view.getByLabelText("Volume (metres)"), "5000");
+    await fireEvent.changeText(view.getByLabelText("RPE (1–10)"), "5");
+    await fireEvent.press(view.getByRole("button", { name: "Save session" }));
+
+    await waitFor(() => expect(saveSession).toHaveBeenCalledWith(expect.objectContaining({
+      expectedPlanRevision: 1,
+      sessionRootId: undefined,
+      draft: expect.objectContaining({ kind: "recovery", volume: "5000" }),
+    })));
+    expect(onSaved).toHaveBeenCalledWith("session-root-1");
+  });
+
+  it("retains a valid Long run draft and exposes a retry after a write failure", async () => {
+    const saveSession = jest.fn(async () => { throw new Error("conflict"); });
+    const view = await render(<AppearanceProvider><RunningSessionEditorScreen
+      loadPlan={jest.fn(async () => plan)}
+      mode="create"
+      onBack={jest.fn()}
+      onSaved={jest.fn()}
+      planId="plan-1"
+      createRequestId={() => "request-2"}
+      saveSession={saveSession}
+    /></AppearanceProvider>);
+
+    await view.findByRole("header", { name: "New session" });
+    await fireEvent.press(view.getByRole("button", { name: "Workout type Long run" }));
+    await fireEvent.changeText(view.getByLabelText("Volume (metres)"), "12000");
+    await fireEvent.changeText(view.getByLabelText("RPE (1–10)"), "6");
+    await fireEvent.press(view.getByRole("button", { name: "Save session" }));
+
+    await view.findByText("Long run session could not be saved");
+    expect(view.getByText("Long run session could not be saved. Your edits are still here. Try again.")).toBeOnTheScreen();
+    expect(view.getByLabelText("Volume (metres)")).toHaveProp("value", "12000");
+    expect(view.getByRole("button", { name: "Retry saving Long run session" })).toBeOnTheScreen();
+    expect(view.getByText("Long run session could not be saved").parent?.parent).toHaveProp("nativeID", "running-session-save-error-heading");
+    await waitFor(() => expect(mockRequestAndroidViewFocus).toHaveBeenCalledWith("running-session-save-error-heading"));
+  });
+
+  it("retries a failed load without writing and returns to the session draft", async () => {
+    const loadPlan = jest.fn<React.ComponentProps<typeof RunningSessionEditorScreen>["loadPlan"]>()
+      .mockRejectedValueOnce(new Error("temporary read failure"))
+      .mockResolvedValueOnce(plan);
+    const saveSession = jest.fn<React.ComponentProps<typeof RunningSessionEditorScreen>["saveSession"]>();
+    const view = await render(<AppearanceProvider><RunningSessionEditorScreen
+      loadPlan={loadPlan}
+      mode="create"
+      onBack={jest.fn()}
+      onSaved={jest.fn()}
+      planId="plan-1"
+      createRequestId={() => "request-retry-load"}
+      saveSession={saveSession}
+    /></AppearanceProvider>);
+
+    await view.findByRole("button", { name: "Retry loading session" });
+    await fireEvent.press(view.getByRole("button", { name: "Retry loading session" }));
+
+    await view.findByRole("header", { name: "New session" });
+    expect(loadPlan).toHaveBeenCalledTimes(2);
+    expect(saveSession).not.toHaveBeenCalled();
+  });
+});

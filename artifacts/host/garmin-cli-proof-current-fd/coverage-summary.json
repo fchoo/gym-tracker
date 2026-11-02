@@ -1,0 +1,121 @@
+{
+  "files": {
+    "scripts/verify-garmin-python-lock.mjs": {
+      "statements": {
+        "total": 168,
+        "covered": 168,
+        "skipped": 0,
+        "pct": 100
+      },
+      "branches": {
+        "total": 133,
+        "covered": 133,
+        "skipped": 0,
+        "pct": 100
+      },
+      "functions": {
+        "total": 10,
+        "covered": 10,
+        "skipped": 0,
+        "pct": 100
+      },
+      "lines": {
+        "total": 168,
+        "covered": 168,
+        "skipped": 0,
+        "pct": 100
+      },
+      "uncovered_lines": [],
+      "uncovered_functions": [],
+      "uncovered_branches": []
+    },
+    "scripts/garmin-android-native.mjs": {
+      "statements": {
+        "total": 80,
+        "covered": 80,
+        "skipped": 0,
+        "pct": 100
+      },
+      "branches": {
+        "total": 47,
+        "covered": 47,
+        "skipped": 0,
+        "pct": 100
+      },
+      "functions": {
+        "total": 6,
+        "covered": 6,
+        "skipped": 0,
+        "pct": 100
+      },
+      "lines": {
+        "total": 80,
+        "covered": 80,
+        "skipped": 0,
+        "pct": 100
+      },
+      "uncovered_lines": [],
+      "uncovered_functions": [],
+      "uncovered_branches": []
+    },
+    "scripts/build-android-cffi.mjs": {
+      "statements": {
+        "total": 107,
+        "covered": 107,
+        "skipped": 0,
+        "pct": 100
+      },
+      "branches": {
+        "total": 52,
+        "covered": 52,
+        "skipped": 0,
+        "pct": 100
+      },
+      "functions": {
+        "total": 7,
+        "covered": 7,
+        "skipped": 0,
+        "pct": 100
+      },
+      "lines": {
+        "total": 107,
+        "covered": 107,
+        "skipped": 0,
+        "pct": 100
+      },
+      "uncovered_lines": [],
+      "uncovered_functions": [],
+      "uncovered_branches": []
+    },
+    "scripts/verify-garmin-android-binaries.mjs": {
+      "statements": {
+        "total": 83,
+        "covered": 83,
+        "skipped": 0,
+        "pct": 100
+      },
+      "branches": {
+        "total": 58,
+        "covered": 58,
+        "skipped": 0,
+        "pct": 100
+      },
+      "functions": {
+        "total": 4,
+        "covered": 4,
+        "skipped": 0,
+        "pct": 100
+      },
+      "lines": {
+        "total": 83,
+        "covered": 83,
+        "skipped": 0,
+        "pct": 100
+      },
+      "uncovered_lines": [],
+      "uncovered_functions": [],
+      "uncovered_branches": []
+    }
+  },
+  "failures": []
+}

@@ -7,7 +7,18 @@ import type {
   PlanImpactRepository,
 } from "../../platform/sqlite/repositories/planImpactRepository";
 import type {
+  AdvancedTimingConfigV1,
+} from "../advancedTiming";
+import {
+  OFF_ADVANCED_TIMING_CONFIG,
+} from "../advancedTiming";
+import type {
+  ApplySessionExerciseEditsToPlanInput as StagedSessionExerciseEditsToPlanInput,
+  SessionExerciseEditsToPlanResult,
+} from "../../platform/sqlite/repositories/ownedPlanRepository";
+import type {
   MetricIdentity,
+  MetricTarget,
 } from "../metrics";
 import {
   addLocalDays,
@@ -22,9 +33,146 @@ export type PlanImpactCommandResult = PlanImpactCommittedResult;
 export type ExerciseReplacementCommandResult =
   ExerciseReplacementCommittedResult;
 
+export type SessionExerciseWriteBackTarget = Readonly<{
+  ordinal: number;
+  target: MetricTarget;
+  units: Readonly<Record<string, unknown>>;
+  advancedTimingOverride?: AdvancedTimingConfigV1 | null;
+}>;
+
+export type SessionExerciseWriteBackWarmup = Readonly<{
+  ordinal: number;
+  loadGrams: number;
+  reps: number;
+  advancedTimingOverride?: AdvancedTimingConfigV1 | null;
+}>;
+
+export type SessionExerciseWriteBackComposition = Readonly<{
+  source: "manual" | "planned";
+  sessionExerciseId: string;
+  sourceOccurrenceId: string | null;
+  exerciseId: string;
+  ordinal: number;
+  restSeconds: number;
+  metricIdentity: MetricIdentity;
+  advancedTimingDefault?: AdvancedTimingConfigV1;
+  warmups: readonly SessionExerciseWriteBackWarmup[];
+  targets: readonly SessionExerciseWriteBackTarget[];
+  policy: Readonly<{
+    kind: "automatic" | "manual_hold" | "plan_authored";
+    policyId: string;
+    version: number;
+    rule: Readonly<Record<string, unknown>>;
+  }>;
+}>;
+
+export type SessionExerciseEditsForPlanFacts = Readonly<{
+  session: Readonly<{
+    id: string;
+    planId: string | null;
+    planDayId: string | null;
+    planName: string | null;
+    dayName: string | null;
+    revision: number;
+    source: "scheduled_day" | "alternate_day" | "rest_day" | "empty" | "manual";
+    status: "completed" | "partial" | "discarded" | "zero_sets" | "in_progress";
+    modifiedFromPlan: boolean;
+  }> ;
+  day: Readonly<{
+    id: string;
+    name: string;
+    planId: string;
+    planRevision: number;
+    occurrences: readonly Readonly<{
+      occurrenceId: string;
+      exerciseId: string;
+      ordinal: number;
+      restSeconds: number;
+      metricIdentity: MetricIdentity;
+      advancedTimingDefault?: AdvancedTimingConfigV1;
+      warmups: readonly SessionExerciseWriteBackWarmup[];
+      targets: readonly SessionExerciseWriteBackTarget[];
+      policy: SessionExerciseWriteBackComposition["policy"];
+    }>[];
+  }> ;
+  sessionExercises: readonly Readonly<{
+    sessionExerciseId: string;
+    exerciseId: string;
+    displayOrdinal: number;
+    sourceOccurrenceId: string | null;
+    restSeconds: number;
+    metricIdentity: MetricIdentity;
+    advancedTimingDefault?: AdvancedTimingConfigV1;
+    warmups?: readonly SessionExerciseWriteBackWarmup[];
+    targets: readonly SessionExerciseWriteBackTarget[];
+  }>[];
+  edits: readonly Readonly<{
+    operation: "replace_exercise" | "remove_exercise";
+    subjectSessionExerciseId: string;
+    replacementSessionExerciseId: string | null;
+  }>[];
+}>;
+
+export type SessionExerciseEditsForPlanReader = Readonly<{
+  readSessionExerciseEditsForPlan(input: Readonly<{
+    sessionId: string;
+  }>): Promise<SessionExerciseEditsForPlanFacts | null>;
+}>;
+
+export type SessionExerciseEditsForPlanRepository =
+  & SessionExerciseEditsForPlanReader
+  & Readonly<{
+  applySessionExerciseEditsToPlan(
+    input: StagedSessionExerciseEditsToPlanInput,
+  ): Promise<SessionExerciseEditsToPlanResult>;
+  readSessionExerciseEditsToPlanResult(input: Readonly<{
+    requestId: string;
+    requestSha256: string;
+  }>): Promise<SessionExerciseEditsToPlanResult | null>;
+}>;
+
+export type SessionExerciseEditsForPlanPreview = Readonly<{
+  kind: "session_exercise_edits";
+  sourceSessionId: string;
+  sourceSessionRevision: number;
+  planId: string;
+  planName: string;
+  planDayId: string;
+  dayName: string;
+  expectedPlanRevision: number;
+  currentWorkoutUnaffected: true;
+  previewToken: string;
+  composition: readonly SessionExerciseWriteBackComposition[];
+  changes: readonly SessionExercisePlanTargetChange[];
+}>;
+
+/** A factual target delta emitted by the write-back domain, never inferred from UI text. */
+export type SessionExercisePlanTargetChange = Readonly<{
+  exerciseId: string;
+  metricIdentity: MetricIdentity;
+  targetOrdinal: number;
+  current: Readonly<{
+    target: MetricTarget;
+    units: Readonly<Record<string, unknown>>;
+  }>;
+  proposed: Readonly<{
+    target: MetricTarget;
+    units: Readonly<Record<string, unknown>>;
+  }>;
+}>;
+
+export type ApplySessionExerciseEditsToPlanInput = Readonly<{
+  requestId: string;
+  sourceSessionId: string;
+  expectedPlanRevision: number;
+  previewToken: string;
+  composition: readonly SessionExerciseWriteBackComposition[];
+}>;
+
 const IDENTIFIER_MAX_CODE_POINTS = 128;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 const PREVIEW_TOKEN_PATTERN = /^plan-impact-v1:[a-f0-9]{64}$/u;
+const SESSION_WRITE_BACK_PREVIEW_TOKEN_PATTERN = /^session-writeback-v1:[a-f0-9]{64}$/u;
 
 export type DayRemovalPreview = Readonly<{
   kind: "day_removal";
@@ -348,6 +496,372 @@ async function replacementPreviewToken(
   })}`;
 }
 
+function sameTargets(
+  left: readonly SessionExerciseWriteBackTarget[],
+  right: readonly SessionExerciseWriteBackTarget[],
+): boolean {
+  const normalize = (values: readonly SessionExerciseWriteBackTarget[]) =>
+    values.map((target) => ({
+      ...target,
+      advancedTimingOverride: target.advancedTimingOverride ?? null,
+    }));
+  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right));
+}
+
+function sameWarmups(
+  left: readonly SessionExerciseWriteBackWarmup[],
+  right: readonly SessionExerciseWriteBackWarmup[],
+): boolean {
+  const normalize = (values: readonly SessionExerciseWriteBackWarmup[]) =>
+    values.map((warmup) => ({
+      ...warmup,
+      advancedTimingOverride: warmup.advancedTimingOverride ?? null,
+    }));
+  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right));
+}
+
+function timingConfig(
+  value: AdvancedTimingConfigV1 | undefined,
+): AdvancedTimingConfigV1 {
+  return value ?? OFF_ADVANCED_TIMING_CONFIG;
+}
+
+function timingOverride(
+  value: AdvancedTimingConfigV1 | null | undefined,
+): AdvancedTimingConfigV1 | null {
+  return value ?? null;
+}
+
+function manualPolicy(
+  identity: MetricIdentity,
+): SessionExerciseWriteBackComposition["policy"] {
+  const policyId = `${identity.profile}.manual_hold.v1`;
+  return Object.freeze({
+    kind: "manual_hold",
+    policyId,
+    version: 1,
+    rule: Object.freeze({
+      kind: "manual_hold",
+      id: policyId,
+      version: 1,
+    }),
+  });
+}
+
+export function canonicalizeSessionExerciseEditsForPlan(
+  facts: SessionExerciseEditsForPlanFacts,
+): readonly SessionExerciseWriteBackComposition[] | null {
+  const { session, day } = facts;
+  if (
+    session.status !== "completed"
+    || session.source !== "scheduled_day"
+    || !session.modifiedFromPlan
+    || session.planId === null
+    || session.planDayId === null
+    || session.planName === null
+    || session.dayName === null
+    || session.planId !== day.planId
+    || session.planDayId !== day.id
+  ) {
+    return null;
+  }
+  const removed = new Set(facts.edits.map(({ subjectSessionExerciseId }) =>
+    subjectSessionExerciseId
+  ));
+  const replacements = new Set(facts.edits.flatMap(({ replacementSessionExerciseId }) =>
+    replacementSessionExerciseId === null ? [] : [replacementSessionExerciseId]
+  ));
+  const occurrenceById = new Map(
+    day.occurrences.map((occurrence) => [occurrence.occurrenceId, occurrence]),
+  );
+  const composition = facts.sessionExercises
+    .filter(({ sessionExerciseId }) => !removed.has(sessionExerciseId))
+    .sort((left, right) =>
+      left.displayOrdinal - right.displayOrdinal
+      || left.sessionExerciseId.localeCompare(right.sessionExerciseId)
+    )
+    .map((exercise, ordinal): SessionExerciseWriteBackComposition | null => {
+      const source = exercise.sourceOccurrenceId === null
+        ? null
+        : occurrenceById.get(exercise.sourceOccurrenceId);
+      const isManual = source === null || replacements.has(exercise.sessionExerciseId);
+      if (
+        !isManual
+        && (
+          source === undefined
+          || source.exerciseId !== exercise.exerciseId
+          || !sameMetricIdentity(source.metricIdentity, exercise.metricIdentity)
+        )
+      ) {
+        return null;
+      }
+      return Object.freeze({
+        source: isManual ? "manual" : "planned",
+        sessionExerciseId: exercise.sessionExerciseId,
+        sourceOccurrenceId: isManual ? null : exercise.sourceOccurrenceId,
+        exerciseId: exercise.exerciseId,
+        ordinal,
+        restSeconds: isManual ? exercise.restSeconds : source!.restSeconds,
+        metricIdentity: Object.freeze({ ...exercise.metricIdentity }),
+        advancedTimingDefault: Object.freeze({
+          ...timingConfig(
+            exercise.advancedTimingDefault ?? source?.advancedTimingDefault,
+          ),
+        }),
+        warmups: Object.freeze((isManual
+          ? exercise.warmups ?? []
+          : source!.warmups).map((warmup) => {
+          const sessionWarmup = exercise.warmups?.find(({ ordinal: index }) =>
+            index === warmup.ordinal
+          );
+          return Object.freeze({
+            ...warmup,
+            advancedTimingOverride: timingOverride(
+              sessionWarmup?.advancedTimingOverride
+                ?? warmup.advancedTimingOverride,
+            ),
+          });
+        }
+        )),
+        targets: Object.freeze(exercise.targets.map((target) => {
+          const sessionTarget = exercise.targets.find(({ ordinal: index }) =>
+            index === target.ordinal
+          );
+          return Object.freeze({
+            ordinal: target.ordinal,
+            target: Object.freeze({ ...target.target }),
+            units: Object.freeze({ ...target.units }),
+            advancedTimingOverride: timingOverride(
+              sessionTarget?.advancedTimingOverride
+                ?? target.advancedTimingOverride,
+            ),
+          });
+        })),
+        policy: isManual
+          ? manualPolicy(exercise.metricIdentity)
+          : Object.freeze({
+              ...source!.policy,
+              rule: Object.freeze({ ...source!.policy.rule }),
+            }),
+      });
+    });
+  return composition.some((entry) => entry === null)
+    ? null
+    : Object.freeze(composition as readonly SessionExerciseWriteBackComposition[]);
+}
+
+function targetChanges(
+  facts: SessionExerciseEditsForPlanFacts,
+  composition: readonly SessionExerciseWriteBackComposition[],
+): readonly SessionExercisePlanTargetChange[] {
+  const occurrences = new Map(
+    facts.day.occurrences.map((occurrence) => [occurrence.occurrenceId, occurrence]),
+  );
+  return Object.freeze(composition.flatMap((entry) => {
+    if (entry.source !== "planned" || entry.sourceOccurrenceId === null) {
+      return [];
+    }
+    const occurrence = occurrences.get(entry.sourceOccurrenceId);
+    if (occurrence === undefined || entry.metricIdentity.profile === "unscored") {
+      return [];
+    }
+    return entry.targets.flatMap((proposed) => {
+      const current = occurrence.targets.find(({ ordinal }) =>
+        ordinal === proposed.ordinal
+      );
+      if (
+        current === undefined
+        || JSON.stringify(current.target) === JSON.stringify(proposed.target)
+        && JSON.stringify(current.units) === JSON.stringify(proposed.units)
+      ) {
+        return [];
+      }
+      return [Object.freeze({
+        exerciseId: entry.exerciseId,
+        metricIdentity: Object.freeze({ ...entry.metricIdentity }),
+        targetOrdinal: proposed.ordinal,
+        current: Object.freeze({
+          target: Object.freeze({ ...current.target }),
+          units: Object.freeze({ ...current.units }),
+        }),
+        proposed: Object.freeze({
+          target: Object.freeze({ ...proposed.target }),
+          units: Object.freeze({ ...proposed.units }),
+        }),
+      })];
+    });
+  }));
+}
+
+function compositionMatchesDay(
+  composition: readonly SessionExerciseWriteBackComposition[],
+  day: SessionExerciseEditsForPlanFacts["day"],
+): boolean {
+  return composition.length === day.occurrences.length
+    && composition.every((entry, index) => {
+      const occurrence = day.occurrences[index];
+      return occurrence !== undefined
+        && entry.source === "planned"
+        && entry.sourceOccurrenceId === occurrence.occurrenceId
+        && entry.exerciseId === occurrence.exerciseId
+        && entry.ordinal === occurrence.ordinal
+        && entry.restSeconds === occurrence.restSeconds
+        && sameMetricIdentity(entry.metricIdentity, occurrence.metricIdentity)
+        && JSON.stringify(timingConfig(entry.advancedTimingDefault))
+          === JSON.stringify(timingConfig(occurrence.advancedTimingDefault))
+        && sameWarmups(entry.warmups, occurrence.warmups)
+        && sameTargets(entry.targets, occurrence.targets);
+    });
+}
+
+async function sessionWriteBackPreviewToken(
+  sha256: Sha256,
+  facts: SessionExerciseEditsForPlanFacts,
+  composition: readonly SessionExerciseWriteBackComposition[],
+): Promise<string> {
+  return `session-writeback-v1:${await digest(sha256, {
+    version: 1,
+    operation: "session_exercise_edits",
+    source: {
+      sessionId: facts.session.id,
+      sessionRevision: facts.session.revision,
+      planId: facts.session.planId,
+      planDayId: facts.session.planDayId,
+      status: facts.session.status,
+      source: facts.session.source,
+      modifiedFromPlan: facts.session.modifiedFromPlan,
+      dayId: facts.day.id,
+      dayName: facts.day.name,
+      dayPlanId: facts.day.planId,
+      planRevision: facts.day.planRevision,
+    },
+    composition,
+  })}`;
+}
+
+export async function previewSessionExerciseEditsForPlan(
+  context: Readonly<{
+    repository: SessionExerciseEditsForPlanReader;
+    sha256: Sha256;
+    input: Readonly<{ sessionId: string }>;
+  }>,
+): Promise<SessionExerciseEditsForPlanPreview | null> {
+  if (!validIdentifier(context.input.sessionId)) {
+    throw new PlanImpactInputError("plan_impact_identifier_invalid");
+  }
+  const facts = await context.repository.readSessionExerciseEditsForPlan({
+    sessionId: context.input.sessionId,
+  });
+  if (facts === null) {
+    return null;
+  }
+  const composition = canonicalizeSessionExerciseEditsForPlan(facts);
+  if (composition === null || compositionMatchesDay(composition, facts.day)) {
+    return null;
+  }
+  const { session, day } = facts;
+  return Object.freeze({
+    kind: "session_exercise_edits",
+    sourceSessionId: session.id,
+    sourceSessionRevision: session.revision,
+    planId: session.planId!,
+    planName: session.planName!,
+    planDayId: session.planDayId!,
+    dayName: session.dayName!,
+    expectedPlanRevision: day.planRevision,
+    currentWorkoutUnaffected: true,
+    previewToken: await sessionWriteBackPreviewToken(
+      context.sha256,
+      facts,
+      composition,
+    ),
+    composition,
+    changes: targetChanges(facts, composition),
+  });
+}
+
+export async function applySessionExerciseEditsToPlan(
+  context: Readonly<{
+    repository: SessionExerciseEditsForPlanRepository;
+    sha256: Sha256;
+    nowMs(): number;
+    invalidate(keys: readonly string[]): Promise<void>;
+    input: ApplySessionExerciseEditsToPlanInput;
+  }>,
+): Promise<SessionExerciseEditsToPlanResult> {
+  const value = context.input;
+  if (
+    !validIdentifier(value.requestId)
+    || !validIdentifier(value.sourceSessionId)
+  ) {
+    throw new PlanImpactInputError("plan_impact_identifier_invalid");
+  }
+  if (!validRevision(value.expectedPlanRevision)) {
+    throw new PlanImpactInputError("plan_impact_revision_invalid");
+  }
+  if (!SESSION_WRITE_BACK_PREVIEW_TOKEN_PATTERN.test(value.previewToken)) {
+    throw new PlanImpactInputError("plan_impact_preview_stale");
+  }
+  const replayCanonical = Object.freeze({
+    operation: "session_exercise_edits" as const,
+    requestId: value.requestId,
+    sourceSessionId: value.sourceSessionId,
+    expectedPlanRevision: value.expectedPlanRevision,
+    previewToken: value.previewToken,
+    composition: value.composition,
+  });
+  const replay = await context.repository.readSessionExerciseEditsToPlanResult({
+    requestId: value.requestId,
+    requestSha256: await digest(context.sha256, replayCanonical),
+  });
+  if (replay !== null) {
+    return replay;
+  }
+  const facts = await context.repository.readSessionExerciseEditsForPlan({
+    sessionId: value.sourceSessionId,
+  });
+  const composition = facts === null
+    ? null
+    : canonicalizeSessionExerciseEditsForPlan(facts);
+  if (
+    facts === null
+    || composition === null
+    || facts.day.planRevision !== value.expectedPlanRevision
+    || JSON.stringify(composition) !== JSON.stringify(value.composition)
+    || value.previewToken !== await sessionWriteBackPreviewToken(
+      context.sha256,
+      facts,
+      composition,
+    )
+  ) {
+    throw new PlanImpactInputError("plan_impact_preview_stale");
+  }
+  // canonicalizeSessionExerciseEditsForPlan already rejects absent plan identity.
+  const planId = facts.session.planId!;
+  const planDayId = facts.session.planDayId!;
+  const committedAtMs = context.nowMs();
+  if (!validTime(committedAtMs)) {
+    throw new PlanImpactInputError("plan_impact_date_invalid");
+  }
+  const canonical = Object.freeze({
+    ...replayCanonical,
+    sourceSessionRevision: facts.session.revision,
+    planId,
+    planDayId,
+    composition,
+  });
+  const result = await context.repository.applySessionExerciseEditsToPlan({
+    ...canonical,
+    requestSha256: await digest(context.sha256, replayCanonical),
+    committedAtMs,
+  });
+  if (result.outcome !== "committed") {
+    return result;
+  }
+  await context.invalidate(result.invalidations).catch(() => undefined);
+  return result;
+}
+
 function sortCandidates(
   candidates: readonly ExerciseReplacementRepositoryPreview["candidates"][number][],
   sourceIdentity: MetricIdentity,
@@ -663,14 +1177,32 @@ export async function replacePlanExercise(
   if (!validTime(committedAtMs)) {
     throw new PlanImpactInputError("plan_impact_date_invalid");
   }
-  const replay = await context.repository.readCommittedExerciseReplacement({
-    planId: value.planId,
-    expectedPlanRevision: value.expectedPlanRevision,
-    replacementExerciseId: value.replacementExerciseId,
-    occurrences: value.occurrences,
+  const canonical = Object.freeze({
+    operation: "replace_plan_exercise" as const,
+    ...value,
+    review: Object.freeze({ ...value.review }),
+    occurrences: Object.freeze(value.occurrences),
   });
-  if (replay !== null) {
-    return replay;
+  const requestSha256 = await digest(context.sha256, canonical);
+  const receiptReplay = context.repository.readExerciseReplacementCommandResult === undefined
+    ? null
+    : await context.repository.readExerciseReplacementCommandResult({
+        requestId: value.requestId,
+        requestSha256,
+      });
+  if (receiptReplay !== null) {
+    return receiptReplay;
+  }
+  // Legacy in-memory ports predate durable command receipts. Production
+  // repositories expose the receipt path above; this preserves their test seam.
+  if (context.repository.readExerciseReplacementCommandResult === undefined) {
+    const legacyReplay = await context.repository.readCommittedExerciseReplacement({
+      planId: value.planId,
+      expectedPlanRevision: value.expectedPlanRevision,
+      replacementExerciseId: value.replacementExerciseId,
+      occurrences: value.occurrences,
+    });
+    if (legacyReplay !== null) return legacyReplay;
   }
   const facts = await context.repository.readExerciseReplacement({
     planId: value.planId,
@@ -708,15 +1240,9 @@ export async function replacePlanExercise(
       "plan_impact_occurrences_incomplete",
     );
   }
-  const canonical = Object.freeze({
-    operation: "replace_plan_exercise" as const,
-    ...value,
-    review: Object.freeze({ ...value.review }),
-    occurrences: Object.freeze(value.occurrences),
-  });
   const result = await context.repository.applyExerciseReplacement({
     ...canonical,
-    requestSha256: await digest(context.sha256, canonical),
+    requestSha256,
     sourceExerciseId: preview.sourceExerciseId,
     expectedPreview: replacementPreviewFacts(facts),
     committedAtMs,

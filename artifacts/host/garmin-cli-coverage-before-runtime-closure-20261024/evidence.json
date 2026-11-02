@@ -1,0 +1,207 @@
+{
+  "schemaVersion": 1,
+  "proof": "NON_NATIVE_HOST_ONLY",
+  "producer": "real-pinned-android-cffi-cli",
+  "source": {
+    "head": "ddb21a12c1ddebd9757fe1f57e626874565fc2b9",
+    "root": "/Users/bytedance/Documents/personal/gym_tracker/.trae/worktrees/p20-final-nyquist-b26a",
+    "files": [
+      {
+        "path": "scripts/verify-garmin-python-lock.mjs",
+        "sha256": "2721d90c7ede91296b43ed89c924cf38c0408c16f6b74ad70b96725827eb9946"
+      },
+      {
+        "path": "scripts/garmin-android-native.mjs",
+        "sha256": "3279a7560efc1c7930fa3f7a35c68fc2092fe68f12c71bbf0c53f01db7ab07d0"
+      },
+      {
+        "path": "scripts/build-android-cffi.mjs",
+        "sha256": "5d5b4016ae43384312a29f148e3daaa07c09a8629c3ec7f5ac70aaa193b310e0"
+      },
+      {
+        "path": "scripts/verify-garmin-android-binaries.mjs",
+        "sha256": "592f7bb505d59e9a99b0a82cadd1bbf9d6aeb03fd5135729608e85df714c6f35"
+      },
+      {
+        "path": "scripts/verify-garmin-python-lock.test.mjs",
+        "sha256": "6831d6c93da42d6a527dfc949545f9527c0eb55f132337e9fc18744c0fefb3d5"
+      },
+      {
+        "path": "scripts/garmin-android-native.test.mjs",
+        "sha256": "65d384f31206ce21547b19bc342d33c505771bd621d03301780784ba9a2c00f5"
+      },
+      {
+        "path": "scripts/build-android-cffi.test.mjs",
+        "sha256": "f7935232b79466241dc339ea35e5c15704cf91bbc6e262b79a30b55e9dee3713"
+      },
+      {
+        "path": "scripts/verify-garmin-android-binaries.test.mjs",
+        "sha256": "a8e5966b6030739b2e1df50f2a3e3deff8e9721fa092c503b1361fb436d0a733"
+      },
+      {
+        "path": "modules/garmin-connect/python/android-cffi/build-inputs.json",
+        "sha256": "40c706297872d458021a090d3c84bbcbd401e6e2570d8af86080156ba682d9e0"
+      }
+    ]
+  },
+  "runtime": {
+    "node": "24.19.0",
+    "v8": "13.6.233.17-node.51",
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "manifest": {
+    "path": "modules/garmin-connect/python/android-cffi/build-inputs.json",
+    "sha256": "40c706297872d458021a090d3c84bbcbd401e6e2570d8af86080156ba682d9e0"
+  },
+  "output": {
+    "filename": "cffi-2.1.1-cp313-cp313-android_24_arm64_v8a.whl",
+    "sha256": "850ee4664381151d0e10407de861b47e0c9954a06e4b0e8307431472990bd767",
+    "backendSha256": "914bbcc8d16ef427ac5675b81d0662028cc8d35141a3f38a5459ee4d85f3e3f1"
+  },
+  "tests": {
+    "files": [
+      "scripts/verify-garmin-python-lock.test.mjs",
+      "scripts/garmin-android-native.test.mjs",
+      "scripts/build-android-cffi.test.mjs",
+      "scripts/verify-garmin-android-binaries.test.mjs"
+    ],
+    "total": 24
+  },
+  "invocations": [
+    {
+      "kind": "tests",
+      "executable": "/Users/bytedance/.nvm/versions/node/v24.19.0/bin/node",
+      "args": [
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "scripts/verify-garmin-python-lock.test.mjs",
+        "scripts/garmin-android-native.test.mjs",
+        "scripts/build-android-cffi.test.mjs",
+        "scripts/verify-garmin-android-binaries.test.mjs"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ownershipSha256": "c00208112872f55676c1e106c47969aeb7817a229e166996be89bcccfb75ebb0",
+      "cleanup": "verified-empty",
+      "stdout": {
+        "path": "tests.stdout",
+        "sha256": "be9ee11d127a6636ab553343536eb1190a308b4922a858d14a7d1395c6af42a7"
+      },
+      "stderr": {
+        "path": "tests.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "kind": "cli",
+      "executable": "/Users/bytedance/.nvm/versions/node/v24.19.0/bin/node",
+      "args": [
+        "scripts/build-android-cffi.mjs",
+        "/opt/homebrew/share/android-commandlinetools/ndk/27.1.12297006",
+        "/private/tmp/p20-cffi-pinned-input-cache",
+        "/private/tmp/p20-cli-close-fbe8c63ddfa53dab",
+        "/Users/bytedance/Documents/personal/gym_tracker/.trae/worktrees/p20-final-nyquist-b26a/artifacts/cli-coverage-close-ddb21a12/evidence/output"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "ownershipSha256": "1368e9994c7c3c654221f16ba006a422e306c85e83e4518ce654507d162f3f92",
+      "cleanup": "verified-empty",
+      "stdout": {
+        "path": "cli.stdout",
+        "sha256": "13617087c58179051d4d8196bbd17f4688331ed8dcd06576b6d125d0157288d6"
+      },
+      "stderr": {
+        "path": "cli.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "receipt": {
+    "path": "output/build-receipt.json",
+    "sha256": "13617087c58179051d4d8196bbd17f4688331ed8dcd06576b6d125d0157288d6"
+  },
+  "raw": [
+    {
+      "path": "raw/coverage-62971-1792767010204-0.json",
+      "sha256": "ee7879277a776d3a4f4d4e799a225c7270be1dbedeae5e07eba90645f165560c"
+    },
+    {
+      "path": "raw/coverage-63007-1792767007883-0.json",
+      "sha256": "8ad9bad4d0e5e0cca89de853ee894420329caea2618e16bcfa7a392cc57ef822"
+    },
+    {
+      "path": "raw/coverage-64294-1792767007790-0.json",
+      "sha256": "bef24ac695053e379d1bea7314195c0492eb8eff80e50317c20cde02a381036f"
+    },
+    {
+      "path": "raw/coverage-64340-1792767007833-0.json",
+      "sha256": "4f4f5cda58b7752300b0d7f822a818c730bdc9a885aefe1c5b355c5ff3526a73"
+    },
+    {
+      "path": "raw/coverage-64379-1792767007874-0.json",
+      "sha256": "48b709bfe3a2c4a8881bf07a3b6dfd8276be57523e87c7686f17fb6c08cb9ce3"
+    },
+    {
+      "path": "raw/coverage-64414-1792767008367-0.json",
+      "sha256": "8c25a69a372175350d2bba78ba03bb136b96c3c4f5263e95df11b9905e1f2c9b"
+    },
+    {
+      "path": "raw/coverage-64760-1792767009855-0.json",
+      "sha256": "ffeb21665dfdae5f06987e31cc363eb2b16e24ddf576dbef58b6e4b7aeea5953"
+    },
+    {
+      "path": "raw/coverage-65730-1792767009646-0.json",
+      "sha256": "d0940016f894d9548e614a7eab4f43d486e6316ab93e65728788ddef9e5ff787"
+    },
+    {
+      "path": "raw/coverage-65777-1792767009683-0.json",
+      "sha256": "976ce95836e04169876cd1efea1e63eb652587d882904a8b054d83388add780d"
+    },
+    {
+      "path": "raw/coverage-65795-1792767009729-0.json",
+      "sha256": "cad2d94a1e07bbd1d017e97315c5959b9a091439d2568efbe2da379c9ca4e9d0"
+    },
+    {
+      "path": "raw/coverage-65832-1792767009767-0.json",
+      "sha256": "f60db1d693e3a2c38953efcf76082778fa2c089a54d98b42f4a28462a69bc261"
+    },
+    {
+      "path": "raw/coverage-65868-1792767009807-0.json",
+      "sha256": "f1e231b156da94fa9c9acecbdda36b122b20e23a2d441ba3945c5b3fc561d0ac"
+    },
+    {
+      "path": "raw/coverage-65886-1792767009847-0.json",
+      "sha256": "d4da4804a68e954711e8dd2725a79cf7bf0a0bbc8e08a9fdad3a540bb9969ba3"
+    },
+    {
+      "path": "raw/coverage-65946-1792767010178-0.json",
+      "sha256": "c08724ea38e554a2d5314bd600b9394a004c4196af89c1960f974ee05a573461"
+    },
+    {
+      "path": "raw/coverage-66041-1792767010052-0.json",
+      "sha256": "e6fa4caf013d8a3ed03878d91be2ee55a57de21560bb9736c65aa85e2d296e30"
+    },
+    {
+      "path": "raw/coverage-66072-1792767010093-0.json",
+      "sha256": "4730d17934c379b6419dec19843e8d619c46764f66969033cc014a72173552ff"
+    },
+    {
+      "path": "raw/coverage-66090-1792767010132-0.json",
+      "sha256": "fdb4f74af911f2d275c45802c8d78e90d8c9ecdb2fbd0b7606e55612d4fadc32"
+    },
+    {
+      "path": "raw/coverage-66125-1792767010169-0.json",
+      "sha256": "c2387bbbdf405d84b504f6aebe49b14500035cc54972bd0947c17b89ba344a99"
+    },
+    {
+      "path": "raw/coverage-66280-1792767017120-0.json",
+      "sha256": "ae8a8fe11c165f6f3ec46ecb6d38d16d231110912c749953431c9f02f27d0cec"
+    },
+    {
+      "path": "raw/coverage-66298-1792767017078-0.json",
+      "sha256": "cd8438077a7dbd34c8ab602445dd89bffb000fb688aa68fcc01915bb2a98f2a1"
+    }
+  ]
+}

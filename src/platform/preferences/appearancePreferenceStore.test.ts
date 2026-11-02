@@ -22,8 +22,8 @@ describe("SQLite appearance preference store", () => {
     const store = createLazyAppearanceStore(createStorage);
 
     expect(createStorage).not.toHaveBeenCalled();
-    expect(store.read()).toBe("Light");
-    store.write("Dark");
+    expect(store.read()).toEqual({ status: "ready", value: "Light" });
+    expect(store.write("Dark")).toEqual({ status: "written", value: "Dark" });
 
     expect(createStorage).toHaveBeenCalledTimes(1);
     expect(storage.setItemSync).toHaveBeenCalledWith(
@@ -40,14 +40,14 @@ describe("SQLite appearance preference store", () => {
     };
     const store = createSqliteAppearanceStore(storage);
 
-    expect(store.read()).toBe("Dark");
-    store.write("Light");
+    expect(store.read()).toEqual({ status: "ready", value: "Dark" });
+    expect(store.write("Light")).toEqual({ status: "written", value: "Light" });
     expect(storage.setItemSync).toHaveBeenCalledWith(
       APPEARANCE_PREFERENCE_KEY,
       "Light",
     );
 
-    store.write(null);
+    expect(store.write(null)).toEqual({ status: "written", value: null });
     expect(storage.removeItemSync).toHaveBeenCalledWith(
       APPEARANCE_PREFERENCE_KEY,
     );
@@ -66,8 +66,8 @@ describe("SQLite appearance preference store", () => {
       }),
     });
 
-    expect(store.read()).toBeNull();
-    expect(() => store.write("Dark")).not.toThrow();
-    expect(() => store.write(null)).not.toThrow();
+    expect(store.read()).toEqual({ status: "failed" });
+    expect(store.write("Dark")).toEqual({ status: "failed" });
+    expect(store.write(null)).toEqual({ status: "failed" });
   });
 });

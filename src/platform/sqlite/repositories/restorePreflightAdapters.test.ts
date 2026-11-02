@@ -5,17 +5,19 @@ import { RestoreCandidateProbeError } from "../../../domains/portability/restore
 import {
   createSqliteRestoreCandidateProbe,
   createSqliteRestoreCatalogReferenceAvailabilityPort,
+  createSqliteMergeLocalFactsPort,
   createSqliteRestoreRetainedReferencePort,
   createSqliteRestoreSchemaPort,
 } from "./restorePreflightAdapters";
 import type { SqliteKernel } from "../sqliteKernel";
 
 type MutableBackupRow = Record<string, any>;
-type FixtureTable = "workout_sessions" | "session_exercises" | "session_sets" | "owned_progression_recommendations" | "progression_recommendations" | "plan_day_exercises";
+type FixtureTable = "workout_sessions" | "session_exercises" | "session_sets" | "session_advanced_timing_states" | "owned_progression_recommendations" | "progression_recommendations" | "plan_day_exercises";
 type MutableTables = Record<string, MutableBackupRow[]> & {
   workout_sessions: MutableBackupRow[];
   session_exercises: MutableBackupRow[];
   session_sets: MutableBackupRow[];
+  session_advanced_timing_states: MutableBackupRow[];
   owned_progression_recommendations: MutableBackupRow[];
   plan_day_exercises: MutableBackupRow[];
   progression_recommendations: MutableBackupRow[];
@@ -100,6 +102,43 @@ function mutateOwnedRecommendation(
 
 function mutableOwnedCandidate(): MutableSnapshot {
   return structuredClone(completeRecommendation()) as unknown as MutableSnapshot;
+}
+
+function timingCandidate(): LogicalBackupSnapshot {
+  return snapshot({
+    workout_sessions: [{ id: "session" }],
+    session_exercises: [{
+      id: "session-exercise",
+      session_id: "session",
+      exercise_id: "exercise",
+    }],
+    session_sets: [{
+      id: "set",
+      session_exercise_id: "session-exercise",
+      source_plan_working_set_target_id: null,
+      source_owned_plan_working_set_target_id: null,
+    }],
+    session_advanced_timing_states: [{
+      session_id: "session",
+      session_set_id: "set",
+      state_version: 1,
+      revision: 3,
+      status: "running",
+      mode: "cluster",
+      config_json: JSON.stringify({
+        version: 1,
+        mode: "cluster",
+        groupSizes: [3, 3],
+        intraRestMs: 20_000,
+        cueChannels: "haptic",
+      }),
+      progress_json: JSON.stringify({ currentGroupIndex: 0 }),
+      started_at_ms: 10_000,
+      next_boundary_at_ms: 30_000,
+      remaining_ms: null,
+      stopped_at_ms: null,
+    }],
+  });
 }
 
 describe("SQLite restore preflight adapters", () => {
@@ -327,6 +366,74 @@ describe("SQLite restore preflight adapters", () => {
     await expect(createSqliteRestoreCandidateProbe().validateCandidate(candidate)).resolves.toBeUndefined();
   });
 
+  it("rejects malformed advanced-timing progress before restore", async () => {
+    const candidate = structuredClone(timingCandidate()) as unknown as MutableSnapshot;
+    firstRow(candidate, "session_advanced_timing_states")
+      .progress_json = JSON.stringify({ currentGroupIndex: 2 });
+
+    await expect(createSqliteRestoreCandidateProbe().validateCandidate(
+      candidate as unknown as LogicalBackupSnapshot,
+    )).rejects.toBeInstanceOf(RestoreCandidateProbeError);
+  });
+
+  it("rejects an advanced-timing target owned by another session", async () => {
+    const candidate = structuredClone(timingCandidate()) as unknown as MutableSnapshot;
+    candidate.tables.workout_sessions.push({ id: "other-session" });
+    firstRow(candidate, "session_advanced_timing_states")
+      .session_id = "other-session";
+
+    await expect(createSqliteRestoreCandidateProbe().validateCandidate(
+      candidate as unknown as LogicalBackupSnapshot,
+    )).rejects.toBeInstanceOf(RestoreCandidateProbeError);
+  });
+
+  it("accepts pre-21 snapshots without a timing table and valid current timing rows", async () => {
+    const prePhase10 = structuredClone(timingCandidate()) as unknown as MutableSnapshot;
+    delete (prePhase10.tables as Partial<MutableTables>)
+      .session_advanced_timing_states;
+    await expect(createSqliteRestoreCandidateProbe().validateCandidate(
+      prePhase10 as unknown as LogicalBackupSnapshot,
+    )).resolves.toBeUndefined();
+
+    await expect(createSqliteRestoreCandidateProbe().validateCandidate(
+      timingCandidate(),
+    )).resolves.toBeUndefined();
+
+    const idle = structuredClone(timingCandidate()) as unknown as MutableSnapshot;
+    Object.assign(firstRow(idle, "session_advanced_timing_states"), {
+      session_set_id: null,
+      status: "idle",
+      mode: null,
+      config_json: JSON.stringify({ version: 1, mode: "off" }),
+      progress_json: "{}",
+      started_at_ms: null,
+      next_boundary_at_ms: null,
+      remaining_ms: null,
+      stopped_at_ms: null,
+    });
+    await expect(createSqliteRestoreCandidateProbe().validateCandidate(
+      idle as unknown as LogicalBackupSnapshot,
+    )).resolves.toBeUndefined();
+  });
+
+  it.each([
+    ["non-string session", (candidate: MutableSnapshot) => {
+      firstRow(candidate, "session_advanced_timing_states").session_id = 1;
+    }],
+    ["missing target set", (candidate: MutableSnapshot) => {
+      candidate.tables.session_sets = [];
+    }],
+    ["missing target exercise", (candidate: MutableSnapshot) => {
+      candidate.tables.session_exercises = [];
+    }],
+  ])("rejects advanced-timing ownership with %s", async (_label, mutate) => {
+    const candidate = structuredClone(timingCandidate()) as unknown as MutableSnapshot;
+    mutate(candidate);
+    await expect(createSqliteRestoreCandidateProbe().validateCandidate(
+      candidate as unknown as LogicalBackupSnapshot,
+    )).rejects.toBeInstanceOf(RestoreCandidateProbeError);
+  });
+
   it("checks schema allowlist, canonical SQLite types, and nullability", async () => {
     const statements: string[] = [];
     const schema = createSqliteRestoreSchemaPort(readKernel([{ name: "id", type: "integer", notnull: 1 }, { name: "note", type: "TEXT", notnull: 0 }], statements));
@@ -335,6 +442,80 @@ describe("SQLite restore preflight adapters", () => {
     await expect(schema.columnsFor("not_a_backup_table" as never)).rejects.toBeInstanceOf(RestoreCandidateProbeError);
     const badSchema = createSqliteRestoreSchemaPort(readKernel([{ name: "amount", type: "REAL", notnull: 1 }], []));
     await expect(badSchema.columnsFor("exercises")).rejects.toBeInstanceOf(RestoreCandidateProbeError);
+  });
+
+  it("reads bounded merge facts through the reader only and never opens a writer", async () => {
+    const statements: string[] = [];
+    const rows = [
+      [{ user_version: 22 }],
+      [{ owner_namespace: "11111111111111111111111111111111" }],
+      ...LOGICAL_BACKUP_TABLES.map((table) => table === "workout_sessions"
+        ? [{ id: "session", portable_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", merge_modified_at_ms: 2 }]
+        : table === "portable_owner_identity"
+          ? [{ id: 1, owner_namespace: "11111111111111111111111111111111" }]
+          : []),
+    ];
+    let index = 0;
+    const kernel: SqliteKernel = {
+      async queryAll<Row extends Record<string, unknown>>(sql: string) {
+        statements.push(sql);
+        const next = rows[index] ?? [];
+        index += 1;
+        return next as unknown as readonly Row[];
+      },
+      write: jest.fn(async () => {
+        throw new Error("merge_preflight_must_not_write");
+      }),
+      connectionConfiguration: jest.fn(),
+      close: jest.fn(),
+    } as unknown as SqliteKernel;
+    const local = await createSqliteMergeLocalFactsPort(kernel).read();
+
+    expect(local).toEqual(expect.objectContaining({
+      ownerNamespace: "11111111111111111111111111111111",
+      schemaVersion: 22,
+      tables: expect.objectContaining({
+        workout_sessions: [{
+          id: "session",
+          portable_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          merge_modified_at_ms: 2,
+        }],
+      }),
+    }));
+    expect(kernel.write).not.toHaveBeenCalled();
+    expect(statements).toEqual(expect.arrayContaining([
+      "PRAGMA user_version",
+      "SELECT owner_namespace FROM portable_owner_identity WHERE id = 1",
+    ]));
+    expect(statements.every((statement) => !/INSERT|UPDATE|DELETE|BEGIN IMMEDIATE/iu.test(statement))).toBe(true);
+  });
+
+  it("rejects merge-preflight reads with invalid metadata or non-scalar source rows", async () => {
+    const invalidMetadata: SqliteKernel = {
+      queryAll: async <Row extends Record<string, unknown>>() => [] as readonly Row[],
+      write: jest.fn(), connectionConfiguration: jest.fn(), close: jest.fn(),
+    } as unknown as SqliteKernel;
+    await expect(createSqliteMergeLocalFactsPort(invalidMetadata).read())
+      .rejects.toBeInstanceOf(RestoreCandidateProbeError);
+
+    const rows = [
+      [{ user_version: 22 }],
+      [{ owner_namespace: "11111111111111111111111111111111" }],
+      ...LOGICAL_BACKUP_TABLES.map((table) => table === "workout_sessions"
+        ? [{ id: "session", portable_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", merge_modified_at_ms: true }]
+        : []),
+    ];
+    let index = 0;
+    const invalidRow: SqliteKernel = {
+      async queryAll<Row extends Record<string, unknown>>() {
+        const next = rows[index] ?? [];
+        index += 1;
+        return next as unknown as readonly Row[];
+      },
+      write: jest.fn(), connectionConfiguration: jest.fn(), close: jest.fn(),
+    } as unknown as SqliteKernel;
+    await expect(createSqliteMergeLocalFactsPort(invalidRow).read())
+      .rejects.toBeInstanceOf(RestoreCandidateProbeError);
   });
 
   it("rejects retained identities with bad values or arity before querying and supports the full exercise identity", async () => {

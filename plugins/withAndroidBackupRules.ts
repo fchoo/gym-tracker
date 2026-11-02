@@ -7,37 +7,55 @@ import {
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const fullBackupContent = `<?xml version="1.0" encoding="utf-8"?>
+export const fullBackupContent = `<?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
   <exclude domain="database" path="." />
   <exclude domain="root" path="backup-staging" />
   <exclude domain="root" path="plaintext-staging" />
+  <exclude domain="root" path="garmin-session" />
+  <exclude domain="root" path="garmin-response-staging" />
   <exclude domain="file" path="backup-staging" />
   <exclude domain="file" path="plaintext-staging" />
+  <exclude domain="file" path="garmin-session" />
+  <exclude domain="file" path="garmin-response-staging" />
   <exclude domain="external" path="backup-staging" />
   <exclude domain="external" path="plaintext-staging" />
+  <exclude domain="external" path="garmin-session" />
+  <exclude domain="external" path="garmin-response-staging" />
 </full-backup-content>
 `;
 
-const dataExtractionRules = `<?xml version="1.0" encoding="utf-8"?>
+export const dataExtractionRules = `<?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
   <cloud-backup>
     <exclude domain="database" path="." />
     <exclude domain="root" path="backup-staging" />
     <exclude domain="root" path="plaintext-staging" />
+    <exclude domain="root" path="garmin-session" />
+    <exclude domain="root" path="garmin-response-staging" />
     <exclude domain="file" path="backup-staging" />
     <exclude domain="file" path="plaintext-staging" />
+    <exclude domain="file" path="garmin-session" />
+    <exclude domain="file" path="garmin-response-staging" />
     <exclude domain="external" path="backup-staging" />
     <exclude domain="external" path="plaintext-staging" />
+    <exclude domain="external" path="garmin-session" />
+    <exclude domain="external" path="garmin-response-staging" />
   </cloud-backup>
   <device-transfer>
     <exclude domain="database" path="." />
     <exclude domain="root" path="backup-staging" />
     <exclude domain="root" path="plaintext-staging" />
+    <exclude domain="root" path="garmin-session" />
+    <exclude domain="root" path="garmin-response-staging" />
     <exclude domain="file" path="backup-staging" />
     <exclude domain="file" path="plaintext-staging" />
+    <exclude domain="file" path="garmin-session" />
+    <exclude domain="file" path="garmin-response-staging" />
     <exclude domain="external" path="backup-staging" />
     <exclude domain="external" path="plaintext-staging" />
+    <exclude domain="external" path="garmin-session" />
+    <exclude domain="external" path="garmin-response-staging" />
   </device-transfer>
 </data-extraction-rules>
 `;

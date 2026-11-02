@@ -97,6 +97,25 @@ function preferenceStore(value: unknown = defaultPreferences) {
 }
 
 describe("Plan 01-09 rest notification reconciliation", () => {
+  it("replaces the previous default-sound channel without changing the saved rest deadline", async () => {
+    const source = repository(running());
+    const notifications = port([{
+      identifier: "rest:session-1", sessionId: "session-1", restRevision: 3,
+      endsAtMs: 100_000, channelId: "workout-rest-v2-sound-vibration",
+    }]);
+    await expect(createRestNotificationReconciler({
+      repository: source, notifications, preferences: preferenceStore(), nowMs: () => 40_000,
+    }).reconcile("session-1")).resolves.toMatchObject({ outcome: "scheduled" });
+    expect(notifications.cancel).toHaveBeenCalledWith("rest:session-1");
+    expect(notifications.schedule).toHaveBeenCalledTimes(1);
+    expect(notifications.schedule).toHaveBeenCalledWith({
+      identifier: "rest:session-1", sessionId: "session-1", restRevision: 3,
+      endsAtMs: 100_000, preferences: defaultPreferences,
+    });
+    expect(source.expireRest).not.toHaveBeenCalled();
+    expect(notifications.requestPermission).not.toHaveBeenCalled();
+  });
+
   it("schedules exactly one stable future request when missing", async () => {
     const notifications = port();
     const reconciler = createRestNotificationReconciler({

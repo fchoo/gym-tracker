@@ -23,6 +23,9 @@ export default function StarterPlanDetailRoute() {
   return (
     <StarterPlanDetailScreen
       loadStarterPlan={runtime.loadStarterPlan}
+      saveEditableCopy={runtime.createStarterEditableCopy}
+      onSavedCopy={(planId) =>
+        router.replace(`/library/plan/${planId}/edit` as Href)}
       onActivate={(selectedTemplateId) =>
         router.push(
           `/library/starter/${selectedTemplateId}/activate` as Href,

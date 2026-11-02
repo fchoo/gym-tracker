@@ -9,6 +9,9 @@ import {
   type ForegroundRestFeedbackPort,
 } from "../../domains/rest";
 
+import { ownsForegroundRestSound } from "../audio/foregroundRestSoundOwnership";
+import { parseRestNotificationPayload } from "./restNotificationReconciler";
+
 let foregroundNotificationHandlerInstalled = false;
 
 export function installForegroundRestNotificationHandler(): void {
@@ -16,12 +19,18 @@ export function installForegroundRestNotificationHandler(): void {
     return;
   }
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: false,
-      shouldShowList: false,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
+    handleNotification: async (notification) => {
+      const payload = parseRestNotificationPayload(notification?.request.content.data);
+      const countdownOwnsSound = payload !== null
+        && notification?.request.identifier === `rest:${payload.sessionId}`
+        && ownsForegroundRestSound(payload);
+      return {
+        shouldShowBanner: false,
+        shouldShowList: false,
+        shouldPlaySound: !countdownOwnsSound,
+        shouldSetBadge: false,
+      };
+    },
   });
   foregroundNotificationHandlerInstalled = true;
 }

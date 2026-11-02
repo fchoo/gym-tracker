@@ -23,6 +23,10 @@ const BoundedTextSchema = z.string()
   .min(1)
   .max(120)
   .refine((value) => value.trim() === value);
+const InstructionStepSchema = z.string()
+  .min(1)
+  .max(800)
+  .refine((value) => value.trim() === value);
 const BoundedIdentifierSchema = z.string()
   .min(1)
   .max(80)
@@ -44,6 +48,20 @@ const MetricIdentitySchema = z.strictObject({
   exerciseMetricGeneration: PositiveSafeIntegerSchema,
 });
 
+const InstructionSourceSchema = z.strictObject({
+  namespace: z.enum([LEGACY_SOURCE_NAMESPACE, PINNED_SOURCE_NAMESPACE]),
+  sourceRevision: z.union([
+    z.literal("1"),
+    z.literal(PINNED_SOURCE_COMMIT),
+  ]),
+  upstreamId: UuidSchema.nullable(),
+  license: z.enum(["Original", "MIT"]),
+  attribution: z.enum([
+    "Original Gym Tracker program",
+    "Copyright (c) 2026 Kinetic.place",
+  ]),
+});
+
 const CatalogExerciseSchema = z.strictObject({
   id: UuidSchema,
   canonicalName: BoundedTextSchema,
@@ -53,6 +71,10 @@ const CatalogExerciseSchema = z.strictObject({
   primaryMuscles: z.array(BoundedIdentifierSchema).min(1).max(20),
   secondaryMuscles: z.array(BoundedIdentifierSchema).max(20),
   equipment: z.array(BoundedIdentifierSchema).max(12),
+  instructions: z.strictObject({
+    steps: z.array(InstructionStepSchema).min(1).max(24),
+    source: InstructionSourceSchema,
+  }),
   metricIdentity: MetricIdentitySchema,
   availability: z.literal("available_candidate"),
   reviewStatus: ReviewStatusSchema,
@@ -81,7 +103,7 @@ const CatalogExerciseSchema = z.strictObject({
 });
 
 const CatalogSchema = z.strictObject({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   metadata: z.strictObject({
     namespace: z.literal(CATALOG_NAMESPACE),
     revision: PositiveSafeIntegerSchema,
@@ -115,7 +137,7 @@ const CatalogSchema = z.strictObject({
 });
 
 const ManifestSchema = z.strictObject({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   reviewStatus: ReviewStatusSchema,
   source: z.strictObject({
     namespace: z.literal(PINNED_SOURCE_NAMESPACE),
@@ -156,7 +178,7 @@ const ManifestSchema = z.strictObject({
 });
 
 const AcceptanceSchema = z.strictObject({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   accepted: z.literal(true),
   reviewer: z.literal("owner"),
   reviewerResponse: z.literal("approved"),
@@ -247,8 +269,8 @@ function schemaVersion(input: unknown): unknown {
   return (input as Record<string, unknown>).schemaVersion;
 }
 
-function ensureVersionOne(...inputs: readonly unknown[]): void {
-  if (inputs.some((input) => schemaVersion(input) !== 1)) {
+function ensureVersionTwo(...inputs: readonly unknown[]): void {
+  if (inputs.some((input) => schemaVersion(input) !== 2)) {
     fail("catalog_version_unsupported");
   }
 }
@@ -303,6 +325,62 @@ function validateSource(exercise: CatalogExercise): void {
   }
 }
 
+function validateInstructions(exercise: CatalogExercise): void {
+  const source = exercise.instructions.source;
+  if (
+    source.namespace === PINNED_SOURCE_NAMESPACE
+    && (
+      source.sourceRevision !== PINNED_SOURCE_COMMIT
+      || source.upstreamId === null
+      || source.license !== "MIT"
+      || source.attribution !== "Copyright (c) 2026 Kinetic.place"
+    )
+  ) {
+    fail("catalog_relation_invalid");
+  }
+  if (
+    source.namespace === LEGACY_SOURCE_NAMESPACE
+    && (
+      source.sourceRevision !== "1"
+      || source.upstreamId !== null
+      || source.license !== "Original"
+      || source.attribution !== "Original Gym Tracker program"
+    )
+  ) {
+    fail("catalog_relation_invalid");
+  }
+  if (exercise.source.namespace === PINNED_SOURCE_NAMESPACE) {
+    if (
+      source.namespace !== exercise.source.namespace
+      || source.sourceRevision !== exercise.source.sourceRevision
+      || source.upstreamId !== exercise.source.upstreamId
+    ) {
+      fail("catalog_relation_invalid");
+    }
+    return;
+  }
+  if (
+    exercise.source.legacyLinkStatus === "link_candidate"
+    && (
+      source.namespace !== PINNED_SOURCE_NAMESPACE
+      || source.sourceRevision !== PINNED_SOURCE_COMMIT
+      || source.upstreamId !== exercise.source.linkedUpstreamId
+    )
+  ) {
+    fail("catalog_relation_invalid");
+  }
+  if (
+    exercise.source.legacyLinkStatus === "preserve_original"
+    && (
+      source.namespace !== LEGACY_SOURCE_NAMESPACE
+      || source.sourceRevision !== "1"
+      || source.upstreamId !== null
+    )
+  ) {
+    fail("catalog_relation_invalid");
+  }
+}
+
 function validateExercises(exercises: readonly CatalogExercise[]): void {
   const ids = new Set<string>();
   const sourceIdentities = new Set<string>();
@@ -342,6 +420,7 @@ function validateExercises(exercises: readonly CatalogExercise[]): void {
     }
 
     validateSource(exercise);
+    validateInstructions(exercise);
     if (exercise.source.upstreamId !== null) {
       const sourceIdentity = [
         exercise.source.namespace,
@@ -455,7 +534,7 @@ export async function parseExerciseCatalog(
   }
   const catalogInput = parseJson(input.catalogBytes);
   const manifestInput = parseJson(input.manifestBytes);
-  ensureVersionOne(catalogInput, manifestInput, acceptanceInput);
+  ensureVersionTwo(catalogInput, manifestInput, acceptanceInput);
 
   const acceptanceResult = AcceptanceSchema.safeParse(acceptanceInput);
   if (!acceptanceResult.success) {

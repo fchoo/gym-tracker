@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react-native";
 import {
   describe,
@@ -35,6 +36,7 @@ import {
 import {
   AppearanceProvider,
   createMemoryAppearanceStore,
+  sizes,
   themes,
 } from "../theme";
 
@@ -136,6 +138,7 @@ async function renderLibrary(
     listRecentExercises: jest.fn(async () => []),
     onCreateExercise: jest.fn(),
     onCreatePlan: jest.fn(),
+    onOpenSettings: jest.fn(),
     onOpenExercise: jest.fn(),
     onOpenPlan: jest.fn(),
     onReviewChanges: jest.fn(),
@@ -167,6 +170,97 @@ async function renderLibrary(
 }
 
 describe("LibraryScreen section state", () => {
+  it("renders both source-backed active sport identities without collapsing either row", async () => {
+    await renderLibrary({
+      loadLibrary: jest.fn(async () => ({
+        ...snapshot(),
+        plans: {
+          active: null,
+          activePlans: [
+            { id: "strength-active", name: "Strength Base", daysPerWeek: 3, sport: "Strength" as const, status: "Active" as const },
+            { id: "running-active", name: "10K Build", daysPerWeek: 4, sport: "Running" as const, status: "Active" as const },
+          ],
+          owned: [],
+          starters: starterPlans,
+        },
+      })),
+    });
+
+    expect(await screen.findByText("Active Plans (2)")).toBeOnTheScreen();
+    expect(screen.getByText("Strength Base")).toBeOnTheScreen();
+    expect(screen.getByText("10K Build")).toBeOnTheScreen();
+  });
+
+  it("keeps true-empty plan creation and the shared Actions sheet mutation-free until the owner chooses a route", async () => {
+    const onCreateExercise = jest.fn();
+    const onCreatePlan = jest.fn();
+    await renderLibrary({
+      loadLibrary: jest.fn(async () => ({
+        ...snapshot(),
+        plans: { active: null, activePlans: [], owned: [], starters: [] },
+      })),
+      onCreateExercise,
+      onCreatePlan,
+    });
+
+    expect(await screen.findByText("No plans yet")).toBeOnTheScreen();
+    await fireEvent.press(screen.getAllByRole("button", { name: "Create plan" }).at(-1)!);
+    expect(onCreatePlan).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(screen.getByRole("button", { name: "Actions" }));
+    const createExercise = await screen.findByRole("button", { name: "Create exercise" });
+    expect(screen.getByLabelText("Import plan, unavailable, Later").props.accessibilityState)
+      .toMatchObject({ disabled: true });
+    await fireEvent.press(createExercise);
+    expect(onCreateExercise).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps create actions contextual while App Settings stays in the Library root header", async () => {
+    const onOpenSettings = jest.fn();
+    const onCreatePlan = jest.fn();
+    await renderLibrary({ onCreatePlan, onOpenSettings });
+
+    expect(await screen.findByRole("header", { name: "Library" }))
+      .toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Open App Settings" }));
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+    await fireEvent.press(screen.getByRole("button", { name: "Create plan" }));
+    expect(onCreatePlan).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Library context while a shared filter sheet is opened, themed, and safely dismissed", async () => {
+    const searchExercises = jest.fn(async () => ({
+      state: "page" as const,
+      items: [exercise({ canonicalName: "Retained exercise" })],
+      nextCursor: null,
+    }));
+    const { rendered, props } = await renderLibrary({
+      loadLibrary: jest.fn(async () => snapshot("exercises")),
+      searchExercises,
+    });
+
+    const search = await screen.findByLabelText("Search exercises");
+    await fireEvent.changeText(search, "retained");
+    await fireEvent.press(screen.getByRole("checkbox", { name: "Filters" }));
+
+    expect(screen.getByTestId("bottom-sheet-frame")).toBeOnTheScreen();
+    expect(screen.getByTestId("library-filter-sheet"))
+      .toHaveProp("keyboardShouldPersistTaps", "handled");
+
+    await rendered.rerender(
+      <AppearanceProvider store={{ read: () => "Dark", write: () => undefined }}>
+        <LibraryScreen {...props} />
+      </AppearanceProvider>,
+    );
+
+    expect(screen.getByDisplayValue("retained")).toBeOnTheScreen();
+    await fireEvent(screen.getByTestId("bottom-sheet-frame"), "keyDown", {
+      nativeEvent: { key: "Escape", preventDefault: jest.fn() },
+    });
+    expect(screen.queryByTestId("library-filter-sheet")).not.toBeOnTheScreen();
+    expect(screen.getByDisplayValue("retained")).toBeOnTheScreen();
+  });
+
   it("reloads owned plans when the Library route regains focus", async () => {
     const loadLibrary = jest.fn(async () => snapshot());
     const refreshLibrary = jest.fn<() => Promise<LibraryBrowseSnapshot>>()
@@ -220,7 +314,7 @@ describe("LibraryScreen section state", () => {
     );
 
     expect(await screen.findByText(
-      "Library could not be refreshed. Your current content, selection, search, and filters are unchanged.",
+      "Library could not refresh. Your current results are still shown.",
     )).toBeOnTheScreen();
     expect(screen.getByText("Upper / Lower")).toBeOnTheScreen();
     expect(screen.queryByText("Library could not be loaded"))
@@ -325,13 +419,14 @@ describe("LibraryScreen section state", () => {
     const activePlan = screen.getByRole("button", {
       name: /Active Plan With A Deliberately Long Name.*Active/u,
     });
-    expect(activePlan).toHaveStyle({ minHeight: 48 });
+    expect(activePlan).toHaveStyle({ minHeight: 120 });
     await fireEvent.press(activePlan);
     expect(onOpenPlan).toHaveBeenCalledWith("active-plan");
 
     const starterPlan = screen.getByRole("button", {
       name: /Full Body Foundation.*General strength/u,
     });
+    expect(starterPlan).toHaveStyle({ minHeight: 88 });
     await fireEvent.press(starterPlan);
     expect(onOpenStarter).toHaveBeenCalledWith("starter-plan");
 
@@ -359,7 +454,7 @@ describe("LibraryScreen section state", () => {
         selected: false,
       }));
     expect(screen.getByLabelText("Search plans")).toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Create my own" }))
+    expect(screen.getByRole("button", { name: "Create plan" }))
       .toBeOnTheScreen();
 
     const sectionHeaders = screen.getAllByRole("header").map(
@@ -530,7 +625,7 @@ describe("LibraryScreen Material 3 discovery controls", () => {
     await fireEvent.changeText(plansSearch, "missing");
     expect(await screen.findByLabelText("No Search plans results"))
       .toBeOnTheScreen();
-    expect(screen.getByText("No plans match")).toBeOnTheScreen();
+    expect(screen.getByText("No matches")).toBeOnTheScreen();
     await fireEvent.changeText(plansSearch, "full");
     expect(await screen.findByLabelText("1 Search plans result"))
       .toBeOnTheScreen();
@@ -548,7 +643,8 @@ describe("LibraryScreen Material 3 discovery controls", () => {
     await fireEvent.changeText(exercisesSearch, "zero");
     expect(await screen.findByLabelText("No Search exercises results"))
       .toBeOnTheScreen();
-    expect(screen.getByText("No exercises match")).toBeOnTheScreen();
+    expect(screen.getByText("No matches")).toBeOnTheScreen();
+    expect(screen.getByText("No exercise matches your search and current filters.")).toBeOnTheScreen();
     await fireEvent.changeText(exercisesSearch, "one");
     expect(await screen.findByLabelText("1 Search exercises result"))
       .toBeOnTheScreen();
@@ -595,7 +691,7 @@ describe("LibraryScreen Material 3 discovery controls", () => {
     }));
 
     await fireEvent.press(screen.getByRole("checkbox", { name: "Filters" }));
-    expect(screen.getByTestId("library-filter-sheet")).toHaveProp(
+    expect(screen.getByTestId("bottom-sheet-frame")).toHaveProp(
       "accessibilityViewIsModal",
       true,
     );
@@ -1136,12 +1232,13 @@ describe("LibraryScreen exercise browse", () => {
 
     const filter = screen.getByRole("checkbox", { name: "Filters" });
     await fireEvent(filter, "focus");
-    expect(filter).toHaveStyle({ outlineWidth: 2 });
+    expect(filter).toHaveStyle({ outlineWidth: sizes.focusRing });
     await fireEvent(filter, "keyDown", {
       nativeEvent: { key: " " },
     });
     expect(screen.getByTestId("library-filter-sheet")).toHaveStyle({
-      maxHeight: "90%",
+      flexShrink: 1,
+      minHeight: 0,
     });
     expect(screen.getByTestId("library-filter-sheet")).toHaveProp(
       "keyboardShouldPersistTaps",
@@ -1277,7 +1374,7 @@ describe("LibraryScreen committed content update and UI truths", () => {
     expect(await screen.findByText(
       "Library could not be loaded. Your plans and exercises were not changed. Try again.",
     )).toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Retry Library" }))
+    expect(screen.getByRole("button", { name: "Retry loading Library" }))
       .toBeOnTheScreen();
   });
 
@@ -1323,7 +1420,7 @@ describe("LibraryScreen committed content update and UI truths", () => {
     });
 
     expect(await screen.findByText(
-      "Library could not be refreshed. Your current content, selection, search, and filters are unchanged.",
+      "Library could not refresh. Your current results are still shown.",
     )).toBeOnTheScreen();
     expect(screen.getByDisplayValue("upper")).toBeOnTheScreen();
     expect(screen.getByTestId("library-plan-card-upper-lower"))
@@ -1332,7 +1429,7 @@ describe("LibraryScreen committed content update and UI truths", () => {
       }));
 
     await fireEvent.press(screen.getByRole("button", {
-      name: "Retry Library refresh",
+      name: "Retry refreshing Library",
     }));
     await waitFor(() => {
       expect(refreshLibrary).toHaveBeenCalledTimes(2);
@@ -1387,7 +1484,7 @@ describe("LibraryScreen committed content update and UI truths", () => {
     });
 
     const retryAction = await screen.findByRole("button", {
-      name: "Retry Library",
+      name: "Retry loading Library",
     });
     await fireEvent.press(retryAction);
     await fireEvent.press(retryAction);
@@ -1493,4 +1590,68 @@ describe("LibraryScreen committed content update and UI truths", () => {
     expect(await screen.findByLabelText("Search exercises"))
       .toBeOnTheScreen();
   });
+  it("removes the top Create plan banner and keeps create within My Plans", async () => {
+    await renderLibrary();
+    await screen.findByLabelText("Search plans");
+    expect(screen.getByRole("button", { name: "Create plan" })).toBeOnTheScreen();
+    const header = screen.getByTestId("screen-header-actions");
+    expect(within(header).queryByRole("button", { name: "Create plan" })).not.toBeOnTheScreen();
+    expect(screen.getByTestId("library-screen")).toHaveStyle({ paddingTop: 0 });
+  });
+
+  it("offers deletion only for eligible plans and waits for confirmation", async () => {
+    const deletePlan = jest.fn(async () => ({ outcome: "deleted" as const, planId: "unused" }));
+    await renderLibrary({
+      deletePlan,
+      loadLibrary: jest.fn(async () => ({ ...snapshot(), plans: {
+        active: null, owned: [
+          { id: "unused", name: "Unused Plan", daysPerWeek: 1, deletionEligible: true },
+          { id: "used", name: "Used Plan", daysPerWeek: 1, deletionEligible: false },
+        ], starters: [],
+      } })),
+    });
+    await screen.findByRole("button", { name: "Delete Unused Plan" });
+    expect(screen.queryByRole("button", { name: "Delete Used Plan" })).not.toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Delete Unused Plan" }));
+    expect(deletePlan).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", { name: "Keep plan" }));
+    expect(deletePlan).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", { name: "Delete Unused Plan" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Delete plan" }));
+    await waitFor(() => expect(deletePlan).toHaveBeenCalledWith({ planId: "unused" }));
+    await waitFor(() => expect(screen.queryByTestId("library-plan-card-unused")).not.toBeOnTheScreen());
+    expect(screen.getByTestId("library-plan-card-used")).toBeOnTheScreen();
+  });
+
+  it("keeps a plan when an authoritative link appeared after the preview and refreshes eligibility", async () => {
+    const plan = { id: "unused", name: "Unused Plan", daysPerWeek: 1, deletionEligible: true };
+    const initial = { ...snapshot(), plans: { active: null, owned: [plan], starters: [] } };
+    const refreshLibrary = jest.fn(async () => ({ ...initial, plans: {
+      ...initial.plans, owned: [{ ...plan, deletionEligible: false }],
+    } }));
+    await renderLibrary({ loadLibrary: jest.fn(async () => initial), refreshLibrary,
+      deletePlan: jest.fn(async () => ({ outcome: "ineligible" as const, planId: "unused", reason: "workout_linked" as const })),
+    });
+    await fireEvent.press(await screen.findByRole("button", { name: "Delete Unused Plan" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Delete plan" }));
+    await waitFor(() => expect(refreshLibrary).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Delete Unused Plan" })).not.toBeOnTheScreen());
+    expect(screen.getByTestId("library-plan-card-unused")).toBeOnTheScreen();
+    expect(screen.getByText("This plan is linked to a workout and cannot be deleted.")).toBeOnTheScreen();
+  });
+
+  it("prevents duplicate deletion writes while the confirmation is pending", async () => {
+    const pending = deferred<{ outcome: "deleted"; planId: string }>();
+    const deletePlan = jest.fn(() => pending.promise);
+    await renderLibrary({ deletePlan, loadLibrary: jest.fn(async () => ({ ...snapshot(), plans: {
+      active: null, owned: [{ id: "unused", name: "Unused Plan", daysPerWeek: 1, deletionEligible: true }], starters: [],
+    } })) });
+    await fireEvent.press(await screen.findByRole("button", { name: "Delete Unused Plan" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Delete plan" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Delete plan" }));
+    expect(deletePlan).toHaveBeenCalledTimes(1);
+    await act(async () => pending.resolve({ outcome: "deleted", planId: "unused" }));
+    expect(screen.queryByTestId("library-plan-card-unused")).not.toBeOnTheScreen();
+  });
+
 });

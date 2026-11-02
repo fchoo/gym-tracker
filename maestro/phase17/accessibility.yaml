@@ -1,0 +1,22 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 17 accessibility executable journey
+tags: [phase-17, native-only, development-test]
+---
+- launchApp: { clearState: false, stopApp: false, permissions: { notifications: deny } }
+- extendedWaitUntil: { visible: "Workout", timeout: 90000 }
+- tapOn: "Library"
+- extendedWaitUntil: { visible: "Library section", timeout: 30000 }
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.accessibility-recovery'}"
+    commands:
+      - pressKey: "Remote Dpad Down"
+      - pressKey: "Remote Dpad Center"
+      - pressKey: BACK
+      - pressKey: ESCAPE
+      - tapOn: "Search exercises"
+      - inputText: "squat"
+      - pressKey: ENTER
+      - assertVisible: "Library section"
+      - swipe: { start: "95%, 75%", end: "95%, 25%", duration: 500 }
+      - assertVisible: "48 dp"

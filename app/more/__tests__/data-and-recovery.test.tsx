@@ -1,534 +1,174 @@
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react-native";
-import {
-  beforeEach,
-  describe,
-  expect,
-  it,
-  jest,
-} from "@jest/globals";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
-import {
-  AppearanceProvider,
-} from "../../../src/ui/theme";
-import type {
-  RuntimeCsvExport,
-  RuntimeRestoreCommitResult,
-  RuntimeRestorePreflightResult,
-  RuntimeSecureBackupArchive,
-} from "../../../src/bootstrap/workoutAppRuntime";
+import { AppearanceProvider } from "../../../src/ui/theme";
 
 const mockBack = jest.fn();
-const mockCreateSecureBackup = jest.fn<(input: Readonly<{
-  password: string;
-  signal?: AbortSignal;
-}>) => Promise<RuntimeSecureBackupArchive>>();
-const mockShareSecureBackup = jest.fn<(
-  archive: RuntimeSecureBackupArchive,
-) => Promise<void>>();
-const mockDiscardSecureBackup = jest.fn<(
-  archive: RuntimeSecureBackupArchive,
-) => Promise<void>>();
-const mockPreflightSecureRestore = jest.fn<(input: Readonly<{
-  password: string;
-}>) => Promise<RuntimeRestorePreflightResult>>();
-const mockCommitSecureRestore = jest.fn<() => Promise<RuntimeRestoreCommitResult>>();
-const mockInvalidateSecureRestorePreflight = jest.fn<(token: string) => void>();
-const mockRetryRestoreRebuild = jest.fn<() => Promise<RuntimeRestoreCommitResult>>();
-const mockCreateCsvExport = jest.fn<() => Promise<RuntimeCsvExport>>();
-const mockShareCsvExport = jest.fn<(handle: RuntimeCsvExport) => Promise<void>>();
-const mockDiscardCsvExport = jest.fn<(handle: RuntimeCsvExport) => Promise<void>>();
+const mockPush = jest.fn();
+const mockRequestAndroidViewFocus = jest.fn<(nativeID: string) => Promise<boolean>>();
+let mockFocusEffect: (() => void) | undefined;
+const mockConnect = jest.fn<() => Promise<void>>();
+const mockCreateCsvExport = jest.fn<() => Promise<{ exportId: string }>>();
+const mockShareCsvExport = jest.fn<(value: { exportId: string }) => Promise<void>>();
+const mockDiscardCsvExport = jest.fn<(value: { exportId: string }) => Promise<void>>();
+const mockUseCellular = jest.fn<() => Promise<void>>();
+const mockBackupNow = jest.fn<() => Promise<void>>();
+const mockDismissCellular = jest.fn<() => Promise<void>>();
+const mockPrepareAutomaticRecovery = jest.fn<(input: { candidate: "latest" | "previous" }) => Promise<any>>();
+const mockCommitAutomaticRecovery = jest.fn<() => Promise<void>>();
+const mockCancelAutomaticRecovery = jest.fn<() => Promise<void>>();
+const mockRuntime: any = {
+  automaticBackup: { status: "not_connected", reason: null, warning: null, lastSuccessfulBackupAtMs: null, primaryAction: "connect", dataUsePolicy: "wifi_and_cellular", recoveryPrompt: null, progressStage: null },
+  connectAutomaticBackup: mockConnect,
+  requestAutomaticBackupNow: mockBackupNow,
+  cancelAutomaticBackupCheck: jest.fn(async () => undefined),
+  dismissAutomaticBackupCellularConfirmation: mockDismissCellular,
+  useAutomaticBackupCellularThisTime: mockUseCellular,
+  reviewAutomaticRecovery: mockPrepareAutomaticRecovery,
+  commitAutomaticRecovery: mockCommitAutomaticRecovery,
+  cancelAutomaticRecovery: mockCancelAutomaticRecovery,
+  createCsvExport: mockCreateCsvExport,
+  shareCsvExport: mockShareCsvExport,
+  discardCsvExport: mockDiscardCsvExport,
+};
 
 jest.mock("expo-router", () => ({
-  router: { back: () => mockBack() },
+  router: {
+    back: () => mockBack(),
+    push: (href: string) => mockPush(href),
+  },
+  useFocusEffect: (effect: () => void) => { mockFocusEffect = effect; },
+  useLocalSearchParams: () => ({}),
 }));
-
+jest.mock("../../../src/bootstrap/androidViewFocus", () => ({
+  requestAndroidViewFocus: (nativeID: string) => mockRequestAndroidViewFocus(nativeID),
+}));
 jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
-  useWorkoutAppRuntime: () => ({
-    createSecureBackup: mockCreateSecureBackup,
-    shareSecureBackup: mockShareSecureBackup,
-    discardSecureBackup: mockDiscardSecureBackup,
-    preflightSecureRestore: mockPreflightSecureRestore,
-    commitSecureRestore: mockCommitSecureRestore,
-    invalidateSecureRestorePreflight: mockInvalidateSecureRestorePreflight,
-    retryRestoreRebuild: mockRetryRestoreRebuild,
-    createCsvExport: mockCreateCsvExport,
-    shareCsvExport: mockShareCsvExport,
-    discardCsvExport: mockDiscardCsvExport,
-  }),
+  useWorkoutAppRuntime: () => mockRuntime,
 }));
 
 import DataAndRecoveryRoute from "../data-and-recovery";
 
-async function renderRoute() {
-  return render(
-    <AppearanceProvider>
-      <DataAndRecoveryRoute />
-    </AppearanceProvider>,
-  );
-}
-
 describe("DataAndRecoveryRoute", () => {
   beforeEach(() => {
     mockBack.mockReset();
-    mockCreateSecureBackup.mockReset();
-    mockCreateSecureBackup.mockResolvedValue({ archiveId: "backup-1" });
-    mockShareSecureBackup.mockReset();
-    mockShareSecureBackup.mockResolvedValue(undefined);
-    mockDiscardSecureBackup.mockReset();
-    mockDiscardSecureBackup.mockResolvedValue(undefined);
-    mockPreflightSecureRestore.mockReset();
-    mockPreflightSecureRestore.mockResolvedValue({
-      outcome: "ready", token: "opaque-token", preview: {
-        sourceFormatVersion: 1,
-        createdAtMs: 1_786_853_900_000,
-        replacementCounts: { app_settings: 1, exercises: 2, plans: 3, workout_sessions: 4 },
-        references: { internalSnapshotReferences: 0, requiredLocalBundled: { available: 1, unavailable: 0 }, catalogReferences: { available: 1, unavailable: 1 } },
-      },
-    });
-    mockCommitSecureRestore.mockReset();
-    mockCommitSecureRestore.mockResolvedValue({ state: "ready" });
-    mockInvalidateSecureRestorePreflight.mockReset();
-    mockRetryRestoreRebuild.mockReset();
-    mockRetryRestoreRebuild.mockResolvedValue({ state: "ready" });
+    mockPush.mockReset();
+    mockRequestAndroidViewFocus.mockReset();
+    mockRequestAndroidViewFocus.mockResolvedValue(true);
+    mockFocusEffect = undefined;
+    mockConnect.mockReset();
+    mockConnect.mockResolvedValue(undefined);
     mockCreateCsvExport.mockReset();
-    mockCreateCsvExport.mockResolvedValue({ exportId: "csv-v1" });
+    mockCreateCsvExport.mockResolvedValue({ exportId: "csv-1" });
     mockShareCsvExport.mockReset();
     mockShareCsvExport.mockResolvedValue(undefined);
     mockDiscardCsvExport.mockReset();
     mockDiscardCsvExport.mockResolvedValue(undefined);
+    mockUseCellular.mockReset();
+    mockUseCellular.mockResolvedValue(undefined);
+    mockBackupNow.mockReset();
+    mockBackupNow.mockResolvedValue(undefined);
+    mockDismissCellular.mockReset();
+    mockDismissCellular.mockResolvedValue(undefined);
+    mockPrepareAutomaticRecovery.mockReset();
+    mockPrepareAutomaticRecovery.mockResolvedValue({ kind: "empty_direct", attemptId: "attempt" });
+    mockCommitAutomaticRecovery.mockReset();
+    mockCommitAutomaticRecovery.mockResolvedValue(undefined);
+    mockCancelAutomaticRecovery.mockReset();
+    mockCancelAutomaticRecovery.mockResolvedValue(undefined);
+    mockRuntime.automaticBackup = { status: "not_connected", reason: null, warning: null, lastSuccessfulBackupAtMs: null, primaryAction: "connect", dataUsePolicy: "wifi_and_cellular", recoveryPrompt: null, progressStage: null };
   });
 
-  it("requires matching passwords and exposes each visibility control by state", async () => {
-    await renderRoute();
+  it("prepares an explicit previous candidate and confirms a reviewed merge", async () => {
+    mockRuntime.automaticBackup = {
+      ...mockRuntime.automaticBackup,
+      status: "restore_pending",
+      primaryAction: "continue_restore",
+      recoveryPrompt: { kind: "latest", producedAtMs: 2, previousProducedAtMs: 1 },
+    };
+    mockPrepareAutomaticRecovery.mockResolvedValueOnce({
+      kind: "merge",
+      attemptId: "merge-attempt",
+      token: "merge-token",
+      ownerSummary: "A different backup identity",
+      adoptionRequired: true,
+    });
+    await render(<AppearanceProvider><DataAndRecoveryRoute /></AppearanceProvider>);
 
-    expect(screen.getByRole("header", { name: "Data and recovery" }))
-      .toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Create secure backup" }))
-      .toBeDisabled();
-
-    await fireEvent.changeText(
-      screen.getByLabelText("Backup password"),
-      "password",
-    );
-    await fireEvent.changeText(
-      screen.getByLabelText("Confirm password"),
-      "different",
-    );
-    expect(screen.getByText("Passwords do not match.")).toBeOnTheScreen();
-
-    await fireEvent.press(screen.getAllByRole("button", { name: "Show password" })[0]!);
-    expect(screen.getByRole("button", { name: "Hide password" }).props
-      .accessibilityHint).toBe("Password visible");
-
-    await fireEvent.changeText(
-      screen.getByLabelText("Confirm password"),
-      "password",
-    );
-    expect(screen.getByRole("button", { name: "Create secure backup" }))
-      .toBeEnabled();
-  });
-
-  it("creates before showing the explicit share action, then clears the completed archive after sharing", async () => {
-    await renderRoute();
-    await fireEvent.changeText(screen.getByLabelText("Backup password"), "password");
-    await fireEvent.changeText(screen.getByLabelText("Confirm password"), "password");
-
-    await fireEvent.press(screen.getByRole("button", { name: "Create secure backup" }));
-
-    await waitFor(() => expect(mockCreateSecureBackup).toHaveBeenCalledWith({
-      password: "password",
-      signal: expect.objectContaining({ aborted: false }),
-    }));
-    expect(await screen.findByText("Secure backup ready")).toBeOnTheScreen();
-    expect(mockShareSecureBackup).not.toHaveBeenCalled();
-
-    await fireEvent.press(screen.getByRole("button", { name: "Share backup" }));
-    await waitFor(() => expect(mockShareSecureBackup).toHaveBeenCalledWith({
-      archiveId: "backup-1",
-    }));
-    await waitFor(() => expect(screen.queryByText("Secure backup ready"))
-      .not.toBeOnTheScreen());
-  });
-
-  it("uses a distinct latched sharing state without returning to password entry", async () => {
-    let resolveShare: (() => void) | undefined;
-    mockShareSecureBackup.mockImplementationOnce(() => new Promise((resolve) => {
-      resolveShare = resolve;
-    }));
-    await renderRoute();
-    await fireEvent.changeText(screen.getByLabelText("Backup password"), "password");
-    await fireEvent.changeText(screen.getByLabelText("Confirm password"), "password");
-    await fireEvent.press(screen.getByRole("button", { name: "Create secure backup" }));
-    await screen.findByText("Secure backup ready");
-
-    const shareButton = screen.getByRole("button", { name: "Share backup" });
-    await fireEvent.press(shareButton);
-    await fireEvent.press(shareButton);
-
-    expect(mockShareSecureBackup).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("Opening share options")).toBeOnTheScreen();
-    expect(screen.queryByText("Preparing secure backup")).not.toBeOnTheScreen();
-    expect(screen.queryByLabelText("Backup password")).not.toBeOnTheScreen();
-    expect(screen.queryByRole("button", { name: "Create secure backup" }))
-      .not.toBeOnTheScreen();
-
-    await act(async () => {
-      resolveShare?.();
+    await fireEvent.press(screen.getByRole("button", { name: "Use previous backup" }));
+    expect(mockPrepareAutomaticRecovery).toHaveBeenCalledWith({ candidate: "previous" });
+    expect(screen.getByRole("header", { name: "Review cloud merge" })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Merge workouts" }));
+    expect(mockCommitAutomaticRecovery).toHaveBeenCalledWith({
+      kind: "merge",
+      attemptId: "merge-attempt",
+      confirmation: "MERGE",
+      adoptIdentity: true,
     });
   });
 
-  it("shows a safe share-specific failure and requires creating a fresh backup", async () => {
-    mockShareSecureBackup.mockRejectedValueOnce(new Error("file:///private/backup.gtbk"));
-    await renderRoute();
-    await fireEvent.changeText(screen.getByLabelText("Backup password"), "password");
-    await fireEvent.changeText(screen.getByLabelText("Confirm password"), "password");
-    await fireEvent.press(screen.getByRole("button", { name: "Create secure backup" }));
-    await screen.findByText("Secure backup ready");
-    await fireEvent.press(screen.getByRole("button", { name: "Share backup" }));
-
-    expect(await screen.findByText("Backup could not be shared")).toBeOnTheScreen();
-    expect(screen.getByText("Your saved workouts and plans were not changed. Create a new backup to try again."))
-      .toBeOnTheScreen();
-    expect(screen.queryByText("Backup could not be created")).not.toBeOnTheScreen();
-    expect(screen.queryByText("file:///private/backup.gtbk")).not.toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Create another backup" }));
-    expect(screen.getByLabelText("Backup password")).toBeOnTheScreen();
+  it.each([
+    ["Checking backup", { status: "restore_pending", progressStage: "Checking backup", reason: null }],
+    ["Restoring on this phone", { status: "restoring", progressStage: "Restoring on this phone", reason: null }],
+    ["Finishing backup setup", { status: "restoring", progressStage: "Finishing backup setup", reason: null }],
+    ["Review merge", { status: "restore_pending", progressStage: null, reason: "merge_review" }],
+    ["Backup needs attention", { status: "paused", progressStage: null, reason: "invalid_artifacts" }],
+    ["Cloud backup deleted", { status: "paused", progressStage: null, reason: "deleted" }],
+    ["Deleting cloud backup", { status: "paused", progressStage: null, reason: "deletion_partial" }],
+  ])("renders the production facade state %s", async (label, state) => {
+    mockRuntime.automaticBackup = { ...mockRuntime.automaticBackup, ...state, primaryAction: null };
+    await render(<AppearanceProvider><DataAndRecoveryRoute /></AppearanceProvider>);
+    expect(screen.getByText(label)).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Manual encrypted backup" })).toBeOnTheScreen();
   });
 
-  it("cancels backup preparation immediately and discards a stale late archive", async () => {
-    let resolveCreate: ((archive: RuntimeSecureBackupArchive) => void) | undefined;
-    let receivedSignal: AbortSignal | undefined;
-    mockCreateSecureBackup.mockImplementationOnce((input) => {
-      receivedSignal = input.signal;
-      return new Promise((resolve) => { resolveCreate = resolve; });
-    });
-    await renderRoute();
-    await fireEvent.changeText(screen.getByLabelText("Backup password"), "password");
-    await fireEvent.changeText(screen.getByLabelText("Confirm password"), "password");
-    const createButton = screen.getByRole("button", { name: "Create secure backup" });
-
-    await fireEvent.press(createButton);
-    await fireEvent.press(createButton);
-
-    expect(mockCreateSecureBackup).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("Preparing secure backup")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Cancel backup" }));
-    expect(receivedSignal?.aborted).toBe(true);
-    expect(screen.getByText("Backup creation cancelled.")).toBeOnTheScreen();
-    expect(screen.getByLabelText("Backup password")).toBeOnTheScreen();
-
-    await act(async () => {
-      resolveCreate?.({ archiveId: "late-backup" });
-    });
-
-    await waitFor(() => expect(mockDiscardSecureBackup).toHaveBeenCalledWith({
-      archiveId: "late-backup",
-    }));
-    expect(screen.queryByText("Secure backup ready")).not.toBeOnTheScreen();
-    expect(screen.queryByText("Backup could not be created")).not.toBeOnTheScreen();
-    expect(mockShareSecureBackup).not.toHaveBeenCalled();
+  it("submits a normal manual request under Wi-Fi-only without guessing the network", async () => {
+    mockRuntime.automaticBackup = { ...mockRuntime.automaticBackup, status: "idle", primaryAction: "backup_now", dataUsePolicy: "wifi_only" };
+    const route = await render(<AppearanceProvider><DataAndRecoveryRoute /></AppearanceProvider>);
+    await fireEvent.press(route.getByRole("button", { name: "Back up now" }));
+    expect(mockBackupNow).toHaveBeenCalledTimes(1);
+    expect(route.queryByText(/Use cellular data for this backup/u)).not.toBeOnTheScreen();
   });
 
-  it("discards a ready unshared backup when the route unmounts", async () => {
-    const route = await renderRoute();
-    await fireEvent.changeText(screen.getByLabelText("Backup password"), "password");
-    await fireEvent.changeText(screen.getByLabelText("Confirm password"), "password");
-    await fireEvent.press(screen.getByRole("button", { name: "Create secure backup" }));
-    await screen.findByText("Secure backup ready");
-
-    route.unmount();
-
-    await waitFor(() => expect(mockDiscardSecureBackup).toHaveBeenCalledWith({
-      archiveId: "backup-1",
-    }));
-    expect(mockShareSecureBackup).not.toHaveBeenCalled();
+  it("renders cellular confirmation only after the scheduler requests it", async () => {
+    mockRuntime.automaticBackup = { ...mockRuntime.automaticBackup, reason: "cellular_confirmation_required" };
+    await render(<AppearanceProvider><DataAndRecoveryRoute /></AppearanceProvider>);
+    expect(screen.getByText(/Use cellular data for this backup/u)).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Use cellular this time" }));
+    expect(mockUseCellular).toHaveBeenCalledTimes(1);
+    await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
+    expect(mockDismissCellular).toHaveBeenCalledTimes(1);
   });
 
-  it("shows only the safe failure copy and allows a retry after export failure", async () => {
-    mockCreateSecureBackup.mockRejectedValueOnce(new Error("sensitive native path"));
-    await renderRoute();
-    await fireEvent.changeText(screen.getByLabelText("Backup password"), "password");
-    await fireEvent.changeText(screen.getByLabelText("Confirm password"), "password");
-
-    await fireEvent.press(screen.getByRole("button", { name: "Create secure backup" }));
-
-    expect(await screen.findByText("Backup could not be created")).toBeOnTheScreen();
-    expect(screen.getByText(
-      "Your saved workouts and plans were not changed. Check available storage and try again.",
-    )).toBeOnTheScreen();
-    expect(screen.queryByText("sensitive native path")).not.toBeOnTheScreen();
-
-    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
-    expect(screen.getByRole("button", { name: "Create secure backup" }))
-      .toBeDisabled();
+  it("keeps automatic proof, manual recovery navigation, and direct CSV action separate", async () => {
+    await render(<AppearanceProvider><DataAndRecoveryRoute /></AppearanceProvider>);
+    expect(screen.getByRole("header", { name: "Data and recovery" })).toBeOnTheScreen();
+    expect(screen.getByText("Not connected")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Connect Google Drive" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Manual encrypted backup" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Export CSV" }).props.accessibilityHint).toBe("Creates a readable spreadsheet file that is not password-protected");
+    expect(screen.queryByText("Create secure backup")).not.toBeOnTheScreen();
   });
 
-  it("cancels selection without writing and keeps the picker action accessible", async () => {
-    mockPreflightSecureRestore.mockResolvedValueOnce({ outcome: "cancelled" });
-    await renderRoute();
-    await fireEvent.changeText(screen.getByLabelText("Restore password"), "password");
-    await fireEvent.press(screen.getByRole("button", { name: "Choose a Gym Tracker backup" }));
+  it("restores exact nested-route origin focus when the recovery hub resumes", async () => {
+    await render(<AppearanceProvider><DataAndRecoveryRoute /></AppearanceProvider>);
+    const automatic = screen.getByRole("button", { name: "Automatic backup settings" });
+    const manual = screen.getByRole("button", { name: "Manual encrypted backup" });
 
-    expect(await screen.findByText("No backup was selected")).toBeOnTheScreen();
-    expect(mockCommitSecureRestore).not.toHaveBeenCalled();
-  });
+    expect(automatic.props.nativeID).toBe("data-recovery-automatic-backup-settings");
+    expect(manual.props.nativeID).toBe("data-recovery-manual-encrypted-backup");
 
-  it("invalidates a restore preflight that completes after the route unmounts", async () => {
-    let resolvePreflight: ((result: RuntimeRestorePreflightResult) => void) | undefined;
-    mockPreflightSecureRestore.mockImplementationOnce(() => new Promise((resolve) => {
-      resolvePreflight = resolve;
-    }));
-    const route = await renderRoute();
-    await fireEvent.changeText(screen.getByLabelText("Restore password"), "password");
-    await fireEvent.press(screen.getByRole("button", { name: "Choose a Gym Tracker backup" }));
+    await fireEvent.press(automatic);
+    expect(mockPush).toHaveBeenCalledWith("/more/automatic-backup-settings");
+    await act(async () => { mockFocusEffect?.(); });
+    expect(mockRequestAndroidViewFocus)
+      .toHaveBeenLastCalledWith("data-recovery-automatic-backup-settings");
 
-    route.unmount();
-    resolvePreflight?.({
-      outcome: "ready",
-      token: "late-token",
-      preview: {
-        sourceFormatVersion: 1,
-        createdAtMs: 1_786_853_900_000,
-        replacementCounts: {},
-        references: { internalSnapshotReferences: 0, requiredLocalBundled: { available: 0, unavailable: 0 }, catalogReferences: { available: 0, unavailable: 0 } },
-      },
-    });
-
-    await waitFor(() => expect(mockInvalidateSecureRestorePreflight)
-      .toHaveBeenCalledWith("late-token"));
-    expect(mockCommitSecureRestore).not.toHaveBeenCalled();
-  });
-
-  it("reviews bounded counts, requires exact REPLACE, and latches duplicate restore presses", async () => {
-    let resolveCommit: ((value: RuntimeRestoreCommitResult) => void) | undefined;
-    mockCommitSecureRestore.mockImplementationOnce(() => new Promise((resolve) => { resolveCommit = resolve; }));
-    await renderRoute();
-    await fireEvent.changeText(screen.getByLabelText("Restore password"), "password");
-    await fireEvent.press(screen.getByRole("button", { name: "Choose a Gym Tracker backup" }));
-
-    expect(await screen.findByRole("header", { name: "Review backup" })).toBeOnTheScreen();
-    expect(screen.getByLabelText("Source format version: 1")).toBeOnTheScreen();
-    expect(screen.getByLabelText("Backup created: 2026-08-16T04:18:20.000Z")).toBeOnTheScreen();
-    expect(screen.getByLabelText("Plans: 3")).toBeOnTheScreen();
-    expect(screen.getByLabelText("Custom exercises: 2")).toBeOnTheScreen();
-    expect(screen.getByLabelText("Sessions: 4")).toBeOnTheScreen();
-    expect(screen.getByLabelText("Settings: 1")).toBeOnTheScreen();
-    expect(screen.getByLabelText("Catalog references available: 1")).toBeOnTheScreen();
-    expect(screen.getByLabelText("Catalog references unavailable: 1")).toBeOnTheScreen();
-    const previewFacts = [
-      "Source format version: 1",
-      "Backup created: 2026-08-16T04:18:20.000Z",
-      "Plans: 3",
-      "Custom exercises: 2",
-      "Sessions: 4",
-      "Settings: 1",
-      "Catalog references available: 1",
-      "Catalog references unavailable: 1",
-    ].map((label) => screen.getByLabelText(label));
-    expect(screen.container.queryAll((node) => node.props.role === "list", { includeSelf: true }))
-      .toHaveLength(1);
-    expect(previewFacts).toHaveLength(8);
-    expect(previewFacts.every((fact) => fact.props.accessible === true)).toBe(true);
-    expect(previewFacts.every((fact) => fact.props.accessibilityRole === "text")).toBe(true);
-    expect(screen.queryByText("Plans: 3 · Custom exercises: 2 · Sessions: 4 · Settings: 1"))
-      .not.toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Restore backup" })).toBeDisabled();
-    await fireEvent.changeText(screen.getByLabelText("Type REPLACE to continue"), "replace");
-    expect(screen.getByRole("button", { name: "Restore backup" })).toBeDisabled();
-    await fireEvent.changeText(screen.getByLabelText("Type REPLACE to continue"), "REPLACE");
-    const button = screen.getByRole("button", { name: "Restore backup" });
-    await fireEvent.press(button);
-    await fireEvent.press(button);
-    expect(mockCommitSecureRestore).toHaveBeenCalledTimes(1);
-    expect(mockCommitSecureRestore).toHaveBeenCalledWith({ token: "opaque-token", confirmation: "REPLACE" });
-    resolveCommit?.({ state: "ready" });
-    expect(await screen.findByText("Backup restored. Search and progress are ready.")).toBeOnTheScreen();
-  });
-
-  it("keeps derivative-dependent success unavailable and offers retry when rebuilding remains pending", async () => {
-    mockCommitSecureRestore.mockResolvedValueOnce({ state: "rebuild_pending" });
-    await renderRoute();
-    await fireEvent.changeText(screen.getByLabelText("Restore password"), "password");
-    await fireEvent.press(screen.getByRole("button", { name: "Choose a Gym Tracker backup" }));
-    await screen.findByText("Review backup");
-    await fireEvent.changeText(screen.getByLabelText("Type REPLACE to continue"), "REPLACE");
-    await fireEvent.press(screen.getByRole("button", { name: "Restore backup" }));
-
-    expect(await screen.findByText("Backup restored. Recalculating search and progress.")).toBeOnTheScreen();
-    expect(screen.queryByText("Backup restored. Search and progress are ready.")).not.toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Retry rebuild" })).toBeOnTheScreen();
-
-    await fireEvent.press(screen.getByRole("button", { name: "Retry rebuild" }));
-    await waitFor(() => expect(mockRetryRestoreRebuild).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText("Backup restored. Search and progress are ready.")).toBeOnTheScreen();
-  });
-
-  it("keeps wrong-password-or-tampered and transaction errors to safe copy", async () => {
-    mockPreflightSecureRestore.mockRejectedValueOnce(Object.assign(new Error("secret archive path"), { code: "restore_archive_unavailable" }));
-    await renderRoute();
-    await fireEvent.changeText(screen.getByLabelText("Restore password"), "password");
-    await fireEvent.press(screen.getByRole("button", { name: "Choose a Gym Tracker backup" }));
-    expect(await screen.findByText("Backup could not be opened")).toBeOnTheScreen();
-    expect(screen.getByText("Your current saved data was not changed.")).toBeOnTheScreen();
-    expect(screen.queryByText("secret archive path")).not.toBeOnTheScreen();
-  });
-
-  it("retries a restore failure through fresh selection and preflight without reusing its token", async () => {
-    mockPreflightSecureRestore
-      .mockResolvedValueOnce({
-        outcome: "ready",
-        token: "first-token",
-        preview: {
-          sourceFormatVersion: 1,
-          createdAtMs: 1_786_853_900_000,
-          replacementCounts: { app_settings: 1 },
-          references: { internalSnapshotReferences: 0, requiredLocalBundled: { available: 0, unavailable: 0 }, catalogReferences: { available: 0, unavailable: 0 } },
-        },
-      })
-      .mockResolvedValueOnce({
-        outcome: "ready",
-        token: "second-token",
-        preview: {
-          sourceFormatVersion: 1,
-          createdAtMs: 1_786_853_900_000,
-          replacementCounts: { app_settings: 1 },
-          references: { internalSnapshotReferences: 0, requiredLocalBundled: { available: 0, unavailable: 0 }, catalogReferences: { available: 0, unavailable: 0 } },
-        },
-      });
-    mockCommitSecureRestore.mockRejectedValueOnce(Object.assign(new Error("private database exception"), { code: "restore_commit_failed" }));
-    await renderRoute();
-    await fireEvent.changeText(screen.getByLabelText("Restore password"), "password");
-    await fireEvent.press(screen.getByRole("button", { name: "Choose a Gym Tracker backup" }));
-    await screen.findByText("Review backup");
-    await fireEvent.changeText(screen.getByLabelText("Type REPLACE to continue"), "REPLACE");
-    await fireEvent.press(screen.getByRole("button", { name: "Restore backup" }));
-
-    expect(await screen.findByText("Restore could not be completed")).toBeOnTheScreen();
-    expect(screen.getByText("Your current saved data was kept.")).toBeOnTheScreen();
-    expect(screen.queryByText("private database exception")).not.toBeOnTheScreen();
-    expect(screen.queryByText("Backup restored. Recalculating search and progress.")).not.toBeOnTheScreen();
-
-    await fireEvent.changeText(screen.getByLabelText("Restore password"), "new-password");
-    await fireEvent.press(screen.getByRole("button", { name: "Try restore again" }));
-    await screen.findByRole("header", { name: "Review backup" });
-    expect(mockPreflightSecureRestore).toHaveBeenNthCalledWith(1, { password: "password" });
-    expect(mockPreflightSecureRestore).toHaveBeenNthCalledWith(2, { password: "new-password" });
-    expect(screen.getByRole("button", { name: "Restore backup" })).toBeDisabled();
-    await fireEvent.changeText(screen.getByLabelText("Type REPLACE to continue"), "REPLACE");
-    await fireEvent.press(screen.getByRole("button", { name: "Restore backup" }));
-    await waitFor(() => expect(mockCommitSecureRestore).toHaveBeenCalledTimes(2));
-    expect(mockCommitSecureRestore).toHaveBeenNthCalledWith(1, { token: "first-token", confirmation: "REPLACE" });
-    expect(mockCommitSecureRestore).toHaveBeenNthCalledWith(2, { token: "second-token", confirmation: "REPLACE" });
-  });
-
-  it("shows the exact readable CSV warning and latches duplicate export/share presses", async () => {
-    let resolveCreate: ((value: RuntimeCsvExport) => void) | undefined;
-    mockCreateCsvExport.mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }));
-    await renderRoute();
-
-    expect(screen.getAllByText("Export CSV")).toHaveLength(2);
-    expect(screen.getByText(
-      "CSV is a readable spreadsheet file. Share it only with people you trust.",
-    )).toBeOnTheScreen();
-    expect(screen.getByText(
-      "It is not password-protected and includes historical, audit, recommendation, and decision data.",
-    )).toBeOnTheScreen();
-    const exportButton = screen.getByRole("button", { name: "Export CSV" });
-    await fireEvent.press(exportButton);
-    await fireEvent.press(exportButton);
-    expect(mockCreateCsvExport).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("Preparing CSV export")).toBeOnTheScreen();
-
-    await act(async () => {
-      resolveCreate?.({ exportId: "csv-v1" });
-    });
-    expect(await screen.findByText("CSV export ready")).toBeOnTheScreen();
-
-    let resolveShare: (() => void) | undefined;
-    mockShareCsvExport.mockImplementationOnce(() => new Promise((resolve) => { resolveShare = resolve; }));
-    const shareButton = screen.getByRole("button", { name: "Share CSV" });
-    await fireEvent.press(shareButton);
-    await fireEvent.press(shareButton);
-    expect(mockShareCsvExport).toHaveBeenCalledTimes(1);
-    expect(mockShareCsvExport).toHaveBeenCalledWith({ exportId: "csv-v1" });
-    await act(async () => {
-      resolveShare?.();
-    });
-    await waitFor(() => expect(screen.queryByText("CSV export ready"))
-      .not.toBeOnTheScreen());
-  });
-
-  it("shows safe retryable CSV failures without leaking paths or claiming success", async () => {
-    mockCreateCsvExport.mockRejectedValueOnce(new Error("/private/cache/export.csv"));
-    await renderRoute();
-    await fireEvent.press(screen.getByRole("button", { name: "Export CSV" }));
-
-    expect(await screen.findByText("CSV export could not be created")).toBeOnTheScreen();
-    expect(screen.getByText("Your saved data was not changed.")).toBeOnTheScreen();
-    expect(screen.queryByText("/private/cache/export.csv")).not.toBeOnTheScreen();
-    expect(screen.queryByText("CSV export ready")).not.toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Try CSV export again" }));
-    expect(screen.getByRole("button", { name: "Export CSV" })).toBeOnTheScreen();
-  });
-
-  it("handles unavailable or rejected sharing as a safe terminal file-lifecycle failure", async () => {
-    mockShareCsvExport.mockRejectedValueOnce(new Error("content://private/export.csv"));
-    await renderRoute();
-    await fireEvent.press(screen.getByRole("button", { name: "Export CSV" }));
-    await screen.findByText("CSV export ready");
-    await fireEvent.press(screen.getByRole("button", { name: "Share CSV" }));
-
-    expect(await screen.findByText("CSV could not be shared")).toBeOnTheScreen();
-    expect(screen.getByText("Your saved data was not changed.")).toBeOnTheScreen();
-    expect(screen.queryByText("content://private/export.csv")).not.toBeOnTheScreen();
-    expect(screen.queryByRole("button", { name: "Share CSV" })).not.toBeOnTheScreen();
-    expect(mockDiscardCsvExport).toHaveBeenCalledWith({ exportId: "csv-v1" });
-  });
-
-  it("discards a ready unshared CSV when Back unmounts the route", async () => {
-    const route = await renderRoute();
-    await fireEvent.press(screen.getByRole("button", { name: "Export CSV" }));
-    await screen.findByText("CSV export ready");
-
-    await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
-    route.unmount();
-
-    expect(mockBack).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(mockDiscardCsvExport).toHaveBeenCalledWith({
-      exportId: "csv-v1",
-    }));
-    expect(mockShareCsvExport).not.toHaveBeenCalled();
-  });
-
-  it("discards a CSV that finishes after the route has already unmounted", async () => {
-    let resolveCreate: ((handle: RuntimeCsvExport) => void) | undefined;
-    mockCreateCsvExport.mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }));
-    const route = await renderRoute();
-    await fireEvent.press(screen.getByRole("button", { name: "Export CSV" }));
-
-    route.unmount();
-    resolveCreate?.({ exportId: "csv-v1-late" } as RuntimeCsvExport);
-
-    await waitFor(() => expect(mockDiscardCsvExport).toHaveBeenCalledWith({
-      exportId: "csv-v1-late",
-    }));
-  });
-
-  it("does not discard the handle already consumed by sharing", async () => {
-    const route = await renderRoute();
-    await fireEvent.press(screen.getByRole("button", { name: "Export CSV" }));
-    await screen.findByText("CSV export ready");
-    await fireEvent.press(screen.getByRole("button", { name: "Share CSV" }));
-    await waitFor(() => expect(mockShareCsvExport).toHaveBeenCalledTimes(1));
-
-    route.unmount();
-    expect(mockDiscardCsvExport).not.toHaveBeenCalled();
+    await fireEvent.press(manual);
+    expect(mockPush).toHaveBeenCalledWith("/more/manual-encrypted-backup");
+    await act(async () => { mockFocusEffect?.(); });
+    expect(mockRequestAndroidViewFocus)
+      .toHaveBeenLastCalledWith("data-recovery-manual-encrypted-backup");
   });
 });

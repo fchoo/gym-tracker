@@ -4,6 +4,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useDeviceTimeZone } from "../time/useDeviceTimeZone";
 import {
   StyleSheet,
   Text,
@@ -29,6 +30,9 @@ import {
   SkeletonBlock,
 } from "../components";
 import {
+  useSemanticToast,
+} from "../components/SemanticToast";
+import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
 import {
@@ -38,6 +42,13 @@ import {
 } from "../theme";
 
 type LoadState = "loading" | "ready" | "error";
+type RestoreStage =
+  | "command-pending"
+  | "runtime-refresh-pending"
+  | "removed-list-reload-pending"
+  | "success";
+type CommittedRestoreStage = Exclude<RestoreStage, "command-pending" | "success">;
+type FocusRef = React.RefObject<View | null>;
 
 export type RemovedSessionsScreenProps = Readonly<{
   loadRemovedSessions(): Promise<readonly RemovedHistorySession[]>;
@@ -45,7 +56,7 @@ export type RemovedSessionsScreenProps = Readonly<{
     input: Omit<RestoreHistorySessionInput, "nowMs">,
   ): Promise<HistoryLifecycleResult>;
   onBack(): void;
-  onRestored(sessionId: string): void;
+  onRestored(sessionId: string): Promise<void>;
   width?: number;
 }>;
 
@@ -60,16 +71,46 @@ function progressText(session: RemovedHistorySession): string {
   return `Working sets · ${progress.completed}/${progress.planned}${percent}`;
 }
 
-function removedText(session: RemovedHistorySession): string {
+function removedText(session: RemovedHistorySession, displayTimeZone: string): string {
   try {
     return `Removed · ${new Intl.DateTimeFormat(undefined, {
       dateStyle: "medium",
       timeStyle: "short",
-      timeZone: session.timezone,
+      timeZone: displayTimeZone,
     }).format(new Date(session.removedAtMs))}`;
   } catch {
     return "Removed · Time unavailable";
   }
+}
+
+export function restoreFocusRefForRemovedSession(
+  selectedRestoreRef: FocusRef,
+  headingRef: FocusRef,
+): FocusRef {
+  return selectedRestoreRef.current === null ? headingRef : selectedRestoreRef;
+}
+
+function isCommittedRestoreStage(stage: RestoreStage | null): stage is CommittedRestoreStage {
+  return stage === "runtime-refresh-pending" || stage === "removed-list-reload-pending";
+}
+
+function staleRestoreCopy(stage: CommittedRestoreStage): string {
+  return stage === "runtime-refresh-pending"
+    ? "Already restored. Retry refresh to update the app and clear this stale row."
+    : "Already restored. Retry loading removed sessions to clear this stale row.";
+}
+
+function restoreActionLabelFor(
+  label: string,
+  stage: CommittedRestoreStage | null,
+): string {
+  if (stage === "runtime-refresh-pending") {
+    return `Review restored ${label}`;
+  }
+  if (stage === "removed-list-reload-pending") {
+    return `Retry loading removed ${label}`;
+  }
+  return `Restore ${label}`;
 }
 
 export function RemovedSessionsScreen({
@@ -80,22 +121,40 @@ export function RemovedSessionsScreen({
   width,
 }: RemovedSessionsScreenProps) {
   const { colors } = useAppTheme();
+  const displayTimeZone = useDeviceTimeZone();
+  const { enqueue } = useSemanticToast();
   const [state, setState] = useState<LoadState>("loading");
   const [sessions, setSessions] = useState<readonly RemovedHistorySession[]>([]);
   const [selected, setSelected] = useState<RemovedHistorySession | null>(null);
   const [restoreFailed, setRestoreFailed] = useState(false);
+  const [restoreStage, setRestoreStage] = useState<RestoreStage | null>(null);
+  const [committedRestoreStages, setCommittedRestoreStages] = useState<
+    Partial<Record<string, CommittedRestoreStage>>
+  >({});
   const [restoring, setRestoring] = useState(false);
-  const restoreRef = useRef<View>(null);
+  const headingRef = useRef<View>(null);
+  const loadingRef = useRef(false);
+  const restoreActionRefs = useRef(new Map<string, View>());
+  const restoreFocusRef = useRef<View>(null);
   const adaptiveWidth = width === undefined ? {} : { width };
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<readonly RemovedHistorySession[] | null> => {
+    if (loadingRef.current) return null;
+    loadingRef.current = true;
     setState("loading");
-    setRestoreFailed(false);
     try {
-      setSessions(await loadRemovedSessions());
+      const loadedSessions = await loadRemovedSessions();
+      const sortedSessions = [...loadedSessions].sort((left, right) =>
+        right.removedAtMs - left.removedAtMs || left.id.localeCompare(right.id),
+      );
+      setSessions(sortedSessions);
       setState("ready");
+      return sortedSessions;
     } catch {
       setState("error");
+      return null;
+    } finally {
+      loadingRef.current = false;
     }
   }, [loadRemovedSessions]);
 
@@ -103,41 +162,108 @@ export function RemovedSessionsScreen({
     void load();
   }, [load]);
 
-  const dismissConfirmation = () => {
+  useEffect(() => {
+    if (restoreStage !== "success") {
+      return;
+    }
+    if (selected !== null) {
+      setCommittedRestoreStages((current) => {
+        if (current[selected.id] === undefined) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[selected.id];
+        return next;
+      });
+    }
+    dismissConfirmation(false);
+    enqueue({ message: "Workout restored" });
+  }, [enqueue, restoreStage, selected]);
+
+  const dismissConfirmation = (preserveCommittedStage = true) => {
+    if (preserveCommittedStage && selected !== null && isCommittedRestoreStage(restoreStage)) {
+      setCommittedRestoreStages((current) => ({
+        ...current,
+        [selected.id]: restoreStage,
+      }));
+    }
     setSelected(null);
     setRestoreFailed(false);
+    setRestoreStage(null);
   };
 
   const confirmRestore = () => {
-    if (selected === null || restoring) {
+    if (selected === null || restoreStage === null || restoring) {
       return;
     }
+    const selectedSession = selected;
+    const retryStage = restoreStage;
     setRestoring(true);
-    setRestoreFailed(false);
-    void restoreSession({
-      sessionId: selected.id,
-      expectedEffectiveRevision: selected.effectiveRevision,
-      confirmation: RESTORE_HISTORY_CONFIRMATION,
-    }).then(() => {
-      const restoredId = selected.id;
-      dismissConfirmation();
-      onRestored(restoredId);
-      return load();
-    }).catch(() => {
-      setRestoreFailed(true);
-    }).finally(() => {
+    if (retryStage === "command-pending") {
+      setRestoreFailed(false);
+    }
+    void (async () => {
+      try {
+        if (retryStage === "command-pending") {
+          await restoreSession({
+            sessionId: selectedSession.id,
+            expectedEffectiveRevision: selectedSession.effectiveRevision,
+            confirmation: RESTORE_HISTORY_CONFIRMATION,
+          });
+          setRestoreStage("runtime-refresh-pending");
+        }
+        if (retryStage === "command-pending" || retryStage === "runtime-refresh-pending") {
+          await onRestored(selectedSession.id);
+          setRestoreStage("removed-list-reload-pending");
+        }
+        const reloadedSessions = await load();
+        if (reloadedSessions === null) {
+          setRestoring(false);
+          return;
+        }
+        setCommittedRestoreStages((current) => {
+          if (current[selectedSession.id] === undefined) {
+            return current;
+          }
+          const next = { ...current };
+          delete next[selectedSession.id];
+          return next;
+        });
+        if (!reloadedSessions.some((session) => session.id === selectedSession.id)) {
+          restoreFocusRef.current = headingRef.current;
+        }
+        setRestoreStage("success");
+      } catch {
+        setRestoring(false);
+        if (retryStage === "command-pending") {
+          setRestoreFailed(true);
+        }
+        return;
+      }
       setRestoring(false);
-    });
+    })();
   };
 
   let content: React.ReactNode;
   if (state === "loading") {
     content = (
-      <View style={styles.skeleton} testID="removed-sessions-skeleton">
-        <SkeletonBlock height={34} width="58%" />
-        <SkeletonBlock height={112} />
-        <SkeletonBlock height={112} />
-      </View>
+      <>
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={styles.skeleton}
+          testID="removed-sessions-skeleton"
+        >
+          <SkeletonBlock height={34} width="58%" />
+          <SkeletonBlock height={112} />
+          <SkeletonBlock height={112} />
+        </View>
+        <View
+          accessible
+          accessibilityLabel="Loading removed sessions"
+          accessibilityRole="progressbar"
+        />
+      </>
     );
   } else if (state === "error") {
     content = (
@@ -152,7 +278,7 @@ export function RemovedSessionsScreen({
       <EmptyState
         body="Workouts removed from history stay here until you restore them."
         heading="No removed sessions"
-        primaryAction={<PrimaryAction label="Go back" onPress={onBack} />}
+        primaryAction={<PrimaryAction label="Return to App Settings" onPress={onBack} />}
       />
     );
   } else {
@@ -160,6 +286,7 @@ export function RemovedSessionsScreen({
       <View style={styles.list}>
         {sessions.map((session) => {
           const label = retainedLabel(session);
+          const committedStage = committedRestoreStages[session.id] ?? null;
           return (
             <ContentCard key={session.id} testID={`removed-session-${session.id}`}>
               <View style={styles.cardContent}>
@@ -171,7 +298,7 @@ export function RemovedSessionsScreen({
                 <Text
                   style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}
                 >
-                  {session.localDate}
+                  {session.displayLocalDate ?? session.localDate}
                 </Text>
                 <Text
                   style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}
@@ -181,15 +308,27 @@ export function RemovedSessionsScreen({
                 <Text
                   style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}
                 >
-                  {removedText(session)}
+                  {removedText(session, displayTimeZone)}
                 </Text>
+                {committedStage === null ? null : (
+                  <Text
+                    style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}
+                  >
+                    {staleRestoreCopy(committedStage)}
+                  </Text>
+                )}
                 <SecondaryAction
-                  label={`Restore ${label}`}
+                  label={restoreActionLabelFor(label, committedStage)}
                   onPress={() => {
+                    restoreFocusRef.current = restoreActionRefs.current.get(session.id) ?? null;
                     setRestoreFailed(false);
+                    setRestoreStage(committedStage ?? "command-pending");
                     setSelected(session);
                   }}
-                  ref={restoreRef}
+                  ref={(node) => {
+                    if (node === null) restoreActionRefs.current.delete(session.id);
+                    else restoreActionRefs.current.set(session.id, node);
+                  }}
                 />
               </View>
             </ContentCard>
@@ -205,23 +344,33 @@ export function RemovedSessionsScreen({
         {...adaptiveWidth}
         primary={
           <>
-            <ScreenHeader backAction={onBack} title="Removed sessions" />
+            <ScreenHeader backAction={onBack} ref={headingRef} title="Removed sessions" />
             {content}
           </>
         }
       />
       <ConfirmationSheet
-        body={restoreFailed
-          ? "Restore failed. The workout remains removed. Try restore again when ready."
-          : "This returns the workout to ordinary Calendar, history, records, and recommendations after the saved restore commits."}
-        cancelLabel="Cancel"
+        body={restoreStage === "runtime-refresh-pending"
+          ? "The workout was restored, but the app could not refresh. Retry refresh to update the app."
+          : restoreStage === "removed-list-reload-pending"
+            ? "The workout was restored, but removed sessions could not be reloaded. Retry loading removed sessions."
+          : restoreFailed
+            ? "Restore failed. The workout remains removed. Try restore again when ready."
+          : selected === null
+            ? ""
+            : `${retainedLabel(selected)} (revision ${selected.effectiveRevision}) returns to ordinary Calendar, history, records, and recommendations after the saved restore commits.`}
+        cancelLabel="Keep session removed"
         confirmBusy={restoring}
-        confirmLabel="Restore workout"
+        confirmLabel={restoreStage === "runtime-refresh-pending"
+          ? "Retry refresh"
+          : restoreStage === "removed-list-reload-pending"
+            ? "Retry loading removed sessions"
+            : "Restore workout"}
         destructive={false}
         heading="Restore this workout?"
         onCancel={dismissConfirmation}
         onConfirm={confirmRestore}
-        restoreFocusRef={restoreRef}
+        restoreFocusRef={restoreFocusRefForRemovedSession(restoreFocusRef, headingRef)}
         visible={selected !== null}
       />
     </>

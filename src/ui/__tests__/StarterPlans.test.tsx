@@ -151,6 +151,8 @@ async function renderDetail(
 ) {
   const props: React.ComponentProps<typeof StarterPlanDetailScreen> = {
     loadStarterPlan: jest.fn(async () => template),
+    saveEditableCopy: jest.fn(async () => "owned-copy"),
+    onSavedCopy: jest.fn(),
     onActivate: jest.fn(),
     onBack: jest.fn(),
     templateId: template?.id ?? "missing-template",
@@ -293,7 +295,7 @@ describe("starter discovery", () => {
     expect(await screen.findByText(
       "Library could not be loaded. Your plans and exercises were not changed. Try again.",
     )).toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Retry Library" }))
+    expect(screen.getByRole("button", { name: "Retry loading Library" }))
       .toBeOnTheScreen();
   });
 
@@ -340,7 +342,7 @@ describe("starter detail", () => {
     const bodyPart = catalog.templates.find(
       ({ id }) => id === "gym-body-part-split",
     )!;
-    await renderDetail(bodyPart);
+    const { props } = await renderDetail(bodyPart);
 
     expect(await screen.findByRole("header", {
       name: "Gym Body-Part Split",
@@ -351,7 +353,7 @@ describe("starter detail", () => {
     expect(screen.getByText(
       "Barbell · Bench · Cable · Dumbbell · Machine · Squat Rack",
     )).toBeOnTheScreen();
-    expect(screen.getByText(bodyPart.progressionSummary)).toBeOnTheScreen();
+    expect(screen.queryByText(bodyPart.progressionSummary)).not.toBeOnTheScreen();
     expect(screen.getByText(
       "Monday Chest · Tuesday Back · Wednesday Shoulders · Thursday Legs · Friday Arms",
     )).toBeOnTheScreen();
@@ -377,9 +379,18 @@ describe("starter detail", () => {
       .toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Activate plan" }))
       .toHaveStyle({ minHeight: 56 });
+    expect(screen.getByRole("button", { name: "Save editable copy" }))
+      .toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Save editable copy",
+    }));
+    await waitFor(() => {
+      expect(props.saveEditableCopy).toHaveBeenCalledWith(bodyPart.id);
+      expect(props.onSavedCopy).toHaveBeenCalledWith("owned-copy");
+    });
   });
 
-  it("preserves complete long source notes and uses compact push versus expanded detail pane semantics", async () => {
+  it("omits source notes and progression while preserving compact and expanded detail semantics", async () => {
     const catalog = await acceptedCatalog();
     const template = catalog.templates[0]!;
     const longText = `${template.sourceNotes[0]!.text} ${"source ".repeat(80)}`;
@@ -394,7 +405,10 @@ describe("starter detail", () => {
     };
     const { rendered } = await renderDetail(longTemplate, { width: 920 });
 
-    expect(await screen.findByText(longText)).toBeOnTheScreen();
+    expect(await screen.findByRole("header", { name: longTemplate.displayName })).toBeOnTheScreen();
+    expect(screen.queryByText(longText)).not.toBeOnTheScreen();
+    expect(screen.queryByText("Progression summary")).not.toBeOnTheScreen();
+    expect(screen.queryByText("Source notes")).not.toBeOnTheScreen();
     expect(screen.getByLabelText("expanded layout")).toBeOnTheScreen();
     expect(screen.getByTestId("adaptive-secondary-region")).toBeOnTheScreen();
 
@@ -402,6 +416,8 @@ describe("starter detail", () => {
       <AppearanceProvider>
         <StarterPlanDetailScreen
           loadStarterPlan={jest.fn(async () => longTemplate)}
+          saveEditableCopy={jest.fn(async () => "owned-copy")}
+          onSavedCopy={jest.fn()}
           onActivate={jest.fn()}
           onBack={jest.fn()}
           templateId={longTemplate.id}
@@ -440,6 +456,8 @@ describe("starter detail", () => {
           loadStarterPlan={jest.fn(async () => {
             throw new Error("safe failure");
           })}
+          saveEditableCopy={jest.fn(async () => "owned-copy")}
+          onSavedCopy={jest.fn()}
           onActivate={jest.fn()}
           onBack={jest.fn()}
           templateId="missing-template"
@@ -455,6 +473,8 @@ describe("starter detail", () => {
       <AppearanceProvider>
         <StarterPlanDetailScreen
           loadStarterPlan={jest.fn(async () => null)}
+          saveEditableCopy={jest.fn(async () => "owned-copy")}
+          onSavedCopy={jest.fn()}
           onActivate={jest.fn()}
           onBack={jest.fn()}
           templateId="missing-template"
@@ -565,6 +585,9 @@ describe("starter activation", () => {
     expect(await screen.findByRole("header", {
       name: "Activate Gym Body-Part Split",
     })).toBeOnTheScreen();
+    expect(screen.getByText(
+      "Strength plan activation affects only the reviewed Strength schedule. Any Running plan remains unchanged.",
+    )).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Start date" }))
       .toHaveTextContent("2026-08-18");
     expect(screen.getByRole("radio", { name: "Weekday" })).toHaveProp(
@@ -574,8 +597,8 @@ describe("starter activation", () => {
     expect(screen.getByText(
       "Monday Chest · Tuesday Back · Wednesday Shoulders · Thursday Legs · Friday Arms",
     )).toBeOnTheScreen();
-    expect(screen.getByText(bodyPart.progressionSummary)).toBeOnTheScreen();
-    expect(screen.getByText(bodyPart.sourceNotes[0]!.text)).toBeOnTheScreen();
+    expect(screen.queryByText(bodyPart.progressionSummary)).not.toBeOnTheScreen();
+    expect(screen.queryByText(bodyPart.sourceNotes[0]!.text)).not.toBeOnTheScreen();
     expect(screen.getByText("Bench Press")).toBeOnTheScreen();
     expect(screen.getAllByText(/Load \+ reps/u).length).toBe(20);
 
@@ -639,9 +662,9 @@ describe("starter activation", () => {
     );
     expect(weekdayHandle).toHaveProp(
       "accessibilityActions",
-      expect.arrayContaining([{ name: "increment", label: "Move up" }]),
+      expect.arrayContaining([{ name: "increment", label: "Move earlier" }]),
     );
-    expect(screen.queryByRole("button", { name: "Move Back up" }))
+    expect(screen.queryByRole("button", { name: "Move Back earlier" }))
       .not.toBeOnTheScreen();
     expect(screen.queryByText("Position 2 of 5")).not.toBeOnTheScreen();
     await fireEvent(
@@ -850,6 +873,9 @@ describe("starter activation", () => {
     expect(await screen.findByText(
       "Plan could not be activated. Your current active plan and schedule are unchanged.",
     )).toBeOnTheScreen();
+    await waitFor(() =>
+      expect(activateStarterPlan).toHaveBeenCalledTimes(1)
+    );
     expect(screen.getByRole("button", { name: "Start date" }))
       .toHaveTextContent("2026-08-20");
   });
@@ -948,6 +974,13 @@ describe("starter template update", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: "Create new copy",
     }));
+    expect(createNewCopy).not.toHaveBeenCalled();
+    expect(screen.getByRole("header", {
+      name: "Create new copy?",
+    })).toBeOnTheScreen();
+    await fireEvent.press(screen.getAllByRole("button", {
+      name: "Create new copy",
+    }).at(-1)!);
     expect(createNewCopy).toHaveBeenCalledWith(preview);
     expect(onCreated).toHaveBeenCalledWith("owned-foundation-new");
     expect(await screen.findByText("New copy created")).toBeOnTheScreen();

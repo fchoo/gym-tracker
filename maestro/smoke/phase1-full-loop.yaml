@@ -15,16 +15,34 @@ tags:
 - tapOn: "Use Full Body Foundation"
 - tapOn: "Activate Full Body Foundation"
 - runFlow: "../subflows/phase1-start-full-body-a.yaml"
+- assertVisible: "WORKOUT OVERVIEW"
+- scrollUntilVisible:
+    element:
+      text: "Back Squat"
+    direction: UP
+    centerElement: true
+    timeout: 60000
 - assertVisible: "Back Squat"
 - repeat:
     times: 2
     commands:
       - scrollUntilVisible:
           element:
-            text: "Remove warm-up W1"
-          direction: DOWN
+            text: "Warm-up W1"
+          direction: UP
           centerElement: true
           timeout: 60000
+      - tapOn: "Warm-up W1"
+      - repeat:
+          times: 4
+          while:
+            notVisible: "Remove warm-up W1"
+          commands:
+            - swipe:
+                start: 95%, 75%
+                end: 95%, 45%
+                duration: 300
+      - assertVisible: "Remove warm-up W1"
       - tapOn: "Remove warm-up W1"
       - assertVisible: "Remove warm-up W1?"
       - tapOn:
@@ -55,6 +73,7 @@ tags:
       notifications: deny
 - assertVisible: "Workout in progress"
 - tapOn: "Resume workout"
+- assertVisible: "WORKOUT OVERVIEW"
 - assertVisible: "RESTING · NEXT: SET 2 AT 60 kg × 8"
 - assertVisible: "Expand rest controls"
 - tapOn: "Expand rest controls"
@@ -136,6 +155,15 @@ tags:
           notVisible:
             id: "remove-working-set-confirm"
           timeout: 60000
+- repeat:
+    times: 12
+    while:
+      notVisible: "Lat Pulldown"
+    commands:
+      - swipe:
+          start: 95%, 25%
+          end: 95%, 75%
+          duration: 300
 - assertVisible: "Lat Pulldown"
 - repeat:
     times: 3
@@ -154,6 +182,15 @@ tags:
           notVisible:
             id: "remove-working-set-confirm"
           timeout: 60000
+- repeat:
+    times: 12
+    while:
+      notVisible: "Romanian Deadlift"
+    commands:
+      - swipe:
+          start: 95%, 25%
+          end: 95%, 75%
+          duration: 300
 - assertVisible: "Romanian Deadlift"
 - repeat:
     times: 3
@@ -172,6 +209,15 @@ tags:
           notVisible:
             id: "remove-working-set-confirm"
           timeout: 60000
+- repeat:
+    times: 12
+    while:
+      notVisible: "Plank"
+    commands:
+      - swipe:
+          start: 95%, 25%
+          end: 95%, 75%
+          duration: 300
 - assertVisible: "Plank"
 - repeat:
     times: 3

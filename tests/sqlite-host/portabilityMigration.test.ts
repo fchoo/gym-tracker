@@ -3,14 +3,23 @@ import { describe, expect, it } from "@jest/globals";
 import { portabilityRestoreStateMigration, PORTABILITY_RESTORE_STATE_TABLE } from "../../src/platform/sqlite/migrations/0016_portability_restore_state";
 import { workoutRemoveReceiptsMigration } from "../../src/platform/sqlite/migrations/0017_workout_remove_receipts";
 import { workoutRemoveReceiptEntityIdsMigration } from "../../src/platform/sqlite/migrations/0018_workout_remove_receipt_entity_ids";
+import { sessionExerciseEditingMigration } from "../../src/platform/sqlite/migrations/0019_session_exercise_editing";
+import { sessionExerciseEditReceiptsMigration } from "../../src/platform/sqlite/migrations/0020_session_exercise_edit_receipts";
+import { advancedSetTimingMigration } from "../../src/platform/sqlite/migrations/0021_advanced_set_timing";
+import { portableOwnerIdentitiesMigration } from "../../src/platform/sqlite/migrations/0022_portable_owner_identities";
 import { migrations } from "../../src/platform/sqlite/migrations";
 import type { SqliteTransactionExecutor } from "../../src/platform/sqlite/sqliteKernel";
 
 describe("portability restore-state migration", () => {
   it("is the retained additive v16 migration and creates only a singleton non-secret rebuild state", async () => {
-    expect(migrations.at(-3)).toBe(portabilityRestoreStateMigration);
-    expect(migrations.at(-2)).toBe(workoutRemoveReceiptsMigration);
-    expect(migrations.at(-1)).toBe(workoutRemoveReceiptEntityIdsMigration);
+    const byVersion = new Map(migrations.map((migration) => [migration.version, migration]));
+    expect(byVersion.get(16)).toBe(portabilityRestoreStateMigration);
+    expect(byVersion.get(17)).toBe(workoutRemoveReceiptsMigration);
+    expect(byVersion.get(18)).toBe(workoutRemoveReceiptEntityIdsMigration);
+    expect(byVersion.get(19)).toBe(sessionExerciseEditingMigration);
+    expect(byVersion.get(20)).toBe(sessionExerciseEditReceiptsMigration);
+    expect(byVersion.get(21)).toBe(advancedSetTimingMigration);
+    expect(byVersion.get(22)).toBe(portableOwnerIdentitiesMigration);
     expect(portabilityRestoreStateMigration).toMatchObject({ version: 16, name: "portability-restore-state", kind: "additive" });
     const statements: string[] = [];
     let queryCount = 0;

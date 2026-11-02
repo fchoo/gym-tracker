@@ -1,8 +1,13 @@
 import {
+  LOGICAL_BACKUP_TABLE_DEFINITIONS,
   LOGICAL_BACKUP_TABLES,
+  type LogicalBackupTableName,
   type LogicalBackupRow,
   type LogicalBackupSnapshot,
 } from "../../../domains/portability/backupContracts";
+import type {
+  MergeLocalFactsPort,
+} from "../../../domains/portability/mergeCommands";
 import {
   RestoreCandidateProbeError,
   type RestoreCandidateProbePort,
@@ -10,7 +15,16 @@ import {
   type RestoreRetainedReferencePort,
   type RestoreSchemaPort,
 } from "../../../domains/portability/restoreCommands";
-import type { SqliteKernel } from "../sqliteKernel";
+import type {
+  SqliteKernel,
+  SqliteTransactionExecutor,
+} from "../sqliteKernel";
+import {
+  LOGICAL_BACKUP_TABLE_FILTERS,
+} from "./logicalBackupRepository";
+import {
+  parseAdvancedTimingPersistenceRow,
+} from "./advancedTimingRepository";
 
 type CandidateTables = Record<string, readonly LogicalBackupRow[]> & {
   session_sets: readonly LogicalBackupRow[];
@@ -22,6 +36,27 @@ type CandidateTables = Record<string, readonly LogicalBackupRow[]> & {
 // formatter branch-free makes that invariant explicit and avoids treating an
 // otherwise unreachable private error path as a restore behavior.
 function identifier(value: string): string { return `"${value}"`; }
+
+function orderBy(table: LogicalBackupTableName): string {
+  return LOGICAL_BACKUP_TABLE_DEFINITIONS[table].primaryKey
+    .map(identifier)
+    .join(", " );
+}
+
+function localRow(
+  value: Record<string, unknown>,
+): LogicalBackupSnapshot["tables"][string][number] {
+  const row: Record<string, string | number | null> = {};
+  for (const [key, nested] of Object.entries(value)) {
+    if (nested === null || typeof nested === "string"
+      || (typeof nested === "number" && Number.isSafeInteger(nested))) {
+      row[key] = nested;
+      continue;
+    }
+    throw new RestoreCandidateProbeError();
+  }
+  return Object.freeze(row);
+}
 
 function rowMap(snapshot: LogicalBackupSnapshot, table: string): Map<string, LogicalBackupRow> {
   const tables = snapshot.tables as Record<string, readonly LogicalBackupRow[]>;
@@ -178,6 +213,23 @@ export function createSqliteRestoreCandidateProbe(): RestoreCandidateProbePort {
           if (!graphIsValid) candidateFailure();
         }
       }
+      for (const timing of tables.session_advanced_timing_states ?? []) {
+        const timingSessionId = timing.session_id;
+        if (typeof timingSessionId !== "string") candidateFailure();
+        try {
+          parseAdvancedTimingPersistenceRow(timing);
+        } catch {
+          candidateFailure();
+        }
+        if (timing.session_set_id === null) continue;
+        const set = sessionSets.get(String(timing.session_set_id));
+        const exercise = sessionExercises.get(String(set?.session_exercise_id));
+        if (set === undefined
+          || exercise === undefined
+          || exercise.session_id !== timingSessionId) {
+          candidateFailure();
+        }
+      }
       for (const recommendation of tables.owned_progression_recommendations) {
         const target = ownedTargets.get(String(recommendation.owned_plan_working_set_target_id));
         const occurrence = ownedOccurrences.get(String(target?.plan_day_exercise_id));
@@ -205,7 +257,9 @@ export function createSqliteRestoreCandidateProbe(): RestoreCandidateProbePort {
 export function createSqliteRestoreSchemaPort(kernel: SqliteKernel): RestoreSchemaPort {
   return Object.freeze({
     async columnsFor(table) {
-      if (!LOGICAL_BACKUP_TABLES.includes(table)) throw new RestoreCandidateProbeError();
+      if (!LOGICAL_BACKUP_TABLES.includes(table as LogicalBackupTableName)) {
+        throw new RestoreCandidateProbeError();
+      }
       const rows = await kernel.queryAll<{ name: string; type: string; notnull: number }>(`PRAGMA table_info(${identifier(table)})`);
       return rows.map((row) => {
         const sqliteType = row.type.toUpperCase();
@@ -213,6 +267,49 @@ export function createSqliteRestoreSchemaPort(kernel: SqliteKernel): RestoreSche
         return Object.freeze({ name: row.name, sqliteType, notNull: row.notnull === 1 }) as { name: string; sqliteType: "INTEGER" | "TEXT"; notNull: boolean };
       });
     },
+  });
+}
+
+/**
+ * This adapter intentionally exposes no writer: it fingerprints the live
+ * source facts needed to bind a merge preflight token to the current SQLite
+ * state. The Task 5 writer rechecks that fingerprint before its transaction.
+ */
+export function createSqliteMergeLocalFactsPort(
+  kernel: SqliteKernel,
+): MergeLocalFactsPort {
+  return Object.freeze({
+    read: () => readSqliteMergeLocalFacts(kernel),
+  });
+}
+
+/** Shared canonical read path for preflight and the merge writer recheck. */
+export async function readSqliteMergeLocalFacts(
+  reader: Pick<SqliteKernel | SqliteTransactionExecutor, "queryAll">,
+): Promise<Awaited<ReturnType<MergeLocalFactsPort["read"]>>> {
+  const [schema, owner] = await Promise.all([
+    reader.queryAll<{ user_version: number }>("PRAGMA user_version"),
+    reader.queryAll<{ owner_namespace: string }>(
+      "SELECT owner_namespace FROM portable_owner_identity WHERE id = 1",
+    ),
+  ]);
+  if (schema.length !== 1 || !Number.isSafeInteger(schema[0]?.user_version)
+    || owner.length !== 1 || typeof owner[0]?.owner_namespace !== "string") {
+    throw new RestoreCandidateProbeError();
+  }
+  const tables: Record<string, readonly LogicalBackupSnapshot["tables"][string][number][]> = {};
+  for (const table of LOGICAL_BACKUP_TABLES) {
+    const rows = await reader.queryAll<Record<string, unknown>>(
+      `SELECT * FROM ${identifier(table)}
+       WHERE ${LOGICAL_BACKUP_TABLE_FILTERS[table]}
+       ORDER BY ${orderBy(table)}`,
+    );
+    tables[table] = Object.freeze(rows.map(localRow));
+  }
+  return Object.freeze({
+    ownerNamespace: owner[0]!.owner_namespace,
+    schemaVersion: schema[0]!.user_version,
+    tables: Object.freeze(tables),
   });
 }
 

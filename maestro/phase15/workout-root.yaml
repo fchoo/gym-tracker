@@ -1,0 +1,52 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 15 workout root production tracer
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Choose your starting plan"
+    timeout: 90000
+- tapOn: "Use Full Body Foundation"
+- extendedWaitUntil:
+    visible: "Activate Full Body Foundation"
+    timeout: 30000
+- tapOn: "Activate Full Body Foundation"
+- extendedWaitUntil:
+    visible: "^(Start Full Body A|Start Full Body B|Rest day)$"
+    timeout: 90000
+- runFlow:
+    when:
+      visible: "Start Full Body B"
+    commands:
+      - tapOn: "Choose another day"
+- runFlow:
+    when:
+      visible: "Rest day"
+    commands:
+      - tapOn: "Train anyway"
+- runFlow:
+    when:
+      visible: "Start a workout"
+    commands:
+      - extendedWaitUntil:
+          visible: "Start Full Body A"
+          timeout: 30000
+- runFlow:
+    when:
+      true: ${PHASE15_STAGE == 'workout.root-identity'}
+    commands:
+      - assertVisible: "Start Full Body A"
+      - tapOn: "Start Full Body A"
+      - extendedWaitUntil:
+          visible: "WORKOUT OVERVIEW"
+          timeout: 30000
+- runFlow:
+    when:
+      true: ${PHASE15_STAGE == 'workout.day-switch' || PHASE15_STAGE == 'workout.scheduled-rest-empty' || PHASE15_STAGE == 'workout.start-alternate' || PHASE15_STAGE == 'workout.start-resume' || PHASE15_STAGE == 'workout.context-running' || PHASE15_STAGE == 'workout.appearance'}
+    commands:
+      - assertVisible: "Today"
+      - pressKey: "Remote Dpad Center"
+      - pressKey: "Back"

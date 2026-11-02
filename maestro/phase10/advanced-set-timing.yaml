@@ -1,0 +1,171 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 10 advanced set timing tracer
+tags:
+  - phase-10
+  - advanced-timing
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Choose your starting plan"
+    timeout: 90000
+- tapOn:
+    text: "Use Full Body Foundation"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "Activate Full Body Foundation"
+    timeout: 30000
+- tapOn:
+    text: "Activate Full Body Foundation"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "^(Start Full Body A|Start Full Body B|Rest day)$"
+    timeout: 90000
+- runFlow:
+    when:
+      visible: "Start Full Body B"
+    commands:
+      - tapOn: "Choose another day"
+- runFlow:
+    when:
+      visible: "Rest day"
+    commands:
+      - tapOn: "Train anyway"
+- runFlow:
+    when:
+      visible: "Start a workout"
+    commands:
+      - extendedWaitUntil:
+          visible: "Start Full Body A"
+          timeout: 30000
+- tapOn:
+    text: "Start Full Body A"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "WORKOUT OVERVIEW"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: "Configure Back Squat timing"
+    timeout: 30000
+- tapOn: "Configure Back Squat timing"
+- assertVisible: "Exercise timing"
+- tapOn: "Per-rep timing"
+- tapOn:
+    id: "advanced-timing-config-interval"
+- eraseText: 3
+- inputText: "3"
+- tapOn: "audio cues"
+- tapOn: "Save timing"
+- swipe:
+    start: 50%, 45%
+    end: 50%, 75%
+    duration: 300
+- assertVisible: "Per-rep cadence"
+- assertVisible: "Per-rep interval in seconds"
+- tapOn:
+    id: "advanced-timing-interval-seconds"
+- eraseText: 1
+- inputText: "60"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Configure and start per-rep cadence"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+- tapOn: "Configure and start per-rep cadence"
+- extendedWaitUntil:
+    visible: "Pause per-rep cadence"
+    timeout: 30000
+- tapOn: "Pause per-rep cadence"
+- swipe:
+    start: 50%, 45%
+    end: 50%, 75%
+    duration: 300
+- extendedWaitUntil:
+    visible: "Resume per-rep cadence"
+    timeout: 30000
+- tapOn: "Resume per-rep cadence"
+- swipe:
+    start: 50%, 45%
+    end: 50%, 75%
+    duration: 300
+- extendedWaitUntil:
+    visible: "Pause per-rep cadence"
+    timeout: 30000
+- tapOn: "Stop per-rep cadence"
+- scrollUntilVisible:
+    element:
+      id: "set-timing-action-session_exercise_.*-session_target_.*_0"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+- assertVisible:
+    id: "set-timing-action-session_exercise_.*-session_target_.*_0"
+- tapOn:
+    id: "set-timing-action-session_exercise_.*-session_target_.*_0"
+- assertVisible: "Cluster timing"
+- tapOn: "Cluster timing"
+- assertVisible: "Cluster group pattern"
+- assertVisible: "Cluster rest in seconds"
+- tapOn:
+    id: "advanced-timing-config-cluster-pattern"
+- eraseText: 5
+- inputText: "3+3+3"
+- tapOn:
+    id: "advanced-timing-config-cluster-rest"
+- eraseText: 2
+- inputText: "60"
+- hideKeyboard
+- tapOn: "both cues"
+- tapOn: "Save timing"
+- scrollUntilVisible:
+    element:
+      text: "Cluster timing"
+    direction: UP
+    centerElement: true
+    timeout: 30000
+- assertVisible: "Cluster timing"
+- assertVisible: "Cluster grouping"
+- tapOn: "Configure and start cluster timing"
+- extendedWaitUntil:
+    visible: "Start rest after group 1"
+    timeout: 30000
+- assertVisible: "Cluster 1 of 3"
+- tapOn: "Start rest after group 1"
+- extendedWaitUntil:
+    visible: "Skip intra-set rest"
+    timeout: 30000
+- tapOn: "Skip intra-set rest"
+- extendedWaitUntil:
+    visible: "Start rest after group 2"
+    timeout: 30000
+- tapOn: "Start rest after group 2"
+- stopApp
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Resume workout"
+    timeout: 90000
+- tapOn: "Resume workout"
+- assertVisible: "WORKOUT OVERVIEW"
+- scrollUntilVisible:
+    element:
+      text: "Cluster timing"
+    direction: UP
+    centerElement: true
+    timeout: 30000
+- assertVisible: "Cluster timing"
+- assertVisible: "^(Cluster 2 of 3|Cluster 3 of 3|Intra-set rest)"
+- assertVisible: "Complete Set 1"
+- tapOn: "Complete Set 1"
+- extendedWaitUntil:
+    visible: "RESTING · NEXT: SET 2 AT 60 kg × 8"
+    timeout: 60000

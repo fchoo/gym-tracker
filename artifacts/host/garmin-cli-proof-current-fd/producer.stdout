@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "proof": "NON_NATIVE_HOST_ONLY",
+  "root": "/Users/bytedance/Documents/personal/gym_tracker/.trae/worktrees/p20-calendar-safe-sdk-6b4/artifacts/host/garmin-cli-proof-renewed-8scwDE",
+  "descriptorSha256": "b769d4dcdd93e29644f8fa922912ca70b6f0e8151f43558c8bc5c636a9a3da26",
+  "tests": 30,
+  "wheelSha256": "850ee4664381151d0e10407de861b47e0c9954a06e4b0e8307431472990bd767",
+  "backendSha256": "914bbcc8d16ef427ac5675b81d0662028cc8d35141a3f38a5459ee4d85f3e3f1",
+  "cleanup": "verified-empty"
+}
+

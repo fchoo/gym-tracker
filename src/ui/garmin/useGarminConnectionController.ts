@@ -1,0 +1,689 @@
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
+import type {
+  GarminActivitySourcePort,
+  GarminConnectionState,
+  GarminDurableSyncSummary,
+} from "../../domains/activities/garminActivitySourcePort";
+import type {
+  GarminImportDateDecision,
+  GarminImportDateResult,
+  GarminPendingDateReview,
+} from "../../bootstrap/garminImportRuntime";
+
+export type GarminSyncCounts = Readonly<{
+  pages: number;
+  discoveredActivities: number;
+  attemptedActivities: number;
+  newActivities: number;
+  unchangedActivities: number;
+  reviewActivities: number;
+  failedActivities: number;
+}>;
+
+export type GarminSyncFailureCode =
+  | "sync_in_progress"
+  | "sign_in_required"
+  | "data_access_denied"
+  | "rate_limited"
+  | "offline"
+  | "timeout"
+  | "temporary_failure"
+  | "malformed_response"
+  | "stale_generation"
+  | "date_confirmation_required"
+  | "import_conflict";
+
+export type GarminSyncFailure = Readonly<{
+  code: GarminSyncFailureCode;
+  retryable: boolean;
+  retryAfterMs?: number;
+}>;
+
+export type GarminSyncProgress = Readonly<{
+  kind: "page" | "activity" | "committed";
+  counts: GarminSyncCounts;
+}>;
+
+export type GarminSyncResult =
+  | Readonly<{ kind: "success"; counts: GarminSyncCounts }>
+  | Readonly<{ kind: "partial"; counts: GarminSyncCounts; failure: GarminSyncFailure }>
+  | Readonly<{ kind: "failure"; counts: GarminSyncCounts; failure: GarminSyncFailure }>
+  | Readonly<{ kind: "cancelled"; counts: GarminSyncCounts }>;
+
+export type GarminSyncControllerPort = Readonly<{
+  syncNow(options?: Readonly<{
+    isCancelled?: () => boolean;
+    onProgress?: (progress: GarminSyncProgress) => void;
+  }>): Promise<GarminSyncResult>;
+}>;
+
+export type GarminActivityListItem = Readonly<{
+  activityId: string;
+  title: string;
+  activityType: string;
+  confirmedLocalDate: string;
+  startedAtMs?: number;
+  displayLocalDate?: string;
+  displayTimeZone?: string;
+  identityCopy?: string;
+  summary?: string;
+  matchState?: "matched" | "unmatched";
+  revisionState?: "accepted" | "needs_review";
+}>;
+
+export type GarminConnectionControllerError = Readonly<{
+  code:
+    | "invalid_credentials"
+    | "mfa_expired"
+    | "sign_in_required"
+    | "data_access_denied"
+    | "rate_limited"
+    | "offline"
+    | "timeout"
+    | "temporary_failure"
+    | "malformed_response"
+    | "logout_failed"
+    | "history_unavailable";
+  retryable: boolean;
+  retryAfterMs?: number;
+}>;
+
+export type GarminPresentationFailure = GarminSyncFailure;
+
+export type GarminSyncPresentation =
+  | Readonly<{ kind: "idle" }>
+  | Readonly<{ kind: "syncing"; progress?: GarminSyncProgress }>
+  | Readonly<{ kind: "success"; counts: GarminSyncCounts; completedAtMs: number }>
+  | Readonly<{ kind: "partial"; counts: GarminSyncCounts; failure: GarminSyncFailure }>
+  | Readonly<{ kind: "failure"; counts: GarminSyncCounts; failure: GarminSyncFailure }>;
+
+export type GarminConnectionControllerState = Readonly<{
+  connection: "loading" | "disconnected" | "credentials" | "mfa" | "connected";
+  operation: "idle" | "connecting" | "verifying_mfa" | "syncing" | "disconnecting";
+  email: string;
+  activities: readonly GarminActivityListItem[];
+  historyStatus: "loading" | "ready" | "failed";
+  error: GarminConnectionControllerError | null;
+  sync: GarminSyncPresentation;
+  lastSuccessfulSync: GarminDurableSyncSummary | null;
+  lastSuccessfulSyncStatus: "ready" | "failed";
+  pendingDateReview: GarminPendingDateReview | null;
+}>;
+
+export type GarminConnectionControllerInput = Readonly<{
+  source: GarminActivitySourcePort;
+  coordinator: GarminSyncControllerPort;
+  loadActivities(): Promise<readonly GarminActivityListItem[]>;
+  loadLastSuccessfulSync?(): Promise<GarminDurableSyncSummary | null>;
+  saveLastSuccessfulSync?(summary: GarminDurableSyncSummary): Promise<void>;
+  getPendingDateReview?(): GarminPendingDateReview | null;
+  confirmPendingDateReview?(decision: GarminImportDateDecision): Promise<GarminImportDateResult | null>;
+  clearPasswordInput?(): void;
+  clearMfaCodeInput?(): void;
+  now?(): number;
+}>;
+
+const INITIAL_STATE: GarminConnectionControllerState = Object.freeze({
+  connection: "loading",
+  operation: "idle",
+  email: "",
+  activities: Object.freeze([]),
+  historyStatus: "loading",
+  error: null,
+  sync: Object.freeze({ kind: "idle" }),
+  lastSuccessfulSync: null,
+  lastSuccessfulSyncStatus: "ready",
+  pendingDateReview: null,
+});
+
+const CONNECTION_ERROR_CODES = new Set<GarminConnectionControllerError["code"]>([
+  "invalid_credentials",
+  "mfa_expired",
+  "sign_in_required",
+  "data_access_denied",
+  "rate_limited",
+  "offline",
+  "timeout",
+  "temporary_failure",
+  "malformed_response",
+]);
+
+function controllerError(error: unknown): GarminConnectionControllerError {
+  if (error instanceof Error && error.name === "GarminActivityAdapterError") {
+    const candidate = error as Error & Readonly<{
+      code?: unknown;
+      retryAfterMs?: unknown;
+      retryable?: unknown;
+    }>;
+    if (typeof candidate.code === "string"
+      && CONNECTION_ERROR_CODES.has(candidate.code as GarminConnectionControllerError["code"])) {
+      const retryAfterMs = candidate.code === "rate_limited"
+        && Number.isSafeInteger(candidate.retryAfterMs)
+        && (candidate.retryAfterMs as number) >= 0
+          ? Math.min(900_000, Math.max(1_000, candidate.retryAfterMs as number))
+          : undefined;
+      return Object.freeze({
+        code: candidate.code as GarminConnectionControllerError["code"],
+        retryable: candidate.retryable === true
+          || candidate.code === "offline"
+          || candidate.code === "timeout"
+          || candidate.code === "temporary_failure"
+          || candidate.code === "rate_limited",
+        ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+      });
+    }
+  }
+  return Object.freeze({ code: "temporary_failure", retryable: true });
+}
+
+function connectionKind(
+  value: GarminConnectionState,
+  challengeHandleRef: React.MutableRefObject<string | null>,
+): GarminConnectionControllerState["connection"] {
+  switch (value.kind) {
+    case "disconnected":
+      challengeHandleRef.current = null;
+      return "disconnected";
+    case "connected":
+      challengeHandleRef.current = null;
+      return "connected";
+    case "mfa_required":
+      challengeHandleRef.current = value.challenge_handle;
+      return "mfa";
+  }
+}
+
+function committedCount(counts: GarminSyncCounts): number {
+  return counts.newActivities + counts.unchangedActivities + counts.reviewActivities;
+}
+
+function normalizeSyncFailure(failure: GarminSyncFailure): GarminSyncFailure {
+  if (failure.code !== "rate_limited" || failure.retryAfterMs === undefined) {
+    return Object.freeze({ code: failure.code, retryable: failure.retryable });
+  }
+  const retryAfterMs = Number.isSafeInteger(failure.retryAfterMs) && failure.retryAfterMs >= 0
+    ? Math.min(900_000, Math.max(1_000, failure.retryAfterMs))
+    : undefined;
+  return Object.freeze({
+    code: failure.code,
+    retryable: failure.retryable,
+    ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+  });
+}
+
+export function useGarminConnectionController(input: GarminConnectionControllerInput) {
+  const inputRef = useRef(input);
+  inputRef.current = input;
+  const mountedRef = useRef(true);
+  const connectionGenerationRef = useRef(0);
+  const historyGenerationRef = useRef(0);
+  const syncGenerationRef = useRef(0);
+  const connectionLatchRef = useRef(false);
+  const syncLatchRef = useRef(false);
+  const passwordRef = useRef("");
+  const mfaCodeRef = useRef("");
+  const challengeHandleRef = useRef<string | null>(null);
+  const [state, setState] = useState<GarminConnectionControllerState>(INITIAL_STATE);
+
+  const clearPassword = useCallback(() => {
+    passwordRef.current = "";
+    inputRef.current.clearPasswordInput?.();
+  }, []);
+
+  const clearMfaCode = useCallback(() => {
+    mfaCodeRef.current = "";
+    inputRef.current.clearMfaCodeInput?.();
+  }, []);
+
+  const loadHistory = useCallback(async (): Promise<boolean> => {
+    const generation = ++historyGenerationRef.current;
+    setState((current) => ({ ...current, historyStatus: "loading" }));
+    try {
+      const activities = await inputRef.current.loadActivities();
+      if (!mountedRef.current || generation !== historyGenerationRef.current) return false;
+      setState((current) => ({
+        ...current,
+        activities: Object.freeze([...activities]),
+        historyStatus: "ready",
+        error: current.error,
+      }));
+      return true;
+    } catch {
+      if (!mountedRef.current || generation !== historyGenerationRef.current) return false;
+      setState((current) => ({
+        ...current,
+        historyStatus: "failed",
+        error: Object.freeze({ code: "history_unavailable", retryable: true }),
+      }));
+      return false;
+    }
+  }, []);
+
+  const loadLastSuccessfulSync = useCallback(async (): Promise<boolean> => {
+    if (inputRef.current.loadLastSuccessfulSync === undefined) {
+      if (!mountedRef.current) return false;
+      setState((current) => ({
+        ...current,
+        lastSuccessfulSync: null,
+        lastSuccessfulSyncStatus: "ready",
+      }));
+      return true;
+    }
+    const generation = connectionGenerationRef.current;
+    try {
+      const summary = await inputRef.current.loadLastSuccessfulSync();
+      if (!mountedRef.current || generation !== connectionGenerationRef.current) return false;
+      setState((current) => ({
+        ...current,
+        lastSuccessfulSync: summary,
+        lastSuccessfulSyncStatus: "ready",
+      }));
+      return true;
+    } catch {
+      if (!mountedRef.current || generation !== connectionGenerationRef.current) return false;
+      setState((current) => ({
+        ...current,
+        lastSuccessfulSyncStatus: "failed",
+      }));
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const generation = ++connectionGenerationRef.current;
+    void inputRef.current.source.restoreSession().then((connection) => {
+      if (!mountedRef.current || generation !== connectionGenerationRef.current) return;
+      setState((current) => ({
+        ...current,
+        connection: connectionKind(connection, challengeHandleRef),
+        error: null,
+      }));
+    }).catch((error: unknown) => {
+      if (!mountedRef.current || generation !== connectionGenerationRef.current) return;
+      setState((current) => ({
+        ...current,
+        connection: "disconnected",
+        error: controllerError(error),
+      }));
+    });
+    void loadHistory();
+    void loadLastSuccessfulSync();
+    return () => {
+      mountedRef.current = false;
+      connectionGenerationRef.current += 1;
+      historyGenerationRef.current += 1;
+      syncGenerationRef.current += 1;
+      connectionLatchRef.current = false;
+      syncLatchRef.current = false;
+      challengeHandleRef.current = null;
+      passwordRef.current = "";
+      mfaCodeRef.current = "";
+    };
+  }, [loadHistory, loadLastSuccessfulSync]);
+
+  const openCredentials = useCallback(() => {
+    if (connectionLatchRef.current) return;
+    challengeHandleRef.current = null;
+    passwordRef.current = "";
+    mfaCodeRef.current = "";
+    setState((current) => ({
+      ...current,
+      connection: "credentials",
+      operation: "idle",
+      error: null,
+    }));
+  }, []);
+
+  const setEmail = useCallback((email: string) => {
+    setState((current) => ({ ...current, email }));
+  }, []);
+
+  const setPassword = useCallback((password: string) => {
+    passwordRef.current = password;
+  }, []);
+
+  const submitCredentials = useCallback(async () => {
+    if (connectionLatchRef.current || state.connection !== "credentials") return;
+    const email = state.email.trim();
+    const password = passwordRef.current;
+    if (email.length === 0 || password.length === 0) {
+      clearPassword();
+      setState((current) => ({
+        ...current,
+        error: Object.freeze({ code: "invalid_credentials", retryable: true }),
+      }));
+      return;
+    }
+    connectionLatchRef.current = true;
+    const generation = ++connectionGenerationRef.current;
+    setState((current) => ({ ...current, operation: "connecting", error: null }));
+    try {
+      const connection = await inputRef.current.source.login({ email, password });
+      if (!mountedRef.current || generation !== connectionGenerationRef.current) return;
+      const nextConnection = connectionKind(connection, challengeHandleRef);
+      setState((current) => ({
+        ...current,
+        connection: nextConnection,
+        operation: "idle",
+        error: nextConnection === "disconnected"
+          ? Object.freeze({ code: "sign_in_required", retryable: true })
+          : null,
+      }));
+      if (nextConnection === "connected") await loadHistory();
+    } catch (error) {
+      if (!mountedRef.current || generation !== connectionGenerationRef.current) return;
+      setState((current) => ({
+        ...current,
+        connection: "credentials",
+        operation: "idle",
+        error: controllerError(error),
+      }));
+    } finally {
+      clearPassword();
+      if (generation === connectionGenerationRef.current) {
+        connectionLatchRef.current = false;
+        setState((current) => ({ ...current, operation: "idle" }));
+      }
+    }
+  }, [clearPassword, loadHistory, state.connection, state.email]);
+
+  const setMfaCode = useCallback((code: string) => {
+    mfaCodeRef.current = code;
+  }, []);
+
+  const submitMfa = useCallback(async () => {
+    if (connectionLatchRef.current || state.connection !== "mfa") return;
+    const challengeHandle = challengeHandleRef.current;
+    const code = mfaCodeRef.current;
+    if (challengeHandle === null || code.length === 0) {
+      clearMfaCode();
+      setState((current) => ({
+        ...current,
+        error: Object.freeze({ code: "mfa_expired", retryable: true }),
+      }));
+      return;
+    }
+    connectionLatchRef.current = true;
+    const generation = ++connectionGenerationRef.current;
+    setState((current) => ({ ...current, operation: "verifying_mfa", error: null }));
+    try {
+      const connection = await inputRef.current.source.resumeMfa({ challenge_handle: challengeHandle, code });
+      if (!mountedRef.current || generation !== connectionGenerationRef.current) return;
+      const nextConnection = connectionKind(connection, challengeHandleRef);
+      setState((current) => ({
+        ...current,
+        connection: nextConnection,
+        operation: "idle",
+        error: nextConnection === "connected"
+          ? null
+          : Object.freeze({ code: "mfa_expired", retryable: true }),
+      }));
+      if (nextConnection === "connected") await loadHistory();
+    } catch (error) {
+      if (!mountedRef.current || generation !== connectionGenerationRef.current) return;
+      setState((current) => ({
+        ...current,
+        connection: "mfa",
+        operation: "idle",
+        error: controllerError(error),
+      }));
+    } finally {
+      clearMfaCode();
+      if (generation === connectionGenerationRef.current) {
+        connectionLatchRef.current = false;
+        setState((current) => ({ ...current, operation: "idle" }));
+      }
+    }
+  }, [clearMfaCode, loadHistory, state.connection]);
+
+  const cancelConnection = useCallback(async () => {
+    const shouldInvalidateSession = state.connection === "mfa"
+      || state.operation === "connecting";
+    connectionGenerationRef.current += 1;
+    syncGenerationRef.current += 1;
+    connectionLatchRef.current = false;
+    syncLatchRef.current = false;
+    challengeHandleRef.current = null;
+    clearPassword();
+    clearMfaCode();
+    if (shouldInvalidateSession) {
+      try {
+        await inputRef.current.source.logout();
+      } catch {
+        if (mountedRef.current) {
+          setState((current) => ({
+            ...current,
+            operation: "idle",
+            error: Object.freeze({ code: "logout_failed", retryable: true }),
+          }));
+        }
+        return;
+      }
+    }
+    if (mountedRef.current) {
+      setState((current) => ({
+        ...current,
+        connection: "disconnected",
+        operation: "idle",
+        error: null,
+        sync: Object.freeze({ kind: "idle" }),
+      }));
+    }
+  }, [clearMfaCode, clearPassword, state.connection, state.operation]);
+
+  const syncNow = useCallback(async () => {
+    if (syncLatchRef.current || state.connection !== "connected") return;
+    syncLatchRef.current = true;
+    const generation = ++syncGenerationRef.current;
+    setState((current) => ({
+      ...current,
+      operation: "syncing",
+      error: null,
+      sync: Object.freeze({ kind: "syncing" }),
+    }));
+    let result: GarminSyncResult | undefined;
+    try {
+      result = await inputRef.current.coordinator.syncNow({
+        isCancelled: () => generation !== syncGenerationRef.current,
+        onProgress: (progress) => {
+          if (!mountedRef.current || generation !== syncGenerationRef.current) return;
+          setState((current) => ({
+            ...current,
+            sync: Object.freeze({ kind: "syncing", progress }),
+          }));
+        },
+      });
+      if (!mountedRef.current || generation !== syncGenerationRef.current) return;
+      if ((result.kind === "success" || result.kind === "partial")
+        && committedCount(result.counts) > 0) {
+        await loadHistory();
+      }
+      if (!mountedRef.current || generation !== syncGenerationRef.current) return;
+      switch (result.kind) {
+        case "success":
+        {
+          const completedAtMs = inputRef.current.now?.() ?? Date.now();
+          const durableSummary = Object.freeze({
+            attemptId: `garmin-sync:${completedAtMs}:${result.counts.pages}:${result.counts.attemptedActivities}`,
+            completedAtMs,
+            counts: result.counts,
+          });
+          try {
+            await inputRef.current.saveLastSuccessfulSync?.(durableSummary);
+          } catch {
+            if (!mountedRef.current || generation !== syncGenerationRef.current) return;
+            setState((current) => ({
+              ...current,
+              operation: "idle",
+              sync: Object.freeze({
+                kind: "failure" as const,
+                counts: result!.counts,
+                failure: Object.freeze({ code: "temporary_failure" as const, retryable: true }),
+              }),
+            }));
+            return;
+          }
+          if (!mountedRef.current || generation !== syncGenerationRef.current) return;
+          setState((current) => ({
+            ...current,
+            operation: "idle",
+            pendingDateReview: null,
+            lastSuccessfulSync: durableSummary,
+            lastSuccessfulSyncStatus: "ready",
+            sync: Object.freeze({
+              kind: "success",
+              counts: result!.counts,
+              completedAtMs,
+            }),
+          }));
+          break;
+        }
+        case "partial": {
+          const partial = result;
+          setState((current) => ({
+            ...current,
+            operation: "idle",
+            pendingDateReview: partial.failure.code === "date_confirmation_required"
+              ? inputRef.current.getPendingDateReview?.() ?? null
+              : null,
+            sync: Object.freeze({
+              kind: "partial",
+              counts: partial.counts,
+              failure: normalizeSyncFailure(partial.failure),
+            }),
+          }));
+          break;
+        }
+        case "failure": {
+          const failed = result;
+          setState((current) => ({
+            ...current,
+            operation: "idle",
+            pendingDateReview: failed.failure.code === "date_confirmation_required"
+              ? inputRef.current.getPendingDateReview?.() ?? null
+              : null,
+            sync: Object.freeze({
+              kind: "failure",
+              counts: failed.counts,
+              failure: normalizeSyncFailure(failed.failure),
+            }),
+          }));
+          break;
+        }
+        case "cancelled":
+          setState((current) => ({
+            ...current,
+            operation: "idle",
+            pendingDateReview: null,
+            sync: Object.freeze({ kind: "idle" }),
+          }));
+          break;
+      }
+    } catch {
+      if (!mountedRef.current || generation !== syncGenerationRef.current) return;
+      setState((current) => ({
+        ...current,
+        operation: "idle",
+        sync: Object.freeze({ kind: "idle" }),
+        error: Object.freeze({ code: "temporary_failure", retryable: true }),
+      }));
+    } finally {
+      if (generation === syncGenerationRef.current) {
+        syncLatchRef.current = false;
+      }
+    }
+  }, [loadHistory, state.connection]);
+
+  const retryLastSuccessfulSync = useCallback(async () => {
+    await loadLastSuccessfulSync();
+  }, [loadLastSuccessfulSync]);
+
+  const confirmPendingDateReview = useCallback(async (
+    decision: GarminImportDateDecision,
+  ): Promise<GarminImportDateResult | null> => {
+    const result = await inputRef.current.confirmPendingDateReview?.(decision) ?? null;
+    const nextPending = inputRef.current.getPendingDateReview?.() ?? null;
+    if (result !== null && result.kind !== "not_committed") {
+      await loadHistory();
+    }
+    if (!mountedRef.current) return result;
+    setState((current) => ({
+      ...current,
+      pendingDateReview: nextPending,
+      ...(result !== null && result.kind !== "not_committed"
+        ? { sync: Object.freeze({ kind: "idle" as const }) }
+        : {}),
+    }));
+    return result;
+  }, [loadHistory]);
+
+  const disconnect = useCallback(async () => {
+    if (connectionLatchRef.current || state.connection !== "connected") return;
+    connectionLatchRef.current = true;
+    const generation = ++connectionGenerationRef.current;
+    syncGenerationRef.current += 1;
+    syncLatchRef.current = false;
+    setState((current) => ({ ...current, operation: "disconnecting", error: null }));
+    try {
+      await inputRef.current.source.logout();
+      if (!mountedRef.current || generation !== connectionGenerationRef.current) return;
+      challengeHandleRef.current = null;
+      setState((current) => ({
+        ...current,
+        connection: "disconnected",
+        operation: "idle",
+        error: null,
+        sync: Object.freeze({ kind: "idle" }),
+      }));
+      await loadHistory();
+    } catch {
+      if (!mountedRef.current || generation !== connectionGenerationRef.current) return;
+      let connection: GarminConnectionControllerState["connection"] = state.connection;
+      try {
+        connection = connectionKind(
+          await inputRef.current.source.connectionState(),
+          challengeHandleRef,
+        );
+      } catch {
+        // Preserve the last visible state when the authoritative read also fails.
+      }
+      setState((current) => ({
+        ...current,
+        connection,
+        operation: "idle",
+        error: Object.freeze({ code: "logout_failed", retryable: true }),
+      }));
+    } finally {
+      clearPassword();
+      clearMfaCode();
+      if (generation === connectionGenerationRef.current) connectionLatchRef.current = false;
+    }
+  }, [clearMfaCode, clearPassword, loadHistory, state.connection]);
+
+  const clearError = useCallback(() => {
+    setState((current) => ({ ...current, error: null }));
+  }, []);
+
+  return Object.freeze({
+    state,
+    openCredentials,
+    setEmail,
+    setPassword,
+    submitCredentials,
+    setMfaCode,
+    submitMfa,
+    cancelConnection,
+    syncNow,
+    retryLastSuccessfulSync,
+    confirmPendingDateReview,
+    disconnect,
+    clearError,
+  });
+}

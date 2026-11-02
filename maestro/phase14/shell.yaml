@@ -1,0 +1,106 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 14 shell roots, theme, and startup proof
+tags:
+  - phase-14
+  - native-only
+  - development-test
+---
+- assertTrue: ${PHASE14_STAGE == 'phase14-four-roots' || PHASE14_STAGE == 'phase14-root-state' || PHASE14_STAGE == 'phase14-appearance' || PHASE14_STAGE == 'phase14-tokens'}
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- extendedWaitUntil:
+    visible: "Workout"
+    timeout: 90000
+- runFlow:
+    when:
+      true: ${PHASE14_THEME_PRESELECTED != 'true'}
+    file: select-theme.yaml
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-four-roots' && PHASE14_ACTION == 'none'}
+    commands:
+      - assertVisible: "Workout"
+      - tapOn: "Calendar"
+      - assertVisible: "Calendar month grid"
+      - tapOn: "Library"
+      - assertVisible: "Library section"
+      - tapOn: "Progress"
+      - assertVisible: "Progress"
+      - tapOn: "Workout"
+      - assertVisible: "Workout"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-four-roots' && PHASE14_ACTION != 'none'}
+    commands:
+      - assertVisible: "Workout"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-root-state' && PHASE14_ACTION == 'none'}
+    commands:
+      - tapOn: "Library"
+      - assertVisible: "Library section"
+      - pressKey: BACK
+      - assertVisible: "Workout"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-root-state' && PHASE14_ACTION == 'back-from-library'}
+    commands:
+      - tapOn: "Library"
+      - extendedWaitUntil:
+          visible: "Library section"
+          timeout: 30000
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-appearance' && PHASE14_ACTION == 'appearance-dpad-system-to-light'}
+    commands:
+      - tapOn: "Open App Settings"
+      - extendedWaitUntil:
+          visible: "App Settings"
+          timeout: 30000
+      - assertVisible: "Appearance"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-appearance' && PHASE14_ACTION == 'none'}
+    commands:
+      - tapOn: "Open App Settings"
+      - extendedWaitUntil:
+          visible: "App Settings"
+          timeout: 30000
+      - assertVisible: "Appearance"
+      - scrollUntilVisible:
+          element:
+            text: ${PHASE14_THEME_OPTION}
+          direction: DOWN
+          centerElement: true
+          timeout: 30000
+      - tapOn: ${PHASE14_THEME_OPTION}
+      - assertVisible: ${PHASE14_THEME_OPTION}
+      - pressKey: BACK
+      - assertVisible: "Workout"
+      - tapOn: "Calendar"
+      - assertVisible: "Calendar month grid"
+      - tapOn: "Open App Settings"
+      - extendedWaitUntil:
+          visible: "App Settings"
+          timeout: 30000
+      - pressKey: BACK
+      - tapOn: "Library"
+      - assertVisible: "Library section"
+      - tapOn: "Open App Settings"
+      - extendedWaitUntil:
+          visible: "App Settings"
+          timeout: 30000
+      - pressKey: BACK
+      - tapOn: "Progress"
+      - assertVisible: "Progress"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-tokens'}
+    commands:
+      - assertVisible: "Workout"
+      - assertVisible: "Calendar"
+      - assertVisible: "Library"
+      - assertVisible: "Progress"

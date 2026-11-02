@@ -43,6 +43,12 @@ import {
   contentLibraryMigration,
 } from "../../src/platform/sqlite/migrations/0004_content_library";
 import {
+  exerciseInstructionSetsMigration,
+} from "../../src/platform/sqlite/migrations/0037_exercise_instruction_sets";
+import {
+  migrations as runtimeMigrations,
+} from "../../src/platform/sqlite/migrations";
+import {
   ContentImportError,
   createContentRepository,
   type ContentRepositoryTestObserver,
@@ -121,6 +127,7 @@ const migrations = [
   outcomeEffortMigration,
   exerciseHistoryIndexMigration,
   contentLibraryMigration,
+  exerciseInstructionSetsMigration,
 ] as const;
 const runtimes: SqliteKernel[] = [];
 const temporaryDirectories = new Set<string>();
@@ -137,6 +144,7 @@ afterEach(async () => {
 
 async function createRuntime(
   observer: SqliteKernelTestObserver = {},
+  migrationSet: readonly typeof runtimeMigrations[number][] = migrations,
 ): Promise<SqliteKernel> {
   const directory = mkdtempSync(join(tmpdir(), "gym-content-import-"));
   temporaryDirectories.add(directory);
@@ -160,7 +168,7 @@ async function createRuntime(
   await createMigrationRunner({
     databaseName: "gym-tracker.db",
     kernel,
-    migrations,
+    migrations: migrationSet,
     recoveryBackup: validatedRecoveryBackup(),
   }).run();
   runtimes.push(kernel);
@@ -343,7 +351,7 @@ async function catalogSourceSnapshot(
 
 describe("accepted content import repository", () => {
   it("imports the complete pack atomically and reruns idempotently", async () => {
-    const kernel = await createRuntime();
+    const kernel = await createRuntime({}, runtimeMigrations);
     const catalog = await acceptedCatalog();
     const repository = createContentRepository(kernel);
 
@@ -351,11 +359,18 @@ describe("accepted content import repository", () => {
       catalog,
       expectedInstalled: null,
     });
+    await kernel.write(async (transaction) => {
+      await transaction.execute("CREATE TABLE content_projection_update_probe (count INTEGER NOT NULL)");
+      await transaction.execute("INSERT INTO content_projection_update_probe(count) VALUES (0)");
+      await transaction.execute(`CREATE TRIGGER content_projection_update_probe_trigger
+        AFTER UPDATE ON exercises
+        BEGIN UPDATE content_projection_update_probe SET count = count + 1; END`);
+    });
     const repeated = await repository.importAcceptedCatalog({ catalog });
 
     expect(first).toEqual(expect.objectContaining({
       outcome: "committed",
-      revision: 1,
+      revision: 2,
       packSha256: catalog.acceptance.packSha256,
       added: 310,
       updated: 0,
@@ -367,20 +382,24 @@ describe("accepted content import repository", () => {
     });
     expect(repeated).toEqual({
       outcome: "committed",
-      revision: 1,
+      revision: 2,
       packSha256: catalog.acceptance.packSha256,
       added: 0,
       updated: 0,
       newlyUnavailable: 0,
       invalidationScopes: [],
     });
+    expect(await kernel.queryAll("SELECT count FROM content_projection_update_probe"))
+      .toEqual([{ count: 0 }]);
     expect(await kernel.queryAll(
       `SELECT
          (SELECT COUNT(*) FROM exercise_catalog_sources) AS sources,
          (SELECT COUNT(*) FROM exercise_search_terms) AS search_terms,
-         (SELECT COUNT(*) FROM exercise_aliases) AS aliases`,
+         (SELECT COUNT(*) FROM exercise_aliases) AS aliases,
+         (SELECT COUNT(*) FROM exercise_instruction_sets) AS instructions`,
     )).toEqual([{
       aliases: 0,
+      instructions: 310,
       search_terms: 310,
       sources: 310,
     }]);
@@ -647,7 +666,7 @@ describe("accepted content import repository", () => {
     expect(result).toEqual(expect.objectContaining({
       added: 0,
       newlyUnavailable: 1,
-      revision: 2,
+      revision: 3,
       updated: 0,
     }));
     expect(await kernel.queryAll(
@@ -773,12 +792,45 @@ describe("accepted content import repository", () => {
     )).toEqual([
       {
         pack_sha256: catalog.acceptance.packSha256,
-        revision: 1,
+        revision: 2,
       },
       {
         pack_sha256: nextCatalog.acceptance.packSha256,
-        revision: 2,
+        revision: 3,
       },
     ]);
+  });
+
+  it("returns only valid bundled instruction shapes and fails closed for corrupt durable values", async () => {
+    const kernel = await createRuntime({}, runtimeMigrations);
+    const catalog = await acceptedCatalog();
+    const repository = createContentRepository(kernel);
+    await repository.importAcceptedCatalog({ catalog });
+    const exerciseId = catalog.exercises[0]!.id;
+
+    await expect(repository.readBundledExerciseInstructions(exerciseId))
+      .resolves.toMatchObject({ exerciseId });
+
+    await kernel.write((transaction) => transaction.execute(
+      "PRAGMA ignore_check_constraints = ON",
+    ));
+    for (const stepsJson of ["not-json", "[]", '[" trailing "]'] as const) {
+      await kernel.write((transaction) => transaction.execute(
+        "UPDATE exercise_instruction_sets SET steps_json = ? WHERE exercise_id = ?",
+        [stepsJson, exerciseId],
+      ));
+      await expect(repository.readBundledExerciseInstructions(exerciseId))
+        .rejects.toMatchObject({ code: "content_revision_conflict" });
+    }
+    await kernel.write((transaction) => transaction.execute(
+      "PRAGMA ignore_check_constraints = OFF",
+    ));
+
+    await kernel.write((transaction) => transaction.execute(
+      "DELETE FROM exercise_instruction_sets WHERE exercise_id = ?",
+      [exerciseId],
+    ));
+    await expect(repository.readBundledExerciseInstructions(exerciseId))
+      .resolves.toBeNull();
   });
 });

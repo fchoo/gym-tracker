@@ -1,0 +1,170 @@
+{
+  "scripts/v12-native-adapter.mjs": {
+    "statements": {
+      "total": 455,
+      "covered": 455,
+      "skipped": 0,
+      "pct": 100
+    },
+    "branches": {
+      "total": 166,
+      "covered": 166,
+      "skipped": 0,
+      "pct": 100
+    },
+    "functions": {
+      "total": 38,
+      "covered": 38,
+      "skipped": 0,
+      "pct": 100
+    },
+    "lines": {
+      "total": 455,
+      "covered": 455,
+      "skipped": 0,
+      "pct": 100
+    },
+    "uncovered_lines": [],
+    "uncovered_functions": [],
+    "uncovered_branches": []
+  },
+  "scripts/v12-native-execution-origin.mjs": {
+    "statements": {
+      "total": 263,
+      "covered": 223,
+      "skipped": 0,
+      "pct": 84.79
+    },
+    "branches": {
+      "total": 72,
+      "covered": 71,
+      "skipped": 0,
+      "pct": 98.61
+    },
+    "functions": {
+      "total": 22,
+      "covered": 14,
+      "skipped": 0,
+      "pct": 63.63
+    },
+    "lines": {
+      "total": 263,
+      "covered": 223,
+      "skipped": 0,
+      "pct": 84.79
+    },
+    "uncovered_lines": [
+      59,
+      60,
+      61,
+      69,
+      70,
+      71,
+      72,
+      73,
+      74,
+      75,
+      82,
+      83,
+      84,
+      85,
+      86,
+      87,
+      88,
+      89,
+      90,
+      91,
+      92,
+      94,
+      95,
+      96,
+      97,
+      98,
+      240,
+      241,
+      242,
+      253,
+      254,
+      255,
+      256,
+      257,
+      258,
+      259,
+      260,
+      261,
+      262,
+      263
+    ],
+    "uncovered_functions": [
+      {
+        "name": "productionMaestro",
+        "line": 82
+      },
+      {
+        "name": "productionJava",
+        "line": 94
+      },
+      {
+        "name": "adb",
+        "line": 136
+      },
+      {
+        "name": "maestro",
+        "line": 137
+      },
+      {
+        "name": "java",
+        "line": 138
+      },
+      {
+        "name": "unzip",
+        "line": 139
+      },
+      {
+        "name": "apksigner",
+        "line": 140
+      },
+      {
+        "name": "git",
+        "line": 141
+      }
+    ],
+    "uncovered_branches": [
+      {
+        "type": "branch",
+        "line": 252,
+        "location_line": 252,
+        "index": 0
+      }
+    ]
+  },
+  "scripts/v12-native-time-budgets.mjs": {
+    "statements": {
+      "total": 320,
+      "covered": 320,
+      "skipped": 0,
+      "pct": 100
+    },
+    "branches": {
+      "total": 27,
+      "covered": 27,
+      "skipped": 0,
+      "pct": 100
+    },
+    "functions": {
+      "total": 4,
+      "covered": 4,
+      "skipped": 0,
+      "pct": 100
+    },
+    "lines": {
+      "total": 320,
+      "covered": 320,
+      "skipped": 0,
+      "pct": 100
+    },
+    "uncovered_lines": [],
+    "uncovered_functions": [],
+    "uncovered_branches": []
+  }
+}

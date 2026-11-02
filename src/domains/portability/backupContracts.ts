@@ -1,4 +1,10 @@
-export const LOGICAL_BACKUP_FORMAT_VERSION = 1 as const;
+/** Version 3 is the Phase 13 successor graph.  Versions 1 and 2 stay frozen. */
+/** Version 11 carries immutable unscheduled plan-exercise replacement receipts. */
+export const LOGICAL_BACKUP_FORMAT_VERSION = 11 as const;
+export const LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const);
+
+export type LogicalBackupFormatVersion =
+  (typeof LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS)[number];
 
 export const BACKUP_LIMITS = Object.freeze({
   maxHeaderBytes: 16 * 1024,
@@ -25,6 +31,7 @@ type LogicalTableDefinition = Readonly<{
  * such as exercises/plans and must never copy catalog/FTS/effect tables.
  */
 export const LOGICAL_BACKUP_TABLE_DEFINITIONS = Object.freeze({
+  portable_owner_identity: { primaryKey: ["id"] },
   app_settings: { primaryKey: ["key"] },
   exercise_owner_preferences: { primaryKey: ["exercise_id"] },
   exercises: { primaryKey: ["id"] },
@@ -39,6 +46,7 @@ export const LOGICAL_BACKUP_TABLE_DEFINITIONS = Object.freeze({
   exercise_metric_baselines: {
     primaryKey: ["exercise_id", "exercise_metric_generation"],
   },
+  custom_exercise_mutation_receipts: { primaryKey: ["request_id"] },
   plans: { primaryKey: ["id"] },
   plan_schedules: { primaryKey: ["id"] },
   plan_schedule_bindings: { primaryKey: ["id"] },
@@ -48,6 +56,7 @@ export const LOGICAL_BACKUP_TABLE_DEFINITIONS = Object.freeze({
   plan_working_set_targets: { primaryKey: ["id"] },
   progression_policies: { primaryKey: ["id"] },
   progression_recommendations: { primaryKey: ["id"] },
+  progression_recommendation_decision_receipts: { primaryKey: ["request_id"] },
   owned_plan_aggregate_states: { primaryKey: ["plan_id"] },
   owned_plan_mutation_requests: { primaryKey: ["request_id"] },
   owned_plan_starter_sources: { primaryKey: ["plan_id"] },
@@ -57,6 +66,7 @@ export const LOGICAL_BACKUP_TABLE_DEFINITIONS = Object.freeze({
   owned_plan_working_set_targets: { primaryKey: ["id"] },
   owned_plan_progression_policies: { primaryKey: ["id"] },
   owned_plan_occurrence_sources: { primaryKey: ["plan_day_exercise_id"] },
+  plan_exercise_replacement_receipts: { primaryKey: ["request_id"] },
   owned_plan_schedules: { primaryKey: ["id"] },
   owned_plan_schedule_versions: { primaryKey: ["id"] },
   owned_plan_schedule_bindings: { primaryKey: ["id"] },
@@ -65,18 +75,277 @@ export const LOGICAL_BACKUP_TABLE_DEFINITIONS = Object.freeze({
   owned_plan_schedule_events: { primaryKey: ["id"] },
   starter_plan_activation_requests: { primaryKey: ["request_id"] },
   workout_sessions: { primaryKey: ["id"] },
+  workout_session_exercise_edit_receipts: { primaryKey: ["request_id"] },
+  workout_session_exercise_reorder_receipts: { primaryKey: ["request_id"] },
+  workout_session_exercise_rest_default_receipts: { primaryKey: ["request_id"] },
   session_exercises: { primaryKey: ["id"] },
   session_sets: { primaryKey: ["id"] },
   session_rest_states: { primaryKey: ["session_id"] },
+  session_advanced_timing_states: { primaryKey: ["session_id"] },
   session_undo_snapshots: { primaryKey: ["id"] },
   history_session_overlays: { primaryKey: ["session_id"] },
   history_audit_events: { primaryKey: ["id"] },
   owned_progression_recommendations: { primaryKey: ["id"] },
+  owned_progression_recommendation_decision_receipts: { primaryKey: ["request_id"] },
+  running_plans: { primaryKey: ["plan_id"] },
+  running_session_revisions: { primaryKey: ["id"] },
+  running_session_roots: { primaryKey: ["id"] },
+  running_session_slot_roots: { primaryKey: ["id"] },
+  running_session_slot_revisions: { primaryKey: ["id"] },
+  running_plan_receipts: { primaryKey: ["request_id"] },
+  running_plan_events: { primaryKey: ["id"] },
+  running_goals: { primaryKey: ["id"] },
+  running_session_slots: { primaryKey: ["id"] },
+  running_opportunities: { primaryKey: ["id"] },
+  schedule_collision_outcomes: { primaryKey: ["id"] },
+  schedule_collision_receipts: { primaryKey: ["request_id"] },
+  schedule_collision_projections: { primaryKey: ["outcome_id"] },
+  workout_provenance: { primaryKey: ["workout_session_id"] },
+  workout_receipts: { primaryKey: ["id"] },
+  workout_session_schedule_links: { primaryKey: ["workout_session_id"] },
+  workout_schedule_reconciliation_receipts: { primaryKey: ["id"] },
+  workout_completed_set_correction_receipts: { primaryKey: ["request_id"] },
+  imported_activities: { primaryKey: ["id"] },
+  imported_activity_payloads: { primaryKey: ["id"] },
+  imported_activity_references: { primaryKey: ["id"] },
+  imported_activity_laps: { primaryKey: ["id"] },
+  imported_activity_chunks: { primaryKey: ["id"] },
+  imported_activity_receipts: { primaryKey: ["id"] },
+  imported_activity_removal_events: { primaryKey: ["id"] },
+  imported_activity_identities: { primaryKey: ["activity_id"] },
+  imported_activity_events: { primaryKey: ["id"] },
+  imported_activity_match_invalidations: { primaryKey: ["id"] },
+  imported_activity_revision_proposals: { primaryKey: ["request_id"] },
+  imported_activity_revision_decisions: { primaryKey: ["request_id"] },
+  running_match_events: { primaryKey: ["id"] },
+  running_current_matches: { primaryKey: ["opportunity_id"] },
+  running_activity_match_events: { primaryKey: ["id"] },
+  running_activity_match_receipts: { primaryKey: ["request_id"] },
+  bodyweight_revisions: { primaryKey: ["id"] },
+  bodyweight_tombstones: { primaryKey: ["id"] },
+  bodyweight_entries: { primaryKey: ["id"] },
+  bodyweight_entry_events: { primaryKey: ["id"] },
+  bodyweight_command_receipts: { primaryKey: ["request_id"] },
 } satisfies Readonly<Record<string, LogicalTableDefinition>>);
+
+export type LogicalBackupTableName =
+  keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS;
 
 export const LOGICAL_BACKUP_TABLES = Object.freeze(
   Object.keys(LOGICAL_BACKUP_TABLE_DEFINITIONS).sort(),
-);
+) as readonly LogicalBackupTableName[];
+
+const RECOMMENDATION_DECISION_RECEIPT_TABLES = Object.freeze([
+  "progression_recommendation_decision_receipts",
+  "owned_progression_recommendation_decision_receipts",
+] as const satisfies readonly LogicalBackupTableName[]);
+
+const LEGACY_LOGICAL_BACKUP_TABLES = Object.freeze(
+  LOGICAL_BACKUP_TABLES.filter((table) => !(
+    RECOMMENDATION_DECISION_RECEIPT_TABLES as readonly string[]
+  ).includes(table) && table !== "plan_exercise_replacement_receipts"),
+) as readonly LogicalBackupTableName[];
+
+/** The historical v2 graph must never grow when successor source tables land. */
+export const LOGICAL_BACKUP_V2_TABLES = Object.freeze(
+  LEGACY_LOGICAL_BACKUP_TABLES.filter((table) => ![
+    "running_plans", "running_session_revisions", "running_goals",
+    "running_session_slots", "running_opportunities", "workout_provenance",
+    "workout_receipts", "imported_activities", "imported_activity_payloads",
+    "imported_activity_references", "imported_activity_laps",
+    "imported_activity_chunks", "imported_activity_receipts",
+    "imported_activity_removal_events", "running_match_events",
+    "running_current_matches", "bodyweight_revisions", "bodyweight_tombstones",
+    "running_session_roots", "running_session_slot_roots",
+    "running_session_slot_revisions", "running_plan_receipts", "running_plan_events",
+    "bodyweight_entries", "bodyweight_entry_events", "bodyweight_command_receipts",
+    "imported_activity_identities", "imported_activity_events",
+    "imported_activity_match_invalidations", "workout_session_schedule_links",
+    "workout_schedule_reconciliation_receipts", "workout_completed_set_correction_receipts",
+    "running_activity_match_events", "running_activity_match_receipts",
+    "schedule_collision_outcomes", "schedule_collision_receipts",
+    "schedule_collision_projections",
+    "custom_exercise_mutation_receipts",
+    "imported_activity_revision_proposals", "imported_activity_revision_decisions",
+  ].includes(table)),
+) as readonly LogicalBackupTableName[];
+
+/** Schema 29 stable-root data is a v4 successor only; v1-v3 stay frozen. */
+export const LOGICAL_BACKUP_V3_TABLES = Object.freeze(
+  LEGACY_LOGICAL_BACKUP_TABLES.filter((table) => ![
+    "running_session_roots", "running_session_slot_roots",
+    "running_session_slot_revisions", "running_plan_receipts", "running_plan_events",
+    "bodyweight_entries", "bodyweight_entry_events", "bodyweight_command_receipts",
+    "imported_activity_identities", "imported_activity_events",
+    "imported_activity_match_invalidations", "workout_session_schedule_links",
+    "workout_schedule_reconciliation_receipts", "workout_completed_set_correction_receipts",
+    "running_activity_match_events", "running_activity_match_receipts",
+    "schedule_collision_outcomes", "schedule_collision_receipts",
+    "schedule_collision_projections",
+    "imported_activity_revision_proposals", "imported_activity_revision_decisions",
+  ].includes(table)),
+) as readonly LogicalBackupTableName[];
+
+/** v4 is frozen before the bodyweight aggregate successor landed. */
+export const LOGICAL_BACKUP_V4_TABLES = Object.freeze(
+  LEGACY_LOGICAL_BACKUP_TABLES.filter((table) => ![
+    "bodyweight_entries", "bodyweight_entry_events", "bodyweight_command_receipts",
+    "imported_activity_identities", "imported_activity_events",
+    "imported_activity_match_invalidations", "workout_session_schedule_links",
+    "workout_schedule_reconciliation_receipts", "workout_completed_set_correction_receipts",
+    "running_activity_match_events", "running_activity_match_receipts",
+    "schedule_collision_outcomes", "schedule_collision_receipts",
+    "schedule_collision_projections",
+    "imported_activity_revision_proposals", "imported_activity_revision_decisions",
+  ].includes(table)),
+) as readonly LogicalBackupTableName[];
+
+/** v5 is frozen at schema 31, before the remaining Phase 13 source successors. */
+export const LOGICAL_BACKUP_V5_TABLES = Object.freeze(
+  LEGACY_LOGICAL_BACKUP_TABLES.filter((table) => ![
+    "imported_activity_identities", "imported_activity_events",
+    "imported_activity_match_invalidations", "workout_session_schedule_links",
+    "workout_schedule_reconciliation_receipts", "workout_completed_set_correction_receipts",
+    "running_activity_match_events", "running_activity_match_receipts",
+    "schedule_collision_outcomes", "schedule_collision_receipts",
+    "schedule_collision_projections",
+    "imported_activity_revision_proposals", "imported_activity_revision_decisions",
+  ].includes(table)),
+) as readonly LogicalBackupTableName[];
+
+/** v6 is frozen at schema 36; collision decisions did not exist yet. */
+export const LOGICAL_BACKUP_V6_TABLES = Object.freeze(
+  LEGACY_LOGICAL_BACKUP_TABLES.filter((table) => ![
+    "running_current_matches",
+    "schedule_collision_outcomes",
+    "schedule_collision_receipts",
+    "schedule_collision_projections",
+    "imported_activity_revision_proposals", "imported_activity_revision_decisions",
+  ].includes(table)),
+) as readonly LogicalBackupTableName[];
+
+/** v7 adds the schema-40 collision decision ledger; current matches still rebuild. */
+export const LOGICAL_BACKUP_V7_TABLES = Object.freeze(
+  LEGACY_LOGICAL_BACKUP_TABLES.filter((table) => ![
+    "running_current_matches", "custom_exercise_mutation_receipts",
+    "imported_activity_revision_proposals", "imported_activity_revision_decisions",
+  ].includes(table)),
+) as readonly LogicalBackupTableName[];
+
+/** v8 adds durable custom-library command receipts. */
+export const LOGICAL_BACKUP_V8_TABLES = Object.freeze(
+  LEGACY_LOGICAL_BACKUP_TABLES.filter((table) => ![
+    "running_current_matches",
+    "imported_activity_revision_proposals",
+    "imported_activity_revision_decisions",
+  ].includes(table)),
+) as readonly LogicalBackupTableName[];
+
+/** v9 adds durable imported-activity revision review events. */
+export const LOGICAL_BACKUP_V9_TABLES = Object.freeze(
+  LEGACY_LOGICAL_BACKUP_TABLES.filter((table) => table !== "running_current_matches"),
+) as readonly LogicalBackupTableName[];
+
+/** v10 adds durable recommendation decision receipts. */
+export const LOGICAL_BACKUP_V10_TABLES = Object.freeze(
+  LOGICAL_BACKUP_TABLES.filter((table) => table !== "running_current_matches"
+    && table !== "plan_exercise_replacement_receipts"),
+) as readonly LogicalBackupTableName[];
+
+/** v11 adds durable immutable plan-exercise replacement command receipts. */
+export const LOGICAL_BACKUP_V11_TABLES = Object.freeze(
+  LOGICAL_BACKUP_TABLES.filter((table) => table !== "running_current_matches"),
+) as readonly LogicalBackupTableName[];
+
+/**
+ * Migration 23 was shipped before the Phase 13 source graph existed. Its
+ * generation triggers must keep addressing this exact schema-23 table set on
+ * a fresh install, rather than observing the latest logical-backup registry.
+ */
+export const LOGICAL_BACKUP_SCHEMA_23_TABLES = Object.freeze([
+  "app_settings",
+  "exercise_aliases",
+  "exercise_library_entries",
+  "exercise_metric_baselines",
+  "exercise_owner_preferences",
+  "exercise_search_terms",
+  "exercise_taxonomy",
+  "exercises",
+  "history_audit_events",
+  "history_session_overlays",
+  "metric_profile_migration_events",
+  "owned_plan_aggregate_states",
+  "owned_plan_day_exercises",
+  "owned_plan_day_sources",
+  "owned_plan_mutation_requests",
+  "owned_plan_occurrence_sources",
+  "owned_plan_progression_policies",
+  "owned_plan_schedule_bindings",
+  "owned_plan_schedule_events",
+  "owned_plan_schedule_opportunities",
+  "owned_plan_schedule_overrides",
+  "owned_plan_schedule_versions",
+  "owned_plan_schedules",
+  "owned_plan_starter_sources",
+  "owned_plan_warmup_sets",
+  "owned_plan_working_set_targets",
+  "owned_progression_recommendations",
+  "plan_day_exercises",
+  "plan_days",
+  "plan_schedule_bindings",
+  "plan_schedules",
+  "plan_warmup_sets",
+  "plan_working_set_targets",
+  "plans",
+  "progression_policies",
+  "progression_recommendations",
+  "session_advanced_timing_states",
+  "session_exercises",
+  "session_rest_states",
+  "session_sets",
+  "session_undo_snapshots",
+  "starter_plan_activation_requests",
+  "taxonomy_terms",
+  "workout_session_exercise_edit_receipts",
+  "workout_session_exercise_reorder_receipts",
+  "workout_sessions",
+] as const satisfies readonly LogicalBackupTableName[]);
+
+export const LOGICAL_BACKUP_V1_TABLES = Object.freeze(
+  LOGICAL_BACKUP_V2_TABLES.filter((table) => table !== "portable_owner_identity"),
+) as readonly LogicalBackupTableName[];
+
+export const LOGICAL_BACKUP_PRE_PHASE10_V1_TABLES = Object.freeze(
+  LOGICAL_BACKUP_V1_TABLES.filter(
+    (table) => table !== "session_advanced_timing_states",
+  ),
+) as readonly LogicalBackupTableName[];
+
+export function logicalBackupTablesForVersion(
+  version: LogicalBackupFormatVersion,
+  schemaVersion = Number.POSITIVE_INFINITY,
+): readonly (keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS)[] {
+  if (version === 11) return LOGICAL_BACKUP_V11_TABLES;
+  if (version === 10) return LOGICAL_BACKUP_V10_TABLES;
+  if (version === 9) return LOGICAL_BACKUP_V9_TABLES;
+  if (version === 8) return LOGICAL_BACKUP_V8_TABLES;
+  if (version === 7) return LOGICAL_BACKUP_V7_TABLES;
+  if (version === 6) return LOGICAL_BACKUP_V6_TABLES;
+  const legacyTables = version === 5
+    ? LOGICAL_BACKUP_V5_TABLES
+    : version === 4
+      ? LOGICAL_BACKUP_V4_TABLES
+      : version === 3
+        ? LOGICAL_BACKUP_V3_TABLES
+        : version === 2
+          ? LOGICAL_BACKUP_V2_TABLES
+          : schemaVersion < 21
+    ? LOGICAL_BACKUP_PRE_PHASE10_V1_TABLES
+    : LOGICAL_BACKUP_V1_TABLES;
+  return legacyTables.filter(
+    (table) => table !== "workout_session_exercise_rest_default_receipts",
+  );
+}
 
 export type BackupContractErrorCode =
   | "backup_snapshot_invalid"
@@ -125,7 +394,7 @@ export type LogicalBackupManifest = Readonly<{
 }>;
 
 export type LogicalBackupSnapshot = Readonly<{
-  version: typeof LOGICAL_BACKUP_FORMAT_VERSION;
+  version: LogicalBackupFormatVersion;
   snapshotId: string;
   createdAtMs: number;
   schemaVersion: number;
@@ -241,6 +510,7 @@ function assertExactManifest(
   value: unknown,
   tables: Record<string, unknown>,
   catalogReferences: readonly unknown[],
+  version: LogicalBackupFormatVersion,
 ): asserts value is LogicalBackupManifest {
   if (!isPlainObject(value) || !hasExactKeys(value, [
     "catalogReferenceCount",
@@ -311,6 +581,52 @@ function assertRows(
   }
 }
 
+function assertV2PortableOwnerIdentity(
+  tables: Record<string, unknown>,
+): void {
+  const rows = tables.portable_owner_identity;
+  if (!Array.isArray(rows) || rows.length !== 1 || !isPlainObject(rows[0])) {
+    invalid();
+  }
+  const row = rows[0];
+  if (!hasExactKeys(row, ["id", "owner_namespace"])
+    || row.id !== 1
+    || typeof row.owner_namespace !== "string"
+    || !/^[a-f0-9]{32}$/u.test(row.owner_namespace)) {
+    invalid();
+  }
+}
+
+function assertV2RootIdentities(
+  tables: Record<string, unknown>,
+): void {
+  const roots = [
+    ["exercises", (row: Record<string, unknown>) => (
+      row.origin === "custom" || row.origin === "copied"
+    )],
+    ["plans", (row: Record<string, unknown>) => (
+      row.origin === "custom" || row.origin === "copied"
+    )],
+    ["workout_sessions", () => true],
+  ] as const;
+  for (const [table, requiresIdentity] of roots) {
+    const rows = tables[table];
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      if (!isPlainObject(row) || !requiresIdentity(row)) continue;
+      if (typeof row.portable_id !== "string"
+        || !/^[a-f0-9]{32}$/u.test(row.portable_id)) {
+        invalid();
+      }
+      if (table === "workout_sessions"
+        && (!Number.isSafeInteger(row.merge_modified_at_ms)
+          || (row.merge_modified_at_ms as number) < 0)) {
+        invalid();
+      }
+    }
+  }
+}
+
 /**
  * Validates a decoded logical payload before any restore writer can receive it.
  * It does not touch SQLite and intentionally returns no raw parsing details.
@@ -329,7 +645,7 @@ export function parseLogicalBackupSnapshot(
   ])) {
     invalid();
   }
-  if (input.version !== LOGICAL_BACKUP_FORMAT_VERSION) {
+  if (!(LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS as readonly unknown[]).includes(input.version)) {
     throw new BackupContractError("backup_snapshot_unsupported_version");
   }
   assertBoundedString(input.snapshotId);
@@ -379,7 +695,18 @@ export function parseLogicalBackupSnapshot(
     catalogIdentities.add(identity);
   }
 
-  assertExactManifest(input.manifest, input.tables, input.catalogReferences);
-
+  const version = input.version as LogicalBackupFormatVersion;
+  assertExactManifest(
+    input.manifest,
+    input.tables,
+    input.catalogReferences,
+    version,
+  );
+  if (version >= 2) {
+    assertV2PortableOwnerIdentity(input.tables);
+    assertV2RootIdentities(input.tables);
+  } else if (Object.prototype.hasOwnProperty.call(input.tables, "portable_owner_identity")) {
+    invalid();
+  }
   return input as LogicalBackupSnapshot;
 }

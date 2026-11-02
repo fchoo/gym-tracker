@@ -22,16 +22,29 @@ import {
   parseNativeContractLogOutput,
   parseNativeContractLogProgress,
 } from './native-contract-log-transport.mjs';
+import {
+  resolveEphemeralNativeDevice,
+  sanitizeNativeDeviceMessage,
+} from './native-device-selection.mjs';
+import { validatePhase19NativeManifest } from './run-phase19-native-evidence.mjs';
+import {
+  assertV12AcceptanceNativeContractResult,
+  classifyV12SqliteNativeFailure,
+} from './v12-sqlite-producer-contract.mjs';
 
 const PHASE2_AGGREGATE_TIMEOUT_MS = 300_000;
 const PHASE2_CASE_TIMEOUT_MS = 10_000;
 const PHASE2_PROGRESS_STALL_TIMEOUT_MS = 90_000;
 const DEFAULT_NATIVE_TIMEOUT_MS = 90_000;
 export const NATIVE_ADB_LOGCAT_TIMEOUT_MS = 15_000;
+export const NATIVE_ADB_COMMAND_TIMEOUT_MS = 30_000;
+export const NATIVE_MAX_ADB_CALLS = 512;
+export const NATIVE_SUBPROCESS_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 const projectRoot = process.cwd();
 const argumentsList = process.argv.slice(2);
 let manifestArgument = '';
 let requestedSuite = '';
+let requestedDevice;
 let legacyExpectedCount;
 
 function fail(message) {
@@ -44,7 +57,7 @@ function emitFailure(message) {
     JSON.stringify({
       ok: false,
       error: 'native_sqlite_contract_runner_failed',
-      message,
+      failure_code: classifyV12SqliteNativeFailure(message),
     }),
   );
 }
@@ -61,10 +74,15 @@ for (let index = 0; index < argumentsList.length; index += 1) {
     index += 1;
   } else if (argument.startsWith('--suite=')) {
     requestedSuite = argument.slice('--suite='.length);
+  } else if (argument === '--device') {
+    requestedDevice = argumentsList[index + 1] ?? '';
+    index += 1;
+  } else if (argument.startsWith('--device=')) {
+    requestedDevice = argument.slice('--device='.length);
   } else if (argument.startsWith('--assert-all=')) {
     legacyExpectedCount = Number(argument.slice('--assert-all='.length));
   } else {
-    fail(`unknown argument: ${argument}`);
+    fail('unknown argument.');
   }
 }
 
@@ -85,6 +103,20 @@ if (
 const manifestPath = path.resolve(projectRoot, manifestArgument);
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
 const suite = requestedSuite || manifest.suite;
+
+export function manifestSupportsRequestedSuite(manifestSuite, requestedSuite) {
+  return manifestSuite === requestedSuite
+    || ((manifestSuite === 'phase10' || manifestSuite === 'phase11' || manifestSuite === 'phase12')
+      && requestedSuite === 'migrations-effects')
+    || (manifestSuite === 'phase11' && requestedSuite === 'portable-merge')
+    || (manifestSuite === 'phase13'
+      && (requestedSuite === 'migrations-effects'
+        || requestedSuite === 'portable-merge'
+        || requestedSuite === 'multi-plan-running'))
+    || (manifestSuite === 'phase19' && requestedSuite === 'progress-parity')
+    || (manifestSuite === 'phase12' && requestedSuite === 'google-drive-backup')
+    || (manifestSuite === 'v1.2-acceptance' && requestedSuite === 'v1.2-acceptance');
+}
 
 async function deriveCaseIds(fileName, exportName) {
   const source = await readFile(
@@ -117,6 +149,45 @@ const SQLITE_KERNEL_CASE_IDS = await deriveCaseIds(
 const MIGRATIONS_EFFECTS_CASE_IDS = await deriveCaseIds(
   'migrationsEffects.contract.ts',
   'MIGRATIONS_EFFECTS_CONTRACT_CASES',
+);
+const PORTABLE_MERGE_CASE_IDS = await deriveCaseIds(
+  'portableMerge.contract.ts',
+  'PORTABLE_MERGE_CONTRACT_CASES',
+);
+const MULTI_PLAN_RUNNING_CONTRACT_CASES = await deriveCaseIds(
+  'multiPlanRunning.contract.ts',
+  'MULTI_PLAN_RUNNING_CONTRACT_CASES',
+);
+const PROGRESS_PARITY_CONTRACT_CASES = await deriveCaseIds(
+  'progressParity.contract.ts',
+  'PROGRESS_PARITY_CONTRACT_CASES',
+);
+const GOOGLE_DRIVE_BACKUP_CASE_IDS = await deriveCaseIds(
+  'googleDriveBackup.contract.ts',
+  'GOOGLE_DRIVE_BACKUP_REQUIRED_CASE_IDS',
+);
+const GARMIN_SQLITE_ACCEPTANCE_CASE_IDS = await deriveCaseIds(
+  'garminImport.contract.ts',
+  'GARMIN_SQLITE_ACCEPTANCE_CASE_IDS',
+);
+const V12_ACCEPTANCE_SQLITE_CASE_IDS = await deriveCaseIds(
+  'v12Acceptance.contract.ts',
+  'V12_ACCEPTANCE_SQLITE_CASE_IDS',
+);
+const V12_ACCEPTANCE_SOURCE_CASE_IDS = [
+  ...SQLITE_KERNEL_CASE_IDS,
+  ...MIGRATIONS_EFFECTS_CASE_IDS,
+  ...PORTABLE_MERGE_CASE_IDS,
+  ...MULTI_PLAN_RUNNING_CONTRACT_CASES,
+  ...GOOGLE_DRIVE_BACKUP_CASE_IDS,
+  ...GARMIN_SQLITE_ACCEPTANCE_CASE_IDS,
+  ...PROGRESS_PARITY_CONTRACT_CASES,
+];
+const V12_ACCEPTANCE_CASE_TIMEOUT_MS = 10_000;
+const V12_ACCEPTANCE_TIMEOUT_MS = Math.max(
+  300_000,
+  DEFAULT_NATIVE_TIMEOUT_MS
+    + V12_ACCEPTANCE_SOURCE_CASE_IDS.length * V12_ACCEPTANCE_CASE_TIMEOUT_MS,
 );
 const PHASE2_FTS_CASE_IDS = await deriveCaseIds(
   'phase2Fts.contract.ts',
@@ -165,6 +236,11 @@ if (
 const supportedSuiteCases = {
   'sqlite-kernel': SQLITE_KERNEL_CASE_IDS,
   'migrations-effects': MIGRATIONS_EFFECTS_CASE_IDS,
+  'portable-merge': PORTABLE_MERGE_CASE_IDS,
+  'multi-plan-running': MULTI_PLAN_RUNNING_CONTRACT_CASES,
+  'progress-parity': PROGRESS_PARITY_CONTRACT_CASES,
+  'google-drive-backup': GOOGLE_DRIVE_BACKUP_CASE_IDS,
+  'v1.2-acceptance': V12_ACCEPTANCE_SQLITE_CASE_IDS,
   'phase2': PHASE2_AGGREGATE_CASE_IDS,
   'phase2-content': PHASE2_CONTENT_CASE_IDS,
   'phase2-fts': PHASE2_FTS_CASE_IDS,
@@ -179,40 +255,60 @@ if (!(suite in supportedSuiteCases)) {
 }
 const expectedPhase2Cases = supportedSuiteCases[suite];
 const expectedCount = expectedPhase2Cases.length;
+if (legacyExpectedCount !== undefined && legacyExpectedCount !== expectedCount) {
+  fail(`--assert-all must equal the source-derived ${suite} case count (${expectedCount}).`);
+}
 const resultPath = path.join(path.dirname(manifestPath), 'result.json');
+const suiteResultPath = path.join(path.dirname(manifestPath), `${suite}.json`);
 const temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'gym-native-contracts-'));
 const installedApkCopy = path.join(temporaryDirectory, 'installed.apk');
+let adbCallCount = 0;
+let ephemeralDevice;
 
 function command(name, args, options = {}) {
+  const {
+    timeoutMs = DEFAULT_NATIVE_TIMEOUT_MS,
+    onOutput,
+    ...spawnOptions
+  } = options;
   const child = spawn(name, args, {
     cwd: projectRoot,
     env: process.env,
     stdio: ['ignore', 'pipe', 'pipe'],
-    ...options,
+    ...spawnOptions,
   });
   return new Promise((resolve, reject) => {
     let stdout = '';
     let stderr = '';
+    let outputBytes = 0;
     let settled = false;
-    const timeout = options.timeoutMs === undefined
-      ? undefined
-      : setTimeout(() => {
+    const timeout = setTimeout(() => {
           if (settled) {
             return;
           }
           settled = true;
           child.kill('SIGKILL');
-          reject(new Error(
-            `${name} timed out after ${options.timeoutMs} ms: ${args.join(' ')}`,
-          ));
-        }, options.timeoutMs);
+          reject(new Error(`${name} timed out after ${timeoutMs} ms.`));
+        }, timeoutMs);
+    const append = (target, chunk) => {
+      outputBytes += chunk.length;
+      if (outputBytes > NATIVE_SUBPROCESS_MAX_OUTPUT_BYTES) {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeout);
+          child.kill('SIGKILL');
+          reject(new Error(`${name} exceeded bounded subprocess output.`));
+        }
+        return target;
+      }
+      onOutput?.(chunk.toString('utf8'));
+      return target + chunk.toString('utf8');
+    };
     child.stdout?.on('data', (chunk) => {
-      stdout += chunk;
-      options.onOutput?.(chunk.toString('utf8'));
+      stdout = append(stdout, chunk);
     });
     child.stderr?.on('data', (chunk) => {
-      stderr += chunk;
-      options.onOutput?.(chunk.toString('utf8'));
+      stderr = append(stderr, chunk);
     });
     child.on('error', (error) => {
       if (settled) {
@@ -231,7 +327,7 @@ function command(name, args, options = {}) {
       if (code === 0) {
         resolve(stdout.trim());
       } else {
-        reject(new Error(`${name} exited ${code}: ${stderr || stdout}`));
+        reject(new Error(sanitizeNativeDeviceMessage(`${stderr}${stdout}`, ephemeralDevice)));
       }
     });
   });
@@ -246,7 +342,19 @@ async function sha256(filePath) {
 }
 
 function adb(...args) {
-  return command('adb', ['-s', manifest.device.serial, ...args]);
+  adbCallCount += 1;
+  if (adbCallCount > NATIVE_MAX_ADB_CALLS) {
+    return Promise.reject(new Error('native adb command limit exceeded.'));
+  }
+  return command(
+    'adb',
+    ['-s', ephemeralDevice, ...args],
+    { timeoutMs: NATIVE_ADB_COMMAND_TIMEOUT_MS },
+  );
+}
+
+function shellQuote(value) {
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 function exactKeys(input, expected) {
@@ -299,6 +407,62 @@ function assertPhase2ContractResult(input, expectedCaseIds, errorCode) {
   }
 }
 
+function assertProgressParityContractResult(input) {
+  const countKeys = [
+    'snapshots',
+    'runningFacts',
+    'goalRevisions',
+    'receiptRows',
+    'receiptReplays',
+  ];
+  const hashKeys = ['source', 'projection', 'receipt'];
+  const cases = Array.isArray(input?.cases) ? input.cases : [];
+  const validCases = cases.length === PROGRESS_PARITY_CONTRACT_CASES.length
+    && cases.every((contractCase, index) => (
+      exactKeys(contractCase, ['id', 'requirement', 'status', 'code', 'counts', 'timings', 'hashes'])
+      && contractCase?.id === PROGRESS_PARITY_CONTRACT_CASES[index]
+      && contractCase?.requirement === `PRO-${String(index + 1).padStart(2, '0')}`
+      && contractCase?.status === 'passed'
+      && contractCase?.code === 'progress_contract_case_passed'
+      && exactKeys(contractCase.counts, countKeys)
+      && countKeys.every((key) => Number.isSafeInteger(contractCase.counts[key])
+        && contractCase.counts[key] >= 0)
+      && exactKeys(contractCase.timings, ['durationMs'])
+      && typeof contractCase.timings.durationMs === 'number'
+      && contractCase.timings.durationMs >= 0
+      && exactKeys(contractCase.hashes, hashKeys)
+      && hashKeys.every((key) => /^[a-f0-9]{64}$/u.test(contractCase.hashes[key]))
+    ));
+  if (
+    !exactKeys(input, [
+      'schemaVersion',
+      'contractVersion',
+      'status',
+      'total',
+      'passed',
+      'failed',
+      'skipped',
+      'cases',
+      'startedAt',
+      'finishedAt',
+    ])
+    || input?.schemaVersion !== 1
+    || input?.contractVersion !== 1
+    || input?.status !== 'passed'
+    || input?.total !== PROGRESS_PARITY_CONTRACT_CASES.length
+    || input?.passed !== PROGRESS_PARITY_CONTRACT_CASES.length
+    || input?.failed !== 0
+    || input?.skipped !== 0
+    || !validCases
+    || typeof input?.startedAt !== 'string'
+    || Number.isNaN(Date.parse(input.startedAt))
+    || typeof input?.finishedAt !== 'string'
+    || Number.isNaN(Date.parse(input.finishedAt))
+  ) {
+    throw new Error('progress_parity_contract_result_invalid');
+  }
+}
+
 function assertPhase2FtsContractResult(input) {
   assertPhase2ContractResult(
     input,
@@ -314,6 +478,8 @@ async function dumpResult(runId) {
         DEFAULT_NATIVE_TIMEOUT_MS
           + expectedPhase2Cases.length * PHASE2_CASE_TIMEOUT_MS,
       )
+    : suite === 'v1.2-acceptance'
+    ? V12_ACCEPTANCE_TIMEOUT_MS
     : DEFAULT_NATIVE_TIMEOUT_MS;
   const deadline = Date.now() + timeoutMs;
   let progressStage;
@@ -324,7 +490,7 @@ async function dumpResult(runId) {
       'adb',
       [
         '-s',
-        manifest.device.serial,
+        ephemeralDevice,
         'logcat',
         '-d',
         '-v',
@@ -364,6 +530,9 @@ async function dumpResult(runId) {
 }
 
 try {
+  if (manifest.suite === 'phase19') {
+    validatePhase19NativeManifest(manifest);
+  }
   if (
     manifest.schema_version !== 1
     || manifest.profile !== 'development-test'
@@ -374,10 +543,10 @@ try {
       'manifest must be schema v1 embedded release development-test evidence.',
     );
   }
-  if (!manifest.device?.serial || !manifest.package || !manifest.apk?.sha256) {
+  if (!manifest.device || !manifest.package || !manifest.apk?.sha256) {
     throw new Error('manifest is missing device, package, or APK identity.');
   }
-  if (manifest.suite !== suite) {
+  if (!manifestSupportsRequestedSuite(manifest.suite, suite)) {
     throw new Error('requested suite does not match the build manifest.');
   }
   if (!existsSync(path.resolve(projectRoot, manifest.apk.path))) {
@@ -391,24 +560,37 @@ try {
     process.env.PATH,
   ].join(path.delimiter);
 
+  ephemeralDevice = await resolveEphemeralNativeDevice({
+    explicitDevice: requestedDevice,
+    androidSerial: process.env.ANDROID_SERIAL,
+    manifestDevice: manifest.device,
+    adb: (...args) => command('adb', args, { timeoutMs: NATIVE_ADB_COMMAND_TIMEOUT_MS }),
+  });
+
   const runId = `${suite}-${Date.now()}`;
-  const deepLink = `gymtracker-devtest://__native-contracts?runId=${runId}`;
+  const deepLink = `gymtracker-devtest://__native-contracts?runId=${runId}&suite=${encodeURIComponent(suite)}`;
   await adb('logcat', '-c');
   await adb('shell', 'am', 'force-stop', manifest.package);
   await adb(
     'shell',
-    'am',
-    'start',
-    '-W',
-    '-a',
-    'android.intent.action.VIEW',
-    '-d',
-    deepLink,
-    manifest.package,
+    [
+      'am',
+      'start',
+      '-W',
+      '-a',
+      'android.intent.action.VIEW',
+      '-d',
+      deepLink,
+      manifest.package,
+    ].map(shellQuote).join(' '),
   );
   const contractResult = await dumpResult(runId);
-  if (suite === 'phase2-fts') {
+  if (suite === 'v1.2-acceptance') {
+    assertV12AcceptanceNativeContractResult(contractResult, V12_ACCEPTANCE_SQLITE_CASE_IDS);
+  } else if (suite === 'phase2-fts') {
     assertPhase2FtsContractResult(contractResult);
+  } else if (suite === 'progress-parity') {
+    assertProgressParityContractResult(contractResult);
   } else if (expectedPhase2Cases !== null) {
     assertPhase2ContractResult(
       contractResult,
@@ -438,7 +620,6 @@ try {
     package: manifest.package,
     apk: manifest.apk,
     installed_apk: {
-      device_path: installedPath,
       sha256: installedSha256,
       matches_retained_apk: installedSha256 === manifest.apk.sha256,
     },
@@ -464,6 +645,7 @@ try {
   const temporaryResult = `${resultPath}.tmp`;
   await writeFile(temporaryResult, `${JSON.stringify(result, null, 2)}\n`);
   await rename(temporaryResult, resultPath);
+  await writeFile(suiteResultPath, `${JSON.stringify(result, null, 2)}\n`);
 
   if (
     result.status !== 'passed'
@@ -484,7 +666,7 @@ try {
     apk_sha256: result.apk.sha256,
   }));
 } catch (error) {
-  emitFailure(error.message);
+  emitFailure(sanitizeNativeDeviceMessage(error instanceof Error ? error.message : '', ephemeralDevice));
   process.exitCode = 1;
 } finally {
   await rm(temporaryDirectory, { force: true, recursive: true });

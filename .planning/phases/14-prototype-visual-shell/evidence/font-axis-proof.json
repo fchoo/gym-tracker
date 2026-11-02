@@ -1,0 +1,127 @@
+{
+  "schema_version": 2,
+  "suite": "phase14-font-proof",
+  "status": "passed",
+  "source_tree_sha256": "490a02edff3edeb7a441380b1dffe7913f8d7fa108a4ce431f7c9cc99de94ce4",
+  "apk_sha256": "439742f54062e2e8fbee0b311fffd0c6e00f32cf25b3031a330929d1dc72f37a",
+  "package": "com.fchoo.gymtracker.devtest",
+  "profile": "development-test",
+  "proof_source_sha256": "d9abb37f32587e8a79aff04f97592118e0e264d9240152b27889f5093231c67d",
+  "font_scale_restored": true,
+  "revision18": {
+    "approved_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+    "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf"
+  },
+  "overlay_review": {
+    "status": "passed",
+    "screenshot_sha256": "7001e2223abc582a17e65f463f86f6259eb0ba0612a9c84370221bd0679db2d9",
+    "approved_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+    "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf"
+  },
+  "cases": [
+    {
+      "id": "light-390-scale-1",
+      "status": "passed",
+      "font_scale": 1,
+      "display_density": 2.625,
+      "screenshot_sha256": "7001e2223abc582a17e65f463f86f6259eb0ba0612a9c84370221bd0679db2d9",
+      "family": "ArchivoVariable",
+      "family_loaded": true,
+      "style": {
+        "font_family": "ArchivoVariable",
+        "font_size_px": 57,
+        "font_stretch": "condensed",
+        "font_weight": 890,
+        "letter_spacing_em": -0.07,
+        "line_height_px": 49
+      },
+      "lines": [
+        "Workout"
+      ],
+      "metrics": {
+        "available_width_px": 302.8571472167969,
+        "block_width_px": 197.02725219726562,
+        "block_height_px": 49.14285659790039,
+        "line_advances_px": [
+          197.02725219726562
+        ],
+        "line_heights_px": [
+          49.14285659790039
+        ],
+        "line_baselines_px": [
+          {
+            "ascender_px": 43.80952453613281,
+            "descender_px": 5.333333492279053,
+            "y_px": 0,
+            "height_px": 49.14285659790039,
+            "baseline_offset_px": 43.80952453613281
+          }
+        ],
+        "text_bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 303.23809814453125,
+          "height": 49.142860412597656
+        },
+        "container_bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 302.8571472167969,
+          "height": 49.142860412597656
+        }
+      }
+    },
+    {
+      "id": "light-390-scale-2",
+      "status": "passed",
+      "font_scale": 2,
+      "display_density": 2.625,
+      "screenshot_sha256": "16e4ce7b67c5ca15fb581f98479b12d721890316177ed9b5097a8c7a85d192cd",
+      "family": "ArchivoVariable",
+      "family_loaded": true,
+      "style": {
+        "font_family": "ArchivoVariable",
+        "font_size_px": 57,
+        "font_stretch": "condensed",
+        "font_weight": 890,
+        "letter_spacing_em": -0.07,
+        "line_height_px": 49
+      },
+      "lines": [
+        "Workout"
+      ],
+      "metrics": {
+        "available_width_px": 302.8571472167969,
+        "block_width_px": 192.23904418945312,
+        "block_height_px": 54.85714340209961,
+        "line_advances_px": [
+          192.23904418945312
+        ],
+        "line_heights_px": [
+          54.85714340209961
+        ],
+        "line_baselines_px": [
+          {
+            "ascender_px": 48.380950927734375,
+            "descender_px": 6.476190567016602,
+            "y_px": 0,
+            "height_px": 54.85714340209961,
+            "baseline_offset_px": 48.380950927734375
+          }
+        ],
+        "text_bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 303.23809814453125,
+          "height": 54.857147216796875
+        },
+        "container_bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 302.8571472167969,
+          "height": 54.857147216796875
+        }
+      }
+    }
+  ]
+}

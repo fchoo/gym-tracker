@@ -1,0 +1,20 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 14 Archivo source oracle capture
+tags:
+  - phase-14
+  - font-axis
+---
+- launchApp:
+    clearState: false
+    stopApp: true
+- extendedWaitUntil:
+    visible: "Native bootstrap ready."
+    timeout: 30000
+- openLink: "gymtracker-devtest://__phase2-attended-preview?scenario=phase14-font-axis"
+- extendedWaitUntil:
+    visible:
+      id: "phase14-font-proof-root"
+    timeout: 30000
+- assertVisible:
+    id: "phase14-font-proof-observation"
+- takeScreenshot: "phase14-font-axis-${PHASE14_FONT_SCALE}"

@@ -2,6 +2,25 @@ import type {
   MetricIdentity,
   MetricTarget,
 } from "../../../domains/metrics";
+import { LIBRARY_PLAN_DELETION_KEY_PREFIX } from "../../../domains/library/planDeletion";
+import {
+  OFF_ADVANCED_TIMING_CONFIG,
+  canonicalAdvancedTimingConfigJson,
+  parseAdvancedTimingConfig,
+  type AdvancedTimingConfigV1,
+} from "../../../domains/advancedTiming";
+import {
+  parseMetricIdentity,
+  parseMetricTarget,
+} from "../../../domains/metrics";
+import type {
+  SessionExerciseEditsForPlanFacts,
+  SessionExerciseEditsForPlanPreview,
+  SessionExerciseWriteBackComposition,
+} from "../../../domains/plans/planImpactCommands";
+import {
+  canonicalizeSessionExerciseEditsForPlan,
+} from "../../../domains/plans/planImpactCommands";
 import {
   OWNED_PLAN_MISSING_VALID_TARGET_CODE,
   OWNED_PLAN_MISSING_VALID_TARGET_REASON,
@@ -16,6 +35,7 @@ export type StagedOwnedPlanWarmup = Readonly<{
   ordinal: number;
   loadGrams: number;
   reps: number;
+  advancedTimingOverride?: AdvancedTimingConfigV1 | null;
 }>;
 
 export type StagedOwnedPlanTarget = Readonly<{
@@ -23,6 +43,7 @@ export type StagedOwnedPlanTarget = Readonly<{
   ordinal: number;
   target: MetricTarget;
   units: Readonly<Record<string, unknown>>;
+  advancedTimingOverride?: AdvancedTimingConfigV1 | null;
 }>;
 
 export type StagedOwnedPlanPolicy = Readonly<{
@@ -39,6 +60,7 @@ export type StagedOwnedPlanOccurrence = Readonly<{
   ordinal: number;
   restSeconds: number;
   metricIdentity: MetricIdentity;
+  advancedTimingDefault?: AdvancedTimingConfigV1;
   warmups: readonly StagedOwnedPlanWarmup[];
   targets: readonly StagedOwnedPlanTarget[];
   policy: StagedOwnedPlanPolicy;
@@ -88,6 +110,29 @@ export type StagedSetOwnedPlanArchived = Readonly<{
   expectedRevision: number;
   archived: boolean;
   updatedAtMs: number;
+}>;
+
+export type ApplySessionExerciseEditsToPlanInput = Readonly<{
+  requestId: string;
+  requestSha256: string;
+  sourceSessionId: string;
+  sourceSessionRevision: number;
+  planId: string;
+  planDayId: string;
+  expectedPlanRevision: number;
+  previewToken: string;
+  composition: readonly SessionExerciseWriteBackComposition[];
+  committedAtMs: number;
+}>;
+
+export type SessionExerciseEditsToPlanResult = Readonly<{
+  outcome: "committed" | "already_committed";
+  operation: "session_exercise_edits";
+  planId: string;
+  planRevision: number;
+  sourceSessionId: string;
+  currentWorkoutUnaffected: true;
+  invalidations: readonly string[];
 }>;
 
 export type OwnedPlanScheduleDefaults = Readonly<{
@@ -147,6 +192,16 @@ export type OwnedPlanRepositoryResult =
 
 export type OwnedPlanRepository = Readonly<{
   read(planId: string): Promise<OwnedPlanSnapshot | null>;
+  readSessionExerciseEditsForPlan(input: Readonly<{
+    sessionId: string;
+  }>): Promise<SessionExerciseEditsForPlanFacts | null>;
+  applySessionExerciseEditsToPlan(
+    input: ApplySessionExerciseEditsToPlanInput,
+  ): Promise<SessionExerciseEditsToPlanResult>;
+  readSessionExerciseEditsToPlanResult(input: Readonly<{
+    requestId: string;
+    requestSha256: string;
+  }>): Promise<SessionExerciseEditsToPlanResult | null>;
   createDraft(
     input: StagedCreateOwnedPlanDraft,
   ): Promise<OwnedPlanRepositoryResult>;
@@ -182,6 +237,8 @@ export class OwnedPlanConflictError extends Error {
 
 type QueryExecutor = Pick<SqliteKernel, "queryAll">;
 
+const RETIRED_OCCURRENCE_ORDINAL_BASE = 1_000_000;
+
 async function supportsOwnedRecommendations(
   executor: QueryExecutor,
 ): Promise<boolean> {
@@ -195,9 +252,40 @@ async function supportsOwnedRecommendations(
   return row?.supported === 1;
 }
 
+async function supportsOwnedAdvancedTimingConfig(
+  executor: QueryExecutor,
+): Promise<boolean> {
+  const [occurrenceColumns, warmupColumns, targetColumns] = await Promise.all([
+    executor.queryAll<{ name: string }>(
+      "PRAGMA table_info(owned_plan_day_exercises)",
+    ),
+    executor.queryAll<{ name: string }>(
+      "PRAGMA table_info(owned_plan_warmup_sets)",
+    ),
+    executor.queryAll<{ name: string }>(
+      "PRAGMA table_info(owned_plan_working_set_targets)",
+    ),
+  ]);
+  return occurrenceColumns.some(({ name }) =>
+    name === "advanced_timing_default_json"
+  )
+    && warmupColumns.some(({ name }) =>
+      name === "advanced_timing_override_json"
+    )
+    && targetColumns.some(({ name }) =>
+      name === "advanced_timing_override_json"
+    );
+}
+
 type ReceiptRow = Readonly<{
   request_sha256: string;
   result_json: string;
+}>;
+
+type SessionExerciseEditReceiptRow = Readonly<{
+  operation: "replace_exercise" | "remove_exercise";
+  subject_session_exercise_id: string;
+  replacement_session_exercise_id: string | null;
 }>;
 
 type PlanRow = Readonly<{
@@ -231,6 +319,7 @@ type OccurrenceRow = Readonly<{
   metric_profile: MetricIdentity["profile"];
   metric_contract_version: number;
   exercise_metric_generation: number;
+  advanced_timing_default_json?: string;
 }>;
 
 type WarmupRow = Readonly<{
@@ -239,6 +328,7 @@ type WarmupRow = Readonly<{
   ordinal: number;
   load_grams: number;
   reps: number;
+  advanced_timing_override_json?: string | null;
 }>;
 
 type TargetRow = Readonly<{
@@ -247,6 +337,7 @@ type TargetRow = Readonly<{
   ordinal: number;
   target_json: string;
   unit_json: string;
+  advanced_timing_override_json?: string | null;
 }>;
 
 type PolicyRow = Readonly<{
@@ -284,6 +375,50 @@ type ScheduleBindingRow = Readonly<{
   plan_day_id: string;
 }>;
 
+type SessionWriteBackRow = Readonly<{
+  id: string;
+  plan_id: string | null;
+  plan_day_id: string | null;
+  plan_name: string | null;
+  day_name: string | null;
+  revision: number;
+  source: "scheduled_day" | "alternate_day" | "rest_day" | "empty" | "manual";
+  status: "completed" | "partial" | "discarded" | "zero_sets" | "in_progress";
+  modified_from_plan: number;
+}>;
+
+type SessionWriteBackExerciseRow = Readonly<{
+  session_exercise_id: string;
+  exercise_id: string;
+  display_ordinal: number;
+  default_rest_seconds: number;
+  metric_profile: MetricIdentity["profile"];
+  metric_contract_version: number;
+  exercise_metric_generation: number;
+  source_occurrence_id: string | null;
+  advanced_timing_default_json?: string;
+}>;
+
+type SessionWriteBackTargetRow = Readonly<{
+  ordinal: number;
+  target_json: string;
+  unit_json: string;
+  advanced_timing_override_json?: string | null;
+}>;
+
+type SessionWriteBackWarmupRow = Readonly<{
+  ordinal: number;
+  load_grams: number;
+  reps: number;
+  advanced_timing_override_json?: string | null;
+}>;
+
+type SessionWriteBackEditRow = Readonly<{
+  operation: "replace_exercise" | "remove_exercise";
+  subject_session_exercise_id: string;
+  replacement_session_exercise_id: string | null;
+}>;
+
 function invalidations(planId: string): readonly string[] {
   return Object.freeze([
     "library:plans",
@@ -297,6 +432,54 @@ function parseJsonRecord(value: string): Readonly<Record<string, unknown>> {
     throw new Error("owned_plan_json_invalid");
   }
   return parsed as Readonly<Record<string, unknown>>;
+}
+
+function parseTimingJson(value: string): AdvancedTimingConfigV1 {
+  try {
+    return parseAdvancedTimingConfig(JSON.parse(value));
+  } catch {
+    throw new Error("owned_plan_advanced_timing_invalid");
+  }
+}
+
+function parseOptionalTimingJson(
+  value: string | null | undefined,
+): AdvancedTimingConfigV1 | null {
+  return value == null ? null : parseTimingJson(value);
+}
+
+function timingConfigJson(value: AdvancedTimingConfigV1 | undefined): string {
+  return canonicalAdvancedTimingConfigJson(value ?? OFF_ADVANCED_TIMING_CONFIG);
+}
+
+function timingOverrideJson(
+  value: AdvancedTimingConfigV1 | null | undefined,
+): string | null {
+  return value == null ? null : canonicalAdvancedTimingConfigJson(value);
+}
+
+function timingOverrideField(
+  value: AdvancedTimingConfigV1 | null,
+): Readonly<{ advancedTimingOverride?: AdvancedTimingConfigV1 | null }> {
+  return value === null
+    ? Object.freeze({})
+    : Object.freeze({ advancedTimingOverride: value });
+}
+
+function timingDefaultField(
+  value: AdvancedTimingConfigV1 | undefined,
+): Readonly<{ advancedTimingDefault?: AdvancedTimingConfigV1 }> {
+  return value === undefined || value.mode === "off"
+    ? Object.freeze({})
+    : Object.freeze({ advancedTimingDefault: value });
+}
+
+function stagedTimingOverrideField(
+  value: AdvancedTimingConfigV1 | null | undefined,
+): Readonly<{ advancedTimingOverride?: AdvancedTimingConfigV1 | null }> {
+  return value === undefined
+    ? Object.freeze({})
+    : Object.freeze({ advancedTimingOverride: value });
 }
 
 function parseReceiptResult(value: string): OwnedPlanCommittedResult {
@@ -316,6 +499,41 @@ function parseReceiptResult(value: string): OwnedPlanCommittedResult {
     throw new Error("owned_plan_receipt_invalid");
   }
   return parsed;
+}
+
+function parseSessionExerciseEditsResult(
+  value: string,
+): SessionExerciseEditsToPlanResult {
+  const parsed = JSON.parse(value) as SessionExerciseEditsToPlanResult;
+  if (
+    parsed.outcome !== "committed"
+    || parsed.operation !== "session_exercise_edits"
+    || typeof parsed.planId !== "string"
+    || typeof parsed.sourceSessionId !== "string"
+    || !Number.isSafeInteger(parsed.planRevision)
+    || parsed.planRevision < 1
+    || parsed.currentWorkoutUnaffected !== true
+    || !Array.isArray(parsed.invalidations)
+  ) {
+    throw new Error("owned_plan_receipt_invalid");
+  }
+  return parsed;
+}
+
+function replaySessionExerciseEditsResult(
+  receipt: ReceiptRow | undefined,
+  requestSha256: string,
+): SessionExerciseEditsToPlanResult | null {
+  if (receipt === undefined) {
+    return null;
+  }
+  if (receipt.request_sha256 !== requestSha256) {
+    throw new OwnedPlanConflictError("owned_plan_idempotency_conflict");
+  }
+  return Object.freeze({
+    ...parseSessionExerciseEditsResult(receipt.result_json),
+    outcome: "already_committed",
+  });
 }
 
 async function readReceipt(
@@ -358,7 +576,8 @@ async function readPlan(
             state.lifecycle, state.graph_status, state.missing_requirement
      FROM plans plan
      JOIN owned_plan_aggregate_states state ON state.plan_id = plan.id
-     WHERE plan.id = ?`,
+     WHERE plan.id = ?
+       AND NOT EXISTS (SELECT 1 FROM app_settings deleted WHERE deleted.key = '${LIBRARY_PLAN_DELETION_KEY_PREFIX}' || plan.id)`,
     [planId],
   );
   return row;
@@ -382,6 +601,7 @@ async function readOccurrences(
   executor: QueryExecutor,
   planId: string,
   currentDayCount: number,
+  advancedTimingConfig: boolean,
 ): Promise<readonly OccurrenceRow[]> {
   return executor.queryAll<OccurrenceRow>(
     `SELECT occurrence.id, occurrence.plan_day_id,
@@ -390,9 +610,13 @@ async function readOccurrences(
             occurrence.metric_profile,
             occurrence.metric_contract_version,
             occurrence.exercise_metric_generation
+            ${advancedTimingConfig
+              ? ", occurrence.advanced_timing_default_json"
+              : ""}
      FROM owned_plan_day_exercises occurrence
      JOIN plan_days day ON day.id = occurrence.plan_day_id
      WHERE day.plan_id = ? AND day.ordinal < ?
+       AND occurrence.ordinal < ${RETIRED_OCCURRENCE_ORDINAL_BASE}
      ORDER BY day.ordinal, occurrence.ordinal`,
     [planId, currentDayCount],
   );
@@ -402,15 +626,20 @@ async function readWarmups(
   executor: QueryExecutor,
   planId: string,
   currentDayCount: number,
+  advancedTimingConfig: boolean,
 ): Promise<readonly WarmupRow[]> {
   return executor.queryAll<WarmupRow>(
     `SELECT warmup.id, warmup.plan_day_exercise_id, warmup.ordinal,
             warmup.load_grams, warmup.reps
+            ${advancedTimingConfig
+              ? ", warmup.advanced_timing_override_json"
+              : ""}
      FROM owned_plan_warmup_sets warmup
      JOIN owned_plan_day_exercises occurrence
        ON occurrence.id = warmup.plan_day_exercise_id
      JOIN plan_days day ON day.id = occurrence.plan_day_id
      WHERE day.plan_id = ? AND day.ordinal < ?
+       AND occurrence.ordinal < ${RETIRED_OCCURRENCE_ORDINAL_BASE}
      ORDER BY day.ordinal, occurrence.ordinal, warmup.ordinal`,
     [planId, currentDayCount],
   );
@@ -420,15 +649,20 @@ async function readTargets(
   executor: QueryExecutor,
   planId: string,
   currentDayCount: number,
+  advancedTimingConfig: boolean,
 ): Promise<readonly TargetRow[]> {
   return executor.queryAll<TargetRow>(
     `SELECT target.id, target.plan_day_exercise_id, target.ordinal,
             target.target_json, target.unit_json
+            ${advancedTimingConfig
+              ? ", target.advanced_timing_override_json"
+              : ""}
      FROM owned_plan_working_set_targets target
      JOIN owned_plan_day_exercises occurrence
        ON occurrence.id = target.plan_day_exercise_id
      JOIN plan_days day ON day.id = occurrence.plan_day_id
      WHERE day.plan_id = ? AND day.ordinal < ?
+       AND occurrence.ordinal < ${RETIRED_OCCURRENCE_ORDINAL_BASE}
      ORDER BY day.ordinal, occurrence.ordinal, target.ordinal`,
     [planId, currentDayCount],
   );
@@ -447,6 +681,7 @@ async function readPolicies(
        ON occurrence.id = policy.plan_day_exercise_id
      JOIN plan_days day ON day.id = occurrence.plan_day_id
      WHERE day.plan_id = ? AND day.ordinal < ?
+       AND occurrence.ordinal < ${RETIRED_OCCURRENCE_ORDINAL_BASE}
      ORDER BY day.ordinal, occurrence.ordinal`,
     [planId, currentDayCount],
   );
@@ -532,12 +767,197 @@ async function scheduleDefaults(
   });
 }
 
+async function readSessionExerciseEditsForPlan(
+  executor: QueryExecutor,
+  input: Readonly<{ sessionId: string }>,
+): Promise<SessionExerciseEditsForPlanFacts | null> {
+  const [session] = await executor.queryAll<SessionWriteBackRow>(
+    `SELECT session.id, session.plan_id, session.plan_day_id,
+            plan.name AS plan_name, day.name AS day_name, session.revision,
+            session.source, session.status, session.modified_from_plan
+     FROM workout_sessions session
+     LEFT JOIN plans plan ON plan.id = session.plan_id
+     LEFT JOIN plan_days day ON day.id = session.plan_day_id
+     WHERE session.id = ?`,
+    [input.sessionId],
+  );
+  if (
+    session === undefined
+    || session.plan_id === null
+    || session.plan_day_id === null
+    || session.plan_name === null
+    || session.day_name === null
+  ) {
+    return null;
+  }
+  const plan = await readPlan(executor, session.plan_id);
+  if (plan === undefined || plan.origin === "bundled") {
+    return null;
+  }
+  const advancedTimingConfig = await supportsOwnedAdvancedTimingConfig(executor);
+  const [day] = await executor.queryAll<{ id: string; name: string }>(
+    `SELECT id, name FROM plan_days
+     WHERE id = ? AND plan_id = ? AND ordinal < ?`,
+    [session.plan_day_id, session.plan_id, plan.days_per_week],
+  );
+  if (day === undefined) {
+    return null;
+  }
+  const existing = await snapshot(executor, session.plan_id);
+  const planDay = existing.days.find(({ id }) => id === day.id);
+  if (planDay === undefined) {
+    return null;
+  }
+  const exercises = await executor.queryAll<SessionWriteBackExerciseRow>(
+    `SELECT se.id AS session_exercise_id, se.exercise_id, se.display_ordinal,
+            se.default_rest_seconds, se.metric_profile,
+            se.metric_contract_version, se.exercise_metric_generation,
+            ${advancedTimingConfig
+              ? "se.advanced_timing_default_json,"
+              : ""}
+            COALESCE(
+              (SELECT target.plan_day_exercise_id
+               FROM owned_plan_working_set_targets target
+               JOIN session_sets set_row
+                 ON set_row.source_owned_plan_working_set_target_id = target.id
+               WHERE set_row.session_exercise_id = se.id
+               LIMIT 1),
+              se.source_plan_day_exercise_id
+            ) AS source_occurrence_id
+     FROM session_exercises se
+     WHERE se.session_id = ?
+     ORDER BY se.display_ordinal, se.id`,
+    [session.id],
+  );
+  const sessionExercises = await Promise.all(exercises.map(async (exercise) => {
+    const identity = parseMetricIdentity({
+      profile: exercise.metric_profile,
+      contractVersion: exercise.metric_contract_version,
+      exerciseMetricGeneration: exercise.exercise_metric_generation,
+    });
+    const warmups = await executor.queryAll<SessionWriteBackWarmupRow>(
+      `SELECT ordinal, target_load_grams AS load_grams, target_max_reps AS reps
+              ${advancedTimingConfig
+                ? ", advanced_timing_override_json"
+                : ""}
+       FROM session_sets
+       WHERE session_exercise_id = ? AND set_kind = 'warmup'
+       ORDER BY ordinal`,
+      [exercise.session_exercise_id],
+    );
+    const targets = await executor.queryAll<SessionWriteBackTargetRow>(
+      `SELECT ordinal, target_json, unit_json
+              ${advancedTimingConfig
+                ? ", advanced_timing_override_json"
+                : ""}
+       FROM session_sets
+       WHERE session_exercise_id = ? AND set_kind = 'working'
+       ORDER BY ordinal`,
+      [exercise.session_exercise_id],
+    );
+    return Object.freeze({
+      sessionExerciseId: exercise.session_exercise_id,
+      exerciseId: exercise.exercise_id,
+      displayOrdinal: exercise.display_ordinal,
+      sourceOccurrenceId: exercise.source_occurrence_id,
+      restSeconds: exercise.default_rest_seconds,
+      metricIdentity: identity,
+      ...timingDefaultField(advancedTimingConfig
+        ? parseTimingJson(exercise.advanced_timing_default_json!)
+        : OFF_ADVANCED_TIMING_CONFIG),
+      warmups: Object.freeze(warmups.map((warmup) => Object.freeze({
+        ordinal: warmup.ordinal,
+        loadGrams: warmup.load_grams,
+        reps: warmup.reps,
+        ...timingOverrideField(advancedTimingConfig
+          ? parseOptionalTimingJson(warmup.advanced_timing_override_json)
+          : null),
+      }))),
+      targets: Object.freeze(targets.map((target) => Object.freeze({
+        ordinal: target.ordinal,
+        target: parseMetricTarget(identity, parseJsonRecord(target.target_json)),
+        units: parseJsonRecord(target.unit_json),
+        ...timingOverrideField(advancedTimingConfig
+          ? parseOptionalTimingJson(target.advanced_timing_override_json)
+          : null),
+      }))),
+    });
+  }));
+  const edits = await executor.queryAll<SessionWriteBackEditRow>(
+    `SELECT operation, subject_session_exercise_id,
+            replacement_session_exercise_id
+     FROM workout_session_exercise_edit_receipts
+     WHERE session_id = ?
+       AND operation IN ('replace_exercise', 'remove_exercise')
+     ORDER BY request_id`,
+    [session.id],
+  );
+  return Object.freeze({
+    session: Object.freeze({
+      id: session.id,
+      planId: session.plan_id,
+      planDayId: session.plan_day_id,
+      planName: session.plan_name,
+      dayName: session.day_name,
+      revision: session.revision,
+      source: session.source,
+      status: session.status,
+      modifiedFromPlan: session.modified_from_plan === 1,
+    }),
+    day: Object.freeze({
+      id: planDay.id,
+      name: planDay.name,
+      planId: session.plan_id,
+      planRevision: existing.revision,
+      occurrences: Object.freeze(planDay.occurrences.map((occurrence) =>
+        Object.freeze({
+          occurrenceId: occurrence.id,
+          exerciseId: occurrence.exerciseId,
+          ordinal: occurrence.ordinal,
+          restSeconds: occurrence.restSeconds,
+          metricIdentity: occurrence.metricIdentity,
+          ...timingDefaultField(occurrence.advancedTimingDefault),
+          warmups: Object.freeze(occurrence.warmups.map((warmup) =>
+            Object.freeze({
+              ordinal: warmup.ordinal,
+              loadGrams: warmup.loadGrams,
+              reps: warmup.reps,
+              ...timingOverrideField(warmup.advancedTimingOverride ?? null),
+            })
+          )),
+          targets: Object.freeze(occurrence.targets.map((target) =>
+            Object.freeze({
+              ordinal: target.ordinal,
+              target: target.target,
+              units: target.units,
+              ...timingOverrideField(target.advancedTimingOverride ?? null),
+            })
+          )),
+          policy: Object.freeze({
+            kind: occurrence.policy.kind,
+            policyId: occurrence.policy.policyId,
+            version: occurrence.policy.version,
+            rule: occurrence.policy.rule,
+          }),
+        })
+      )),
+    }),
+    sessionExercises: Object.freeze(sessionExercises),
+    edits: Object.freeze(edits.map((edit) => Object.freeze({
+      operation: edit.operation,
+      subjectSessionExerciseId: edit.subject_session_exercise_id,
+      replacementSessionExerciseId: edit.replacement_session_exercise_id,
+    }))),
+  });
+}
+
 async function snapshot(
   executor: QueryExecutor,
   planId: string,
 ): Promise<OwnedPlanSnapshot> {
   const plan = await readPlan(executor, planId);
   const ownedPlan = plan!;
+  const advancedTimingConfig = await supportsOwnedAdvancedTimingConfig(executor);
   const [
     days,
     occurrences,
@@ -547,9 +967,14 @@ async function snapshot(
     defaults,
   ] = await Promise.all([
     readDays(executor, planId, ownedPlan.days_per_week),
-    readOccurrences(executor, planId, ownedPlan.days_per_week),
-    readWarmups(executor, planId, ownedPlan.days_per_week),
-    readTargets(executor, planId, ownedPlan.days_per_week),
+    readOccurrences(
+      executor,
+      planId,
+      ownedPlan.days_per_week,
+      advancedTimingConfig,
+    ),
+    readWarmups(executor, planId, ownedPlan.days_per_week, advancedTimingConfig),
+    readTargets(executor, planId, ownedPlan.days_per_week, advancedTimingConfig),
     readPolicies(executor, planId, ownedPlan.days_per_week),
     scheduleDefaults(executor, planId),
   ]);
@@ -574,6 +999,9 @@ async function snapshot(
             contractVersion: occurrence.metric_contract_version,
             exerciseMetricGeneration: occurrence.exercise_metric_generation,
           }),
+          ...timingDefaultField(advancedTimingConfig
+            ? parseTimingJson(occurrence.advanced_timing_default_json!)
+            : OFF_ADVANCED_TIMING_CONFIG),
           warmups: Object.freeze(
             warmups
               .filter(({ plan_day_exercise_id: occurrenceId }) =>
@@ -584,6 +1012,11 @@ async function snapshot(
                 ordinal: warmup.ordinal,
                 loadGrams: warmup.load_grams,
                 reps: warmup.reps,
+                ...timingOverrideField(advancedTimingConfig
+                  ? parseOptionalTimingJson(
+                      warmup.advanced_timing_override_json,
+                    )
+                  : null),
               })),
           ),
           targets: Object.freeze(
@@ -596,6 +1029,11 @@ async function snapshot(
                 ordinal: target.ordinal,
                 target: parseJsonRecord(target.target_json) as MetricTarget,
                 units: parseJsonRecord(target.unit_json),
+                ...timingOverrideField(advancedTimingConfig
+                  ? parseOptionalTimingJson(
+                      target.advanced_timing_override_json,
+                    )
+                  : null),
               })),
           ),
           policy: Object.freeze({
@@ -770,13 +1208,18 @@ async function upsertOccurrence(
   transaction: SqliteTransactionExecutor,
   dayId: string,
   occurrence: StagedOwnedPlanOccurrence,
+  advancedTimingConfig: boolean,
 ): Promise<void> {
   await transaction.execute(
     `INSERT INTO owned_plan_day_exercises
       (id, plan_day_id, exercise_id, ordinal,
        between_exercise_rest_seconds, metric_profile,
-       metric_contract_version, exercise_metric_generation, revision)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+       metric_contract_version, exercise_metric_generation,
+       ${advancedTimingConfig ? "advanced_timing_default_json," : ""}
+       revision)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?,
+             ${advancedTimingConfig ? "?," : ""}
+             1)
      ON CONFLICT(id) DO UPDATE SET
        plan_day_id = excluded.plan_day_id,
        exercise_id = excluded.exercise_id,
@@ -786,6 +1229,9 @@ async function upsertOccurrence(
        metric_profile = excluded.metric_profile,
        metric_contract_version = excluded.metric_contract_version,
        exercise_metric_generation = excluded.exercise_metric_generation,
+       ${advancedTimingConfig
+         ? "advanced_timing_default_json = excluded.advanced_timing_default_json,"
+         : ""}
        revision = owned_plan_day_exercises.revision + 1`,
     [
       occurrence.id,
@@ -796,18 +1242,28 @@ async function upsertOccurrence(
       occurrence.metricIdentity.profile,
       occurrence.metricIdentity.contractVersion,
       occurrence.metricIdentity.exerciseMetricGeneration,
+      ...(advancedTimingConfig
+        ? [timingConfigJson(occurrence.advancedTimingDefault)]
+        : []),
     ],
   );
   for (const warmup of occurrence.warmups) {
     await transaction.execute(
       `INSERT INTO owned_plan_warmup_sets
-        (id, plan_day_exercise_id, ordinal, load_grams, reps, revision)
-       VALUES (?, ?, ?, ?, ?, 1)
+        (id, plan_day_exercise_id, ordinal, load_grams, reps,
+         ${advancedTimingConfig ? "advanced_timing_override_json," : ""}
+         revision)
+       VALUES (?, ?, ?, ?, ?,
+               ${advancedTimingConfig ? "?," : ""}
+               1)
        ON CONFLICT(id) DO UPDATE SET
          plan_day_exercise_id = excluded.plan_day_exercise_id,
          ordinal = excluded.ordinal,
          load_grams = excluded.load_grams,
          reps = excluded.reps,
+         ${advancedTimingConfig
+           ? "advanced_timing_override_json = excluded.advanced_timing_override_json,"
+           : ""}
          revision = owned_plan_warmup_sets.revision + 1`,
       [
         warmup.id,
@@ -815,6 +1271,9 @@ async function upsertOccurrence(
         warmup.ordinal,
         warmup.loadGrams,
         warmup.reps,
+        ...(advancedTimingConfig
+          ? [timingOverrideJson(warmup.advancedTimingOverride)]
+          : []),
       ],
     );
   }
@@ -823,8 +1282,12 @@ async function upsertOccurrence(
       `INSERT INTO owned_plan_working_set_targets
         (id, plan_day_exercise_id, ordinal, target_json, unit_json,
          metric_profile, metric_contract_version,
-         exercise_metric_generation, revision)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+         exercise_metric_generation,
+         ${advancedTimingConfig ? "advanced_timing_override_json," : ""}
+         revision)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?,
+               ${advancedTimingConfig ? "?," : ""}
+               1)
        ON CONFLICT(id) DO UPDATE SET
          plan_day_exercise_id = excluded.plan_day_exercise_id,
          ordinal = excluded.ordinal,
@@ -833,6 +1296,9 @@ async function upsertOccurrence(
          metric_profile = excluded.metric_profile,
          metric_contract_version = excluded.metric_contract_version,
          exercise_metric_generation = excluded.exercise_metric_generation,
+         ${advancedTimingConfig
+           ? "advanced_timing_override_json = excluded.advanced_timing_override_json,"
+           : ""}
          revision = owned_plan_working_set_targets.revision + 1`,
       [
         target.id,
@@ -843,6 +1309,9 @@ async function upsertOccurrence(
         occurrence.metricIdentity.profile,
         occurrence.metricIdentity.contractVersion,
         occurrence.metricIdentity.exerciseMetricGeneration,
+        ...(advancedTimingConfig
+          ? [timingOverrideJson(target.advancedTimingOverride)]
+          : []),
       ],
     );
   }
@@ -916,10 +1385,258 @@ async function freeRequestedOrdinals(
   }
 }
 
+function writeBackOccurrenceId(
+  input: ApplySessionExerciseEditsToPlanInput,
+  ordinal: number,
+): string {
+  return `session-writeback:${input.requestSha256}:occurrence:${ordinal}`;
+}
+
+function writeBackTargetId(
+  input: ApplySessionExerciseEditsToPlanInput,
+  compositionOrdinal: number,
+  targetOrdinal: number,
+): string {
+  return `session-writeback:${input.requestSha256}:target:${compositionOrdinal}:${targetOrdinal}`;
+}
+
+function writeBackPolicyId(
+  input: ApplySessionExerciseEditsToPlanInput,
+  ordinal: number,
+): string {
+  return `session-writeback:${input.requestSha256}:policy:${ordinal}`;
+}
+
+async function activeOwnedOccurrences(
+  transaction: SqliteTransactionExecutor,
+  input: ApplySessionExerciseEditsToPlanInput,
+): Promise<readonly Readonly<{ id: string; ordinal: number }>[]> {
+  return transaction.queryAll<{ id: string; ordinal: number }>(
+    `SELECT occurrence.id, occurrence.ordinal
+     FROM owned_plan_day_exercises occurrence
+     JOIN plan_days day ON day.id = occurrence.plan_day_id
+     WHERE occurrence.plan_day_id = ?
+       AND day.plan_id = ?
+       AND day.ordinal < (SELECT days_per_week FROM plans WHERE id = ?)
+       AND occurrence.ordinal < ${RETIRED_OCCURRENCE_ORDINAL_BASE}
+     ORDER BY occurrence.ordinal, occurrence.id`,
+    [input.planDayId, input.planId, input.planId],
+  );
+}
+
+async function freeActiveOccurrenceOrdinals(
+  transaction: SqliteTransactionExecutor,
+  active: readonly Readonly<{ id: string; ordinal: number }>[],
+): Promise<void> {
+  for (const occurrence of active) {
+    await transaction.execute(
+      `UPDATE owned_plan_day_exercises
+       SET ordinal = ?
+       WHERE id = ? AND ordinal = ?`,
+      [
+        RETIRED_OCCURRENCE_ORDINAL_BASE * 2 + occurrence.ordinal,
+        occurrence.id,
+        occurrence.ordinal,
+      ],
+    );
+  }
+}
+
+async function retireAbsentOccurrences(
+  transaction: SqliteTransactionExecutor,
+  input: ApplySessionExerciseEditsToPlanInput,
+  active: readonly Readonly<{ id: string; ordinal: number }>[],
+  retainedOccurrenceIds: ReadonlySet<string>,
+): Promise<void> {
+  for (const occurrence of active) {
+    if (retainedOccurrenceIds.has(occurrence.id)) {
+      continue;
+    }
+    await transaction.execute(
+      `UPDATE owned_plan_day_exercises
+       SET ordinal = ?, revision = revision + 1
+       WHERE id = ? AND plan_day_id = ? AND ordinal = ?`,
+      [
+        RETIRED_OCCURRENCE_ORDINAL_BASE + occurrence.ordinal,
+        occurrence.id,
+        input.planDayId,
+        RETIRED_OCCURRENCE_ORDINAL_BASE * 2 + occurrence.ordinal,
+      ],
+    );
+  }
+}
+
+async function writeBackComposition(
+  transaction: SqliteTransactionExecutor,
+  input: ApplySessionExerciseEditsToPlanInput,
+): Promise<void> {
+  const advancedTimingConfig = await supportsOwnedAdvancedTimingConfig(
+    transaction,
+  );
+  const active = await activeOwnedOccurrences(transaction, input);
+  const existingPlan = await snapshot(transaction, input.planId);
+  const existingOccurrences = new Map(
+    existingPlan.days.flatMap(({ occurrences }) => occurrences)
+      .map((occurrence) => [occurrence.id, occurrence]),
+  );
+  await freeActiveOccurrenceOrdinals(transaction, active);
+  const retainedOccurrenceIds = new Set<string>();
+  for (const entry of input.composition) {
+    const occurrenceId = entry.source === "planned"
+      ? entry.sourceOccurrenceId!
+      : writeBackOccurrenceId(input, entry.ordinal);
+    retainedOccurrenceIds.add(occurrenceId);
+    const existing = entry.source === "planned"
+      ? existingOccurrences.get(occurrenceId)!
+      : undefined;
+    const occurrence: StagedOwnedPlanOccurrence = {
+      id: occurrenceId,
+      exerciseId: entry.exerciseId,
+      ordinal: entry.ordinal,
+      restSeconds: entry.restSeconds,
+      metricIdentity: entry.metricIdentity,
+      ...timingDefaultField(
+        existing?.advancedTimingDefault ?? entry.advancedTimingDefault,
+      ),
+      // Manual session additions do not carry plan warm-ups.
+      warmups: existing === undefined
+        ? entry.warmups.map((warmup, index) => ({
+            id: `${writeBackTargetId(input, entry.ordinal, index)}:warmup`,
+            ordinal: warmup.ordinal,
+            loadGrams: warmup.loadGrams,
+            reps: warmup.reps,
+            ...stagedTimingOverrideField(warmup.advancedTimingOverride),
+          }))
+        : existing.warmups.map((warmup) => ({
+            id: warmup.id,
+            ordinal: warmup.ordinal,
+            loadGrams: warmup.loadGrams,
+            reps: warmup.reps,
+            ...stagedTimingOverrideField(warmup.advancedTimingOverride),
+          })),
+      targets: existing === undefined
+        ? entry.targets.map((target) => ({
+            id: writeBackTargetId(input, entry.ordinal, target.ordinal),
+            ordinal: target.ordinal,
+            target: target.target,
+            units: target.units,
+            ...stagedTimingOverrideField(target.advancedTimingOverride),
+          }))
+        : existing.targets.map((target) => ({
+            id: target.id,
+            ordinal: target.ordinal,
+            target: target.target,
+            units: target.units,
+            ...stagedTimingOverrideField(target.advancedTimingOverride),
+          })),
+      policy: {
+        id: existing === undefined
+          ? writeBackPolicyId(input, entry.ordinal)
+          : existing.policy.id,
+        kind: existing?.policy.kind ?? entry.policy.kind,
+        policyId: existing?.policy.policyId ?? entry.policy.policyId,
+        version: existing?.policy.version ?? entry.policy.version,
+        rule: existing?.policy.rule ?? entry.policy.rule,
+      },
+    };
+    await upsertOccurrence(
+      transaction,
+      input.planDayId,
+      occurrence,
+      advancedTimingConfig,
+    );
+  }
+  await retireAbsentOccurrences(transaction, input, active, retainedOccurrenceIds);
+}
+
+async function applySessionExerciseEditsToPlanTransaction(
+  transaction: SqliteTransactionExecutor,
+  input: ApplySessionExerciseEditsToPlanInput,
+): Promise<SessionExerciseEditsToPlanResult> {
+  const receipt = await readReceipt(transaction, input.requestId);
+  if (receipt !== undefined) {
+    if (receipt.request_sha256 !== input.requestSha256) {
+      throw new OwnedPlanConflictError("owned_plan_idempotency_conflict");
+    }
+    return Object.freeze({
+      ...parseSessionExerciseEditsResult(receipt.result_json),
+      outcome: "already_committed",
+    });
+  }
+  const facts = await readSessionExerciseEditsForPlan(transaction, {
+    sessionId: input.sourceSessionId,
+  });
+  const composition = facts === null
+    ? null
+    : canonicalizeSessionExerciseEditsForPlan(facts);
+  if (
+    facts === null
+    || composition === null
+    || facts.session.revision !== input.sourceSessionRevision
+    || facts.session.planId !== input.planId
+    || facts.session.planDayId !== input.planDayId
+    || facts.day.planRevision !== input.expectedPlanRevision
+    || JSON.stringify(composition) !== JSON.stringify(input.composition)
+  ) {
+    throw new OwnedPlanConflictError("owned_plan_revision_conflict");
+  }
+  // The same serialized transaction read this owned plan in the facts above.
+  await transaction.execute(
+    `UPDATE owned_progression_recommendations
+     SET status = 'invalidated', decided_at_ms = ?
+     WHERE status = 'pending'
+       AND owned_plan_working_set_target_id IN (
+         SELECT target.id
+         FROM owned_plan_working_set_targets target
+         JOIN owned_plan_day_exercises occurrence
+           ON occurrence.id = target.plan_day_exercise_id
+         WHERE occurrence.plan_day_id = ?
+       )`,
+    [input.committedAtMs, input.planDayId],
+  );
+  await writeBackComposition(transaction, input);
+  await transaction.execute(
+    `UPDATE plans
+     SET revision = revision + 1
+     WHERE id = ? AND revision = ?`,
+    [input.planId, input.expectedPlanRevision],
+  );
+  const result: SessionExerciseEditsToPlanResult = Object.freeze({
+    outcome: "committed",
+    operation: "session_exercise_edits",
+    planId: input.planId,
+    planRevision: input.expectedPlanRevision + 1,
+    sourceSessionId: input.sourceSessionId,
+    currentWorkoutUnaffected: true,
+    invalidations: invalidations(input.planId),
+  });
+  await transaction.execute(
+    `INSERT INTO owned_plan_mutation_requests
+      (request_id, request_sha256, operation, source_plan_id,
+       result_plan_id, expected_revision, result_revision, result_json,
+       committed_at_ms)
+     VALUES (?, ?, 'save', ?, ?, ?, ?, ?, ?)`,
+    [
+      input.requestId,
+      input.requestSha256,
+      input.planId,
+      input.planId,
+      input.expectedPlanRevision,
+      result.planRevision,
+      JSON.stringify(result),
+      input.committedAtMs,
+    ],
+  );
+  return result;
+}
+
 async function applyGraph(
   transaction: SqliteTransactionExecutor,
   input: StagedSaveOwnedPlan,
 ): Promise<void> {
+  const advancedTimingConfig = await supportsOwnedAdvancedTimingConfig(
+    transaction,
+  );
   await freeRequestedOrdinals(transaction, input);
   for (const day of input.days) {
     await transaction.execute(
@@ -933,7 +1650,12 @@ async function applyGraph(
       [day.id, input.planId, day.ordinal, day.name],
     );
     for (const occurrence of day.occurrences) {
-      await upsertOccurrence(transaction, day.id, occurrence);
+      await upsertOccurrence(
+        transaction,
+        day.id,
+        occurrence,
+        advancedTimingConfig,
+      );
     }
   }
 }
@@ -1412,6 +2134,17 @@ export function createOwnedPlanRepository(
       await readPlan(kernel, planId) === undefined
         ? null
         : snapshot(kernel, planId),
+    readSessionExerciseEditsForPlan: (input) =>
+      readSessionExerciseEditsForPlan(kernel, input),
+    applySessionExerciseEditsToPlan: (input) =>
+      kernel.write((transaction) =>
+        applySessionExerciseEditsToPlanTransaction(transaction, input)
+      ),
+    readSessionExerciseEditsToPlanResult: async (input) =>
+      replaySessionExerciseEditsResult(
+        await readReceipt(kernel, input.requestId),
+        input.requestSha256,
+      ),
     createDraft: (input) =>
       execute(
         input,

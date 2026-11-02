@@ -76,6 +76,62 @@ import {
   runSqliteKernelContract as verifySqliteKernelContract,
   type SqliteKernelContractResult,
 } from "../src/testing/contracts/sqliteKernel.contract";
+import {
+  createExpoPortableMergeContractAdapter,
+  PORTABLE_MERGE_CONTRACT_CASES,
+  runPortableMergeContract as verifyPortableMergeContract,
+  type PortableMergeContractResult,
+} from "../src/testing/contracts/portableMerge.contract";
+import {
+  MULTI_PLAN_RUNNING_CONTRACT_CASES,
+  runMultiPlanRunningContract as verifyMultiPlanRunningContract,
+  type MultiPlanRunningContractResult,
+} from "../src/testing/contracts/multiPlanRunning.contract";
+import {
+  PROGRESS_PARITY_CONTRACT_CASES,
+  runProgressParityContract as verifyProgressParityContract,
+  type ProgressParityContractResult,
+} from "../src/testing/contracts/progressParity.contract";
+import {
+  GOOGLE_DRIVE_BACKUP_CONTRACT_CASE_IDS,
+  createExpoGoogleDriveBackupContractAdapter,
+  runGoogleDriveBackupContract as verifyGoogleDriveBackupContract,
+} from "../src/testing/contracts/googleDriveBackup.contract";
+import {
+  createExpoV12AcceptanceSqliteContractAdapter,
+  runV12AcceptanceSqliteContracts as verifyV12AcceptanceSqliteContracts,
+  V12_ACCEPTANCE_SQLITE_CASE_IDS,
+  type V12AcceptanceSqliteContractResult,
+} from "../src/testing/contracts/v12Acceptance.contract";
+import {
+  createV12NativeContractExecutionRegistry,
+  createV12NativeContractLogFrames,
+  V12_NATIVE_CONTRACT_EXECUTION_LIMIT,
+} from "../src/testing/v12NativeContractLogTransport";
+
+const v12NativeExecutions = createV12NativeContractExecutionRegistry();
+const scopedNativeExecutions = new Map<string, Promise<NativeContractResult>>();
+
+function onceForScopedNonce(suite: string, runId: string, execute: () => Promise<NativeContractResult>) {
+  const key = `${suite}|${runId}`;
+  const existing = scopedNativeExecutions.get(key);
+  if (existing !== undefined) return existing;
+  if (scopedNativeExecutions.size >= V12_NATIVE_CONTRACT_EXECUTION_LIMIT) throw new Error("native_contract_execution_capacity");
+  const pending = Promise.resolve().then(execute).then((result) => {
+    publishScopedNativeResult(runId, result);
+    return result;
+  });
+  scopedNativeExecutions.set(key, pending);
+  return pending;
+}
+
+function publishScopedNativeResult(runId: string, result: NativeContractResult) {
+  for (const contractCase of result.cases) {
+    console.log(`${CASE_MARKER}${JSON.stringify({ runId, case: contractCase })}`);
+  }
+  const { cases: _cases, ...summary } = result;
+  console.log(`${RESULT_MARKER}${JSON.stringify({ runId, summary })}`);
+}
 
 const RESULT_MARKER = "GYM_TRACKER_SQLITE_CONTRACT_RESULT:";
 const CASE_MARKER = "GYM_TRACKER_SQLITE_CONTRACT_CASE:";
@@ -95,8 +151,30 @@ const PHASE2_AGGREGATE_CASE_IDS = [
   ...PHASE2_FTS_CASE_IDS,
   ...PHASE2_CASE_IDS,
 ] as const;
+type NativeContractSuite =
+  | "migrations-effects"
+  | "phase2"
+  | "phase2-content"
+  | "phase2-fts"
+  | "phase2-metrics"
+  | "phase2-plan"
+  | "phase2-schedule"
+  | "phase2-search"
+  | "phase2-starter"
+  | "portable-merge"
+  | "multi-plan-running"
+  | "progress-parity"
+  | "google-drive-backup"
+  | "v1.2-acceptance"
+  | "sqlite-kernel";
 const configuredSuite = process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE;
-const selectedSuite = configuredSuite === "migrations-effects"
+const defaultSuite: NativeContractSuite = configuredSuite === "phase19"
+  ? "progress-parity"
+  : configuredSuite === "phase13"
+  ? "multi-plan-running"
+  : configuredSuite === "phase10" || configuredSuite === "phase11" || configuredSuite === "phase12"
+  ? "migrations-effects"
+  : configuredSuite === "migrations-effects"
   || configuredSuite === "phase2"
   || configuredSuite === "phase2-content"
   || configuredSuite === "phase2-fts"
@@ -105,10 +183,41 @@ const selectedSuite = configuredSuite === "migrations-effects"
   || configuredSuite === "phase2-schedule"
   || configuredSuite === "phase2-search"
   || configuredSuite === "phase2-starter"
+  || configuredSuite === "portable-merge"
+  || configuredSuite === "multi-plan-running"
+  || configuredSuite === "progress-parity"
+  || configuredSuite === "google-drive-backup"
+  || configuredSuite === "v1.2-acceptance"
   ? configuredSuite
   : "sqlite-kernel";
-const expectedCaseCount = {
-  "migrations-effects": 10,
+
+function requestedPackagedSuite(
+  value: string | string[] | undefined,
+): "migrations-effects" | "portable-merge" | "multi-plan-running" | "progress-parity" | "google-drive-backup" | "v1.2-acceptance" | undefined {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  if (configuredSuite === "v1.2-acceptance"
+    && (candidate === "portable-merge" || candidate === "multi-plan-running" || candidate === "progress-parity")) {
+    return candidate;
+  }
+  if (configuredSuite === "phase19" && candidate === "progress-parity") return "progress-parity";
+  if (configuredSuite === "phase11" && candidate === "portable-merge") return "portable-merge";
+  if (
+    configuredSuite === "phase13"
+    && (candidate === "migrations-effects"
+      || candidate === "portable-merge"
+      || candidate === "multi-plan-running")
+  ) {
+    return candidate;
+  }
+  return configuredSuite === "phase12" && candidate === "google-drive-backup"
+    ? "google-drive-backup"
+    : configuredSuite === "v1.2-acceptance" && candidate === "v1.2-acceptance"
+    ? "v1.2-acceptance" : undefined;
+}
+
+function expectedCaseCountFor(suite: NativeContractSuite): number {
+  return {
+  "migrations-effects": MIGRATIONS_EFFECTS_CONTRACT_CASES.length,
   phase2: PHASE2_AGGREGATE_CASE_IDS.length,
   "phase2-content": PHASE2_CONTENT_CASE_IDS.length,
   "phase2-fts": PHASE2_FTS_CASE_IDS.length,
@@ -117,8 +226,14 @@ const expectedCaseCount = {
   "phase2-schedule": PHASE2_SCHEDULE_CASE_IDS.length,
   "phase2-search": PHASE2_SEARCH_CASE_IDS.length,
   "phase2-starter": PHASE2_STARTER_CASE_IDS.length,
+  "portable-merge": PORTABLE_MERGE_CONTRACT_CASES.length,
+  "multi-plan-running": MULTI_PLAN_RUNNING_CONTRACT_CASES.length,
+  "progress-parity": PROGRESS_PARITY_CONTRACT_CASES.length,
+  "google-drive-backup": GOOGLE_DRIVE_BACKUP_CONTRACT_CASE_IDS.length,
+  "v1.2-acceptance": V12_ACCEPTANCE_SQLITE_CASE_IDS.length,
   "sqlite-kernel": 10,
-}[selectedSuite];
+  }[suite];
+}
 
 type Phase2ContractCaseResult = Readonly<{
   id: (typeof PHASE2_AGGREGATE_CASE_IDS)[number];
@@ -149,14 +264,19 @@ type NativeContractResult =
   | Phase2ScheduleContractResult
   | Phase2SearchContractResult
   | Phase2StarterContractResult
-  | (SqliteKernelContractResult & Readonly<{
-      migrationsEffects?: MigrationsEffectsContractResult;
-    }>);
+  | SqliteKernelContractResult
+  | MigrationsEffectsContractResult
+  | PortableMergeContractResult
+  | MultiPlanRunningContractResult
+  | ProgressParityContractResult
+  | V12AcceptanceSqliteContractResult;
 
 type RouteState =
   | Readonly<{ status: "disabled" | "running" }>
   | Readonly<{
       status: "finished";
+      runId: string;
+      suite: NativeContractSuite;
       result: NativeContractResult;
     }>
   | Readonly<{
@@ -334,8 +454,14 @@ async function verifyPhase2Aggregate(
 }
 
 export default function NativeSqliteContractsScreen() {
-  const parameters = useLocalSearchParams<{ runId?: string | string[] }>();
+  const parameters = useLocalSearchParams<{
+    runId?: string | string[];
+    suite?: string | string[];
+  }>();
   const runId = boundedRunId(parameters.runId);
+  const selectedSuite = requestedPackagedSuite(parameters.suite)
+    ?? defaultSuite;
+  const expectedCaseCount = expectedCaseCountFor(selectedSuite);
   const started = useRef(false);
   const nativeContractsEnabled =
     Constants.expoConfig?.extra?.nativeContractsEnabled === true;
@@ -375,7 +501,7 @@ export default function NativeSqliteContractsScreen() {
               finishedAt: result.finishedAt,
             },
           })}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result: result as unknown as NativeContractResult });
           return;
         }
         if (selectedSuite === "phase2-content") {
@@ -384,7 +510,7 @@ export default function NativeSqliteContractsScreen() {
           );
           assertPhase2ContentContractResult(result);
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
         if (selectedSuite === "phase2-fts") {
@@ -393,7 +519,7 @@ export default function NativeSqliteContractsScreen() {
           );
           assertPhase2FtsContractResult(result);
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
         if (selectedSuite === "phase2-metrics") {
@@ -402,7 +528,7 @@ export default function NativeSqliteContractsScreen() {
           );
           assertPhase2MetricsContractResult(result);
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
         if (selectedSuite === "phase2-plan") {
@@ -411,7 +537,7 @@ export default function NativeSqliteContractsScreen() {
           );
           assertPhase2PlanContractResult(result);
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
         if (selectedSuite === "phase2-schedule") {
@@ -420,7 +546,7 @@ export default function NativeSqliteContractsScreen() {
           );
           assertPhase2ScheduleContractResult(result);
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
         if (selectedSuite === "phase2-search") {
@@ -429,7 +555,7 @@ export default function NativeSqliteContractsScreen() {
           );
           assertPhase2SearchContractResult(result);
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
         if (selectedSuite === "phase2-starter") {
@@ -438,29 +564,56 @@ export default function NativeSqliteContractsScreen() {
           );
           assertPhase2StarterContractResult(result);
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-          setState({ status: "finished", result });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
           return;
         }
 
-        let migrationsEffects: MigrationsEffectsContractResult | undefined;
+        if (selectedSuite === "v1.2-acceptance") {
+          const result = await v12NativeExecutions.onceForNonce(runId, async () => {
+            const completed = await verifyV12AcceptanceSqliteContracts(
+              await createExpoV12AcceptanceSqliteContractAdapter(
+                runId,
+                (stage) => emitAggregateProgress(runId, `v1.2-acceptance:${stage}`),
+              ),
+            );
+            for (const frame of createV12NativeContractLogFrames(runId, completed)) {
+              console.log(frame);
+            }
+            return completed;
+          });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
+          return;
+        }
+
         if (selectedSuite === "migrations-effects") {
-          migrationsEffects = await verifyMigrationsEffectsContract(
+          const result = await verifyMigrationsEffectsContract(
             await createExpoMigrationsEffectsContractAdapter(runId),
           );
-          if (migrationsEffects.status !== "passed") {
-            throw new Error("migrations_effects_preflight_failed");
-          }
+          console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
+          setState({ status: "finished", runId, suite: selectedSuite, result });
+          return;
+        }
+        if (selectedSuite === "portable-merge" || selectedSuite === "multi-plan-running" || selectedSuite === "progress-parity") {
+          const result = await onceForScopedNonce(selectedSuite, runId, async () => {
+            if (selectedSuite === "portable-merge") return verifyPortableMergeContract(await createExpoPortableMergeContractAdapter(runId));
+            if (selectedSuite === "multi-plan-running") return verifyMultiPlanRunningContract(runId);
+            return verifyProgressParityContract(runId);
+          });
+          setState({ status: "finished", runId, suite: selectedSuite, result });
+          return;
+        }
+        if (selectedSuite === "google-drive-backup") {
+          const result = await verifyGoogleDriveBackupContract(
+            await createExpoGoogleDriveBackupContractAdapter(runId),
+          );
+          console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
+          setState({ status: "finished", runId, suite: selectedSuite, result: result as unknown as NativeContractResult });
+          return;
         }
         const adapter = await createExpoSqliteContractAdapter(runId);
         const kernelResult = await verifySqliteKernelContract(adapter);
-        const result: NativeContractResult = migrationsEffects === undefined
-          ? kernelResult
-          : {
-              ...kernelResult,
-              migrationsEffects,
-            };
-        console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-        setState({ status: "finished", result });
+        console.log(`${RESULT_MARKER}${JSON.stringify(kernelResult)}`);
+        setState({ status: "finished", runId, suite: selectedSuite, result: kernelResult });
       } catch (error: unknown) {
         const errorCode = boundedErrorCode(error);
         console.error(`${ERROR_MARKER}${JSON.stringify({
@@ -473,7 +626,7 @@ export default function NativeSqliteContractsScreen() {
         });
       }
     })();
-  }, [nativeContractsEnabled, runId]);
+  }, [nativeContractsEnabled, runId, selectedSuite]);
 
   const result = state.status === "finished" ? state.result : undefined;
   if (state.status === "disabled") {
@@ -499,7 +652,17 @@ export default function NativeSqliteContractsScreen() {
       : selectedSuite === "phase2-starter"
       ? `Running ${expectedCaseCount} packaged starter contracts…`
       : selectedSuite === "migrations-effects"
-      ? "Running migrations/effects preflight and 10 SQLite integrity contracts…"
+      ? `Running migrations/effects preflight and ${expectedCaseCount} SQLite integrity contracts…`
+      : selectedSuite === "portable-merge"
+      ? `Running ${expectedCaseCount} portable merge SQLite contracts…`
+      : selectedSuite === "multi-plan-running"
+      ? `Running ${expectedCaseCount} Phase 13 lifecycle SQLite contracts…`
+      : selectedSuite === "progress-parity"
+      ? `Running ${expectedCaseCount} Phase 19 Progress parity SQLite contracts…`
+      : selectedSuite === "google-drive-backup"
+      ? `Running ${expectedCaseCount} Google Drive fake-port contracts…`
+      : selectedSuite === "v1.2-acceptance"
+      ? `Running ${expectedCaseCount} v1.2 aggregate SQLite contracts…`
       : "Running 10 SQLite integrity contracts…"
     : `${result?.passed ?? 0} / ${result?.total ?? expectedCaseCount} passed`;
 
@@ -525,6 +688,16 @@ export default function NativeSqliteContractsScreen() {
           ? "Phase 2 Starter Contracts"
           : selectedSuite === "migrations-effects"
           ? "Migrations & Effects Contracts"
+          : selectedSuite === "portable-merge"
+          ? "Portable Merge Contracts"
+          : selectedSuite === "multi-plan-running"
+          ? "Phase 13 Lifecycle Contracts"
+          : selectedSuite === "progress-parity"
+          ? "Phase 19 Progress Parity Contracts"
+          : selectedSuite === "google-drive-backup"
+          ? "Google Drive Backup Contracts"
+          : selectedSuite === "v1.2-acceptance"
+          ? "v1.2 Aggregate SQLite Acceptance"
           : "SQLite Kernel Contracts"}
       </Text>
       <Text
@@ -572,7 +745,7 @@ export default function NativeSqliteContractsScreen() {
             ))}
           </View>
           <Text style={styles.machineResult}>
-            {`${RESULT_MARKER}${encodeURIComponent(JSON.stringify(result))}`}
+            {`${RESULT_MARKER}${encodeURIComponent(JSON.stringify(state.status === "finished" && configuredSuite === "v1.2-acceptance" ? { runId: state.runId, result } : result))}`}
           </Text>
         </>
       )}

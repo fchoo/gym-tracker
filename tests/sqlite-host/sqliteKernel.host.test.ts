@@ -75,7 +75,10 @@ const expoSqliteMock = jest.requireMock("expo-sqlite") as {
   openDatabaseAsync: jest.MockedFunction<
     (
       databaseName: string,
-      options: Readonly<{ useNewConnection: true }>,
+      options: Readonly<{
+        useNewConnection: true;
+        finalizeUnusedStatementsBeforeClosing: false;
+      }>,
     ) => Promise<MockExpoDatabase>
   >;
 };
@@ -213,7 +216,7 @@ class FakeSqliteConnection implements SqliteConnection {
   async execAsync(sql: string): Promise<void> {
     this.events.push(sql);
     const normalized = sql.trim().toUpperCase();
-    if (normalized === "BEGIN IMMEDIATE" && this.failAt === "begin") {
+    if (normalized.startsWith("BEGIN") && this.failAt === "begin") {
       throw new Error("begin failed");
     }
     if (normalized === "COMMIT") {
@@ -317,12 +320,18 @@ describe("Expo SQLite connection adapter", () => {
     expect(expoSqliteMock.openDatabaseAsync).toHaveBeenNthCalledWith(
       1,
       "adapter.db",
-      { useNewConnection: true },
+      {
+        useNewConnection: true,
+        finalizeUnusedStatementsBeforeClosing: false,
+      },
     );
     expect(expoSqliteMock.openDatabaseAsync).toHaveBeenNthCalledWith(
       2,
       "adapter.db",
-      { useNewConnection: true },
+      {
+        useNewConnection: true,
+        finalizeUnusedStatementsBeforeClosing: false,
+      },
     );
     expect(writer.statements.every(
       (statement) => statement.finalizeAsync.mock.calls.length === 1,
@@ -565,6 +574,36 @@ describe("production SQLite kernel host behavior", () => {
 });
 
 describe("serialized writer failure behavior", () => {
+  it("runs the pre-commit barrier inside the transaction and the post-commit barrier after COMMIT", async () => {
+    const writer = new FakeSqliteConnection();
+    const ordering: string[] = [];
+    const kernel = createSqliteKernel({
+      reader: new FakeSqliteConnection(),
+      writer,
+    }, {
+      beforeCommit: async () => {
+        ordering.push(`before:${await writer.isInTransactionAsync()}`);
+      },
+      afterCommit: async () => {
+        ordering.push(`after:${await writer.isInTransactionAsync()}`);
+      },
+    });
+
+    await kernel.write(async (transaction) => {
+      await transaction.execute("INSERT INTO source_fact VALUES (?)", ["offline"]);
+      return "committed";
+    });
+
+    expect(writer.events).toEqual([
+      "BEGIN IMMEDIATE",
+      "prepare:INSERT INTO source_fact VALUES (?)",
+      "execute:INSERT INTO source_fact VALUES (?)",
+      "finalize:INSERT INTO source_fact VALUES (?)",
+      "COMMIT",
+    ]);
+    expect(ordering).toEqual(["before:true", "after:false"]);
+  });
+
   it("does not resolve authoritative state until COMMIT settles", async () => {
     const writer = new FakeSqliteConnection();
     const reader = new FakeSqliteConnection();
@@ -738,6 +777,63 @@ describe("serialized writer failure behavior", () => {
     } satisfies Partial<SqliteStorageError>);
   });
 
+  it("maps every reader-snapshot failure and rolls back once begun", async () => {
+    const beginReader = new FakeSqliteConnection();
+    beginReader.failAt = "begin";
+    const beginKernel = createSqliteKernel({
+      reader: beginReader,
+      writer: new FakeSqliteConnection(),
+    });
+    const unread = jest.fn(async () => "must-not-run");
+    await expect(beginKernel.readSnapshot!(unread)).rejects.toMatchObject({
+      code: "sqlite_query_failed",
+    } satisfies Partial<SqliteStorageError>);
+    expect(unread).not.toHaveBeenCalled();
+    expect(beginReader.events).toEqual(["BEGIN"]);
+
+    const queryReader = new FakeSqliteConnection();
+    const queryKernel = createSqliteKernel({
+      reader: queryReader,
+      writer: new FakeSqliteConnection(),
+    });
+    await expect(queryKernel.readSnapshot!(async () => {
+      throw new Error("query failed");
+    })).rejects.toMatchObject({
+      code: "sqlite_query_failed",
+    } satisfies Partial<SqliteStorageError>);
+    expect(queryReader.events).toEqual(["BEGIN", "ROLLBACK"]);
+
+    const finalizeReader = new FakeSqliteConnection();
+    finalizeReader.failAt = "finalize";
+    const finalizeKernel = createSqliteKernel({
+      reader: finalizeReader,
+      writer: new FakeSqliteConnection(),
+    });
+    await expect(finalizeKernel.readSnapshot!(async (transaction) => (
+      transaction.queryAll("SELECT 1")
+    ))).rejects.toMatchObject({
+      code: "sqlite_statement_finalize_failed",
+    } satisfies Partial<SqliteStorageError>);
+    expect(finalizeReader.events).toContain("ROLLBACK");
+
+    const rollbackReader = new FakeSqliteConnection();
+    rollbackReader.failAt = "rollback";
+    const rollbackKernel = createSqliteKernel({
+      reader: rollbackReader,
+      writer: new FakeSqliteConnection(),
+    });
+    await expect(rollbackKernel.readSnapshot!(async () => {
+      throw new Error("query failed");
+    })).rejects.toMatchObject({
+      code: "sqlite_rollback_failed",
+      cause: {
+        originalError: expect.any(Error),
+        rollbackError: expect.any(Error),
+      },
+    } satisfies Partial<SqliteStorageError>);
+    expect(rollbackReader.events).toEqual(["BEGIN", "ROLLBACK"]);
+  });
+
   it("closes owned reader and writer connections sequentially", async () => {
     let releaseReader: (() => void) | undefined;
     const reader = new FakeSqliteConnection();
@@ -763,7 +859,7 @@ describe("serialized writer failure behavior", () => {
   });
 });
 
-describe("shared ten-case SQLite kernel contract", () => {
+  describe("shared eleven-case SQLite kernel contract", () => {
   it("publishes the exact reviewed contract case list", () => {
     const contract = defineSqliteKernelContract();
 
@@ -775,16 +871,17 @@ describe("shared ten-case SQLite kernel contract", () => {
       "fifo-write-serialization",
       "bounded-write-contention",
       "reader-committed-isolation",
+      "reader-snapshot-concurrent-write",
       "rollback-fixture-matrix",
       "commit-latch",
       "duplicate-idempotency",
       "prepared-statement-cleanup",
       "private-boundary",
     ]);
-    expect(contract.cases).toHaveLength(10);
+    expect(contract.cases).toHaveLength(11);
   });
 
-  it("runs all ten cases against the production kernel shape", async () => {
+  it("runs all eleven cases against the production kernel shape", async () => {
     const result = await runSqliteKernelContract({
       async createRuntime(caseId, observer) {
         const directory = mkdtempSync(join(tmpdir(), `gym-contract-${caseId}-`));
@@ -830,11 +927,11 @@ describe("shared ten-case SQLite kernel contract", () => {
       result.cases.filter((contractCase) => contractCase.status === "failed"),
     ).toEqual([]);
     expect(result.status).toBe("passed");
-    expect(result.total).toBe(10);
-    expect(result.passed).toBe(10);
+    expect(result.total).toBe(11);
+    expect(result.passed).toBe(11);
     expect(result.failed).toBe(0);
     expect(result.skipped).toBe(0);
-    expect(result.cases).toHaveLength(10);
+    expect(result.cases).toHaveLength(11);
     expect(result.cases.every((contractCase) => (
       contractCase.status === "passed"
     ))).toBe(true);

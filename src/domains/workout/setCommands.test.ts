@@ -179,14 +179,14 @@ describe("Plan 01-08 set command validation", () => {
 
     await expect(completeSet({
       repository: port,
-      haptics: { committed: jest.fn(async () => undefined) },
+      haptics: { committed: jest.fn(async () => undefined), cue: jest.fn(async () => undefined) },
       invalidate: jest.fn(async () => undefined),
       drainEffects: jest.fn(async () => undefined),
       input: completeInput(loadDraft),
     })).rejects.toThrow("invalid_load_reps_observation");
     await expect(completeSet({
       repository: port,
-      haptics: { committed: jest.fn(async () => undefined) },
+      haptics: { committed: jest.fn(async () => undefined), cue: jest.fn(async () => undefined) },
       invalidate: jest.fn(async () => undefined),
       drainEffects: jest.fn(async () => undefined),
       input: completeInput(holdDraft),
@@ -200,7 +200,7 @@ describe("Plan 01-08 set command validation", () => {
 
     await expect(completeSet({
       repository: repository(),
-      haptics: { committed },
+      haptics: { committed, cue: jest.fn(async () => undefined) },
       invalidate,
       drainEffects,
       input: completeInput({
@@ -221,6 +221,7 @@ describe("Plan 01-08 set command validation", () => {
       repository: repository({ outcome: "committed", view }),
       haptics: {
         committed: jest.fn(async () => Promise.reject(new Error("haptic"))),
+        cue: jest.fn(async () => undefined),
       },
       invalidate: jest.fn(async () => Promise.reject(new Error("invalidate"))),
       drainEffects: jest.fn(async () => Promise.reject(new Error("drain"))),
@@ -472,7 +473,7 @@ describe("Plan 02-10 authoritative set command validation", () => {
 
       await expect(completeSet({
         repository: port,
-        haptics: { committed: jest.fn(async () => undefined) },
+        haptics: { committed: jest.fn(async () => undefined), cue: jest.fn(async () => undefined) },
         invalidate: jest.fn(async () => undefined),
         drainEffects: jest.fn(async () => undefined),
         input: completeInput(observation),
@@ -547,6 +548,29 @@ describe("Plan 02-27 completed working-set correction", () => {
       repository: port,
       input: { ...input, correctionIdempotencyKey: " " },
     })).rejects.toThrow("invalid_correction_idempotency_key");
+    expect(port.reviseCompletedSet).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["session", { sessionId: " session-1" }],
+    ["set", { setId: "" }],
+    ["session revision", { expectedSessionRevision: -1 }],
+    ["set revision", { expectedSetRevision: 1.5 }],
+    ["revision time", { revisedAtMs: -1 }],
+  ])("rejects an invalid correction %s before forwarding", async (_name, patch) => {
+    const port = repository();
+    const input = correctionInput({
+      version: 1,
+      profile: "load_reps",
+      loadGrams: 62_500,
+      reps: 8,
+      source: "manual",
+    });
+
+    await expect(reviseCompletedSet({
+      repository: port,
+      input: { ...input, ...patch },
+    })).rejects.toThrow("invalid_completed_set_correction");
     expect(port.reviseCompletedSet).not.toHaveBeenCalled();
   });
 });

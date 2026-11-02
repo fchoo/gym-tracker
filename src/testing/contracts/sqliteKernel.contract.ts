@@ -17,6 +17,7 @@ export const SQLITE_KERNEL_CONTRACT_CASES = [
   "fifo-write-serialization",
   "bounded-write-contention",
   "reader-committed-isolation",
+  "reader-snapshot-concurrent-write",
   "rollback-fixture-matrix",
   "commit-latch",
   "duplicate-idempotency",
@@ -375,6 +376,46 @@ const contractCases: Record<SqliteKernelContractCaseId, ContractCase> = {
     invariant(
       afterCommit.length === 1 && afterCommit[0]?.value === "pending",
       "reader_missed_committed_row",
+    );
+  },
+
+  async "reader-snapshot-concurrent-write"({ kernel }) {
+    const readSnapshot = kernel.readSnapshot;
+    invariant(readSnapshot !== undefined, "reader_snapshot_api_missing");
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        "CREATE TABLE snapshot_probe (id INTEGER PRIMARY KEY, value TEXT NOT NULL)",
+      );
+      await transaction.execute(
+        "INSERT INTO snapshot_probe (value) VALUES ('before')",
+      );
+    });
+    const observed = await readSnapshot.call(kernel, async (transaction) => {
+      const before = await transaction.queryAll<{ value: string }>(
+        "SELECT value FROM snapshot_probe ORDER BY id",
+      );
+      await kernel.write((writer) => writer.execute(
+        "INSERT INTO snapshot_probe (value) VALUES ('during')",
+      ));
+      const after = await transaction.queryAll<{ value: string }>(
+        "SELECT value FROM snapshot_probe ORDER BY id",
+      );
+      return { before, after };
+    }) as Readonly<{
+      before: readonly Readonly<{ value: string }>[];
+      after: readonly Readonly<{ value: string }>[];
+    }>;
+    invariant(
+      observed.before.length === 1 && observed.after.length === 1
+        && observed.after[0]?.value === "before",
+      "reader_snapshot_changed_during_write",
+    );
+    const committed = await kernel.queryAll<{ value: string }>(
+      "SELECT value FROM snapshot_probe ORDER BY id",
+    );
+    invariant(
+      committed.length === 2 && committed[1]?.value === "during",
+      "concurrent_writer_did_not_commit",
     );
   },
 

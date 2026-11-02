@@ -8,8 +8,6 @@ import {
   Pause,
   Play,
   SkipForward,
-  ChevronDown,
-  ChevronUp,
   type LucideIcon,
 } from "lucide-react-native";
 import {
@@ -40,7 +38,7 @@ import {
   radius,
   sizes,
   space,
-  typeScale,
+  workoutTypeScale,
   useAppTheme,
 } from "../theme";
 
@@ -51,6 +49,10 @@ function formatDuration(durationMs: number): string {
   return `${String(minutes).padStart(2, "0")}:${
     String(seconds).padStart(2, "0")
   }`;
+}
+
+function traceRestDock(event: string, fields: Record<string, unknown> = {}) {
+  if (__DEV__) console.trace("GT_REST_DOCK", JSON.stringify({ event, ...fields }));
 }
 
 function thresholdMessage(durationMs: number): string | null {
@@ -147,8 +149,12 @@ function RestTextControl({
         ]}
       >
         <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.6}
           style={[
-            typeScale.bodyStrong as TextStyle,
+            workoutTypeScale.numericEmphasis as TextStyle,
+            styles.controlLabel,
             { color: colors.textPrimary },
           ]}
         >
@@ -161,7 +167,9 @@ function RestTextControl({
 
 export function RestDock({
   state,
+  sessionId,
   nowMs,
+  exerciseName,
   nextSetIndex,
   nextTarget,
   notificationPermission,
@@ -177,7 +185,9 @@ export function RestDock({
   countdownCue,
 }: Readonly<{
   state: Extract<RestStateV1, { state: "running" | "paused" }>;
+  sessionId?: string;
   nowMs: () => number;
+  exerciseName?: string;
   nextSetIndex: number;
   nextTarget: string;
   notificationPermission: RestNotificationPermission;
@@ -188,7 +198,7 @@ export function RestDock({
     onUndo: () => void;
   }>;
   onAdjust: (deltaMs: -15_000 | 15_000) => void;
-  onExpired: () => void;
+  onExpired: (feedback?: Readonly<{ foregroundCountdownTone: true }>) => void;
   onOpenSettings: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -198,10 +208,16 @@ export function RestDock({
 }>) {
   const { colors } = useAppTheme();
   const [displayNowMs, setDisplayNowMs] = useState(nowMs());
-  const [expanded, setExpanded] = useState(false);
   const expiredRef = useRef(false);
+  const finalCueDispatchedRef = useRef(false);
+  const schedulerOwnsExpiryRef = useRef(false);
+  const onExpiredRef = useRef(onExpired);
+  onExpiredRef.current = onExpired;
+  const countdownCueRef = useRef(countdownCue);
+  countdownCueRef.current = countdownCue;
   const announcedRef = useRef<string | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const [foregroundActive, setForegroundActive] = useState(AppState.currentState === "active");
   const cueLedgerRef = useRef<Readonly<{
     emitted: ReadonlySet<number>;
   }> | null>(null);
@@ -213,17 +229,33 @@ export function RestDock({
   const cueRestGenerationRef = useRef(0);
   const previousRemainingSecondsRef = useRef<number | null>(null);
   const [cueFailure, setCueFailure] = useState(false);
+  const dispatchExpired = (withCountdown: boolean) => {
+    if (expiredRef.current || appStateRef.current !== "active") return;
+    expiredRef.current = true;
+    traceRestDock("expiry-dispatched", { finalCueDispatched: withCountdown });
+    if (withCountdown) onExpiredRef.current({ foregroundCountdownTone: true });
+    else onExpiredRef.current();
+  };
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
+      traceRestDock("app-state", { nextState });
       appStateRef.current = nextState;
+      setForegroundActive(nextState === "active");
       previousRemainingSecondsRef.current = null;
+      if (nextState !== "active") {
+        countdownCueRef.current?.cancelPendingCues?.();
+      }
     });
     return () => subscription.remove();
   }, []);
 
   useEffect(() => {
     const previousRest = cueRestRef.current;
+    if (__DEV__) traceRestDock("rest-state-change", { state: state.state, remainingMs: remainingRestMs(state, nowMs()) });
+    // A command changes the deadline or pause state; it is not a clock tick.
+    previousRemainingSecondsRef.current = null;
+    countdownCueRef.current?.cancelPendingCues?.();
     if (state.state === "paused") {
       if (previousRest !== null) {
         cueRestRef.current = {
@@ -249,48 +281,123 @@ export function RestDock({
     };
     if (isNewRest) {
       cueRestGenerationRef.current += 1;
+      finalCueDispatchedRef.current = false;
       cueLedgerRef.current = {
         emitted: new Set(),
       };
       previousRemainingSecondsRef.current = null;
       setCueFailure(false);
     }
-  }, [state]);
+  }, [state.revision, state.state, state.nextSetId]);
+
+  useEffect(() => {
+    if (!restSoundEnabled) {
+      traceRestDock("sound-disabled");
+      countdownCueRef.current?.cancelPendingCues?.();
+    }
+  }, [restSoundEnabled]);
+
+  useEffect(() => {
+    if (__DEV__) traceRestDock("observe-countdown", { state: state.state, enabled: restSoundEnabled, foregroundActive, remainingMs: remainingRestMs(state, nowMs()), hasScheduler: countdownCue?.scheduleCountdown !== undefined });
+    if (
+      sessionId === undefined
+      || state.state !== "running"
+      || state.endsAtMs <= nowMs()
+      || !foregroundActive
+      || !restSoundEnabled
+    ) return;
+    return countdownCue?.claimForegroundRestSound?.({
+      sessionId,
+      restRevision: state.revision,
+      endsAtMs: state.endsAtMs,
+    });
+  }, [countdownCue, foregroundActive, restSoundEnabled, sessionId, state.revision, state.state]);
+
+  useEffect(() => {
+    schedulerOwnsExpiryRef.current = false;
+    if (state.state !== "running" || !restSoundEnabled || !foregroundActive
+      || state.endsAtMs <= nowMs() || countdownCue?.scheduleCountdown === undefined) return;
+    schedulerOwnsExpiryRef.current = true;
+    let mounted = true;
+    const cueRestGeneration = cueRestGenerationRef.current;
+    const handleSchedulerError = () => {
+      traceRestDock("scheduled-cue-failed", { mounted });
+      if (!mounted || cueRestGeneration !== cueRestGenerationRef.current) return;
+      setCueFailure(true);
+      if (!finalCueDispatchedRef.current) {
+        // A failed short/setup relinquishes the remaining cue schedule so the
+        // normal expiry fallback cannot be followed by a second long tone.
+        schedulerOwnsExpiryRef.current = false;
+        countdownCue.cancelPendingCues?.();
+        if (nowMs() >= state.endsAtMs) dispatchExpired(false);
+      }
+    };
+    let release: (() => void) | undefined;
+    try {
+      release = countdownCue.scheduleCountdown({
+      endsAtMs: state.endsAtMs,
+      nowMs,
+      emitted: cueLedgerRef.current?.emitted ?? new Set(),
+      onCue: (seconds) => {
+        traceRestDock("scheduled-cue-observed", { seconds });
+        const ledger = cueLedgerRef.current;
+        if (ledger !== null) {
+          cueLedgerRef.current = { emitted: new Set([...ledger.emitted, seconds]) };
+        }
+        if (seconds === 0) {
+          finalCueDispatchedRef.current = true;
+          // The same deadline callback owns the cue and foreground expiry.
+          // Commit expiry before awaiting native loading/seek, without letting
+          // a display tick start the default feedback path first.
+          if (mounted && nowMs() >= state.endsAtMs) {
+            setDisplayNowMs(nowMs());
+            dispatchExpired(true);
+          }
+        }
+      },
+      onError: handleSchedulerError,
+      });
+    } catch {
+      handleSchedulerError();
+    }
+    return () => {
+      if (__DEV__) traceRestDock("countdown-observer-cleanup", { remainingMs: remainingRestMs(state, nowMs()) });
+      mounted = false;
+      release?.();
+    };
+  }, [countdownCue, foregroundActive, nowMs, restSoundEnabled, state.revision, state.state]);
+
+  const cancelPendingCues = () => {
+    traceRestDock("manual-control-cancel");
+    schedulerOwnsExpiryRef.current = false;
+    previousRemainingSecondsRef.current = null;
+    countdownCueRef.current?.cancelPendingCues?.();
+  };
 
   useEffect(() => {
     setDisplayNowMs(nowMs());
-    if (state.state === "paused") {
+    if (state.state === "paused" || !foregroundActive) {
       return;
     }
     const interval = setInterval(() => {
       setDisplayNowMs(nowMs());
     }, 1_000);
-    return () => clearInterval(interval);
-  }, [nowMs, state]);
+    const deadline = setTimeout(() => {
+      setDisplayNowMs(nowMs());
+    }, Math.max(0, state.endsAtMs - nowMs()));
+    return () => {
+      clearInterval(interval);
+      clearTimeout(deadline);
+    };
+  }, [foregroundActive, nowMs, state.revision, state.state]);
 
   const remainingMs = remainingRestMs(state, displayNowMs);
   const remainingSeconds = Math.ceil(remainingMs / 1_000);
+  if (__DEV__) traceRestDock("display-observed", { remainingSeconds, state: state.state, finalCueDispatched: finalCueDispatchedRef.current });
   const announcement = useMemo(
     () => thresholdMessage(remainingMs),
     [remainingMs],
   );
-
-  useEffect(() => {
-    if (announcement !== null) {
-      announcedRef.current = announcement;
-    }
-    if (
-      state.state === "running"
-      && remainingMs === 0
-      && !expiredRef.current
-    ) {
-      expiredRef.current = true;
-      onExpired();
-    }
-    if (remainingMs > 0) {
-      expiredRef.current = false;
-    }
-  }, [announcement, onExpired, remainingMs, state.state]);
 
   useEffect(() => {
     const previousSeconds = previousRemainingSecondsRef.current;
@@ -300,16 +407,16 @@ export function RestDock({
       state.state !== "running"
       || !restSoundEnabled
       || countdownCue === undefined
+      || countdownCue.scheduleCountdown !== undefined
       || appStateRef.current !== "active"
       || previousSeconds === null
-      || previousSeconds < remainingSeconds
       || ledger === null
     ) {
       return;
     }
     if (
-      ![3, 2, 1, 0].includes(remainingSeconds)
-      || previousSeconds !== remainingSeconds + 1
+      ![2, 1, 0].includes(remainingSeconds)
+      || previousSeconds <= remainingSeconds
       || ledger.emitted.has(remainingSeconds)
     ) {
       return;
@@ -318,6 +425,9 @@ export function RestDock({
       ...ledger,
       emitted: new Set([...ledger.emitted, remainingSeconds]),
     };
+    if (remainingSeconds === 0) {
+      finalCueDispatchedRef.current = true;
+    }
     const cueRestGeneration = cueRestGenerationRef.current;
     void (remainingSeconds === 0
       ? countdownCue.playLongCue()
@@ -329,9 +439,27 @@ export function RestDock({
     });
   }, [countdownCue, remainingSeconds, restSoundEnabled, state.state]);
 
-  const label = state.state === "paused"
-    ? `REST PAUSED · NEXT: SET ${nextSetIndex} AT ${nextTarget}`
-    : `RESTING · NEXT: SET ${nextSetIndex} AT ${nextTarget}`;
+  useEffect(() => {
+    if (announcement !== null) {
+      announcedRef.current = announcement;
+    }
+    if (
+      state.state === "running"
+      && remainingMs === 0
+      && !expiredRef.current
+      && foregroundActive
+      && (!schedulerOwnsExpiryRef.current || finalCueDispatchedRef.current)
+    ) {
+      dispatchExpired(finalCueDispatchedRef.current);
+    }
+    if (remainingMs > 0 && foregroundActive
+      && (state.state !== "running" || nowMs() < state.endsAtMs)) {
+      expiredRef.current = false;
+    }
+  }, [announcement, cueFailure, foregroundActive, onExpired, remainingMs, state.state]);
+
+  const status = state.state === "paused" ? "REST PAUSED" : "RESTING";
+  const context = `${exerciseName ?? "Next exercise"} · working set ${nextSetIndex} next`;
 
   return (
     <View
@@ -343,6 +471,92 @@ export function RestDock({
         },
       ]}
     >
+      {cueFailure ? (
+        <InlineNotice
+          body="The timer is still accurate. Keep watching the countdown."
+          heading="Countdown sound unavailable"
+          tone="attention"
+        />
+      ) : null}
+      <Text
+        style={[
+          workoutTypeScale.label as TextStyle,
+          { color: colors.textSecondary },
+        ]}
+      >
+        {status}
+      </Text>
+      <Text
+        style={[
+          workoutTypeScale.secondary as TextStyle,
+          { color: colors.textSecondary },
+        ]}
+      >
+        {context}
+      </Text>
+      <Text
+        accessibilityLabel={`${formatDuration(remainingMs)} remaining`}
+        accessibilityLiveRegion="none"
+        style={[
+          workoutTypeScale.displayTimer as TextStyle,
+          { color: remainingMs === 0 ? colors.timerAttention : colors.textPrimary },
+        ]}
+      >
+        {formatDuration(remainingMs)}
+      </Text>
+      {announcement === null ? null : (
+        <Text
+          accessibilityLiveRegion="polite"
+          style={[
+            workoutTypeScale.secondary as TextStyle,
+            { color: colors.textSecondary },
+          ]}
+        >
+          {announcement}
+        </Text>
+      )}
+      <View style={styles.controls} testID="rest-controls">
+        <RestTextControl
+          accessibilityLabel="Subtract 15 seconds from rest"
+          disabled={remainingMs === 0}
+          label="−15"
+          onPress={() => {
+            cancelPendingCues();
+            onAdjust(-15_000);
+          }}
+          testID="rest-control-Subtract 15 seconds from rest"
+        />
+        <RestControl
+          accessibilityLabel={state.state === "paused" ? "Resume rest" : "Pause rest"}
+          disabled={busy || remainingMs === 0}
+          icon={state.state === "paused" ? Play : Pause}
+          onPress={() => {
+            cancelPendingCues();
+            (state.state === "paused" ? onResume : onPause)();
+          }}
+          testID={state.state === "paused" ? "rest-resume" : "rest-pause"}
+        />
+        <RestTextControl
+          accessibilityLabel="Add 15 seconds to rest"
+          disabled={remainingMs === 0}
+          label="+15"
+          onPress={() => {
+            cancelPendingCues();
+            onAdjust(15_000);
+          }}
+          testID="rest-control-Add 15 seconds to rest"
+        />
+        <RestControl
+          accessibilityLabel="Skip rest"
+          disabled={busy}
+          icon={SkipForward}
+          onPress={() => {
+            cancelPendingCues();
+            onSkip();
+          }}
+          testID="rest-control-Skip rest"
+        />
+      </View>
       {notificationPermission === "denied" ? (
         <InlineNotice
           action={
@@ -355,102 +569,6 @@ export function RestDock({
           heading="Background rest alerts are off"
           tone="attention"
         />
-      ) : null}
-      {cueFailure ? (
-        <InlineNotice
-          body="The timer is still accurate. Keep watching the countdown."
-          heading="Countdown sound unavailable"
-          tone="attention"
-        />
-      ) : null}
-      <Text
-        style={[
-          typeScale.label as TextStyle,
-          { color: colors.textSecondary },
-        ]}
-      >
-        {label}
-      </Text>
-      <Text
-        accessibilityLabel={`${formatDuration(remainingMs)} remaining`}
-        accessibilityLiveRegion="none"
-        style={[
-          typeScale.displayTimer as TextStyle,
-          { color: remainingMs === 0 ? colors.timerAttention : colors.textPrimary },
-        ]}
-      >
-        {formatDuration(remainingMs)}
-      </Text>
-      <RestControl
-        accessibilityLabel={expanded
-          ? "Collapse rest controls"
-          : "Expand rest controls"}
-        disabled={false}
-        icon={expanded ? ChevronUp : ChevronDown}
-        onPress={() => setExpanded((current) => !current)}
-        testID="rest-collapse-toggle"
-      />
-      {announcement === null ? null : (
-        <Text
-          accessibilityLiveRegion="polite"
-          style={[
-            typeScale.secondary as TextStyle,
-            { color: colors.textSecondary },
-          ]}
-        >
-          {announcement}
-        </Text>
-      )}
-      {expanded ? (
-        <View style={styles.controls} testID="rest-controls">
-          <RestControl
-            accessibilityLabel="Skip rest"
-            disabled={busy}
-            icon={SkipForward}
-            onPress={onSkip}
-            testID="rest-control-Skip rest"
-          />
-          <RestControl
-            accessibilityLabel={state.state === "paused" ? "Resume rest" : "Pause rest"}
-            disabled={busy || remainingMs === 0}
-            icon={state.state === "paused" ? Play : Pause}
-            onPress={state.state === "paused" ? onResume : onPause}
-            testID={`rest-control-${
-              state.state === "paused" ? "Resume rest" : "Pause rest"
-            }`}
-          />
-          <RestTextControl
-            accessibilityLabel="Subtract 15 seconds"
-            disabled={busy || remainingMs === 0}
-            label="−15"
-            onPress={() => onAdjust(-15_000)}
-            testID="rest-control-Subtract 15 seconds"
-          />
-          <RestTextControl
-            accessibilityLabel="Add 15 seconds"
-            disabled={busy || remainingMs === 0}
-            label="+15"
-            onPress={() => onAdjust(15_000)}
-            testID="rest-control-Add 15 seconds"
-          />
-        </View>
-      ) : null}
-      {expanded && undo !== undefined ? (
-        <View style={styles.undo}>
-          <Text
-            style={[
-              typeScale.secondary as TextStyle,
-              { color: colors.textSecondary },
-            ]}
-          >
-            {`Set ${undo.setIndex} saved · Undo set (${undo.secondsRemaining} sec)`}
-          </Text>
-          <SecondaryAction
-            disabled={busy}
-            label="Undo completed set"
-            onPress={undo.onUndo}
-          />
-        </View>
       ) : null}
     </View>
   );
@@ -465,13 +583,19 @@ const styles = StyleSheet.create({
   },
   controls: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: space[1],
+    flexWrap: "nowrap",
+    gap: space[2],
   },
   control: {
     flexBasis: sizes.minimumTarget,
     flexGrow: 1,
-    minWidth: 0,
+    flexShrink: 1,
+    minWidth: sizes.minimumTarget,
+  },
+  controlLabel: {
+    fontSize: 18,
+    lineHeight: 22,
+    maxWidth: "100%",
   },
   controlButton: {
     alignItems: "center",

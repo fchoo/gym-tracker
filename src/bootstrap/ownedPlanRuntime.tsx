@@ -2,11 +2,13 @@ import type {
   MetricIdentity,
 } from "../domains/metrics";
 import {
+  applySessionExerciseEditsToPlan,
   archiveOwnedPlan,
   createOwnedPlanDraft,
   duplicateOwnedPlan,
   previewDayRemoval,
   previewExerciseReplacement,
+  previewSessionExerciseEditsForPlan,
   removePlanDayWithImpact,
   replacePlanExercise,
   restoreOwnedPlan,
@@ -14,6 +16,8 @@ import {
   type DayRemovalPreview,
   type ExerciseReplacementCommandResult,
   type ExerciseReplacementPreview,
+  type ApplySessionExerciseEditsToPlanInput,
+  type SessionExerciseEditsForPlanPreview,
   type OwnedPlanDraftInput,
   type RemovePlanDayWithImpactInput,
   type ReplacePlanExerciseInput,
@@ -25,6 +29,7 @@ import {
   createOwnedPlanRepository,
   type OwnedPlanRepositoryResult,
   type OwnedPlanSnapshot,
+  type SessionExerciseEditsToPlanResult,
 } from "../platform/sqlite/repositories/ownedPlanRepository";
 import {
   createPlanImpactRepository,
@@ -42,25 +47,38 @@ export type OwnedPlanRuntimePort = Readonly<{
   createDraft(input: Readonly<{
     name: string;
     dayName: string;
+    requestId?: string;
+  }>): Promise<OwnedPlanRepositoryResult>;
+  /** Native-contract fixture escape hatch; production UI never supplies IDs. */
+  createFixtureDraft(input: Readonly<{
+    requestId: string;
+    planId: string;
+    dayId: string;
+    name: string;
+    dayName: string;
   }>): Promise<OwnedPlanRepositoryResult>;
   loadPlan(planId: string): Promise<OwnedPlanSnapshot | null>;
   listExercises(): Promise<readonly OwnedPlanRuntimeExerciseOption[]>;
   savePlan(input: Readonly<{
     expectedRevision: number;
     plan: OwnedPlanDraftInput;
+    requestId?: string;
   }>): Promise<OwnedPlanRepositoryResult>;
   duplicatePlan(input: Readonly<{
     sourcePlanId: string;
     expectedRevision: number;
     name: string;
+    requestId?: string;
   }>): Promise<OwnedPlanRepositoryResult>;
   archivePlan(input: Readonly<{
     planId: string;
     expectedRevision: number;
+    requestId?: string;
   }>): Promise<OwnedPlanRepositoryResult>;
   restorePlan(input: Readonly<{
     planId: string;
     expectedRevision: number;
+    requestId?: string;
   }>): Promise<OwnedPlanRepositoryResult>;
   previewDayRemoval(input: Readonly<{
     planId: string;
@@ -76,6 +94,12 @@ export type OwnedPlanRuntimePort = Readonly<{
   replaceExercise(
     input: ReplacePlanExerciseInput,
   ): Promise<ExerciseReplacementCommandResult>;
+  previewSessionExerciseEdits(input: Readonly<{
+    sessionId: string;
+  }>): Promise<SessionExerciseEditsForPlanPreview | null>;
+  applySessionExerciseEdits(
+    input: Omit<ApplySessionExerciseEditsToPlanInput, "requestId">,
+  ): Promise<SessionExerciseEditsToPlanResult>;
   createId(kind: string): string;
 }>;
 
@@ -87,6 +111,27 @@ type ExerciseRow = Readonly<{
   exercise_metric_generation: number;
   default_rest_seconds: number;
 }>;
+
+const SHA256 = /^[a-f0-9]{64}$/u;
+
+export async function sessionExerciseWriteBackRequestId(input: Readonly<{
+  sourceSessionId: string;
+  sha256(value: string): Promise<string>;
+}>): Promise<string> {
+  if (input.sourceSessionId.trim().length === 0
+    || input.sourceSessionId.length > 128) {
+    throw new Error("session_write_back_source_invalid");
+  }
+  const identitySha256 = await input.sha256(JSON.stringify({
+    version: 1,
+    operation: "session_exercise_edits",
+    sourceSessionId: input.sourceSessionId,
+  }));
+  if (!SHA256.test(identitySha256)) {
+    throw new Error("session_write_back_identity_invalid");
+  }
+  return `session-writeback:${identitySha256}`;
+}
 
 export function createOwnedPlanRuntimePort(
   kernel: SqliteKernel,
@@ -104,6 +149,7 @@ export function createOwnedPlanRuntimePort(
     invalidate: async () => undefined,
     sha256: dependencies.sha256,
   };
+  const inFlightSessionApplies = new Set<string>();
 
   return Object.freeze({
     createId,
@@ -139,7 +185,7 @@ export function createOwnedPlanRuntimePort(
       return createOwnedPlanDraft({
         ...commandContext,
         input: {
-          requestId: createId("owned-plan-create"),
+          requestId: input.requestId ?? createId("owned-plan-create"),
           planId: createId("owned-plan"),
           name: input.name,
           dayId: createId("owned-plan-day"),
@@ -148,11 +194,15 @@ export function createOwnedPlanRuntimePort(
         },
       });
     },
+    createFixtureDraft: (input) => createOwnedPlanDraft({
+      ...commandContext,
+      input: { ...input, createdAtMs: dependencies.nowMs() },
+    }),
     savePlan: (input) =>
       saveOwnedPlan({
         ...commandContext,
         input: {
-          requestId: createId("owned-plan-save"),
+          requestId: input.requestId ?? createId("owned-plan-save"),
           expectedRevision: input.expectedRevision,
           plan: input.plan,
           savedAtMs: dependencies.nowMs(),
@@ -162,7 +212,7 @@ export function createOwnedPlanRuntimePort(
       duplicateOwnedPlan({
         ...commandContext,
         input: {
-          requestId: createId("owned-plan-duplicate"),
+          requestId: input.requestId ?? createId("owned-plan-duplicate"),
           sourcePlanId: input.sourcePlanId,
           expectedRevision: input.expectedRevision,
           newPlanId: createId("owned-plan"),
@@ -174,7 +224,7 @@ export function createOwnedPlanRuntimePort(
       archiveOwnedPlan({
         ...commandContext,
         input: {
-          requestId: createId("owned-plan-archive"),
+          requestId: input.requestId ?? createId("owned-plan-archive"),
           planId: input.planId,
           expectedRevision: input.expectedRevision,
           updatedAtMs: dependencies.nowMs(),
@@ -184,7 +234,7 @@ export function createOwnedPlanRuntimePort(
       restoreOwnedPlan({
         ...commandContext,
         input: {
-          requestId: createId("owned-plan-restore"),
+          requestId: input.requestId ?? createId("owned-plan-restore"),
           planId: input.planId,
           expectedRevision: input.expectedRevision,
           updatedAtMs: dependencies.nowMs(),
@@ -219,5 +269,36 @@ export function createOwnedPlanRuntimePort(
         nowMs: dependencies.nowMs,
         input,
       }),
+    previewSessionExerciseEdits: (input) =>
+      previewSessionExerciseEditsForPlan({
+        repository,
+        sha256: dependencies.sha256,
+        input,
+      }),
+    async applySessionExerciseEdits(input) {
+      const key = `${input.sourceSessionId}:${input.previewToken}`;
+      if (inFlightSessionApplies.has(key)) {
+        throw new Error("session_write_back_apply_in_flight");
+      }
+      inFlightSessionApplies.add(key);
+      try {
+        const requestId = await sessionExerciseWriteBackRequestId({
+          sourceSessionId: input.sourceSessionId,
+          sha256: dependencies.sha256,
+        });
+        return await applySessionExerciseEditsToPlan({
+          repository,
+          sha256: dependencies.sha256,
+          nowMs: dependencies.nowMs,
+          invalidate: async () => undefined,
+          input: {
+            ...input,
+            requestId,
+          },
+        });
+      } finally {
+        inFlightSessionApplies.delete(key);
+      }
+    },
   });
 }

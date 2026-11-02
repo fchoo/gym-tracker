@@ -1,3 +1,4 @@
+import { assertLibraryPlanNotDeleted } from "./libraryPlanDeletionRepository";
 import {
   differenceInLocalDays,
   parseLocalDate,
@@ -26,6 +27,7 @@ import type {
   SqliteKernel,
   SqliteTransactionExecutor,
 } from "../sqliteKernel";
+import { captureStrengthOccurrenceSnapshot } from "./strengthOccurrenceSnapshot";
 
 export type WeekdayScheduleVersionBinding = Readonly<{
   id: string;
@@ -314,6 +316,13 @@ export type ScheduleRepository = Readonly<{
   activateSchedule(
     input: ActivateOwnedPlanScheduleRepositoryInput,
   ): Promise<ActivateOwnedPlanScheduleResult>;
+  activateRunningSchedule?(input: Readonly<{
+    planId: string;
+    scheduleId: string;
+    expectedPlanRevision: number;
+    expectedScheduleRevision: number;
+    activatedAtMs: number;
+  }>): Promise<void>;
   readEffectiveOpportunity(input: Readonly<{
     scheduleId: string;
     instantMs: number;
@@ -388,9 +397,22 @@ type ActiveSchedulePairRow = Readonly<{
   schedule_revision: number | null;
 }>;
 
+type ActivePlanPairRow = Readonly<{
+  plan_id: string;
+  plan_kind: "strength" | "running";
+  plan_origin: "bundled" | "custom" | "copied";
+  plan_lifecycle: "draft" | "ready" | "archived" | null;
+  plan_graph_status: "missing_valid_target" | "valid" | null;
+  running_status: "draft" | "ready" | "retired" | null;
+  schedule_id: string | null;
+  schedule_kind: "strength" | "running" | null;
+  schedule_lifecycle: "active" | "inactive" | null;
+}>;
+
 type ScheduleActivationPlanRow = Readonly<{
   plan_id: string;
   plan_revision: number;
+  plan_kind: "strength" | "running";
   plan_origin: "bundled" | "custom" | "copied";
   plan_is_active: number;
   plan_lifecycle: "draft" | "ready" | "archived" | null;
@@ -798,6 +820,7 @@ async function saveVersionTransaction(
 
 async function readActiveSchedulePair(
   transaction: SqliteTransactionExecutor,
+  planKind: "strength" | "running",
 ): Promise<ActiveSchedulePairRow | null> {
   const activePlans = await transaction.queryAll<ActiveSchedulePairRow>(
     `SELECT plan.id AS plan_id,
@@ -808,8 +831,9 @@ async function readActiveSchedulePair(
      LEFT JOIN owned_plan_schedules schedule
        ON schedule.plan_id = plan.id
       AND schedule.lifecycle = 'active'
-     WHERE plan.is_active = 1
+     WHERE plan.is_active = 1 AND plan.plan_kind = ?
      ORDER BY plan.id`,
+    [planKind],
   );
   const activeSchedules = await transaction.queryAll<{
     schedule_id: string;
@@ -818,8 +842,9 @@ async function readActiveSchedulePair(
   }>(
     `SELECT id AS schedule_id, revision AS schedule_revision, plan_id
      FROM owned_plan_schedules
-     WHERE lifecycle = 'active'
+     WHERE lifecycle = 'active' AND plan_kind = ?
      ORDER BY id`,
+    [planKind],
   );
   if (activePlans.length > 1 || activeSchedules.length > 1) {
     throw new ScheduleRepositoryError("schedule_active_state_invalid");
@@ -841,6 +866,146 @@ async function readActiveSchedulePair(
     throw new ScheduleRepositoryError("schedule_active_state_invalid");
   }
   return activePlan ?? null;
+}
+
+/**
+ * The partial indexes enforce cardinality, while this assertion enforces the
+ * cross-table fact that the active plan and active schedule are one matching
+ * pair for each sport.  Keep it transaction-local: transient update order is
+ * valid inside the exclusive writer transaction, acknowledgement is not.
+ */
+async function assertActivePlanPairs(
+  transaction: SqliteTransactionExecutor,
+): Promise<void> {
+  const activePlans = await transaction.queryAll<ActivePlanPairRow>(
+    `SELECT plan.id AS plan_id,
+            plan.plan_kind AS plan_kind,
+            plan.origin AS plan_origin,
+            state.lifecycle AS plan_lifecycle,
+            state.graph_status AS plan_graph_status,
+            running.status AS running_status,
+            schedule.id AS schedule_id,
+            schedule.plan_kind AS schedule_kind,
+            schedule.lifecycle AS schedule_lifecycle
+     FROM plans plan
+     LEFT JOIN owned_plan_aggregate_states state ON state.plan_id = plan.id
+     LEFT JOIN running_plans running ON running.plan_id = plan.id
+     LEFT JOIN owned_plan_schedules schedule
+       ON schedule.plan_id = plan.id AND schedule.lifecycle = 'active'
+     WHERE plan.is_active = 1
+     ORDER BY plan.plan_kind, plan.id`,
+  );
+  const activeSchedules = await transaction.queryAll<{
+    plan_id: string;
+    plan_kind: "strength" | "running";
+  }>(
+    `SELECT plan_id, plan_kind
+     FROM owned_plan_schedules
+     WHERE lifecycle = 'active'
+     ORDER BY plan_kind, plan_id`,
+  );
+  if (activePlans.length !== activeSchedules.length) {
+    throw new ScheduleRepositoryError("schedule_active_state_invalid");
+  }
+  for (const pair of activePlans) {
+    const schedule = activeSchedules.find((value) =>
+      value.plan_id === pair.plan_id && value.plan_kind === pair.plan_kind
+    );
+    const ready = pair.plan_kind === "strength"
+      ? pair.plan_lifecycle === "ready" && pair.plan_graph_status === "valid"
+      : pair.running_status === "ready";
+    if (
+      schedule === undefined
+      || pair.plan_origin === "bundled"
+      || !ready
+      || pair.schedule_id === null
+      || pair.schedule_kind !== pair.plan_kind
+      || pair.schedule_lifecycle !== "active"
+    ) {
+      throw new ScheduleRepositoryError("schedule_active_state_invalid");
+    }
+  }
+}
+
+async function activateRunningScheduleTransaction(
+  transaction: SqliteTransactionExecutor,
+  input: Readonly<{
+    planId: string;
+    scheduleId: string;
+    expectedPlanRevision: number;
+    expectedScheduleRevision: number;
+    activatedAtMs: number;
+  }>,
+): Promise<void> {
+  await assertLibraryPlanNotDeleted(transaction, input.planId);
+  if (await hasActiveWorkout(transaction)) {
+    throw new ScheduleRepositoryError("schedule_active_workout_blocked");
+  }
+  const [target] = await transaction.queryAll<{
+    plan_id: string;
+    plan_revision: number;
+    plan_kind: string;
+    plan_active: number;
+    plan_origin: string;
+    running_status: string | null;
+    schedule_id: string | null;
+    schedule_revision: number | null;
+    schedule_kind: string | null;
+    schedule_lifecycle: string | null;
+  }>(
+    `SELECT plan.id AS plan_id, plan.revision AS plan_revision,
+            plan.plan_kind AS plan_kind, plan.is_active AS plan_active,
+            plan.origin AS plan_origin, running.status AS running_status,
+            schedule.id AS schedule_id, schedule.revision AS schedule_revision,
+            schedule.plan_kind AS schedule_kind,
+            schedule.lifecycle AS schedule_lifecycle
+     FROM plans plan
+     JOIN running_plans running ON running.plan_id = plan.id
+     JOIN owned_plan_schedules schedule ON schedule.plan_id = plan.id
+     WHERE plan.id = ?`,
+    [input.planId],
+  );
+  if (
+    target === undefined
+    || target.plan_kind !== "running"
+    || target.plan_origin === "bundled"
+    || target.running_status !== "ready"
+    || target.plan_active !== 0
+    || target.plan_revision !== input.expectedPlanRevision
+    || target.schedule_id !== input.scheduleId
+    || target.schedule_kind !== "running"
+    || target.schedule_lifecycle !== "inactive"
+    || target.schedule_revision !== input.expectedScheduleRevision
+  ) {
+    throw new ScheduleRepositoryError("schedule_reference_invalid");
+  }
+  const [readiness] = await transaction.queryAll<{ slot_count: number; recovery_count: number }>(
+    `SELECT COUNT(*) AS slot_count,
+            SUM(CASE WHEN revision.session_kind = 'recovery' THEN 1 ELSE 0 END) AS recovery_count
+       FROM running_session_slots slot
+       JOIN running_session_revisions revision ON revision.id = slot.session_revision_id
+      WHERE slot.plan_id = ? AND slot.retired_at_ms IS NULL`,
+    [input.planId],
+  );
+  if ((readiness?.slot_count ?? 0) === 0 || (readiness?.recovery_count ?? 0) === 0) {
+    throw new ScheduleRepositoryError("schedule_reference_invalid");
+  }
+  const planUpdate = await transaction.execute(
+    `UPDATE plans SET is_active = 1, revision = revision + 1
+     WHERE id = ? AND revision = ? AND is_active = 0`,
+    [input.planId, input.expectedPlanRevision],
+  );
+  const scheduleUpdate = await transaction.execute(
+    `UPDATE owned_plan_schedules
+     SET lifecycle = 'active', revision = revision + 1,
+         activated_at_ms = ?, deactivated_at_ms = NULL
+     WHERE id = ? AND revision = ? AND lifecycle = 'inactive'`,
+    [input.activatedAtMs, input.scheduleId, input.expectedScheduleRevision],
+  );
+  if (planUpdate.changes !== 1 || scheduleUpdate.changes !== 1) {
+    throw new ScheduleRepositoryError("schedule_active_revision_conflict");
+  }
+  await assertActivePlanPairs(transaction);
 }
 
 function activePairMatches(
@@ -874,6 +1039,7 @@ async function readScheduleActivationPlan(
   const [row] = await transaction.queryAll<ScheduleActivationPlanRow>(
     `SELECT plan.id AS plan_id,
             plan.revision AS plan_revision,
+            plan.plan_kind AS plan_kind,
             plan.origin AS plan_origin,
             plan.is_active AS plan_is_active,
             state.lifecycle AS plan_lifecycle,
@@ -943,6 +1109,7 @@ async function activateScheduleTransaction(
   input: ActivateOwnedPlanScheduleRepositoryInput,
   observer: ScheduleRepositoryTestObserver,
 ): Promise<ActivateOwnedPlanScheduleResult> {
+  await assertLibraryPlanNotDeleted(transaction, input.planId);
   const receipt = await readReceipt(transaction, input.requestId);
   if (receipt !== null) {
     return replayResult(
@@ -950,19 +1117,10 @@ async function activateScheduleTransaction(
       input.requestSha256,
     ) as ActivateOwnedPlanScheduleResult;
   }
-  const active = await readActiveSchedulePair(transaction);
-  if (!activePairMatches(
-    active,
-    input.expectedActivePair,
-  )) {
-    throw new ScheduleRepositoryError("schedule_active_revision_conflict");
-  }
-  if (await hasActiveWorkout(transaction)) {
-    throw new ScheduleRepositoryError("schedule_active_workout_blocked");
-  }
   const target = await readScheduleActivationPlan(transaction, input.planId);
   if (
     target === null
+    || target.plan_kind !== "strength"
     || target.plan_origin === "bundled"
     || target.plan_is_active !== 0
     || target.plan_lifecycle !== "ready"
@@ -979,6 +1137,16 @@ async function activateScheduleTransaction(
     || !await hasValidPlanTargetFacts(transaction, input.planId)
   ) {
     throw new ScheduleRepositoryError("schedule_reference_invalid");
+  }
+  const active = await readActiveSchedulePair(transaction, target.plan_kind);
+  if (!activePairMatches(
+    active,
+    input.expectedActivePair,
+  )) {
+    throw new ScheduleRepositoryError("schedule_active_revision_conflict");
+  }
+  if (await hasActiveWorkout(transaction)) {
+    throw new ScheduleRepositoryError("schedule_active_workout_blocked");
   }
   const scheduleId = input.targetSchedule.scheduleId;
   const before = input.targetSchedule.kind === "inactive"
@@ -1011,22 +1179,20 @@ async function activateScheduleTransaction(
     if (planUpdate.changes !== 1) {
       throw new ScheduleRepositoryError("schedule_active_revision_conflict");
     }
-    if (active.schedule_id !== null) {
-      const scheduleUpdate = await transaction.execute(
-        `UPDATE owned_plan_schedules
-         SET lifecycle = 'inactive',
-             revision = revision + 1,
-             deactivated_at_ms = ?
-         WHERE id = ? AND revision = ? AND lifecycle = 'active'`,
-        [
-          input.activatedAtMs,
-          active.schedule_id,
-          active.schedule_revision,
-        ],
-      );
-      if (scheduleUpdate.changes !== 1) {
-        throw new ScheduleRepositoryError("schedule_active_revision_conflict");
-      }
+    const scheduleUpdate = await transaction.execute(
+      `UPDATE owned_plan_schedules
+       SET lifecycle = 'inactive',
+           revision = revision + 1,
+           deactivated_at_ms = ?
+       WHERE id = ? AND revision = ? AND lifecycle = 'active'`,
+      [
+        input.activatedAtMs,
+        active.schedule_id as string,
+        active.schedule_revision,
+      ],
+    );
+    if (scheduleUpdate.changes !== 1) {
+      throw new ScheduleRepositoryError("schedule_active_revision_conflict");
     }
   }
   const scheduleRevision = input.targetSchedule.kind === "absent"
@@ -1050,9 +1216,7 @@ async function activateScheduleTransaction(
       [
         input.activatedAtMs,
         scheduleId,
-        input.targetSchedule.kind === "inactive"
-          ? input.targetSchedule.scheduleRevision
-          : -1,
+        (input.targetSchedule as { scheduleRevision: number }).scheduleRevision,
       ],
     );
     if (scheduleUpdate.changes !== 1) {
@@ -1080,7 +1244,7 @@ async function activateScheduleTransaction(
   if (targetPlanUpdate.changes !== 1) {
     throw new ScheduleRepositoryError("schedule_plan_revision_conflict");
   }
-  const activated = await readActiveSchedulePair(transaction);
+  const activated = await readActiveSchedulePair(transaction, target.plan_kind);
   if (
     activated?.plan_id !== input.planId
     || activated.plan_revision !== input.expectedPlanRevision + 1
@@ -1471,6 +1635,13 @@ async function consumeOverrideTransaction(
     ],
   );
   await incrementScheduleRevision(transaction, input);
+  if (pending) {
+    await captureStrengthOccurrenceSnapshot(
+      transaction,
+      next.opportunityId,
+      input.occurredAtMs,
+    );
+  }
   const result = mutationResult(input);
   await appendCommandEvent(
     transaction,
@@ -1602,7 +1773,7 @@ function resultVersionId(payloadJson: string): string | null {
 }
 
 async function effectiveRotationPointer(
-  kernel: SqliteKernel,
+  kernel: QueryExecutor | SqliteTransactionExecutor,
   scheduleId: string,
   version: ScheduleVersionSnapshot,
 ): Promise<number> {
@@ -1640,6 +1811,31 @@ async function effectiveRotationPointer(
     }
   }
   return pointer;
+}
+
+/** Resolve the ordinary pending slot inside the writer before materialization. */
+export async function readPendingScheduleOpportunityForStart(
+  executor: QueryExecutor | SqliteTransactionExecutor,
+  input: Readonly<{ scheduleId: string; scheduleVersionId: string; localDate: string }>,
+): Promise<PendingScheduleOpportunityV1 | null> {
+  const localDate = parseLocalDate(input.localDate);
+  const [row] = await executor.queryAll<VersionRow>(
+    `SELECT id, version_number, effective_local_date, mode, timezone, rotation_pointer
+     FROM owned_plan_schedule_versions
+     WHERE schedule_id = ? AND effective_local_date <= ?
+     ORDER BY effective_local_date DESC, version_number DESC LIMIT 1`,
+    [input.scheduleId, localDate],
+  );
+  if (row === undefined || row.id !== input.scheduleVersionId) return null;
+  const version = await snapshotVersion(executor, row);
+  const resolved = version.mode === "rotation" ? {
+    ...version,
+    rotationPointer: await effectiveRotationPointer(executor, input.scheduleId, version),
+  } : version;
+  const dayId = resolved.mode === "weekday"
+    ? weekdayPlanDay(resolved, localDate)
+    : rotationPlanDay(resolved);
+  return dayId === null ? null : pendingOpportunity(input.scheduleId, localDate, resolved.mode, dayId);
 }
 
 async function readPersistedOpportunity(
@@ -2015,6 +2211,15 @@ export function createScheduleRepository(
       try {
         return await kernel.write((transaction) =>
           activateScheduleTransaction(transaction, input, observer)
+        );
+      } catch (error) {
+        return unwrapScheduleError(error);
+      }
+    },
+    async activateRunningSchedule(input) {
+      try {
+        await kernel.write((transaction) =>
+          activateRunningScheduleTransaction(transaction, input)
         );
       } catch (error) {
         return unwrapScheduleError(error);

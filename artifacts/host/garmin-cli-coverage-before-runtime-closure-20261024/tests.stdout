@@ -1,0 +1,164 @@
+TAP version 13
+# Subtest: hashes toolchain files and recursive trees, including symlink target bytes
+ok 1 - hashes toolchain files and recursive trees, including symlink target bytes
+  ---
+  duration_ms: 10.641208
+  type: 'test'
+  ...
+# Subtest: reuses verified cross-build inputs and repairs bad cache bytes only from matching origins
+ok 2 - reuses verified cross-build inputs and repairs bad cache bytes only from matching origins
+  ---
+  duration_ms: 2.229333
+  type: 'test'
+  ...
+# Subtest: rejects archive traversal and duplicates before extracting input files
+ok 3 - rejects archive traversal and duplicates before extracting input files
+  ---
+  duration_ms: 1.403042
+  type: 'test'
+  ...
+# Subtest: cross-builds deterministic wheel contents with declared Android libffi, metadata and RECORD
+ok 4 - cross-builds deterministic wheel contents with declared Android libffi, metadata and RECORD
+  ---
+  duration_ms: 878.920584
+  type: 'test'
+  ...
+# Subtest: seals a digest-matched wheel and preserves failed output hashes without publishing
+ok 5 - seals a digest-matched wheel and preserves failed output hashes without publishing
+  ---
+  duration_ms: 698.70825
+  type: 'test'
+  ...
+# Subtest: build CLI requires explicit pinned toolchain, cache, new work and output paths
+ok 6 - build CLI requires explicit pinned toolchain, cache, new work and output paths
+  ---
+  duration_ms: 121.520125
+  type: 'test'
+  ...
+# Traceback (most recent call last):
+#   File "<string>", line 1, in <module>
+#     import io,zipfile,json,base64,sys,fnmatch; z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); print(json.dumps([[i.filename,base64.b64encode(z.read(i)).decode()] for i in z.infolist() if not i.is_dir() and any(fnmatch.fnmatch(i.filename,p) for p in json.loads(sys.argv[1]))]))
+#                                                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#   File "/opt/homebrew/Cellar/python@3.14/3.14.8/Frameworks/Python.framework/Versions/3.14/lib/python3.14/zipfile/__init__.py", line 1505, in __init__
+#     self._RealGetContents()
+#     ~~~~~~~~~~~~~~~~~~~~~^^
+#   File "/opt/homebrew/Cellar/python@3.14/3.14.8/Frameworks/Python.framework/Versions/3.14/lib/python3.14/zipfile/__init__.py", line 1572, in _RealGetContents
+#     raise BadZipFile("File is not a zip file")
+# zipfile.BadZipFile: File is not a zip file
+# Subtest: round-trips deterministic stored ZIPs, filters APK members, and reads locked tar sources
+ok 7 - round-trips deterministic stored ZIPs, filters APK members, and reads locked tar sources
+  ---
+  duration_ms: 419.427333
+  type: 'test'
+  ...
+# Subtest: rejects every host, wrong-machine, wrong-class and non-shared ELF before tool invocation
+ok 8 - rejects every host, wrong-machine, wrong-class and non-shared ELF before tool invocation
+  ---
+  duration_ms: 0.35325
+  type: 'test'
+  ...
+# Subtest: accepts AArch64 Android shared objects and reports dependencies and init export
+ok 9 - accepts AArch64 Android shared objects and reports dependencies and init export
+  ---
+  duration_ms: 1.78725
+  type: 'test'
+  ...
+# Subtest: requires Android API <=24, 16KB ELF alignment, Android SONAMEs and reviewed relative runpaths
+ok 10 - requires Android API <=24, 16KB ELF alignment, Android SONAMEs and reviewed relative runpaths
+  ---
+  duration_ms: 11.383875
+  type: 'test'
+  ...
+# Subtest: rejects the retained APK defect: only a Darwin CFFI backend
+ok 11 - rejects the retained APK defect: only a Darwin CFFI backend
+  ---
+  duration_ms: 0.701125
+  type: 'test'
+  ...
+# Subtest: requires unique digest-bound CFFI, curl wrapper, libffi and C++ dependency binaries
+ok 12 - requires unique digest-bound CFFI, curl wrapper, libffi and C++ dependency binaries
+  ---
+  duration_ms: 0.439875
+  type: 'test'
+  ...
+# Subtest: checks the complete local wheelset, not just filenames
+ok 13 - checks the complete local wheelset, not just filenames
+  ---
+  duration_ms: 290.433417
+  type: 'test'
+  ...
+# Subtest: checks both APK requirements archives and actual ARM64 embedded Python
+ok 14 - checks both APK requirements archives and actual ARM64 embedded Python
+  ---
+  duration_ms: 906.794167
+  type: 'test'
+  ...
+# Subtest: checker CLI requires an explicit target and NDK without any device access
+ok 15 - checker CLI requires an explicit target and NDK without any device access
+  ---
+  duration_ms: 238.437791
+  type: 'test'
+  ...
+# Subtest: rejects every malformed lock and provenance boundary
+ok 16 - rejects every malformed lock and provenance boundary
+  ---
+  duration_ms: 3.965
+  type: 'test'
+  ...
+# Subtest: rejects CFFI source installs which can compile a host backend
+ok 17 - rejects CFFI source installs which can compile a host backend
+  ---
+  duration_ms: 0.142834
+  type: 'test'
+  ...
+# Subtest: accepts only the reviewed Python 3.13 ARM64 Garmin dependency graph
+ok 18 - accepts only the reviewed Python 3.13 ARM64 Garmin dependency graph
+  ---
+  duration_ms: 0.49875
+  type: 'test'
+  ...
+# Subtest: rejects a changed client commit, wheel hash, or unreviewed package
+ok 19 - rejects a changed client commit, wheel hash, or unreviewed package
+  ---
+  duration_ms: 0.271042
+  type: 'test'
+  ...
+# Subtest: requires the exact complete local artifact set before packaging
+ok 20 - requires the exact complete local artifact set before packaging
+  ---
+  duration_ms: 6.552958
+  type: 'test'
+  ...
+# Subtest: resolves only digest-matched official sources
+ok 21 - resolves only digest-matched official sources
+  ---
+  duration_ms: 0.480292
+  type: 'test'
+  ...
+# Subtest: materializes local cross-build plus fetched official artifacts without host building
+ok 22 - materializes local cross-build plus fetched official artifacts without host building
+  ---
+  duration_ms: 74.855959
+  type: 'test'
+  ...
+# Subtest: fails closed on artifact downloads, metadata, hashes and interrupted publication
+ok 23 - fails closed on artifact downloads, metadata, hashes and interrupted publication
+  ---
+  duration_ms: 24.809333
+  type: 'test'
+  ...
+# Subtest: lock CLI validates default and explicit paths and rejects missing materialize directories
+ok 24 - lock CLI validates default and explicit paths and rejects missing materialize directories
+  ---
+  duration_ms: 159.097708
+  type: 'test'
+  ...
+1..24
+# tests 24
+# suites 0
+# pass 24
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4062.974417

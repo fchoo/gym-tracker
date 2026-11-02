@@ -132,6 +132,11 @@ function committed(
 function repository(): OwnedPlanRepository {
   return {
     read: jest.fn(async () => null),
+    readSessionExerciseEditsForPlan: jest.fn(async () => null),
+    applySessionExerciseEditsToPlan: jest.fn(async () => {
+      throw new Error("unexpected_session_write_back");
+    }),
+    readSessionExerciseEditsToPlanResult: jest.fn(async () => null),
     createDraft: jest.fn(async (input: StagedCreateOwnedPlanDraft) =>
       committed("create", input)
     ),

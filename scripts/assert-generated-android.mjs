@@ -25,12 +25,19 @@ const allowedPermissions = new Set([
   'android.permission.POST_NOTIFICATIONS',
   'android.permission.READ_EXTERNAL_STORAGE',
   'android.permission.RECEIVE_BOOT_COMPLETED',
+  // Explicit user-granted rest-alert access, declared by app.config.ts.
+  'android.permission.SCHEDULE_EXACT_ALARM',
   'android.permission.SYSTEM_ALERT_WINDOW',
   'android.permission.VIBRATE',
   'android.permission.WRITE_EXTERNAL_STORAGE',
 ]);
 
 const forbiddenExactAlarmPermissions = new Set([
+  'android.permission.USE_EXACT_ALARM',
+]);
+
+// Exact-alarm capability must come from the reviewed app declaration.
+const forbiddenNotificationLibraryExactAlarmPermissions = new Set([
   'android.permission.SCHEDULE_EXACT_ALARM',
   'android.permission.USE_EXACT_ALARM',
 ]);
@@ -118,6 +125,7 @@ function assertPermissions(manifest) {
   for (const expectedPermission of [
     'android.permission.INTERNET',
     'android.permission.VIBRATE',
+    'android.permission.SCHEDULE_EXACT_ALARM',
   ]) {
     if (!activePermissions.has(expectedPermission)) {
       fail(`expected Android permission is missing: ${expectedPermission}`);
@@ -141,7 +149,7 @@ function assertNotificationLibraryPermissions(manifest) {
     }
   }
 
-  for (const forbiddenPermission of forbiddenExactAlarmPermissions) {
+  for (const forbiddenPermission of forbiddenNotificationLibraryExactAlarmPermissions) {
     if (permissions.has(forbiddenPermission)) {
       fail(`expo-notifications declares a forbidden exact-alarm permission: ${forbiddenPermission}`);
     }
@@ -306,6 +314,11 @@ try {
   fail(`expo-notifications Android manifest is missing: ${notificationManifestPath}`);
 }
 
+assertMatch(
+  manifest.match(/<application\b[^>]*>/)?.[0] ?? '',
+  /\bandroid:debuggable="true"/,
+  'development-test main application must be explicitly debuggable for run-as',
+);
 assertMatch(manifest, /android:allowBackup="true"/, 'Android backup must be explicitly enabled with exclusions');
 assertMatch(
   manifest,

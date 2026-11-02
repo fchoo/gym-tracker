@@ -3,6 +3,7 @@ import {
   describe,
   expect,
   it,
+  jest,
 } from "@jest/globals";
 import { DatabaseSync } from "node:sqlite";
 import {
@@ -14,6 +15,8 @@ import { join } from "node:path";
 
 import {
   LOGICAL_BACKUP_TABLES,
+  LOGICAL_BACKUP_FORMAT_VERSION,
+  logicalBackupTablesForVersion,
   type LogicalBackupSnapshot,
 } from "../../src/domains/portability/backupContracts";
 import {
@@ -33,8 +36,10 @@ import type {
 } from "../../src/platform/sqlite/recoveryBackup";
 import {
   createLogicalBackupRepository,
+  logicalBackupCollectionIdentity,
   LOGICAL_BACKUP_TABLE_FILTERS,
 } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
+import * as runtimeSha256 from "../../src/platform/crypto/runtimeSha256";
 import {
   LOGICAL_BACKUP_REFERENCE_DEFINITIONS,
 } from "../../src/domains/portability/restoreCommands";
@@ -170,6 +175,10 @@ async function seed(kernel: SqliteKernel): Promise<void> {
     await transaction.execute("INSERT INTO owned_plan_progression_policies (id, plan_day_exercise_id, policy_kind, policy_id, policy_version, rule_json, metric_profile, metric_contract_version, exercise_metric_generation, status, revision) VALUES ('owned-policy', 'owned-occurrence', 'manual_hold', 'manual-hold', 1, '{}', 'load_reps', 1, 1, 'active', 1)");
     await transaction.execute("INSERT INTO owned_plan_occurrence_sources (plan_day_exercise_id, plan_day_id, source_occurrence_id, source_exercise_id, source_ordinal, catalog_metric_profile, catalog_metric_contract_version, catalog_exercise_metric_generation, metric_override_json, content_rationale) VALUES ('owned-occurrence', 'copied-day', 'template-occurrence', 'template-exercise', 1, 'load_reps', 1, 1, NULL, 'Owner adjustment')");
     await transaction.execute("INSERT INTO owned_plan_occurrence_sources (plan_day_exercise_id, plan_day_id, source_occurrence_id, source_exercise_id, source_ordinal, catalog_metric_profile, catalog_metric_contract_version, catalog_exercise_metric_generation, metric_override_json, content_rationale) VALUES ('owned-catalog-occurrence', 'copied-day', 'template-catalog-occurrence', 'plan-only-row', 2, 'load_reps', 1, 1, NULL, 'Owner catalog reference')");
+    await transaction.execute(
+      "INSERT INTO plan_exercise_replacement_receipts (request_id, request_sha256, plan_id, source_occurrence_id, replacement_exercise_id, expected_plan_revision, result_plan_revision, result_json, committed_at_ms) VALUES ('replacement-receipt', ?, 'copied-plan', 'owned-occurrence', 'custom-exercise', 1, 2, ?, 3)",
+      [hash, JSON.stringify({ outcome: "committed", planId: "copied-plan" })],
+    );
     await transaction.execute("INSERT INTO owned_plan_schedules (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms) VALUES ('owned-schedule', 'copied-plan', 'active', 1, 3, NULL)");
     await transaction.execute("INSERT INTO owned_plan_schedule_versions (id, schedule_id, version_number, effective_local_date, mode, timezone, rotation_pointer, created_at_ms) VALUES ('owned-version', 'owned-schedule', 1, '2026-08-24', 'weekday', 'Asia/Singapore', NULL, 3)");
     await transaction.execute("INSERT INTO owned_plan_schedule_bindings (id, schedule_version_id, mode, ordinal, week_index, weekday, plan_day_id) VALUES ('owned-binding', 'owned-version', 'weekday', 0, 0, 'Monday', 'copied-day')");
@@ -182,6 +191,7 @@ async function seed(kernel: SqliteKernel): Promise<void> {
     await transaction.execute("INSERT INTO session_exercises (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal, exercise_name, metric_profile, metric_contract_version, exercise_metric_generation, default_rest_seconds, target_revision, status, revision) VALUES ('session-custom', 'session', NULL, 'custom-exercise', 0, 'Custom row', 'load_reps', 1, 1, 90, 1, 'completed', 1), ('session-bundled', 'session', NULL, 'bundled-exercise', 1, 'Barbell row', 'load_reps', 1, 1, 90, 1, 'completed', 1)");
     await transaction.execute("INSERT INTO session_sets (id, session_exercise_id, set_kind, ordinal, source_plan_working_set_target_id, target_load_grams, target_min_reps, target_max_reps, target_json, unit_json, rule_type, rule_version, metric_profile, metric_contract_version, exercise_metric_generation, observed_json, status, completed_at_ms, revision) VALUES ('set', 'session-custom', 'working', 0, 'legacy-target', 40000, 8, 10, ?, '{}', 'load_reps', 1, 'load_reps', 1, 1, '{\"version\":1,\"profile\":\"load_reps\",\"loadGrams\":40000,\"reps\":8,\"source\":\"manual\"}', 'completed', 200, 1)", [targetJson]);
     await transaction.execute("INSERT INTO session_rest_states (session_id, state_version, status, started_at_ms, ends_at_ms, remaining_ms, expired_at_ms, next_set_id, revision) VALUES ('session', 1, 'idle', NULL, NULL, NULL, NULL, NULL, 1)");
+    await transaction.execute("INSERT INTO session_advanced_timing_states (session_id, session_set_id, state_version, revision, status, mode, config_json, progress_json, started_at_ms, next_boundary_at_ms, remaining_ms, stopped_at_ms) VALUES ('session', 'set', 1, 2, 'stopped', 'per_rep', '{\"version\":1,\"mode\":\"per_rep\",\"intervalMs\":1000,\"cueChannels\":\"haptic\"}', '{\"nextRepetitionIndex\":3}', NULL, NULL, NULL, 200)");
     await transaction.execute("INSERT INTO session_undo_snapshots (id, session_id, completed_set_id, idempotency_key, snapshot_version, snapshot_json, undo_until_ms, consumed_at_ms, created_at_ms) VALUES ('undo', 'session', 'set', 'undo-key', 1, '{}', 300, NULL, 200)");
     await transaction.execute("INSERT INTO history_session_overlays (session_id, effective_revision, lifecycle, snapshot_json, effective_local_date, effective_timezone, effective_started_at_ms, effective_completed_at_ms, created_at_ms, updated_at_ms) VALUES ('session', 1, 'active', '{}', '2026-08-24', 'Asia/Singapore', 100, 200, 200, 200)");
     await transaction.execute("INSERT INTO history_audit_events (id, session_id, effective_revision, event_type, field_identity, before_json, after_json, occurred_at_ms) VALUES ('audit-correction', 'session', 1, 'correction', 'session', '{}', '{}', 201), ('audit-void', 'session', 1, 'void', 'session', '{}', '{}', 202), ('audit-restore', 'session', 1, 'restore', 'session', '{}', '{}', 203)");
@@ -197,6 +207,131 @@ function collect(kernel: SqliteKernel): Promise<LogicalBackupSnapshot> {
 }
 
 describe("logical backup repository", () => {
+  it("persists a request-bound snapshot receipt and replays only the exact source digest", async () => {
+    const kernel = await open();
+    const repository = createLogicalBackupRepository(kernel);
+    const input = Object.freeze({
+      snapshotId: "logical-backup-snapshot",
+      createdAtMs: 1_786_853_900_000,
+    });
+
+    const first = await repository.collect(input);
+    const [firstReceipt] = await kernel.queryAll<Readonly<{
+      request_id: string;
+      request_sha256: string;
+      snapshot_id: string;
+      snapshot_sha256: string;
+      total_rows: number;
+      committed_at_ms: number;
+    }>>(
+      `SELECT request_id, request_sha256, snapshot_id, snapshot_sha256,
+              total_rows, committed_at_ms
+         FROM logical_backup_receipts
+        WHERE snapshot_id = ?`,
+      [input.snapshotId],
+    );
+    const replay = await repository.collect(input);
+
+    if (firstReceipt === undefined) {
+      throw new Error("logical_backup_receipt_missing");
+    }
+    expect(firstReceipt).toMatchObject({
+      request_id: expect.stringMatching(/^logical-backup:[a-f0-9]{64}$/u),
+      request_sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      snapshot_id: input.snapshotId,
+      total_rows: first.manifest.totalRows,
+      committed_at_ms: input.createdAtMs,
+    });
+    expect(replay).toEqual(first);
+    await expect(repository.collect({ ...input, createdAtMs: input.createdAtMs + 1 }))
+      .rejects.toThrow("logical_backup_request_identity_conflict");
+    await expect(kernel.queryAll(
+      "SELECT request_id, snapshot_id, snapshot_sha256, total_rows FROM logical_backup_receipts WHERE request_id = ?",
+      [firstReceipt.request_id],
+    )).resolves.toEqual([{
+      request_id: firstReceipt.request_id,
+      snapshot_id: input.snapshotId,
+      snapshot_sha256: firstReceipt.snapshot_sha256,
+      total_rows: first.manifest.totalRows,
+    }]);
+  });
+
+  it("rejects an invalid collection identity before opening a writer", async () => {
+    await expect(logicalBackupCollectionIdentity({ snapshotId: " ", createdAtMs: 1 }))
+      .rejects.toThrow("logical_backup_collection_failed");
+    await expect(logicalBackupCollectionIdentity({ snapshotId: "snapshot", createdAtMs: -1 }))
+      .rejects.toThrow("logical_backup_collection_failed");
+  });
+
+  it("rejects malformed persisted collection receipts and failed receipt writes", async () => {
+    const kernel = await open();
+    const malformedReceiptKernel: SqliteKernel = {
+      ...kernel,
+      write: (command) => kernel.write(async (transaction) => command({
+        ...transaction,
+        queryAll: async function queryAll<Row extends Record<string, unknown>>(
+          sql: string,
+          parameters: readonly (null | number | string | Uint8Array)[] = [],
+        ) {
+          if (sql.includes("FROM logical_backup_receipts")) {
+            return [{
+              request_id: "logical-backup:" + "a".repeat(64),
+              request_sha256: "invalid",
+              snapshot_id: "backup-test",
+              snapshot_sha256: "b".repeat(64),
+              total_rows: 1,
+              committed_at_ms: 1,
+            }] as unknown as readonly Row[];
+          }
+          return transaction.queryAll<Row>(sql, parameters);
+        },
+      })),
+    };
+    await expect(collect(malformedReceiptKernel)).rejects.toThrow(
+      "logical_backup_collection_failed",
+    );
+
+    const failedReceiptWriteKernel: SqliteKernel = {
+      ...kernel,
+      write: (command) => kernel.write(async (transaction) => command({
+        ...transaction,
+        execute: async (sql, parameters) => {
+          if (sql.includes("INSERT INTO logical_backup_receipts")) {
+            return { changes: 0, lastInsertRowId: 0 };
+          }
+          return transaction.execute(sql, parameters);
+        },
+      })),
+    };
+    await expect(collect(failedReceiptWriteKernel)).rejects.toThrow(
+      "logical_backup_collection_failed",
+    );
+  });
+
+  it("rejects a replay whose source facts changed after its request receipt committed", async () => {
+    const kernel = await open();
+    const repository = createLogicalBackupRepository(kernel);
+    const input = { snapshotId: "source-change", createdAtMs: 1 };
+    await repository.collect(input);
+    await kernel.write((transaction) => transaction.execute(
+      "INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES ('source-change', 1, '{}', 1, 1)",
+    ));
+    await expect(repository.collect(input)).rejects.toThrow(
+      "logical_backup_request_identity_conflict",
+    );
+  });
+
+  it("fails closed when snapshot hashing cannot produce a SHA-256 digest", async () => {
+    const kernel = await open();
+    const digest = jest.spyOn(runtimeSha256, "runtimeSha256");
+    digest
+      .mockResolvedValueOnce("a".repeat(64))
+      .mockResolvedValueOnce("b".repeat(64))
+      .mockResolvedValueOnce("invalid");
+    await expect(collect(kernel)).rejects.toThrow("logical_backup_collection_failed");
+    digest.mockRestore();
+  });
+
   it("keeps every logical-table foreign key represented by the restore reference registry", async () => {
     const kernel = await open();
     const actual: string[] = [];
@@ -237,15 +372,26 @@ describe("logical backup repository", () => {
   it("collects a manifest-complete empty logical snapshot without raw database data", async () => {
     const snapshot = await collect(await open());
 
-    expect(snapshot.tables).toEqual(
-      Object.fromEntries(LOGICAL_BACKUP_TABLES.map((table) => [table, []])),
-    );
+    expect(snapshot.tables).toEqual(expect.objectContaining(
+      Object.fromEntries(logicalBackupTablesForVersion(LOGICAL_BACKUP_FORMAT_VERSION)
+        .filter((table) => table !== "portable_owner_identity")
+        .map((table) => [table, []])),
+    ));
+    expect(snapshot.tables.portable_owner_identity).toEqual([
+      expect.objectContaining({
+        id: 1,
+        owner_namespace: expect.stringMatching(/^[a-f0-9]{32}$/u),
+      }),
+    ]);
     expect(snapshot.manifest).toEqual({
       catalogReferenceCount: 0,
-      rowCounts: Object.fromEntries(LOGICAL_BACKUP_TABLES.map((table) => [table, 0])),
-      totalRows: 0,
+      rowCounts: expect.objectContaining(Object.fromEntries(logicalBackupTablesForVersion(LOGICAL_BACKUP_FORMAT_VERSION)
+        .filter((table) => table !== "portable_owner_identity")
+        .map((table) => [table, 0]))),
+      totalRows: 1,
     });
     expect(snapshot.catalogReferences).toEqual([]);
+    expect(snapshot.version).toBe(LOGICAL_BACKUP_FORMAT_VERSION);
     expect(JSON.stringify(snapshot)).not.toMatch(/\.db|sqlite_master|pending_effects/i);
   });
 
@@ -269,12 +415,39 @@ describe("logical backup repository", () => {
       "copied-plan",
       "custom-plan",
     ]);
+    expect(first.tables.plan_exercise_replacement_receipts).toEqual([{
+      request_id: "replacement-receipt",
+      request_sha256: hash,
+      plan_id: "copied-plan",
+      source_occurrence_id: "owned-occurrence",
+      replacement_exercise_id: "custom-exercise",
+      expected_plan_revision: 1,
+      result_plan_revision: 2,
+      result_json: JSON.stringify({ outcome: "committed", planId: "copied-plan" }),
+      committed_at_ms: 3,
+    }]);
     expect(first.tables.history_audit_events!.map(({ event_type }) => event_type)).toEqual([
       "correction",
       "restore",
       "void",
     ]);
-    expect(Object.keys(first.tables).sort()).toEqual([...LOGICAL_BACKUP_TABLES]);
+    expect(first.tables.session_advanced_timing_states).toEqual([{
+      session_id: "session",
+      session_set_id: "set",
+      state_version: 1,
+      revision: 2,
+      status: "stopped",
+      mode: "per_rep",
+      config_json: '{"version":1,"mode":"per_rep","intervalMs":1000,"cueChannels":"haptic"}',
+      progress_json: '{"nextRepetitionIndex":3}',
+      started_at_ms: null,
+      next_boundary_at_ms: null,
+      remaining_ms: null,
+      stopped_at_ms: 200,
+    }]);
+    expect(Object.keys(first.tables).sort()).toEqual(
+      [...logicalBackupTablesForVersion(LOGICAL_BACKUP_FORMAT_VERSION)],
+    );
     expect(first.manifest.totalRows).toBe(
       Object.values(first.manifest.rowCounts).reduce((total, count) => total + count, 0),
     );

@@ -1,0 +1,123 @@
+{
+  "source": {
+    "head": "58f89b5eb4696670df62f65ba86b8579d3ac4ed3",
+    "root": "/Users/bytedance/Documents/personal/gym_tracker/.trae/worktrees/p20-calendar-safe-sdk-6b4/artifacts/host/garmin-cli-proof-renewed-8scwDE/source",
+    "files": [
+      {
+        "path": "scripts/verify-garmin-python-lock.mjs",
+        "sha256": "2721d90c7ede91296b43ed89c924cf38c0408c16f6b74ad70b96725827eb9946"
+      },
+      {
+        "path": "scripts/garmin-android-native.mjs",
+        "sha256": "5913d6ddb19c6b5a5f6e2c8be117849457edf8ea68ffedcb10aa806026de0bc2"
+      },
+      {
+        "path": "scripts/build-android-cffi.mjs",
+        "sha256": "5d5b4016ae43384312a29f148e3daaa07c09a8629c3ec7f5ac70aaa193b310e0"
+      },
+      {
+        "path": "scripts/verify-garmin-android-binaries.mjs",
+        "sha256": "b1fbad45ddc3084aa74e7ac835fa681216bb015fe852782164959f0e48b34b7c"
+      },
+      {
+        "path": "scripts/verify-garmin-python-lock.test.mjs",
+        "sha256": "6831d6c93da42d6a527dfc949545f9527c0eb55f132337e9fc18744c0fefb3d5"
+      },
+      {
+        "path": "scripts/garmin-android-native.test.mjs",
+        "sha256": "535699dbea6f63cd8ad189141f5d6c6412240a2e79494caac99a7b8d80626e7e"
+      },
+      {
+        "path": "scripts/build-android-cffi.test.mjs",
+        "sha256": "f7935232b79466241dc339ea35e5c15704cf91bbc6e262b79a30b55e9dee3713"
+      },
+      {
+        "path": "scripts/verify-garmin-android-binaries.test.mjs",
+        "sha256": "e54db77eb35825fb57a97815dff23dbdd15c19de3884740db4064f7b3f4a21fc"
+      },
+      {
+        "path": "modules/garmin-connect/python/android-cffi/build-inputs.json",
+        "sha256": "40c706297872d458021a090d3c84bbcbd401e6e2570d8af86080156ba682d9e0"
+      }
+    ],
+    "dependencies": [
+      {
+        "path": "scripts/garmin-android-test-fixtures.mjs",
+        "sha256": "af2ba6a175dd691c53586d6c8548db81e66f4192026e0e0e9632e1341334bb3d"
+      },
+      {
+        "path": "modules/garmin-connect/python/garmin-python-lock.json",
+        "sha256": "1c0f24e6907a2040ed6862de7556aceaf0b99813c2f50f853f412fdfd93dd6d0"
+      }
+    ]
+  },
+  "manifest": {
+    "path": "modules/garmin-connect/python/android-cffi/build-inputs.json",
+    "sha256": "40c706297872d458021a090d3c84bbcbd401e6e2570d8af86080156ba682d9e0"
+  },
+  "inputFiles": [
+    {
+      "name": "cffi",
+      "filename": "cffi-2.1.1.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/9e/ef/008a1939e372c06329a3fce4279c02f328488f3526744906eeec3da7ad5f/cffi-2.1.1.tar.gz",
+      "sha256": "dd31f52ea1086513bb9df30f8fcee9b8918323ae067a3d5b78bc826a000712be"
+    },
+    {
+      "name": "python",
+      "filename": "target-3.13.9-0-arm64-v8a.zip",
+      "url": "https://repo.maven.apache.org/maven2/com/chaquo/python/target/3.13.9-0/target-3.13.9-0-arm64-v8a.zip",
+      "sha256": "c19f39fecada0b3932ab7a61b0f214c1212068cbbae0dc22c2afa38a4f354b8e"
+    },
+    {
+      "name": "libffi",
+      "filename": "chaquopy_libffi-3.3-3-py3-none-android_24_arm64_v8a.whl",
+      "url": "https://chaquo.com/pypi-13.1/chaquopy-libffi/chaquopy_libffi-3.3-3-py3-none-android_24_arm64_v8a.whl",
+      "sha256": "86873c2f8e5e43b07b72233bf35e06ad8dae41ba98e0556202d61d00d7ad952f"
+    }
+  ],
+  "toolchain": {
+    "ndkVersion": "27.1.12297006",
+    "host": "darwin-x86_64",
+    "files": [
+      {
+        "path": "source.properties",
+        "sha256": "e9b907b9c90bc2f0aaa87049580cc0c3ee0bb6aff50b58e4d1a8876ba3aeb026"
+      },
+      {
+        "path": "toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",
+        "sha256": "fbe84dfae24c22167b678d074d12b1786b7e6750d5087e417abdb8a73752f00d"
+      },
+      {
+        "path": "toolchains/llvm/prebuilt/darwin-x86_64/bin/ld.lld",
+        "sha256": "c4000cbc14955cba41fc9763270792158d0977f9744bb7f9087e5c68db73896c"
+      },
+      {
+        "path": "toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-strip",
+        "sha256": "b84d153da8cff8686f1808e1ceb6a54000c26efe10cfc4a8185cf3a0b5ff0cfb"
+      },
+      {
+        "path": "toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-readelf",
+        "sha256": "53cf1969ea16d33d10b98b2b6a3c21775ef58291d39349b659818d5f1c626919"
+      }
+    ],
+    "trees": [
+      {
+        "path": "toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include",
+        "sha256": "7e8161e535f8726a94e6399916878b20397e85e7794e45ff72abd9a28ad5e272"
+      },
+      {
+        "path": "toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/aarch64-linux-android",
+        "sha256": "02f9826dce72edf231c5a673011e556c13c758b1b745a50eb52e4fd1140c2a42"
+      },
+      {
+        "path": "toolchains/llvm/prebuilt/darwin-x86_64/lib/clang/18/include",
+        "sha256": "b5ed7fb0ba09e98fe0e4c19c8a710493956135365206024b7825677d3a344d84"
+      },
+      {
+        "path": "toolchains/llvm/prebuilt/darwin-x86_64/lib/clang/18/lib/linux",
+        "sha256": "73eac661854c15c1cb4a252f5ff15bd35cd4cce7cb7819e2056506aba00d09d8"
+      }
+    ]
+  },
+  "producerSha256": "c537512c48e8cd23ad2fc79413a632a95217473fcd7a0a914c005b60b80e1d4f"
+}

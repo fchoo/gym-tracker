@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 0
+open_count: 17
 waived_count: 0
-fixed_count: 71
-total_count: 71
-last_updated: 2026-08-26T13:21:13.963Z
+fixed_count: 88
+total_count: 105
+last_updated: 2026-10-13T21:26:12.235Z
 ---
 
 # Broken Windows Ledger
@@ -86,6 +86,40 @@ last_updated: 2026-08-26T13:21:13.963Z
 | 69 | 05 | deviation | scripts/create-release-candidate-manifest.mjs |  | Made the immediate canonical manifest and explicit SHA propagation authoritative after the single build | fixed |  | 2026-08-26T13:20:54.198Z | 2026-08-26T13:21:13.728Z |
 | 70 | 05 | deviation | scripts/generate-phase5-attended-checklist.mjs |  | Replaced digest-only attended trust with exact rows and immutable attachment byte verification | fixed |  | 2026-08-26T13:20:54.291Z | 2026-08-26T13:21:13.860Z |
 | 71 | 05 | deviation | .github/workflows/release-promotion.yml |  | Hardened cross-run promotion with successful-run provenance reuse rejection and public hash verification | fixed |  | 2026-08-26T13:20:54.390Z | 2026-08-26T13:21:13.963Z |
+| 72 | 08 | unrun-verify | maestro/phase8/session-overview.yaml |  | Maestro session-overview tracer unrun: no connected device is available in the design worktree. | fixed | Exact-HEAD session-overview tracer passed on emulator-5554 as part of the five-flow Phase 8 native gate. | 2026-09-15T12:51:16.455Z | 2026-09-16T02:37:08.000Z |
+| 73 | 08 | deviation | src/ui/components/SetRow.tsx |  | Compact set rows now enforce the required 48dp minimum width as well as height. | fixed |  | 2026-09-15T13:12:28.580Z | 2026-09-15T13:12:46.305Z |
+| 74 | 08 | deviation | src/ui/screens/ActiveWorkoutScreen.tsx |  | Measured scroll request keys now include authoritative revision to prevent later target suppression. | fixed |  | 2026-09-15T13:12:28.664Z | 2026-09-15T13:12:46.397Z |
+| 75 | 08 | unrun-verify | maestro/phase8/session-overview.yaml |  | Phase 8 Maestro runner unrun: declared development-test manifest artifacts/native/phase2/build.json is absent, so no 200 percent font-scale/device evidence could be captured. | fixed | Manifest-bound Phase 8 runner passed all five flows at HEAD 500701fd1032565b219d82fcfc622ba126e8d8b9 and recorded font_scale applied 2.0/restored true. | 2026-09-15T13:57:36.675Z | 2026-09-16T02:37:08.000Z |
+| 76 | 09 | deviation | src/platform/sqlite/repositories/workoutRepository.ts |  | Plan 09-04 auto-fixed protected-history skip and replay validation branches | fixed |  | 2026-09-16T14:48:41.903Z | 2026-09-16T14:50:59.927Z |
+| 77 | 09 | unrun-verify | maestro/phase9/in-workout-exercise-editing.yaml |  | Plan 09-05 native Maestro evidence unrun: retained phase9 manifest is stale and no adb executable is available for an exact-HEAD build. | fixed |  | 2026-09-16T15:11:14.269Z | 2026-09-16T15:14:27.508Z |
+| 78 | 09 | unrun-verify | maestro/phase9/in-workout-exercise-editing.yaml |  | Plan 09-05 native Maestro evidence unrun: retained phase9 manifest is stale and the flow lacks Replace/Remove, protected-history, retry, and relaunch coverage; build and run an exact-HEAD expanded flow. | fixed | Exact-HEAD 716fb82 manifest-bound Android flow passed Add, injected Replace/Remove retries, protected-history retention, and cold relaunch/resume on emulator-5554 (API 36, arm64-v8a); APK SHA-256 c420c12b14d516d0c863ab1db2c04addaabad2444d3269e541dbf02869a27b61. | 2026-09-16T15:14:39.740Z | 2026-09-16T19:18:42.000Z |
+| 79 | 12 | deviation | src/bootstrap/phase12BackupBenchmark.ts |  | Corrected benchmark fixtures to satisfy migrated schema and production merge-plan contracts | fixed |  | 2026-09-30T21:53:14.951Z | 2026-09-30T21:54:12.887Z |
+| 80 | 12 | deviation | src/platform/sqlite/repositories/logicalMergeRepository.ts |  | Batched maximum full-plan writes and scoped exact verification without weakening validation | fixed |  | 2026-09-30T21:53:15.104Z | 2026-09-30T21:54:13.039Z |
+| 81 | 12 | deviation | scripts/benchmark-phase12-backup.mjs |  | Closed the tenth preflight RSS window before materialization | fixed |  | 2026-09-30T21:53:15.256Z | 2026-09-30T21:54:13.191Z |
+| 82 | 13 | unrun-verify | src/bootstrap/workoutAppRuntime.test.tsx |  | Full runtime test file has unrelated fake-kernel migration_verify_failed; focused timing cases pass. | fixed |  | 2026-10-07T12:36:56.865Z | 2026-10-07T12:40:28.048Z |
+| 83 | 14 | deviation | src/ui/__tests__/foundation.test.tsx |  | Replaced stale expanded loading-rail assertion with the all-width bottom-navigation contract | fixed |  | 2026-10-08T17:27:28.512Z | 2026-10-08T17:28:17.795Z |
+| 84 | 14 | unrun-verify | .planning/phases/14-prototype-visual-shell/14-11-PLAN.md |  | Plan named npm run test:evidence:v12:shell is absent; current Phase 14 equivalent passed, but live adb verifier was unavailable. | fixed | Plan 14-10 already passed the live exact-identity --all verifier; Plan 14-11 and orchestration passed the current Phase 14 evidence suite (15/15) without weakening the retained proof. | 2026-10-09T00:16:34.601Z | 2026-10-09T00:19:21.000Z |
+| 85 | 17 | unrun-verify | src/ui/__tests__/RunningPlanEditorScreen.test.tsx | 42 | npm run typecheck blocked by pre-existing TS2698 outside Plan 17-04 scope | fixed | Typed the RunningPlanDraft fixture and mock return as RunningPlanAggregate, so TS2698 no longer spreads an untyped mock parameter. | 2026-10-10T18:11:38.191Z | 2026-10-10T18:15:59.320Z |
+| 86 | 17 | unrun-verify | scripts/run-coverage-gate.mjs |  | Full four-project coverage gate did not return a final result in the execution harness; focused integrity verification passed. | open |  | 2026-10-10T18:53:19.789Z |  |
+| 87 | 17 | deviation | src/bootstrap/runningPlanRuntime.tsx |  | Rule 2: added authoritative post-create Running session command/readback boundary | open |  | 2026-10-10T19:07:43.613Z |  |
+| 88 | 17 | deviation | src/domains/running/contracts.ts |  | Rule 2: strict Long run and Progression contextual source branches | open |  | 2026-10-10T19:07:43.690Z |  |
+| 89 | 17 | unrun-verify | scripts/run-coverage-gate.mjs |  | Global complete-coverage execution was intentionally not run; registration was verified by focused self-test. | open |  | 2026-10-10T21:13:49.181Z |  |
+| 90 | 17 | unrun-verify | .planning/phases/17-library-running-plans/17-VALIDATION.md |  | Phase 20 pending: deferred global host suite, CNG/APK, device state mutation, 39 native Maestro cases, and all-ID evidence verification. | open |  | 2026-10-10T21:20:49.264Z |  |
+| 91 | 18 | deviation | .planning/phases/18-garmin-import/18-03-SUMMARY.md |  | Plan 18-03 is host-ready with native execution deferred to Phase 20; Plan 18-04 may proceed without a D-18-11 PASS. | open |  | 2026-10-11T07:52:59.407Z |  |
+| 92 | 18 | unrun-verify | artifacts/native/phase18-garmin-proof/final-evidence.json |  | D-18-11 APK/account/read/restart/privacy native proof is owner-deferred to the comprehensive Phase 20 checkpoint; no final evidence exists. | open |  | 2026-10-11T07:53:21.408Z |  |
+| 93 | 18 | deviation | src/bootstrap/workoutAppRuntime.tsx |  | Added the missing application-owned accepted activity detail read capability required by Plan 18-08. | open |  | 2026-10-11T09:54:59.237Z |  |
+| 94 | 18 | deviation | src/bootstrap/workoutAppRuntime.tsx |  | Added the narrow existing-kernel Garmin import/read port omitted from the plan file list. | open |  | 2026-10-11T10:48:11.232Z |  |
+| 95 | 18 | deviation | src/ui/screens/GarminSyncScreen.tsx |  | Corrected failed history reads so they are not presented as an empty imported history. | open |  | 2026-10-11T10:48:11.319Z |  |
+| 96 | 18 | deviation | src/domains/portability/mergePlan.ts |  | Auto-fixed changed accepted source identities so they preview as conflicts instead of inserts | fixed |  | 2026-10-11T11:26:35.170Z | 2026-10-11T11:27:04.827Z |
+| 97 | 18 | deviation | src/platform/sqlite/repositories/logicalMergeRepository.ts |  | Auto-fixed duplicate source graph validation so exact replay remains a zero-write no-op | fixed |  | 2026-10-11T11:26:35.256Z | 2026-10-11T11:27:04.913Z |
+| 98 | 18 | deviation | .planning/REQUIREMENTS.md |  | Kept GAR-08, GAR-09, and GAR-14 pending until their broader terminal Phase 18 evidence is complete | fixed |  | 2026-10-11T11:26:35.342Z | 2026-10-11T11:27:05.001Z |
+| 99 | 18 | unrun-verify | scripts/benchmark-phase18-garmin.mjs |  | Exact APK module Python memory frame and offline-workout benchmark samples remain deferred to Phase 20 | open |  | 2026-10-11T11:58:58.881Z |  |
+| 100 | 18 | unrun-verify | maestro/phase18/garmin-sync.yaml |  | Fresh native Garmin acceptance and accessibility flow execution remains deferred to the Phase 20 comprehensive checkpoint | open |  | 2026-10-11T11:59:20.622Z |  |
+| 101 | 18 | unrun-verify | artifacts/native/phase18-garmin-adversarial/final-evidence.json |  | Real restore/refresh/read/logout/restart and adversarial native evidence is owner-deferred to Phase 20; no final evidence exists. | open |  | 2026-10-11T12:16:23.160Z |  |
+| 102 | 18 | deviation | .planning/phases/18-garmin-import/18-13-SUMMARY.md |  | Plan 18-13 is host-complete and native-deferred under the owner checkpoint override; no native PASS is claimed. | open |  | 2026-10-11T12:16:23.242Z |  |
+| 103 | 18 | deviation | app/_layout.tsx |  | Added the missing isolated development-test navigator for the guarded Plan 18-13 adversarial route. | open |  | 2026-10-11T12:16:42.968Z |  |
+| 104 | 18 | deviation | app/library/running/[planId].tsx |  | Plan 18-14 omitted the production Running-plan route from Task 2 files; the route was required to replace the inert Garmin callback with the typed library-origin stack handoff. | open |  | 2026-10-11T12:32:08.977Z |  |
+| 105 | 20 | deviation | scripts/v12-evidence-contract.test.mjs |  | Corrected progress-settings occurrence expectation from three to four to preserve the canonical 107-state serial walk. | open |  | 2026-10-13T21:26:12.235Z |  |
 
 ````json
 [
@@ -940,6 +974,414 @@ last_updated: 2026-08-26T13:21:13.963Z
     "reason": "",
     "recorded_at": "2026-08-26T13:20:54.390Z",
     "resolved_at": "2026-08-26T13:21:13.963Z"
+  },
+  {
+    "id": 72,
+    "kind": "unrun-verify",
+    "phase": "08",
+    "file": "maestro/phase8/session-overview.yaml",
+    "line": null,
+    "description": "Maestro session-overview tracer unrun: no connected device is available in the design worktree.",
+    "status": "fixed",
+    "reason": "Exact-HEAD session-overview tracer passed on emulator-5554 as part of the five-flow Phase 8 native gate.",
+    "recorded_at": "2026-09-15T12:51:16.455Z",
+    "resolved_at": "2026-09-16T02:37:08.000Z"
+  },
+  {
+    "id": 73,
+    "kind": "deviation",
+    "phase": "08",
+    "file": "src/ui/components/SetRow.tsx",
+    "line": null,
+    "description": "Compact set rows now enforce the required 48dp minimum width as well as height.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-09-15T13:12:28.580Z",
+    "resolved_at": "2026-09-15T13:12:46.305Z"
+  },
+  {
+    "id": 74,
+    "kind": "deviation",
+    "phase": "08",
+    "file": "src/ui/screens/ActiveWorkoutScreen.tsx",
+    "line": null,
+    "description": "Measured scroll request keys now include authoritative revision to prevent later target suppression.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-09-15T13:12:28.664Z",
+    "resolved_at": "2026-09-15T13:12:46.397Z"
+  },
+  {
+    "id": 75,
+    "kind": "unrun-verify",
+    "phase": "08",
+    "file": "maestro/phase8/session-overview.yaml",
+    "line": null,
+    "description": "Phase 8 Maestro runner unrun: declared development-test manifest artifacts/native/phase2/build.json is absent, so no 200 percent font-scale/device evidence could be captured.",
+    "status": "fixed",
+    "reason": "Manifest-bound Phase 8 runner passed all five flows at HEAD 500701fd1032565b219d82fcfc622ba126e8d8b9 and recorded font_scale applied 2.0/restored true.",
+    "recorded_at": "2026-09-15T13:57:36.675Z",
+    "resolved_at": "2026-09-16T02:37:08.000Z"
+  },
+  {
+    "id": 76,
+    "kind": "deviation",
+    "phase": "09",
+    "file": "src/platform/sqlite/repositories/workoutRepository.ts",
+    "line": null,
+    "description": "Plan 09-04 auto-fixed protected-history skip and replay validation branches",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-09-16T14:48:41.903Z",
+    "resolved_at": "2026-09-16T14:50:59.927Z"
+  },
+  {
+    "id": 77,
+    "kind": "unrun-verify",
+    "phase": "09",
+    "file": "maestro/phase9/in-workout-exercise-editing.yaml",
+    "line": null,
+    "description": "Plan 09-05 native Maestro evidence unrun: retained phase9 manifest is stale and no adb executable is available for an exact-HEAD build.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-09-16T15:11:14.269Z",
+    "resolved_at": "2026-09-16T15:14:27.508Z"
+  },
+  {
+    "id": 78,
+    "kind": "unrun-verify",
+    "phase": "09",
+    "file": "maestro/phase9/in-workout-exercise-editing.yaml",
+    "line": null,
+    "description": "Plan 09-05 native Maestro evidence unrun: retained phase9 manifest is stale and the flow lacks Replace/Remove, protected-history, retry, and relaunch coverage; build and run an exact-HEAD expanded flow.",
+    "status": "fixed",
+    "reason": "Exact-HEAD 716fb82 manifest-bound Android flow passed Add, injected Replace/Remove retries, protected-history retention, and cold relaunch/resume on emulator-5554 (API 36, arm64-v8a); APK SHA-256 c420c12b14d516d0c863ab1db2c04addaabad2444d3269e541dbf02869a27b61.",
+    "recorded_at": "2026-09-16T15:14:39.740Z",
+    "resolved_at": "2026-09-16T19:18:42.000Z"
+  },
+  {
+    "id": 79,
+    "kind": "deviation",
+    "phase": "12",
+    "file": "src/bootstrap/phase12BackupBenchmark.ts",
+    "line": null,
+    "description": "Corrected benchmark fixtures to satisfy migrated schema and production merge-plan contracts",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-09-30T21:53:14.951Z",
+    "resolved_at": "2026-09-30T21:54:12.887Z"
+  },
+  {
+    "id": 80,
+    "kind": "deviation",
+    "phase": "12",
+    "file": "src/platform/sqlite/repositories/logicalMergeRepository.ts",
+    "line": null,
+    "description": "Batched maximum full-plan writes and scoped exact verification without weakening validation",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-09-30T21:53:15.104Z",
+    "resolved_at": "2026-09-30T21:54:13.039Z"
+  },
+  {
+    "id": 81,
+    "kind": "deviation",
+    "phase": "12",
+    "file": "scripts/benchmark-phase12-backup.mjs",
+    "line": null,
+    "description": "Closed the tenth preflight RSS window before materialization",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-09-30T21:53:15.256Z",
+    "resolved_at": "2026-09-30T21:54:13.191Z"
+  },
+  {
+    "id": 82,
+    "kind": "unrun-verify",
+    "phase": "13",
+    "file": "src/bootstrap/workoutAppRuntime.test.tsx",
+    "line": null,
+    "description": "Full runtime test file has unrelated fake-kernel migration_verify_failed; focused timing cases pass.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-10-07T12:36:56.865Z",
+    "resolved_at": "2026-10-07T12:40:28.048Z"
+  },
+  {
+    "id": 83,
+    "kind": "deviation",
+    "phase": "14",
+    "file": "src/ui/__tests__/foundation.test.tsx",
+    "line": null,
+    "description": "Replaced stale expanded loading-rail assertion with the all-width bottom-navigation contract",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-10-08T17:27:28.512Z",
+    "resolved_at": "2026-10-08T17:28:17.795Z"
+  },
+  {
+    "id": 84,
+    "kind": "unrun-verify",
+    "phase": "14",
+    "file": ".planning/phases/14-prototype-visual-shell/14-11-PLAN.md",
+    "line": null,
+    "description": "Plan named npm run test:evidence:v12:shell is absent; current Phase 14 equivalent passed, but live adb verifier was unavailable.",
+    "status": "fixed",
+    "reason": "Plan 14-10 already passed the live exact-identity --all verifier; Plan 14-11 and orchestration passed the current Phase 14 evidence suite (15/15) without weakening the retained proof.",
+    "recorded_at": "2026-10-09T00:16:34.601Z",
+    "resolved_at": "2026-10-09T00:19:21.000Z"
+  },
+  {
+    "id": 85,
+    "kind": "unrun-verify",
+    "phase": "17",
+    "file": "src/ui/__tests__/RunningPlanEditorScreen.test.tsx",
+    "line": 42,
+    "description": "npm run typecheck blocked by pre-existing TS2698 outside Plan 17-04 scope",
+    "status": "fixed",
+    "reason": "Typed the RunningPlanDraft fixture and mock return as RunningPlanAggregate, so TS2698 no longer spreads an untyped mock parameter.",
+    "recorded_at": "2026-10-10T18:11:38.191Z",
+    "resolved_at": "2026-10-10T18:15:59.320Z"
+  },
+  {
+    "id": 86,
+    "kind": "unrun-verify",
+    "phase": "17",
+    "file": "scripts/run-coverage-gate.mjs",
+    "line": null,
+    "description": "Full four-project coverage gate did not return a final result in the execution harness; focused integrity verification passed.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-10T18:53:19.789Z",
+    "resolved_at": null
+  },
+  {
+    "id": 87,
+    "kind": "deviation",
+    "phase": "17",
+    "file": "src/bootstrap/runningPlanRuntime.tsx",
+    "line": null,
+    "description": "Rule 2: added authoritative post-create Running session command/readback boundary",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-10T19:07:43.613Z",
+    "resolved_at": null
+  },
+  {
+    "id": 88,
+    "kind": "deviation",
+    "phase": "17",
+    "file": "src/domains/running/contracts.ts",
+    "line": null,
+    "description": "Rule 2: strict Long run and Progression contextual source branches",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-10T19:07:43.690Z",
+    "resolved_at": null
+  },
+  {
+    "id": 89,
+    "kind": "unrun-verify",
+    "phase": "17",
+    "file": "scripts/run-coverage-gate.mjs",
+    "line": null,
+    "description": "Global complete-coverage execution was intentionally not run; registration was verified by focused self-test.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-10T21:13:49.181Z",
+    "resolved_at": null
+  },
+  {
+    "id": 90,
+    "kind": "unrun-verify",
+    "phase": "17",
+    "file": ".planning/phases/17-library-running-plans/17-VALIDATION.md",
+    "line": null,
+    "description": "Phase 20 pending: deferred global host suite, CNG/APK, device state mutation, 39 native Maestro cases, and all-ID evidence verification.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-10T21:20:49.264Z",
+    "resolved_at": null
+  },
+  {
+    "id": 91,
+    "kind": "deviation",
+    "phase": "18",
+    "file": ".planning/phases/18-garmin-import/18-03-SUMMARY.md",
+    "line": null,
+    "description": "Plan 18-03 is host-ready with native execution deferred to Phase 20; Plan 18-04 may proceed without a D-18-11 PASS.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T07:52:59.407Z",
+    "resolved_at": null
+  },
+  {
+    "id": 92,
+    "kind": "unrun-verify",
+    "phase": "18",
+    "file": "artifacts/native/phase18-garmin-proof/final-evidence.json",
+    "line": null,
+    "description": "D-18-11 APK/account/read/restart/privacy native proof is owner-deferred to the comprehensive Phase 20 checkpoint; no final evidence exists.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T07:53:21.408Z",
+    "resolved_at": null
+  },
+  {
+    "id": 93,
+    "kind": "deviation",
+    "phase": "18",
+    "file": "src/bootstrap/workoutAppRuntime.tsx",
+    "line": null,
+    "description": "Added the missing application-owned accepted activity detail read capability required by Plan 18-08.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T09:54:59.237Z",
+    "resolved_at": null
+  },
+  {
+    "id": 94,
+    "kind": "deviation",
+    "phase": "18",
+    "file": "src/bootstrap/workoutAppRuntime.tsx",
+    "line": null,
+    "description": "Added the narrow existing-kernel Garmin import/read port omitted from the plan file list.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T10:48:11.232Z",
+    "resolved_at": null
+  },
+  {
+    "id": 95,
+    "kind": "deviation",
+    "phase": "18",
+    "file": "src/ui/screens/GarminSyncScreen.tsx",
+    "line": null,
+    "description": "Corrected failed history reads so they are not presented as an empty imported history.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T10:48:11.319Z",
+    "resolved_at": null
+  },
+  {
+    "id": 96,
+    "kind": "deviation",
+    "phase": "18",
+    "file": "src/domains/portability/mergePlan.ts",
+    "line": null,
+    "description": "Auto-fixed changed accepted source identities so they preview as conflicts instead of inserts",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-10-11T11:26:35.170Z",
+    "resolved_at": "2026-10-11T11:27:04.827Z"
+  },
+  {
+    "id": 97,
+    "kind": "deviation",
+    "phase": "18",
+    "file": "src/platform/sqlite/repositories/logicalMergeRepository.ts",
+    "line": null,
+    "description": "Auto-fixed duplicate source graph validation so exact replay remains a zero-write no-op",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-10-11T11:26:35.256Z",
+    "resolved_at": "2026-10-11T11:27:04.913Z"
+  },
+  {
+    "id": 98,
+    "kind": "deviation",
+    "phase": "18",
+    "file": ".planning/REQUIREMENTS.md",
+    "line": null,
+    "description": "Kept GAR-08, GAR-09, and GAR-14 pending until their broader terminal Phase 18 evidence is complete",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-10-11T11:26:35.342Z",
+    "resolved_at": "2026-10-11T11:27:05.001Z"
+  },
+  {
+    "id": 99,
+    "kind": "unrun-verify",
+    "phase": "18",
+    "file": "scripts/benchmark-phase18-garmin.mjs",
+    "line": null,
+    "description": "Exact APK module Python memory frame and offline-workout benchmark samples remain deferred to Phase 20",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T11:58:58.881Z",
+    "resolved_at": null
+  },
+  {
+    "id": 100,
+    "kind": "unrun-verify",
+    "phase": "18",
+    "file": "maestro/phase18/garmin-sync.yaml",
+    "line": null,
+    "description": "Fresh native Garmin acceptance and accessibility flow execution remains deferred to the Phase 20 comprehensive checkpoint",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T11:59:20.622Z",
+    "resolved_at": null
+  },
+  {
+    "id": 101,
+    "kind": "unrun-verify",
+    "phase": "18",
+    "file": "artifacts/native/phase18-garmin-adversarial/final-evidence.json",
+    "line": null,
+    "description": "Real restore/refresh/read/logout/restart and adversarial native evidence is owner-deferred to Phase 20; no final evidence exists.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T12:16:23.160Z",
+    "resolved_at": null
+  },
+  {
+    "id": 102,
+    "kind": "deviation",
+    "phase": "18",
+    "file": ".planning/phases/18-garmin-import/18-13-SUMMARY.md",
+    "line": null,
+    "description": "Plan 18-13 is host-complete and native-deferred under the owner checkpoint override; no native PASS is claimed.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T12:16:23.242Z",
+    "resolved_at": null
+  },
+  {
+    "id": 103,
+    "kind": "deviation",
+    "phase": "18",
+    "file": "app/_layout.tsx",
+    "line": null,
+    "description": "Added the missing isolated development-test navigator for the guarded Plan 18-13 adversarial route.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T12:16:42.968Z",
+    "resolved_at": null
+  },
+  {
+    "id": 104,
+    "kind": "deviation",
+    "phase": "18",
+    "file": "app/library/running/[planId].tsx",
+    "line": null,
+    "description": "Plan 18-14 omitted the production Running-plan route from Task 2 files; the route was required to replace the inert Garmin callback with the typed library-origin stack handoff.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T12:32:08.977Z",
+    "resolved_at": null
+  },
+  {
+    "id": 105,
+    "kind": "deviation",
+    "phase": "20",
+    "file": "scripts/v12-evidence-contract.test.mjs",
+    "line": null,
+    "description": "Corrected progress-settings occurrence expectation from three to four to preserve the canonical 107-state serial walk.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-13T21:26:12.235Z",
+    "resolved_at": null
   }
 ]
 ````

@@ -1,11 +1,5 @@
-import React, {
-  useEffect,
-  useRef,
-} from "react";
+import React from "react";
 import {
-  Modal,
-  ScrollView,
-  StyleSheet,
   Text,
   View,
   type TextStyle,
@@ -16,12 +10,17 @@ import {
   PrimaryAction,
   SecondaryAction,
 } from "./index";
+import { BottomSheet, useBottomSheetCancel } from "./BottomSheet";
 import {
-  radius,
-  space,
-  typeScale,
+  workoutTypeScale,
   useAppTheme,
 } from "../theme";
+
+function WorkoutStartCancelAction({ onClose }: Readonly<{ onClose: () => void }>) {
+  const cancelSheet = useBottomSheetCancel();
+
+  return <SecondaryAction label="Return to Workout" onPress={cancelSheet ?? onClose} />;
+}
 
 export function WorkoutStartSheet({
   visible,
@@ -41,100 +40,43 @@ export function WorkoutStartSheet({
   restoreFocusRef?: React.RefObject<View | null>;
 }>) {
   const { colors } = useAppTheme();
-  const headingRef = useRef<View>(null);
-
-  useEffect(() => {
-    if (visible) {
-      headingRef.current?.focus();
-    }
-  }, [visible]);
-
-  function close() {
-    onClose();
-    restoreFocusRef?.current?.focus();
-  }
+  const scheduledDay = scheduledDayId === undefined
+    ? undefined
+    : planDays.find((day) => day.id === scheduledDayId);
+  const otherPlanDays = planDays.filter((day) => day.id !== scheduledDayId);
 
   return (
-    <Modal
-      animationType="fade"
-      onRequestClose={close}
-      transparent
+    <BottomSheet
+      heading="Start a workout"
+      onCancel={onClose}
+      restoreFocusRef={restoreFocusRef}
+      scrollTestID="workout-start-sheet-content"
       visible={visible}
     >
-      <View
-        accessibilityViewIsModal
-        style={styles.backdrop}
-      >
-        <ScrollView
-          contentContainerStyle={styles.sheetContent}
-          keyboardShouldPersistTaps="handled"
-          style={[styles.sheet, { backgroundColor: colors.surface }]}
-          testID="workout-start-sheet-content"
-        >
-          <View
-            accessibilityRole="header"
-            accessible
-            focusable
-            ref={headingRef}
-          >
-            <Text
-              style={[
-                typeScale.screenTitle as TextStyle,
-                { color: colors.textPrimary },
-              ]}
-            >
-              Start a workout
-            </Text>
-          </View>
           <Text
             style={[
-              typeScale.body as TextStyle,
+              workoutTypeScale.body as TextStyle,
               { color: colors.textSecondary },
             ]}
           >
             Alternate, rest-day, and empty workouts do not advance your
             schedule. Completing the scheduled workout advances it.
           </Text>
-          {planDays.map((day) => (
-            day.id === scheduledDayId ? (
-              <PrimaryAction
-                key={day.id}
-                label={`Start ${day.name}`}
-                onPress={() => onStartDay(day.id)}
-                testID="scheduled-start-option"
-              />
-            ) : (
-              <PrimaryAction
-                key={day.id}
-                label={`Start ${day.name}`}
-                onPress={() => onStartDay(day.id)}
-              />
-            )
-          ))}
+          {scheduledDay === undefined ? null : <PrimaryAction
+            label={`Start ${scheduledDay.name}`}
+            onPress={() => onStartDay(scheduledDay.id)}
+            testID="scheduled-start-option"
+          />}
+          {otherPlanDays.map((day) => <PrimaryAction
+            key={day.id}
+            label={`Start ${day.name}`}
+            onPress={() => onStartDay(day.id)}
+          />)}
           <SecondaryAction
             label="Start empty workout"
             onPress={() => onStartEmpty()}
           />
-          <SecondaryAction label="Cancel" onPress={close} />
-        </ScrollView>
-      </View>
-    </Modal>
+          <WorkoutStartCancelAction onClose={onClose} />
+    </BottomSheet>
   );
 }
-
-const styles = StyleSheet.create({
-  backdrop: {
-    backgroundColor: "rgba(0, 0, 0, 0.48)",
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    borderTopLeftRadius: radius.emphasized,
-    borderTopRightRadius: radius.emphasized,
-    maxHeight: "90%",
-  },
-  sheetContent: {
-    gap: space[4],
-    padding: space[6],
-  },
-});

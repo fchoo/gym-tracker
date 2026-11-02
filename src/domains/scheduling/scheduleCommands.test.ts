@@ -23,6 +23,7 @@ import {
   changeScheduleTimeZone,
   completeScheduledOpportunity,
   consumeScheduleDateOverride,
+  createCollisionDecisionCommand,
   createScheduleVersionPreviewToken,
   markWeekdayOpportunityMissed,
   recordTrainAnyway,
@@ -43,6 +44,53 @@ import {
 
 const sha256 = async (value: string): Promise<string> =>
   createHash("sha256").update(value).digest("hex");
+
+const collisionOccurrence = {
+  version: 1 as const,
+  id: "strength-opportunity",
+  scheduleId: "strength-schedule",
+  scheduleVersionId: "strength-version",
+  planId: "strength-plan",
+  slotId: "strength-slot",
+  localDate: parseLocalDate("2026-08-17"),
+  timeZone: parseStoredTimeZone("Asia/Singapore"),
+  revision: 1,
+  state: "planned" as const,
+};
+
+describe("Phase 13 collision command validation", () => {
+  const valid = {
+    id: "collision-decision",
+    decision: "keep_both" as const,
+    occurredAtMs: 1,
+    strength: collisionOccurrence,
+    running: {
+      ...collisionOccurrence,
+      id: "running-opportunity",
+      scheduleId: "running-schedule",
+      scheduleVersionId: "running-version",
+      planId: "running-plan",
+      slotId: "running-slot",
+    },
+    prospectiveLocalDate: null,
+  };
+
+  it("captures the exact valid collision tuple", () => {
+    expect(createCollisionDecisionCommand(valid)).toEqual(valid);
+  });
+
+  it.each([
+    [{ ...valid, id: "" }, "schedule_identifier_invalid"],
+    [{ ...valid, occurredAtMs: -1 }, "schedule_identifier_invalid"],
+    [{ ...valid, strength: { ...valid.strength, id: "" } }, "schedule_identifier_invalid"],
+    [{ ...valid, running: { ...valid.running, revision: 0 } }, "schedule_identifier_invalid"],
+    [{ ...valid, decision: "unsupported" as never }, "schedule_action_invalid"],
+    [{ ...valid, prospectiveLocalDate: parseLocalDate("2026-08-18") }, "schedule_action_invalid"],
+    [{ ...valid, decision: "move_strength" as const }, "schedule_action_invalid"],
+  ])("rejects an invalid collision command", (input, code) => {
+    expect(() => createCollisionDecisionCommand(input)).toThrow(code);
+  });
+});
 
 const currentVersion = {
   id: "schedule-version-1",
@@ -266,6 +314,39 @@ describe("D-40/D-41 schedule version commands", () => {
     );
     expect(result).toMatchObject({ operation: "activate_schedule" });
     expect(invalidate).toHaveBeenCalledWith(result.invalidations);
+  });
+
+  it("stages an inactive schedule from its captured prior version", async () => {
+    const target = repository();
+    const base = await validActivationInput();
+    const targetSchedule = {
+      kind: "inactive" as const,
+      scheduleId: "schedule-inactive",
+      scheduleRevision: 2,
+      before: currentVersion,
+    };
+    const confirmationToken = await createScheduleVersionPreviewToken({
+      sha256,
+      preview: {
+        planId: base.planId,
+        expectedPlanRevision: base.expectedPlanRevision,
+        expectedActivePair: base.expectedActivePair,
+        targetSchedule,
+        after: base.next,
+      },
+    });
+
+    const result = await activateOwnedPlanSchedule({
+      repository: target,
+      invalidate: async () => undefined,
+      sha256,
+      input: { ...base, targetSchedule, confirmationToken },
+    });
+
+    expect(target.activateSchedule).toHaveBeenCalledWith(expect.objectContaining({
+      targetSchedule,
+    }));
+    expect(result.version.versionNumber).toBe(2);
   });
 
   it.each([
@@ -1306,6 +1387,18 @@ describe("schedule command validation and replay boundaries", () => {
       ...actionContext(target),
       input: commonActionInput,
     })).rejects.toMatchObject({ code: "schedule_action_invalid" });
+  });
+
+  it("rejects non-Train-anyway actions while an effective override exists", async () => {
+    const target = actionRepository({
+      ...rotationActionState,
+      hasEffectiveOverride: true,
+    });
+    await expect(skipOpportunity({
+      ...actionContext(target),
+      input: commonActionInput,
+    })).rejects.toMatchObject({ code: "schedule_action_invalid" });
+    expect(target.applyOpportunityAction).not.toHaveBeenCalled();
   });
 
   it("rejects missing or mismatched action state", async () => {

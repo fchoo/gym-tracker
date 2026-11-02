@@ -1,0 +1,16 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 20 installed quality probe support
+tags: [v1.2, phase-20, quality, development-test]
+---
+- assertTrue: ${PHASE20_QUALITY_NONCE != null}
+- assertTrue: ${PHASE20_QUALITY_ACTION == 'accessibility' || PHASE20_QUALITY_ACTION == 'performance'}
+- assertTrue: ${PHASE20_QUALITY_OPERATION != null}
+- assertTrue: ${PHASE20_QUALITY_SEQUENCE != null}
+- launchApp: { clearState: false, stopApp: true, permissions: { notifications: deny } }
+- openLink: "gymtracker-devtest://__phase20-quality-probe?nonce=${PHASE20_QUALITY_NONCE}&action=${PHASE20_QUALITY_ACTION}&operation=${PHASE20_QUALITY_OPERATION}&sequence=${PHASE20_QUALITY_SEQUENCE}"
+- extendedWaitUntil:
+    visible:
+      id: "phase20-quality-probe"
+    timeout: 30000
+- assertVisible:
+    id: "phase20-quality-root-.*"

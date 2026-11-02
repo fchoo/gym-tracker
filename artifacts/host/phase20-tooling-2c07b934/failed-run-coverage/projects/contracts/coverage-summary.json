@@ -1,0 +1,349 @@
+{
+  "scripts/v12-artifact-privacy.mjs": {
+    "statements": {
+      "total": 62,
+      "covered": 62,
+      "skipped": 0,
+      "pct": 100
+    },
+    "branches": {
+      "total": 35,
+      "covered": 35,
+      "skipped": 0,
+      "pct": 100
+    },
+    "functions": {
+      "total": 5,
+      "covered": 5,
+      "skipped": 0,
+      "pct": 100
+    },
+    "lines": {
+      "total": 62,
+      "covered": 62,
+      "skipped": 0,
+      "pct": 100
+    },
+    "uncovered_lines": [],
+    "uncovered_functions": [],
+    "uncovered_branches": []
+  },
+  "scripts/v12-atomic-shard-publication.mjs": {
+    "statements": {
+      "total": 520,
+      "covered": 506,
+      "skipped": 0,
+      "pct": 97.3
+    },
+    "branches": {
+      "total": 257,
+      "covered": 257,
+      "skipped": 0,
+      "pct": 100
+    },
+    "functions": {
+      "total": 38,
+      "covered": 38,
+      "skipped": 0,
+      "pct": 100
+    },
+    "lines": {
+      "total": 520,
+      "covered": 506,
+      "skipped": 0,
+      "pct": 97.3
+    },
+    "uncovered_lines": [
+      305,
+      345,
+      346,
+      347,
+      348,
+      351,
+      352,
+      353,
+      402,
+      403,
+      404,
+      405,
+      459,
+      460
+    ],
+    "uncovered_functions": [],
+    "uncovered_branches": []
+  },
+  "scripts/v12-calendar-artifact-transport.mjs": {
+    "statements": {
+      "total": 304,
+      "covered": 304,
+      "skipped": 0,
+      "pct": 100
+    },
+    "branches": {
+      "total": 120,
+      "covered": 114,
+      "skipped": 0,
+      "pct": 95
+    },
+    "functions": {
+      "total": 24,
+      "covered": 24,
+      "skipped": 0,
+      "pct": 100
+    },
+    "lines": {
+      "total": 304,
+      "covered": 304,
+      "skipped": 0,
+      "pct": 100
+    },
+    "uncovered_lines": [],
+    "uncovered_functions": [],
+    "uncovered_branches": [
+      {
+        "type": "branch",
+        "line": 49,
+        "location_line": 49,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 49,
+        "location_line": 49,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 52,
+        "location_line": 52,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 56,
+        "location_line": 56,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 88,
+        "location_line": 88,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 88,
+        "location_line": 88,
+        "index": 0
+      }
+    ]
+  },
+  "scripts/v12-sqlite-producer-contract.mjs": {
+    "statements": {
+      "total": 111,
+      "covered": 111,
+      "skipped": 0,
+      "pct": 100
+    },
+    "branches": {
+      "total": 65,
+      "covered": 65,
+      "skipped": 0,
+      "pct": 100
+    },
+    "functions": {
+      "total": 10,
+      "covered": 10,
+      "skipped": 0,
+      "pct": 100
+    },
+    "lines": {
+      "total": 111,
+      "covered": 111,
+      "skipped": 0,
+      "pct": 100
+    },
+    "uncovered_lines": [],
+    "uncovered_functions": [],
+    "uncovered_branches": []
+  },
+  "scripts/v12-sqlite-shard.mjs": {
+    "statements": {
+      "total": 282,
+      "covered": 265,
+      "skipped": 0,
+      "pct": 93.97
+    },
+    "branches": {
+      "total": 119,
+      "covered": 100,
+      "skipped": 0,
+      "pct": 84.03
+    },
+    "functions": {
+      "total": 24,
+      "covered": 20,
+      "skipped": 0,
+      "pct": 83.33
+    },
+    "lines": {
+      "total": 282,
+      "covered": 265,
+      "skipped": 0,
+      "pct": 93.97
+    },
+    "uncovered_lines": [
+      215,
+      216,
+      268,
+      269,
+      270,
+      271,
+      272,
+      273,
+      274,
+      275,
+      276,
+      277,
+      278,
+      279,
+      280,
+      281,
+      282
+    ],
+    "uncovered_functions": [
+      {
+        "name": "executeNative",
+        "line": 214
+      },
+      {
+        "name": "executeNative",
+        "line": 272
+      },
+      {
+        "name": "writeObservation",
+        "line": 273
+      },
+      {
+        "name": "writeFailureReceipt",
+        "line": 274
+      }
+    ],
+    "uncovered_branches": [
+      {
+        "type": "branch",
+        "line": 267,
+        "location_line": 267,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 32,
+        "location_line": 32,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 52,
+        "location_line": 52,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 57,
+        "location_line": 57,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 61,
+        "location_line": 61,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 99,
+        "location_line": 99,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 106,
+        "location_line": 106,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 104,
+        "location_line": 104,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 151,
+        "location_line": 151,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 156,
+        "location_line": 156,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 181,
+        "location_line": 181,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 185,
+        "location_line": 185,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 199,
+        "location_line": 199,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 200,
+        "location_line": 200,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 200,
+        "location_line": 200,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 202,
+        "location_line": 202,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 206,
+        "location_line": 206,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 210,
+        "location_line": 210,
+        "index": 0
+      },
+      {
+        "type": "branch",
+        "line": 214,
+        "location_line": 214,
+        "index": 0
+      }
+    ]
+  }
+}

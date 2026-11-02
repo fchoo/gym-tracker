@@ -1,6 +1,6 @@
 export const REST_NOTIFICATION_CHANNEL_IDS = Object.freeze({
-  soundVibration: "workout-rest-v2-sound-vibration",
-  soundOnly: "workout-rest-v2-sound-only",
+  soundVibration: "workout-rest-v3-sound-vibration",
+  soundOnly: "workout-rest-v3-sound-only",
   vibrationOnly: "workout-rest-v2-vibration-only",
   silent: "workout-rest-v2-silent",
 } as const);

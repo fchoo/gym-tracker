@@ -1,0 +1,1215 @@
+TAP version 13
+# Subtest: locks D20-06 and Phase 12 budgets before any collection
+ok 1 - locks D20-06 and Phase 12 budgets before any collection
+  ---
+  duration_ms: 0.483458
+  type: 'test'
+  ...
+# Subtest: validates retained raw samples and deterministic p95 without fabricated verdicts
+ok 2 - validates retained raw samples and deterministic p95 without fabricated verdicts
+  ---
+  duration_ms: 0.338791
+  type: 'test'
+  ...
+# Subtest: rejects missing or invalid samples, drifted budgets, and mismatched identity
+ok 3 - rejects missing or invalid samples, drifted budgets, and mismatched identity
+  ---
+  duration_ms: 0.55175
+  type: 'test'
+  ...
+# Subtest: collector stays deferred without a later authorized native execution
+ok 4 - collector stays deferred without a later authorized native execution
+  ---
+  duration_ms: 0.123292
+  type: 'test'
+  ...
+# Subtest: performance shard keeps the complete raw observation schema review-required
+ok 5 - performance shard keeps the complete raw observation schema review-required
+  ---
+  duration_ms: 20.53025
+  type: 'test'
+  ...
+# Subtest: release collector publishes immutable raw warm/cold and frame observations without a verdict
+ok 6 - release collector publishes immutable raw warm/cold and frame observations without a verdict
+  ---
+  duration_ms: 6.9105
+  type: 'test'
+  ...
+# Subtest: the native test APK build retries launcher resolution after install
+ok 7 - the native test APK build retries launcher resolution after install
+  ---
+  duration_ms: 1.409667
+  type: 'test'
+  ...
+# Subtest: the v1.2 acceptance build accepts the explicit one-build guard without changing legacy suites
+ok 8 - the v1.2 acceptance build accepts the explicit one-build guard without changing legacy suites
+  ---
+  duration_ms: 0.171666
+  type: 'test'
+  ...
+# Subtest: single-build consumes a durable source-scoped claim, survives crash retry, and rejects a live owner
+ok 9 - single-build consumes a durable source-scoped claim, survives crash retry, and rejects a live owner
+  ---
+  duration_ms: 1738.653583
+  type: 'test'
+  ...
+# Subtest: artifact publication is no-clobber and writes the build manifest last
+ok 10 - artifact publication is no-clobber and writes the build manifest last
+  ---
+  duration_ms: 0.295375
+  type: 'test'
+  ...
+# Subtest: a normally failed single-build attempt remains consumed for the same source/run scope
+ok 11 - a normally failed single-build attempt remains consumed for the same source/run scope
+  ---
+  duration_ms: 1014.032708
+  type: 'test'
+  ...
+# Subtest: the v1.2 acceptance build uses the canonical restoration digest contract
+ok 12 - the v1.2 acceptance build uses the canonical restoration digest contract
+  ---
+  duration_ms: 0.306792
+  type: 'test'
+  ...
+# Subtest: the v1.2 acceptance build validates predecessors and uses privacy-safe doctor mode before freezing source
+ok 13 - the v1.2 acceptance build validates predecessors and uses privacy-safe doctor mode before freezing source
+  ---
+  duration_ms: 0.192667
+  type: 'test'
+  ...
+# Subtest: the v1.2 acceptance build resolves one absolute Git and retains its attestation
+ok 14 - the v1.2 acceptance build resolves one absolute Git and retains its attestation
+  ---
+  duration_ms: 0.209875
+  type: 'test'
+  ...
+# Subtest: creates a canonical identity-bound live run manifest with a UTC run ID
+ok 15 - creates a canonical identity-bound live run manifest with a UTC run ID
+  ---
+  duration_ms: 1.741083
+  type: 'test'
+  ...
+# Subtest: rejects run reuse, overwrite, rename-to-pass, and pre-existing outputs
+ok 16 - rejects run reuse, overwrite, rename-to-pass, and pre-existing outputs
+  ---
+  duration_ms: 0.310167
+  type: 'test'
+  ...
+# Subtest: allows only the explicit pre-build schema fixture to omit artifact and device evidence
+ok 17 - allows only the explicit pre-build schema fixture to omit artifact and device evidence
+  ---
+  duration_ms: 0.118917
+  type: 'test'
+  ...
+# Subtest: fails closed on substituted, private, hostile, or incomplete identity values
+ok 18 - fails closed on substituted, private, hostile, or incomplete identity values
+  ---
+  duration_ms: 0.188667
+  type: 'test'
+  ...
+# Subtest: accepts only the explicit create and build-only verification CLI modes
+ok 19 - accepts only the explicit create and build-only verification CLI modes
+  ---
+  duration_ms: 0.124959
+  type: 'test'
+  ...
+# Subtest: canonicalizes non-zero millisecond CLI timestamps to an exact UTC run identity
+ok 20 - canonicalizes non-zero millisecond CLI timestamps to an exact UTC run identity
+  ---
+  duration_ms: 2658.759875
+  type: 'test'
+  ...
+# Subtest: Phase 20 doctor emits only pinned versions and a hashed device identity
+ok 21 - Phase 20 doctor emits only pinned versions and a hashed device identity
+  ---
+  duration_ms: 1692.212584
+  type: 'test'
+  ...
+# Subtest: Phase 20 doctor failures are stable and path-free
+ok 22 - Phase 20 doctor failures are stable and path-free
+  ---
+  duration_ms: 310.692625
+  type: 'test'
+  ...
+# Subtest: generates all 107 ordered browser-walk occurrences with an approved reference binding
+ok 23 - generates all 107 ordered browser-walk occurrences with an approved reference binding
+  ---
+  duration_ms: 81.124666
+  type: 'test'
+  ...
+# Subtest: an explicitly configured but unavailable external authority fails with a stable code
+ok 24 - an explicitly configured but unavailable external authority fails with a stable code
+  ---
+  duration_ms: 42.878709
+  type: 'test'
+  ...
+# Subtest: keeps browser-walk names exact and resolves authority without a private path
+ok 25 - keeps browser-walk names exact and resolves authority without a private path
+  ---
+  duration_ms: 64.528542
+  type: 'test'
+  ...
+# Subtest: attended rows retain safe immutable PNG descriptors and preserve a failed row as a failed record
+ok 26 - attended rows retain safe immutable PNG descriptors and preserve a failed row as a failed record
+  ---
+  duration_ms: 9.994666
+  type: 'test'
+  ...
+# Subtest: attended validation rejects missing, tampered, duplicate, stale, and unsafe PNG descriptors
+ok 27 - attended validation rejects missing, tampered, duplicate, stale, and unsafe PNG descriptors
+  ---
+  duration_ms: 4.885375
+  type: 'test'
+  ...
+# Subtest: attended PNGs require an exact trusted synthetic-state and content-review attestation
+ok 28 - attended PNGs require an exact trusted synthetic-state and content-review attestation
+  ---
+  duration_ms: 4.988916
+  type: 'test'
+  ...
+# Subtest: accepts an explicit ephemeral device only when its canonical live identity hash matches
+ok 29 - accepts an explicit ephemeral device only when its canonical live identity hash matches
+  ---
+  duration_ms: 1.04525
+  type: 'test'
+  ...
+# Subtest: accepts ANDROID_SERIAL as an equally ephemeral device lease
+ok 30 - accepts ANDROID_SERIAL as an equally ephemeral device lease
+  ---
+  duration_ms: 0.121209
+  type: 'test'
+  ...
+# Subtest: selects exactly one online adb device when no explicit device or ANDROID_SERIAL is supplied
+ok 31 - selects exactly one online adb device when no explicit device or ANDROID_SERIAL is supplied
+  ---
+  duration_ms: 0.193375
+  type: 'test'
+  ...
+# Subtest: fails closed for identity drift and absent or ambiguous online device selection without revealing a serial
+ok 32 - fails closed for identity drift and absent or ambiguous online device selection without revealing a serial
+  ---
+  duration_ms: 0.34525
+  type: 'test'
+  ...
+# Subtest: rejects raw manifest serial fields and keeps errors and log-safe messages free of the selected serial
+ok 33 - rejects raw manifest serial fields and keeps errors and log-safe messages free of the selected serial
+  ---
+  duration_ms: 0.631791
+  type: 'test'
+  ...
+# Subtest: rejects malformed manifests, leases, ADB state, duplicate listings, and malformed live facts
+ok 34 - rejects malformed manifests, leases, ADB state, duplicate listings, and malformed live facts
+  ---
+  duration_ms: 0.299834
+  type: 'test'
+  ...
+# Subtest: Phase 20 gates reject the wrong Node runtime before manifest or test work
+ok 35 - Phase 20 gates reject the wrong Node runtime before manifest or test work
+  ---
+  duration_ms: 45.062583
+  type: 'test'
+  ...
+# Subtest: evidence manifests match discovery and PR CI executes the active aggregate gates
+ok 36 - evidence manifests match discovery and PR CI executes the active aggregate gates
+  ---
+  duration_ms: 60.415708
+  type: 'test'
+  ...
+# Subtest: every Phase 20 black-box child process has an explicit test-only timeout
+ok 37 - every Phase 20 black-box child process has an explicit test-only timeout
+  ---
+  duration_ms: 141.847042
+  type: 'test'
+  ...
+# Subtest: the exact Phase 18 evidence subprocess owns a local timeout
+ok 38 - the exact Phase 18 evidence subprocess owns a local timeout
+  ---
+  duration_ms: 12.63325
+  type: 'test'
+  ...
+# Subtest: the Phase 20 coverage CLI rejects a skipped pidfd report before dequeuing projects
+ok 39 - the Phase 20 coverage CLI rejects a skipped pidfd report before dequeuing projects
+  ---
+  duration_ms: 627.452792
+  type: 'test'
+  ...
+# Subtest: the Linux pidfd helper is a normal source-bound Phase 20 exact coverage gate
+ok 40 - the Linux pidfd helper is a normal source-bound Phase 20 exact coverage gate
+  ---
+  duration_ms: 0.2575
+  type: 'test'
+  ...
+# Subtest: hashes the committed native tree and rejects dirty implementation source
+ok 41 - hashes the committed native tree and rejects dirty implementation source
+  ---
+  duration_ms: 4952.074083
+  type: 'test'
+  ...
+# Subtest: ignores generated coverage directories without ignoring similarly named source files
+ok 42 - ignores generated coverage directories without ignoring similarly named source files
+  ---
+  duration_ms: 2518.433542
+  type: 'test'
+  ...
+# Subtest: ignores only the generated root .coverage database while retaining similarly named source
+ok 43 - ignores only the generated root .coverage database while retaining similarly named source
+  ---
+  duration_ms: 2687.193541
+  type: 'test'
+  ...
+# Subtest: recomputes planning, prototype, and fixture authority outside the implementation-tree exclusion
+ok 44 - recomputes planning, prototype, and fixture authority outside the implementation-tree exclusion
+  ---
+  duration_ms: 2564.8605
+  type: 'test'
+  ...
+# Subtest: resolves the checked-in hash-matched prototype authority without an external root
+ok 45 - resolves the checked-in hash-matched prototype authority without an external root
+  ---
+  duration_ms: 10.341917
+  type: 'test'
+  ...
+# Subtest: source operations use one explicitly attested absolute Git executable
+ok 46 - source operations use one explicitly attested absolute Git executable
+  ---
+  duration_ms: 2858.393
+  type: 'test'
+  ...
+# Subtest: plans source-only accessibility observations without native execution
+ok 47 - plans source-only accessibility observations without native execution
+  ---
+  duration_ms: 8.030125
+  type: 'test'
+  ...
+# Subtest: generated SHL registry exactly mirrors the Phase 14 action and postcondition contract
+ok 48 - generated SHL registry exactly mirrors the Phase 14 action and postcondition contract
+  ---
+  duration_ms: 0.595875
+  type: 'test'
+  ...
+# Subtest: rejects old fixture-shaped and incomplete accessibility evidence
+ok 49 - rejects old fixture-shaped and incomplete accessibility evidence
+  ---
+  duration_ms: 1.86925
+  type: 'test'
+  ...
+# Subtest: writes exact semantic and geometry observations while keeping attended assistive-tech paths excluded
+not ok 50 - writes exact semantic and geometry observations while keeping attended assistive-tech paths excluded
+  ---
+  duration_ms: 3.948791
+  type: 'test'
+  location: '/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-accessibility-shard.test.mjs:41:1'
+  failureType: 'testCodeFailure'
+  error: 'v12_phase14_retention_manifest_invalid'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    fail (file:///Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-phase14-retention.mjs:18:32)
+    parseJson (file:///Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-phase14-retention.mjs:61:59)
+    createV12RetainedPhase14Closure (file:///Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-phase14-retention.mjs:106:3)
+    executeLiveV12AccessibilityShard (file:///Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-accessibility-shard.mjs:73:20)
+    TestContext.<anonymous> (file:///Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/v12-accessibility-shard.test.mjs:55:18)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+  ...
+# Subtest: retains and revalidates the complete Phase 14 closure after the source tree is removed
+ok 51 - retains and revalidates the complete Phase 14 closure after the source tree is removed
+  ---
+  duration_ms: 19.437125
+  type: 'test'
+  ...
+# Subtest: shell requirement receipts are keyed, permutation-safe, and fail closed on missing or forged members
+ok 52 - shell requirement receipts are keyed, permutation-safe, and fail closed on missing or forged members
+  ---
+  duration_ms: 5.963875
+  type: 'test'
+  ...
+# Subtest: recursive privacy validation accepts bounded technical evidence
+ok 53 - recursive privacy validation accepts bounded technical evidence
+  ---
+  duration_ms: 2.790958
+  type: 'test'
+  ...
+# Subtest: recursive privacy validation rejects credentials, source rows, routes, health data, SQL params, filenames, and raw payloads
+ok 54 - recursive privacy validation rejects credentials, source rows, routes, health data, SQL params, filenames, and raw payloads
+  ---
+  duration_ms: 0.418416
+  type: 'test'
+  ...
+# Subtest: binary artifacts are not decoded as text but path metadata remains bounded
+ok 55 - binary artifacts are not decoded as text but path metadata remains bounded
+  ---
+  duration_ms: 0.111541
+  type: 'test'
+  ...
+# Subtest: Phase 20 shard and seal writers are bound to immutable publication
+ok 56 - Phase 20 shard and seal writers are bound to immutable publication
+  ---
+  duration_ms: 2.894792
+  type: 'test'
+  ...
+# Subtest: completed publication is verifiable and interrupted publications remain invalid with one receipt
+ok 57 - completed publication is verifiable and interrupted publications remain invalid with one receipt
+  ---
+  duration_ms: 136.624583
+  type: 'test'
+  ...
+# Subtest: publication rejects staging, symlink, and traversal substitution
+ok 58 - publication rejects staging, symlink, and traversal substitution
+  ---
+  duration_ms: 65.931083
+  type: 'test'
+  ...
+# Subtest: atomic publisher rejects traversal, second writes, failed retries, and symlink attempts
+ok 59 - atomic publisher rejects traversal, second writes, failed retries, and symlink attempts
+  ---
+  duration_ms: 126.382709
+  type: 'test'
+  ...
+# Subtest: atomic publisher seals adapter execution provenance after production completes
+ok 60 - atomic publisher seals adapter execution provenance after production completes
+  ---
+  duration_ms: 59.532375
+  type: 'test'
+  ...
+# Subtest: atomic publisher rejects malformed execution provenance before publication
+ok 61 - atomic publisher rejects malformed execution provenance before publication
+  ---
+  duration_ms: 37.124375
+  type: 'test'
+  ...
+# Subtest: Garmin atomic publication records only production-attested execution origin
+ok 62 - Garmin atomic publication records only production-attested execution origin
+  ---
+  duration_ms: 66.419875
+  type: 'test'
+  ...
+# Subtest: publisher rejects symlinked workspace and run ancestors before creating claims, staging, publication, or failures
+ok 63 - publisher rejects symlinked workspace and run ancestors before creating claims, staging, publication, or failures
+  ---
+  duration_ms: 4.3955
+  type: 'test'
+  ...
+# Subtest: exclusive claim prevents concurrent producers from both running
+ok 64 - exclusive claim prevents concurrent producers from both running
+  ---
+  duration_ms: 358.113542
+  type: 'test'
+  ...
+# Subtest: publication and failure compete through one no-clobber claim
+ok 65 - publication and failure compete through one no-clobber claim
+  ---
+  duration_ms: 296.328041
+  type: 'test'
+  ...
+# Subtest: crash after member promotion recovers idempotently and publishes the manifest last
+ok 66 - crash after member promotion recovers idempotently and publishes the manifest last
+  ---
+  duration_ms: 113.702584
+  type: 'test'
+  ...
+# Subtest: crash immediately after the manifest link cleans validated dead claim and stage residue idempotently
+ok 67 - crash immediately after the manifest link cleans validated dead claim and stage residue idempotently
+  ---
+  duration_ms: 106.196542
+  type: 'test'
+  ...
+# Subtest: a reused live PID cannot keep a dead atomic owner claim forever
+ok 68 - a reused live PID cannot keep a dead atomic owner claim forever
+  ---
+  duration_ms: 112.253833
+  type: 'test'
+  ...
+# Subtest: existing publication recovery rejects unvalidated staged residue
+ok 69 - existing publication recovery rejects unvalidated staged residue
+  ---
+  duration_ms: 99.073166
+  type: 'test'
+  ...
+# Subtest: failure receipts use a bounded code and only a digest of the raw error
+ok 70 - failure receipts use a bounded code and only a digest of the raw error
+  ---
+  duration_ms: 25.727709
+  type: 'test'
+  ...
+# Subtest: Calendar artifact transport recovers the result-before-manifest crash boundary idempotently
+ok 71 - Calendar artifact transport recovers the result-before-manifest crash boundary idempotently
+  ---
+  duration_ms: 52.685375
+  type: 'test'
+  ...
+# Subtest: Calendar result-only recovery fails closed before publishing a manifest
+ok 72 - Calendar result-only recovery fails closed before publishing a manifest
+  ---
+  duration_ms: 28.667625
+  type: 'test'
+  ...
+# Subtest: Calendar subprocess publishes 69 exact nonce-bound probe receipts
+ok 73 - Calendar subprocess publishes 69 exact nonce-bound probe receipts
+  ---
+  duration_ms: 8655.4865
+  type: 'test'
+  ...
+# Subtest: Calendar comparison creates individually hashed artifacts while keeping native execution review-required
+ok 74 - Calendar comparison creates individually hashed artifacts while keeping native execution review-required
+  ---
+  duration_ms: 7.617625
+  type: 'test'
+  ...
+# Subtest: Calendar comparison directories and every artifact are immutable
+ok 75 - Calendar comparison directories and every artifact are immutable
+  ---
+  duration_ms: 7.926084
+  type: 'test'
+  ...
+# Subtest: Calendar comparison and run journals reject symlinked parent directories
+ok 76 - Calendar comparison and run journals reject symlinked parent directories
+  ---
+  duration_ms: 2.003542
+  type: 'test'
+  ...
+# Subtest: Calendar run journals resume pending stages and refuse completed or failed run overwrite
+ok 77 - Calendar run journals resume pending stages and refuse completed or failed run overwrite
+  ---
+  duration_ms: 5.95525
+  type: 'test'
+  ...
+# Subtest: recursive canonical JSON preserves and sorts nested evidence descriptors
+ok 78 - recursive canonical JSON preserves and sorts nested evidence descriptors
+  ---
+  duration_ms: 0.122542
+  type: 'test'
+  ...
+# Subtest: the shared comparison schema accepts a complete identity-bound live PASS
+ok 79 - the shared comparison schema accepts a complete identity-bound live PASS
+  ---
+  duration_ms: 10.671459
+  type: 'test'
+  ...
+# Subtest: Calendar comparison rejects stale hashes, geometry mismatches, bad 25 percent traces, and owner-gate corruption
+ok 80 - Calendar comparison rejects stale hashes, geometry mismatches, bad 25 percent traces, and owner-gate corruption
+  ---
+  duration_ms: 4.356292
+  type: 'test'
+  ...
+# Subtest: Calendar comparison keeps committed semantics stable while the title previews at the inclusive threshold
+ok 81 - Calendar comparison keeps committed semantics stable while the title previews at the inclusive threshold
+  ---
+  duration_ms: 4.426584
+  type: 'test'
+  ...
+# Subtest: threshold traces bind the commanded marker separately from quantized measured dx
+ok 82 - threshold traces bind the commanded marker separately from quantized measured dx
+  ---
+  duration_ms: 0.260625
+  type: 'test'
+  ...
+# Subtest: every Calendar diagnostic stage has a truthful stage-specific trace schema
+ok 83 - every Calendar diagnostic stage has a truthful stage-specific trace schema
+  ---
+  duration_ms: 0.900917
+  type: 'test'
+  ...
+# Subtest: Calendar map requires the exact source-owned 96-case ledger
+ok 84 - Calendar map requires the exact source-owned 96-case ledger
+  ---
+  duration_ms: 1.166667
+  type: 'test'
+  ...
+# Subtest: Calendar comparison rejects unknown privacy-bearing fields in maps, traces, and results
+ok 85 - Calendar comparison rejects unknown privacy-bearing fields in maps, traces, and results
+  ---
+  duration_ms: 2.016791
+  type: 'test'
+  ...
+# Subtest: Calendar comparison rejects personal data in allowed reference and artifact path fields
+ok 86 - Calendar comparison rejects personal data in allowed reference and artifact path fields
+  ---
+  duration_ms: 3.731625
+  type: 'test'
+  ...
+# Subtest: Calendar reference coverage is bound to the exact source-owned 64-configuration and state registry
+ok 87 - Calendar reference coverage is bound to the exact source-owned 64-configuration and state registry
+  ---
+  duration_ms: 3.787417
+  type: 'test'
+  ...
+# Subtest: the checked-in Calendar map binds every reference byte to the Revision 18 source manifest
+ok 88 - the checked-in Calendar map binds every reference byte to the Revision 18 source manifest
+  ---
+  duration_ms: 3.809875
+  type: 'test'
+  ...
+# Subtest: the Phase 20 Calendar runner exposes every real stage but cannot award a native verdict
+ok 89 - the Phase 20 Calendar runner exposes every real stage but cannot award a native verdict
+  ---
+  duration_ms: 1.228792
+  type: 'test'
+  ...
+# Subtest: the production Calendar contract owns the exact 35-stage order and stage-specific schema groups
+ok 90 - the production Calendar contract owns the exact 35-stage order and stage-specific schema groups
+  ---
+  duration_ms: 0.943084
+  type: 'test'
+  ...
+# Subtest: a real pointer observation is validated and its status is derived only by host assertions
+ok 91 - a real pointer observation is validated and its status is derived only by host assertions
+  ---
+  duration_ms: 3.437125
+  type: 'test'
+  ...
+# Subtest: host validation distinguishes every commanded threshold and exact release outcome
+ok 92 - host validation distinguishes every commanded threshold and exact release outcome
+  ---
+  duration_ms: 2.428042
+  type: 'test'
+  ...
+# Subtest: host validation rejects duplicate callbacks, modeled clocks, and wrong month semantics
+ok 93 - host validation rejects duplicate callbacks, modeled clocks, and wrong month semantics
+  ---
+  duration_ms: 0.838417
+  type: 'test'
+  ...
+# Subtest: settlement proof rejects wrong epochs, duplicate callbacks, and duplicate completion navigation
+ok 94 - settlement proof rejects wrong epochs, duplicate callbacks, and duplicate completion navigation
+  ---
+  duration_ms: 1.011709
+  type: 'test'
+  ...
+# Subtest: a structurally real threshold miss becomes FAIL instead of trusting a requested expected outcome
+ok 95 - a structurally real threshold miss becomes FAIL instead of trusting a requested expected outcome
+  ---
+  duration_ms: 0.376958
+  type: 'test'
+  ...
+# Subtest: the validator rejects sequential fake clocks, missing callbacks, generic labels, and request echoes
+ok 96 - the validator rejects sequential fake clocks, missing callbacks, generic labels, and request echoes
+  ---
+  duration_ms: 0.638208
+  type: 'test'
+  ...
+# Subtest: cancel ends with the actual cancelled callback and rejects a fabricated pointer-up
+ok 97 - cancel ends with the actual cancelled callback and rejects a fabricated pointer-up
+  ---
+  duration_ms: 1.158333
+  type: 'test'
+  ...
+# Subtest: collapse proves the inverse morph endpoint and selected-day focus restoration
+ok 98 - collapse proves the inverse morph endpoint and selected-day focus restoration
+  ---
+  duration_ms: 1.705959
+  type: 'test'
+  ...
+# Subtest: reduced motion contains separate normal and runtime-toggled callback sequences
+ok 99 - reduced motion contains separate normal and runtime-toggled callback sequences
+  ---
+  duration_ms: 1.057666
+  type: 'test'
+  ...
+# Subtest: row geometry rejects duplicated fixed bounds
+ok 100 - row geometry rejects duplicated fixed bounds
+  ---
+  duration_ms: 0.417042
+  type: 'test'
+  ...
+# Subtest: DEV-02 is derived from screenshot pixels and contrast, never a theme token echo
+ok 101 - DEV-02 is derived from screenshot pixels and contrast, never a theme token echo
+  ---
+  duration_ms: 2.261291
+  type: 'test'
+  ...
+# Subtest: terminal selection rejects pre-stage and duplicate nonce markers
+ok 102 - terminal selection rejects pre-stage and duplicate nonce markers
+  ---
+  duration_ms: 0.975792
+  type: 'test'
+  ...
+# Subtest: coverage rejects missing, duplicate, reordered, and missing-group stage results
+ok 103 - coverage rejects missing, duplicate, reordered, and missing-group stage results
+  ---
+  duration_ms: 0.292958
+  type: 'test'
+  ...
+# Subtest: Calendar shard rejects missing, duplicated, or non-PASS probe receipts
+ok 104 - Calendar shard rejects missing, duplicated, or non-PASS probe receipts
+  ---
+  duration_ms: 96.50725
+  type: 'test'
+  ...
+# Subtest: Calendar shard rejects the retired generic observation envelope
+ok 105 - Calendar shard rejects the retired generic observation envelope
+  ---
+  duration_ms: 0.122084
+  type: 'test'
+  ...
+# Subtest: Calendar shard rejects producer verdicts and sample-only evidence
+ok 106 - Calendar shard rejects producer verdicts and sample-only evidence
+  ---
+  duration_ms: 0.078375
+  type: 'test'
+  ...
+# Subtest: Calendar shard rejects test-fixture origin even when the build manifest claims live mode
+ok 107 - Calendar shard rejects test-fixture origin even when the build manifest claims live mode
+  ---
+  duration_ms: 16.011375
+  type: 'test'
+  ...
+# Subtest: Calendar shard writes the exact stage-specific host-derived observation set
+ok 108 - Calendar shard writes the exact stage-specific host-derived observation set
+  ---
+  duration_ms: 22.01
+  type: 'test'
+  ...
+# Subtest: Calendar shard streams compact staged artifacts without changing published schemas
+ok 109 - Calendar shard streams compact staged artifacts without changing published schemas
+  ---
+  duration_ms: 5552.124667
+  type: 'test'
+  ...
+# Subtest: Calendar shard exposes exhaustive stage order and strict immutable CLI arguments
+ok 110 - Calendar shard exposes exhaustive stage order and strict immutable CLI arguments
+  ---
+  duration_ms: 0.182584
+  type: 'test'
+  ...
+# Subtest: Calendar shard rejects the legacy homogeneous pointer receipt for all stage groups
+ok 111 - Calendar shard rejects the legacy homogeneous pointer receipt for all stage groups
+  ---
+  duration_ms: 0.927417
+  type: 'test'
+  ...
+# Subtest: Calendar shard rejects visibility-only stages that do not carry an executed flow-bound receipt
+ok 112 - Calendar shard rejects visibility-only stages that do not carry an executed flow-bound receipt
+  ---
+  duration_ms: 0.184625
+  type: 'test'
+  ...
+# Subtest: Calendar shard retains the lease when settings read-back restoration fails
+ok 113 - Calendar shard retains the lease when settings read-back restoration fails
+  ---
+  duration_ms: 17.771375
+  type: 'test'
+  ...
+# Subtest: canonical restoration digest preserves the build manifest's exact ordered settings bytes
+ok 114 - canonical restoration digest preserves the build manifest's exact ordered settings bytes
+  ---
+  duration_ms: 1.34125
+  type: 'test'
+  ...
+# Subtest: canonical restoration snapshot rejects missing, multiline, and extra values
+ok 115 - canonical restoration snapshot rejects missing, multiline, and extra values
+  ---
+  duration_ms: 0.277083
+  type: 'test'
+  ...
+# Subtest: derives the immutable 172-row requirement inventory in canonical source order
+ok 116 - derives the immutable 172-row requirement inventory in canonical source order
+  ---
+  duration_ms: 11.305041
+  type: 'test'
+  ...
+# Subtest: rejects duplicate, unknown, and REQUIREMENTS.md-drifted source inventory
+ok 117 - rejects duplicate, unknown, and REQUIREMENTS.md-drifted source inventory
+  ---
+  duration_ms: 24.6155
+  type: 'test'
+  ...
+# Subtest: preserves 107 ordered browser occurrences and expands static coverage into all 64 configurations
+ok 118 - preserves 107 ordered browser occurrences and expands static coverage into all 64 configurations
+  ---
+  duration_ms: 8.495708
+  type: 'test'
+  ...
+# Subtest: rejects browser evidence state collapse, inherited v1.1 evidence, and false N/A
+ok 119 - rejects browser evidence state collapse, inherited v1.1 evidence, and false N/A
+  ---
+  duration_ms: 11.083583
+  type: 'test'
+  ...
+# Subtest: uses exactly six validator-owned verdicts and keeps accepted exceptions out of PASS counts
+ok 120 - uses exactly six validator-owned verdicts and keeps accepted exceptions out of PASS counts
+  ---
+  duration_ms: 8.521959
+  type: 'test'
+  ...
+# Subtest: does not let producers author verdicts and keeps settled baselines as technical evidence
+ok 121 - does not let producers author verdicts and keeps settled baselines as technical evidence
+  ---
+  duration_ms: 7.205041
+  type: 'test'
+  ...
+# Subtest: reads only canonical structured files and rejects source path substitution
+ok 122 - reads only canonical structured files and rejects source path substitution
+  ---
+  duration_ms: 0.559958
+  type: 'test'
+  ...
+# Subtest: Garmin shard exposes an exact ordered registry and a strict run CLI
+ok 123 - Garmin shard exposes an exact ordered registry and a strict run CLI
+  ---
+  duration_ms: 1.136667
+  type: 'test'
+  ...
+# Subtest: Garmin shard rejects digest-only records, missing cases, identity drift, and retained verdict authority
+ok 124 - Garmin shard rejects digest-only records, missing cases, identity drift, and retained verdict authority
+  ---
+  duration_ms: 2.397042
+  type: 'test'
+  ...
+# Subtest: Garmin verify requires the atomic completion manifest, exact four JSON schemas, all receipts, and 18 passing JUnit outcomes
+ok 125 - Garmin verify requires the atomic completion manifest, exact four JSON schemas, all receipts, and 18 passing JUnit outcomes
+  ---
+  duration_ms: 1.526416
+  type: 'test'
+  ...
+# Subtest: auth_required writes only a bounded failure receipt and no shard members
+ok 126 - auth_required writes only a bounded failure receipt and no shard members
+  ---
+  duration_ms: 0.215542
+  type: 'test'
+  ...
+# Subtest: Garmin subprocess execute publishes atomically and the independent CLI verifies filesystem output
+ok 127 - Garmin subprocess execute publishes atomically and the independent CLI verifies filesystem output
+  ---
+  duration_ms: 270.544875
+  type: 'test'
+  ...
+# Subtest: mandatory v1.2 Maestro deep links have source-owned registered routes
+ok 128 - mandatory v1.2 Maestro deep links have source-owned registered routes
+  ---
+  duration_ms: 2.225125
+  type: 'test'
+  ...
+# Subtest: --verify reads retained artifacts without constructing a live native adapter
+ok 129 - --verify reads retained artifacts without constructing a live native adapter
+  ---
+  duration_ms: 33.656708
+  type: 'test'
+  ...
+# Subtest: --execute validates and byte-stably replays an existing atomic publication without a device
+ok 130 - --execute validates and byte-stably replays an existing atomic publication without a device
+  ---
+  duration_ms: 144.676125
+  type: 'test'
+  ...
+# Subtest: --execute recovers a completed staged publication before adapter construction
+ok 131 - --execute recovers a completed staged publication before adapter construction
+  ---
+  duration_ms: 147.906542
+  type: 'test'
+  ...
+# Subtest: Garmin host derives all 18 PASS statuses only from exact operation pairs
+ok 132 - Garmin host derives all 18 PASS statuses only from exact operation pairs
+  ---
+  duration_ms: 1.28975
+  type: 'test'
+  ...
+# Subtest: Garmin host rejects a test-only evidence source and malformed receipt pair
+ok 133 - Garmin host rejects a test-only evidence source and malformed receipt pair
+  ---
+  duration_ms: 0.278334
+  type: 'test'
+  ...
+# Subtest: Garmin host derives typed FAIL for mismatched bridge operation
+ok 134 - Garmin host derives typed FAIL for mismatched bridge operation
+  ---
+  duration_ms: 0.146167
+  type: 'test'
+  ...
+# Subtest: Garmin host derives typed FAIL for mismatched lifecycle code
+ok 135 - Garmin host derives typed FAIL for mismatched lifecycle code
+  ---
+  duration_ms: 0.08975
+  type: 'test'
+  ...
+# Subtest: Garmin host derives typed FAIL for mismatched restart comparison
+ok 136 - Garmin host derives typed FAIL for mismatched restart comparison
+  ---
+  duration_ms: 0.47225
+  type: 'test'
+  ...
+# Subtest: Garmin host derives typed FAIL for mismatched recovery pair
+ok 137 - Garmin host derives typed FAIL for mismatched recovery pair
+  ---
+  duration_ms: 0.092125
+  type: 'test'
+  ...
+# Subtest: JUnit outcome is structural, preserves failure precedence, and requires exactly one case
+ok 138 - JUnit outcome is structural, preserves failure precedence, and requires exactly one case
+  ---
+  duration_ms: 0.524833
+  type: 'test'
+  ...
+# Subtest: malformed or substituted JUnit cannot pass
+ok 139 - malformed or substituted JUnit cannot pass
+  ---
+  duration_ms: 0.067375
+  type: 'test'
+  ...
+# Subtest: malformed or substituted JUnit cannot pass
+ok 140 - malformed or substituted JUnit cannot pass
+  ---
+  duration_ms: 0.08
+  type: 'test'
+  ...
+# Subtest: malformed or substituted JUnit cannot pass
+ok 141 - malformed or substituted JUnit cannot pass
+  ---
+  duration_ms: 0.057708
+  type: 'test'
+  ...
+# Subtest: malformed or substituted JUnit cannot pass
+ok 142 - malformed or substituted JUnit cannot pass
+  ---
+  duration_ms: 0.042375
+  type: 'test'
+  ...
+# Subtest: malformed or substituted JUnit cannot pass
+ok 143 - malformed or substituted JUnit cannot pass
+  ---
+  duration_ms: 0.077959
+  type: 'test'
+  ...
+# Subtest: malformed or substituted JUnit cannot pass
+ok 144 - malformed or substituted JUnit cannot pass
+  ---
+  duration_ms: 0.03675
+  type: 'test'
+  ...
+# Subtest: malformed or substituted JUnit cannot pass
+ok 145 - malformed or substituted JUnit cannot pass
+  ---
+  duration_ms: 0.043875
+  type: 'test'
+  ...
+# Subtest: malformed or substituted JUnit cannot pass
+ok 146 - malformed or substituted JUnit cannot pass
+  ---
+  duration_ms: 0.054958
+  type: 'test'
+  ...
+# Subtest: nonzero exit without a failing case cannot pass
+ok 147 - nonzero exit without a failing case cannot pass
+  ---
+  duration_ms: 0.05675
+  type: 'test'
+  ...
+# Subtest: Calendar action accepts only exact v1.2 attestation and source flow identity
+ok 148 - Calendar action accepts only exact v1.2 attestation and source flow identity
+  ---
+  duration_ms: 1.025417
+  type: 'test'
+  ...
+# Subtest: every stage invocation binds a fresh nonce, exact flow identity, and the production Calendar route
+ok 149 - every stage invocation binds a fresh nonce, exact flow identity, and the production Calendar route
+  ---
+  duration_ms: 0.786542
+  type: 'test'
+  ...
+# Subtest: every Calendar matrix probe gets its own nonce-bound invocation and receipt
+ok 150 - every Calendar matrix probe gets its own nonce-bound invocation and receipt
+  ---
+  duration_ms: 0.815375
+  type: 'test'
+  ...
+# Subtest: the Maestro flow drives all 35 real stages and passes the complete route identity
+ok 151 - the Maestro flow drives all 35 real stages and passes the complete route identity
+  ---
+  duration_ms: 0.528417
+  type: 'test'
+  ...
+# Subtest: the requirement flow names every parity row and all high-risk Calendar destinations
+ok 152 - the requirement flow names every parity row and all high-risk Calendar destinations
+  ---
+  duration_ms: 1.035625
+  type: 'test'
+  ...
+# Subtest: the Calendar action stages every raw trace and realistic screenshot without response retention
+ok 153 - the Calendar action stages every raw trace and realistic screenshot without response retention
+  ---
+  duration_ms: 1884.567
+  type: 'test'
+  ...
+# Subtest: Calendar device commands use only resolver-owned absolute native tools
+ok 154 - Calendar device commands use only resolver-owned absolute native tools
+  ---
+  duration_ms: 4.860667
+  type: 'test'
+  ...
+# Subtest: strict accessibility producer requires four roots by both motion modes with source and native receipts
+ok 155 - strict accessibility producer requires four roots by both motion modes with source and native receipts
+  ---
+  duration_ms: 8.458834
+  type: 'test'
+  ...
+# Subtest: strict accessibility producer rejects static input, modal, readiness, and fixture claims
+ok 156 - strict accessibility producer rejects static input, modal, readiness, and fixture claims
+  ---
+  duration_ms: 2.077709
+  type: 'test'
+  ...
+# Subtest: strict performance producer requires complete native actions, stable cold source, seeded workload, and a byte-bound Phase 20 Garmin baseline
+ok 157 - strict performance producer requires complete native actions, stable cold source, seeded workload, and a byte-bound Phase 20 Garmin baseline
+  ---
+  duration_ms: 46.705417
+  type: 'test'
+  ...
+# Subtest: cold launches preserve one logical source digest while process and readiness tuples remain unique
+ok 158 - cold launches preserve one logical source digest while process and readiness tuples remain unique
+  ---
+  duration_ms: 2.653833
+  type: 'test'
+  ...
+# Subtest: persisted performance writer and verifier apply the identical producer schema
+ok 159 - persisted performance writer and verifier apply the identical producer schema
+  ---
+  duration_ms: 9.815542
+  type: 'test'
+  ...
+# Subtest: collector-path budget failures are published once as derived FAIL observations
+ok 160 - collector-path budget failures are published once as derived FAIL observations
+  ---
+  duration_ms: 7.987125
+  type: 'test'
+  ...
+# Subtest: packaged Maestro quality probe carries the complete request and waits for route readiness
+ok 161 - packaged Maestro quality probe carries the complete request and waits for route readiness
+  ---
+  duration_ms: 0.73775
+  type: 'test'
+  ...
+# Subtest: accepts only complete ordered lifecycle observations without a verdict
+ok 162 - accepts only complete ordered lifecycle observations without a verdict
+  ---
+  duration_ms: 23.772625
+  type: 'test'
+  ...
+# Subtest: rejects stale callbacks, duplicate effects, missing cuts, cross-session ownership and private facts
+ok 163 - rejects stale callbacks, duplicate effects, missing cuts, cross-session ownership and private facts
+  ---
+  duration_ms: 27.343375
+  type: 'test'
+  ...
+# Subtest: rejects incomplete rest, timing, history, restore, merge receipt, and barrier facts
+ok 164 - rejects incomplete rest, timing, history, restore, merge receipt, and barrier facts
+  ---
+  duration_ms: 60.222292
+  type: 'test'
+  ...
+# Subtest: rejects committed retries that change any authoritative fact or receipt digest
+ok 165 - rejects committed retries that change any authoritative fact or receipt digest
+  ---
+  duration_ms: 6.542333
+  type: 'test'
+  ...
+# Subtest: rejects uncommitted retries that create more than one command receipt
+ok 166 - rejects uncommitted retries that create more than one command receipt
+  ---
+  duration_ms: 6.645084
+  type: 'test'
+  ...
+# Subtest: treats offline death before COMMIT as uncommitted and requires one retry receipt
+ok 167 - treats offline death before COMMIT as uncommitted and requires one retry receipt
+  ---
+  duration_ms: 23.938666
+  type: 'test'
+  ...
+# Subtest: rejects unrelated non-null pointer hashes that do not prove one exercise transition
+ok 168 - rejects unrelated non-null pointer hashes that do not prove one exercise transition
+  ---
+  duration_ms: 16.487292
+  type: 'test'
+  ...
+# Subtest: declares eight unique barrier protocol provenances instead of label-only barriers
+ok 169 - declares eight unique barrier protocol provenances instead of label-only barriers
+  ---
+  duration_ms: 0.1275
+  type: 'test'
+  ...
+# Subtest: rejects generic workout receipts for import, match, restore, and merge steps
+ok 170 - rejects generic workout receipts for import, match, restore, and merge steps
+  ---
+  duration_ms: 50.121459
+  type: 'test'
+  ...
+# Subtest: requires an explicit immutable run command instead of silently succeeding as a no-op
+ok 171 - requires an explicit immutable run command instead of silently succeeding as a no-op
+  ---
+  duration_ms: 0.5775
+  type: 'test'
+  ...
+# Subtest: refuses duplicate recovery evidence before the native flow can execute
+ok 172 - refuses duplicate recovery evidence before the native flow can execute
+  ---
+  duration_ms: 0.316375
+  type: 'test'
+  ...
+# Subtest: preserves blocking recovery outcomes instead of rewriting them to passes
+ok 173 - preserves blocking recovery outcomes instead of rewriting them to passes
+  ---
+  duration_ms: 18.599792
+  type: 'test'
+  ...
+# Subtest: validates the complete ordered privacy-safe SQLite observation set
+ok 174 - validates the complete ordered privacy-safe SQLite observation set
+  ---
+  duration_ms: 2.524083
+  type: 'test'
+  ...
+# Subtest: rejects duplicate, skipped, stale, out-of-order, raw, and impossible downgrade observations
+ok 175 - rejects duplicate, skipped, stale, out-of-order, raw, and impossible downgrade observations
+  ---
+  duration_ms: 0.5485
+  type: 'test'
+  ...
+# Subtest: writes observations only and never a verdict
+ok 176 - writes observations only and never a verdict
+  ---
+  duration_ms: 0.246167
+  type: 'test'
+  ...
+# Subtest: binds each bounded group digest to its exact ordered passed case facts
+ok 177 - binds each bounded group digest to its exact ordered passed case facts
+  ---
+  duration_ms: 0.212875
+  type: 'test'
+  ...
+# Subtest: requires an explicit immutable run command instead of silently succeeding as a no-op
+ok 178 - requires an explicit immutable run command instead of silently succeeding as a no-op
+  ---
+  duration_ms: 0.189792
+  type: 'test'
+  ...
+# Subtest: forwards an ephemeral device lease to the native runner without retaining it in observations or CLI output
+ok 179 - forwards an ephemeral device lease to the native runner without retaining it in observations or CLI output
+  ---
+  duration_ms: 2.172917
+  type: 'test'
+  ...
+# Subtest: accepts only the exact V12 native envelope and rejects legacy cross-suite substitution
+ok 180 - accepts only the exact V12 native envelope and rejects legacy cross-suite substitution
+  ---
+  duration_ms: 0.277875
+  type: 'test'
+  ...
+# Subtest: creates an exact privacy-safe bounded failure receipt without verdict authority
+ok 181 - creates an exact privacy-safe bounded failure receipt without verdict authority
+  ---
+  duration_ms: 0.18225
+  type: 'test'
+  ...
+# Subtest: classifies every bounded native failure and rejects unsafe receipt input
+ok 182 - classifies every bounded native failure and rejects unsafe receipt input
+  ---
+  duration_ms: 0.277792
+  type: 'test'
+  ...
+# Subtest: gives all seven V12 source registries a finite source-derived polling budget and emits progress markers
+ok 183 - gives all seven V12 source registries a finite source-derived polling budget and emits progress markers
+  ---
+  duration_ms: 2.194541
+  type: 'test'
+  ...
+# Subtest: retains exactly one immutable failure receipt for native timeout, route error, malformed output, and translation failure
+ok 184 - retains exactly one immutable failure receipt for native timeout, route error, malformed output, and translation failure
+  ---
+  duration_ms: 1.055
+  type: 'test'
+  ...
+# Subtest: refuses a second execute attempt when a failure receipt already consumes the immutable run
+ok 185 - refuses a second execute attempt when a failure receipt already consumes the immutable run
+  ---
+  duration_ms: 0.098042
+  type: 'test'
+  ...
+# Subtest: fails closed if an immutable failure receipt cannot be written
+ok 186 - fails closed if an immutable failure receipt cannot be written
+  ---
+  duration_ms: 0.309583
+  type: 'test'
+  ...
+# Subtest: uses filesystem write-once producers for a valid V12 result, verifier reads, and runner failure receipt
+ok 187 - uses filesystem write-once producers for a valid V12 result, verifier reads, and runner failure receipt
+  ---
+  duration_ms: 29.88125
+  type: 'test'
+  ...
+# Subtest: refuses duplicate output and producer verdict authority before native execution
+ok 188 - refuses duplicate output and producer verdict authority before native execution
+  ---
+  duration_ms: 0.144792
+  type: 'test'
+  ...
+# Subtest: the prebuild predecessor gate accepts every exact Phase 13-19 terminal contract
+ok 189 - the prebuild predecessor gate accepts every exact Phase 13-19 terminal contract
+  ---
+  duration_ms: 79.900291
+  type: 'test'
+  ...
+# Subtest: the prebuild predecessor gate rejects missing, malformed, and incomplete terminal records
+    # Subtest: missing terminal summary
+    ok 1 - missing terminal summary
+      ---
+      duration_ms: 52.650041
+      type: 'test'
+      ...
+    # Subtest: wrong summary schema
+    ok 2 - wrong summary schema
+      ---
+      duration_ms: 68.967292
+      type: 'test'
+      ...
+    # Subtest: nonterminal validation status
+    ok 3 - nonterminal validation status
+      ---
+      duration_ms: 60.134042
+      type: 'test'
+      ...
+    # Subtest: failed verification
+    ok 4 - failed verification
+      ---
+      duration_ms: 19.025916
+      type: 'test'
+      ...
+    # Subtest: failed summary evidence
+    ok 5 - failed summary evidence
+      ---
+      duration_ms: 15.496875
+      type: 'test'
+      ...
+    1..5
+ok 190 - the prebuild predecessor gate rejects missing, malformed, and incomplete terminal records
+  ---
+  duration_ms: 216.870083
+  type: 'test'
+  ...
+# Subtest: the predecessor gate rejects authority escalation and requires explicit Phase 20 deferrals
+    # Subtest: release authority
+    ok 1 - release authority
+      ---
+      duration_ms: 18.432417
+      type: 'test'
+      ...
+    # Subtest: native deferral removed
+    ok 2 - native deferral removed
+      ---
+      duration_ms: 18.59375
+      type: 'test'
+      ...
+    1..2
+ok 191 - the predecessor gate rejects authority escalation and requires explicit Phase 20 deferrals
+  ---
+  duration_ms: 37.319542
+  type: 'test'
+  ...
+1..191
+# tests 198
+# suites 0
+# pass 197
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 23208.461

@@ -13,12 +13,13 @@ import {
 
 import {
   BACKUP_LIMITS,
+  LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS,
   parseLogicalBackupSnapshot,
+  type LogicalBackupFormatVersion,
   type LogicalBackupSnapshot,
 } from "./backupContracts";
 
 const MAGIC = Uint8Array.from([0x47, 0x54, 0x42, 0x4b]);
-const FORMAT_VERSION = 1 as const;
 const PREFIX_BYTES = 9;
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const decoder = new TextDecoder("utf-8", { fatal: true });
@@ -96,7 +97,7 @@ type BackupHeader = Readonly<{
   nonce: string;
   payloadBytes: number;
   snapshotId: string;
-  version: typeof FORMAT_VERSION;
+  version: LogicalBackupFormatVersion;
 }>;
 
 function wipe(...buffers: Array<Uint8Array | undefined>): void {
@@ -213,7 +214,7 @@ function assertHeader(value: unknown): asserts value is BackupHeader {
   ])) {
     invalid();
   }
-  if (value.version !== FORMAT_VERSION) {
+  if (!(LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS as readonly unknown[]).includes(value.version)) {
     throw new BackupFormatError("backup_archive_unsupported_version");
   }
   if (value.compression !== "none" || typeof value.snapshotId !== "string" || value.snapshotId.trim().length === 0) {
@@ -248,13 +249,16 @@ function assertHeader(value: unknown): asserts value is BackupHeader {
   }
 }
 
-function encodePrefix(headerBytes: Uint8Array): Uint8Array {
+function encodePrefix(
+  version: LogicalBackupFormatVersion,
+  headerBytes: Uint8Array,
+): Uint8Array {
   if (headerBytes.byteLength > BACKUP_LIMITS.maxHeaderBytes) {
     throw new BackupFormatError("backup_archive_limit_exceeded");
   }
   const prefix = new Uint8Array(PREFIX_BYTES + headerBytes.byteLength);
   prefix.set(MAGIC);
-  prefix[4] = FORMAT_VERSION;
+  prefix[4] = version;
   new DataView(prefix.buffer).setUint32(5, headerBytes.byteLength);
   prefix.set(headerBytes, PREFIX_BYTES);
   return prefix;
@@ -273,7 +277,7 @@ function parsePrefix(archive: Uint8Array): Readonly<{
     || !MAGIC.every((byte, index) => archive[index] === byte)) {
     invalid();
   }
-  if (archive[4] !== FORMAT_VERSION) {
+  if (!(LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS as readonly number[]).includes(archive[4]!)) {
     throw new BackupFormatError("backup_archive_unsupported_version");
   }
   const headerLength = new DataView(archive.buffer, archive.byteOffset, archive.byteLength).getUint32(5);
@@ -294,6 +298,9 @@ function parsePrefix(archive: Uint8Array): Readonly<{
   }
   try {
     assertHeader(parsedHeader);
+    if (archive[4] !== parsedHeader.version) {
+      invalid();
+    }
     if (stableJson(parsedHeader) !== headerText) {
       invalid();
     }
@@ -342,7 +349,7 @@ function headerFor(input: Readonly<{
     nonce: base64(input.nonce),
     payloadBytes: input.payloadBytes,
     snapshotId: input.snapshot.snapshotId,
-    version: FORMAT_VERSION,
+    version: input.snapshot.version,
   };
 }
 
@@ -382,7 +389,7 @@ export function createBackupEnvelopeCodec(
           nonce,
           payloadBytes: plaintext.byteLength,
         });
-        aad = encodePrefix(encoder.encode(stableJson(header)));
+        aad = encodePrefix(header.version, encoder.encode(stableJson(header)));
         const derived = await crypto.deriveKey({ password, salt });
         key = derived.key;
         if (!(key instanceof Uint8Array) || key.byteLength !== ARGON2ID_OUTPUT_LENGTH) {

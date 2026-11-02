@@ -1,0 +1,950 @@
+import {
+  describe,
+  expect,
+  it,
+} from "@jest/globals";
+
+import type {
+  SqliteKernel,
+  SqliteTransactionExecutor,
+} from "../sqliteKernel";
+import {
+  createAdvancedTimingRepository,
+} from "./advancedTimingRepository";
+
+const perRepJson = '{"version":1,"mode":"per_rep","intervalMs":1000,"cueChannels":"haptic"}';
+const clusterJson = '{"version":1,"mode":"cluster","groupSizes":[3,3],"intraRestMs":1000,"cueChannels":"haptic"}';
+const offJson = '{"version":1,"mode":"off"}';
+
+function kernelForRows(
+  rows: Readonly<Record<string, unknown>>,
+): SqliteKernel {
+  const transaction: SqliteTransactionExecutor = {
+    execute: async () => ({ changes: 1, lastInsertRowId: 0 }),
+    queryAll: async <Row extends Record<string, unknown>>(sql: string) => {
+      if (sql.includes("FROM workout_sessions")) {
+        return [{
+          revision: 1,
+          active_session_exercise_id: "session-exercise-1",
+          active_set_id: "set-1",
+        }] as unknown as readonly Row[];
+      }
+      if (sql.includes("FROM session_advanced_timing_states")) {
+        return [rows] as unknown as readonly Row[];
+      }
+      if (sql.includes("FROM session_sets")) {
+        return [{
+          status: "planned",
+          set_kind: "working",
+          session_exercise_id: "session-exercise-1",
+          advanced_timing_resolved_json: perRepJson,
+        }] as unknown as readonly Row[];
+      }
+      return [] as readonly Row[];
+    },
+  };
+  return {
+    write: async <Result>(command: (executor: SqliteTransactionExecutor) => Promise<Result>) =>
+      command(transaction),
+    queryAll: transaction.queryAll,
+    connectionConfiguration: async () => ({
+      reader: { busyTimeoutMs: 1, foreignKeys: true, journalMode: "wal" },
+      writer: { busyTimeoutMs: 1, foreignKeys: true, journalMode: "wal" },
+    }),
+    close: async () => undefined,
+  };
+}
+
+function row(
+  changes: Partial<Record<string, unknown>> = {},
+): Readonly<Record<string, unknown>> {
+  return {
+    session_set_id: "set-1",
+    state_version: 1,
+    revision: 2,
+    status: "running",
+    mode: "per_rep",
+    config_json: perRepJson,
+    progress_json: '{"nextRepetitionIndex":3}',
+    started_at_ms: 1_000,
+    next_boundary_at_ms: 2_000,
+    remaining_ms: null,
+    stopped_at_ms: null,
+    ...changes,
+  };
+}
+
+function kernelForTransition(input: Readonly<{
+  session?: Readonly<Partial<{
+    revision: number;
+    active_session_exercise_id: string | null;
+    active_set_id: string | null;
+  }>> | null;
+  state?: Readonly<Record<string, unknown>> | null;
+  target?: Readonly<Partial<{
+    status: "planned" | "draft" | "completed" | "skipped";
+    set_kind: "warmup" | "working";
+    session_exercise_id: string;
+    advanced_timing_resolved_json: string;
+  }>> | null;
+  storedStateError?: Error;
+  executeError?: Error;
+}>) {
+  let executeCount = 0;
+  const transaction: SqliteTransactionExecutor = {
+    execute: async () => {
+      if (input.executeError !== undefined) {
+        throw input.executeError;
+      }
+      executeCount += 1;
+      return { changes: 1, lastInsertRowId: 0 };
+    },
+    queryAll: async <Row extends Record<string, unknown>>(sql: string) => {
+      if (sql.includes("FROM workout_sessions")) {
+        return input.session === null
+          ? [] as readonly Row[]
+          : [{
+            revision: 1,
+            active_session_exercise_id: "session-exercise-1",
+            active_set_id: "set-1",
+            ...input.session,
+          }] as unknown as readonly Row[];
+      }
+      if (sql.includes("FROM session_sets")) {
+        return input.target === null
+          ? [] as readonly Row[]
+          : [{
+            status: "planned",
+            set_kind: "working",
+            session_exercise_id: "session-exercise-1",
+            advanced_timing_resolved_json: perRepJson,
+            ...input.target,
+          }] as unknown as readonly Row[];
+      }
+      if (sql.includes("FROM session_advanced_timing_states")) {
+        if (input.storedStateError !== undefined) {
+          throw input.storedStateError;
+        }
+        return input.state === null
+          ? [] as readonly Row[]
+          : [input.state ?? row()] as unknown as readonly Row[];
+      }
+      return [] as readonly Row[];
+    },
+  };
+  const kernel: SqliteKernel = {
+    write: async <Result>(command: (executor: SqliteTransactionExecutor) => Promise<Result>) =>
+      command(transaction),
+    queryAll: transaction.queryAll,
+    connectionConfiguration: async () => ({
+      reader: { busyTimeoutMs: 1, foreignKeys: true, journalMode: "wal" },
+      writer: { busyTimeoutMs: 1, foreignKeys: true, journalMode: "wal" },
+    }),
+    close: async () => undefined,
+  };
+  return { kernel, executeCount: () => executeCount };
+}
+
+function kernelForConfigUpdate(input: Readonly<{
+  exercise?: Readonly<{
+    session_revision: number;
+    exercise_revision: number;
+    status: "planned" | "active" | "completed" | "skipped";
+  }> | null;
+  set?: Readonly<{
+    session_revision: number;
+    set_revision: number;
+    status: "planned" | "draft" | "completed" | "skipped";
+    exercise_default_json: string;
+  }> | null;
+  state?: Readonly<Record<string, unknown>> | null;
+  storedStateError?: Error;
+  executeChanges?: readonly number[];
+}>) {
+  let executeIndex = 0;
+  const transaction: SqliteTransactionExecutor = {
+    execute: async () => {
+      const changes = input.executeChanges?.[
+        Math.min(executeIndex, input.executeChanges.length - 1)
+      ] ?? 1;
+      executeIndex += 1;
+      return { changes, lastInsertRowId: 0 };
+    },
+    queryAll: async <Row extends Record<string, unknown>>(sql: string) => {
+      if (sql.includes("FROM session_exercises se")
+        && sql.includes("ws.status = 'in_progress'")) {
+        return input.exercise === null
+          ? [] as readonly Row[]
+          : [input.exercise ?? {
+            session_revision: 1,
+            exercise_revision: 2,
+            status: "planned",
+          }] as unknown as readonly Row[];
+      }
+      if (sql.includes("FROM session_sets ss")
+        && sql.includes("se.advanced_timing_default_json AS exercise_default_json")) {
+        return input.set === null
+          ? [] as readonly Row[]
+          : [input.set ?? {
+            session_revision: 1,
+            set_revision: 2,
+            status: "planned",
+            exercise_default_json: offJson,
+          }] as unknown as readonly Row[];
+      }
+      if (sql.includes("FROM session_advanced_timing_states")) {
+        if (input.storedStateError !== undefined) {
+          throw input.storedStateError;
+        }
+        return input.state === null
+          ? [] as readonly Row[]
+          : [input.state ?? row({
+            session_set_id: null,
+            status: "idle",
+            mode: null,
+            config_json: offJson,
+            progress_json: "{}",
+            started_at_ms: null,
+            next_boundary_at_ms: null,
+            stopped_at_ms: null,
+          })] as unknown as readonly Row[];
+      }
+      return [] as readonly Row[];
+    },
+  };
+  const kernel: SqliteKernel = {
+    write: async <Result>(command: (executor: SqliteTransactionExecutor) => Promise<Result>) =>
+      command(transaction),
+    queryAll: transaction.queryAll,
+    connectionConfiguration: async () => ({
+      reader: { busyTimeoutMs: 1, foreignKeys: true, journalMode: "wal" },
+      writer: { busyTimeoutMs: 1, foreignKeys: true, journalMode: "wal" },
+    }),
+    close: async () => undefined,
+  };
+  return { kernel, executeCount: () => executeIndex };
+}
+
+describe("advanced timing repository state decoding", () => {
+  it.each([
+    ["string revision", row({ revision: "2" })],
+    ["fractional revision", row({ revision: 1.5 })],
+    ["negative revision", row({ revision: -1 })],
+    ["invalid progress json", row({ progress_json: "{" })],
+    ["numeric progress", row({ progress_json: "1" })],
+    ["null progress", row({ progress_json: "null" })],
+    ["array progress", row({ progress_json: "[]" })],
+    ["missing progress index", row({ progress_json: "{}" })],
+    ["fractional progress index", row({ progress_json: '{"nextRepetitionIndex":1.5}' })],
+    ["zero progress index", row({ progress_json: '{"nextRepetitionIndex":0}' })],
+    ["extra progress key", row({ progress_json: '{"nextRepetitionIndex":3,"extra":true}' })],
+    ["invalid config", row({ config_json: "{}" })],
+    ["wrong state version", row({ state_version: 2 })],
+    ["idle target", row({ status: "idle", session_set_id: "set-1", mode: null, config_json: '{"version":1,"mode":"off"}' })],
+    ["idle mode", row({ status: "idle", session_set_id: null, mode: "per_rep", config_json: offJson })],
+    ["idle config", row({ status: "idle", session_set_id: null, mode: null })],
+    ["idle progress", row({ status: "idle", session_set_id: null, mode: null, config_json: offJson, progress_json: '{"extra":true}', started_at_ms: null, next_boundary_at_ms: null })],
+    ["idle start", row({ status: "idle", session_set_id: null, mode: null, config_json: offJson, progress_json: "{}", next_boundary_at_ms: null })],
+    ["idle boundary", row({ status: "idle", session_set_id: null, mode: null, config_json: offJson, progress_json: "{}", started_at_ms: null })],
+    ["idle remaining", row({ status: "idle", session_set_id: null, mode: null, config_json: offJson, progress_json: "{}", started_at_ms: null, next_boundary_at_ms: null, remaining_ms: 1 })],
+    ["idle stopped", row({ status: "idle", session_set_id: null, mode: null, config_json: offJson, progress_json: "{}", started_at_ms: null, next_boundary_at_ms: null, stopped_at_ms: 1 })],
+    ["expired state", row({ status: "expired", stopped_at_ms: 3_000 })],
+    ["cluster/per-rep mismatch", row({ mode: "cluster" })],
+    ["per-rep/cluster mismatch", row({ config_json: clusterJson })],
+    ["cluster invalid progress json", row({ mode: "cluster", config_json: clusterJson, progress_json: "{" })],
+    ["cluster missing group index", row({ mode: "cluster", config_json: clusterJson, progress_json: "{}" })],
+    ["cluster fractional group index", row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":1.5}' })],
+    ["cluster negative group index", row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":-1}' })],
+    ["cluster extra progress key", row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":0,"extra":true}' })],
+    ["cluster invalid phase", row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":0,"phase":"waiting"}' })],
+    ["cluster out-of-range group index", row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":2}' })],
+    ["cluster running missing timestamps", row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":0}', started_at_ms: null })],
+    ["cluster paused missing remaining", row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":0}', status: "paused", started_at_ms: null, next_boundary_at_ms: null, remaining_ms: null })],
+    ["cluster stopped missing timestamp", row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":0,"phase":"stopped"}', status: "stopped", started_at_ms: null, next_boundary_at_ms: null, stopped_at_ms: null })],
+    ["cluster stopped missing phase", row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":0}', status: "stopped", started_at_ms: null, next_boundary_at_ms: null, stopped_at_ms: 1_000 })],
+    ["cluster impossible status", row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":0}', status: "skipped" })],
+    ["missing target", row({ session_set_id: null })],
+    ["blank target", row({ session_set_id: " " })],
+    ["missing mode", row({ mode: null })],
+    ["missing running timestamps", row({ started_at_ms: null })],
+    ["missing running boundary", row({ next_boundary_at_ms: null })],
+    ["running remaining", row({ remaining_ms: 1 })],
+    ["running stopped", row({ stopped_at_ms: 1 })],
+    ["missing paused remaining", row({ status: "paused", started_at_ms: null, next_boundary_at_ms: null, remaining_ms: null })],
+    ["paused start", row({ status: "paused", next_boundary_at_ms: null, remaining_ms: 1 })],
+    ["paused boundary", row({ status: "paused", started_at_ms: null, remaining_ms: 1 })],
+    ["paused stopped", row({ status: "paused", started_at_ms: null, next_boundary_at_ms: null, remaining_ms: 1, stopped_at_ms: 1 })],
+    ["missing stopped timestamp", row({ status: "stopped", started_at_ms: null, next_boundary_at_ms: null, stopped_at_ms: null })],
+    ["stopped start", row({ status: "stopped", next_boundary_at_ms: null, stopped_at_ms: 1 })],
+    ["stopped boundary", row({ status: "stopped", started_at_ms: null, stopped_at_ms: 1 })],
+    ["stopped remaining", row({ status: "stopped", started_at_ms: null, next_boundary_at_ms: null, remaining_ms: 1, stopped_at_ms: 1 })],
+    ["negative stopped timestamp", row({ status: "stopped", started_at_ms: null, next_boundary_at_ms: null, stopped_at_ms: -1 })],
+  ])("rejects %s", async (_label, malformed) => {
+    const repository = createAdvancedTimingRepository(kernelForRows(malformed));
+    await expect(repository.getAdvancedTimingContext("session-1"))
+      .rejects.toThrow("advanced_timing_state_invalid");
+  });
+
+  it.each([
+    ["idle", row({
+      session_set_id: null,
+      status: "idle",
+      mode: null,
+      config_json: offJson,
+      progress_json: "{}",
+      started_at_ms: null,
+      next_boundary_at_ms: null,
+    }), { state: "idle", revision: 2, targetSessionSetId: null }],
+    ["paused", row({
+      status: "paused",
+      started_at_ms: null,
+      next_boundary_at_ms: null,
+      remaining_ms: 500,
+    }), { state: "paused", remainingMs: 500, nextRepetitionIndex: 3 }],
+    ["stopped", row({
+      status: "stopped",
+      started_at_ms: null,
+      next_boundary_at_ms: null,
+      stopped_at_ms: 3_000,
+    }), { state: "stopped", stoppedAtMs: 3_000, nextRepetitionIndex: 3 }],
+    ["cluster running", row({
+      mode: "cluster",
+      config_json: clusterJson,
+      progress_json: '{"currentGroupIndex":0}',
+    }), { state: "cluster_gap_running", gapStartedAtMs: 1_000, gapEndsAtMs: 2_000, currentGroupIndex: 0 }],
+    ["cluster paused", row({
+      mode: "cluster",
+      config_json: clusterJson,
+      progress_json: '{"currentGroupIndex":0}',
+      status: "paused",
+      started_at_ms: null,
+      next_boundary_at_ms: null,
+      remaining_ms: 500,
+    }), { state: "cluster_gap_paused", remainingMs: 500, currentGroupIndex: 0 }],
+    ["cluster ready", row({
+      mode: "cluster",
+      config_json: clusterJson,
+      progress_json: '{"currentGroupIndex":1,"phase":"ready"}',
+      status: "stopped",
+      started_at_ms: null,
+      next_boundary_at_ms: null,
+      stopped_at_ms: 0,
+    }), { state: "cluster_ready", currentGroupIndex: 1 }],
+    ["cluster stopped", row({
+      mode: "cluster",
+      config_json: clusterJson,
+      progress_json: '{"currentGroupIndex":1,"phase":"stopped"}',
+      status: "stopped",
+      started_at_ms: null,
+      next_boundary_at_ms: null,
+      stopped_at_ms: 9_000,
+    }), { state: "stopped", stoppedAtMs: 9_000, currentGroupIndex: 1 }],
+  ])("reconstructs a valid %s persisted state", async (_label, persisted, expected) => {
+    await expect(createAdvancedTimingRepository(kernelForRows(persisted))
+      .getAdvancedTimingContext("session-1")).resolves.toEqual(expect.objectContaining({
+      sessionId: "session-1",
+      sessionRevision: 1,
+      state: expect.objectContaining(expected),
+    }));
+  });
+
+  it("characterizes retained persistence bytes for every readable legacy state", async () => {
+    const readableRows = [
+      row({ session_set_id: null, status: "idle", mode: null, config_json: offJson,
+        progress_json: "{}", started_at_ms: null, next_boundary_at_ms: null }),
+      row({ status: "paused", started_at_ms: null, next_boundary_at_ms: null, remaining_ms: 500 }),
+      row({ status: "stopped", started_at_ms: null, next_boundary_at_ms: null, stopped_at_ms: 3_000 }),
+      row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":0}' }),
+      row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":0}',
+        status: "paused", started_at_ms: null, next_boundary_at_ms: null, remaining_ms: 500 }),
+      row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":1,"phase":"ready"}',
+        status: "stopped", started_at_ms: null, next_boundary_at_ms: null, stopped_at_ms: 0 }),
+      row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":1,"phase":"stopped"}',
+        status: "stopped", started_at_ms: null, next_boundary_at_ms: null, stopped_at_ms: 9_000 }),
+    ];
+
+    for (const persisted of readableRows) {
+      const originalBytes = JSON.stringify(persisted);
+      const context = await createAdvancedTimingRepository(kernelForRows(persisted))
+        .getAdvancedTimingContext("session-1");
+      expect(context).not.toBeNull();
+      expect(JSON.stringify(persisted)).toBe(originalBytes);
+    }
+
+    await expect(createAdvancedTimingRepository(kernelForRows(
+      row({ status: "expired", stopped_at_ms: 3_000 }),
+    )).getAdvancedTimingContext("session-1")).rejects.toThrow("advanced_timing_state_invalid");
+  });
+
+  it("returns null for an inactive or absent session and filters inactive contexts", async () => {
+    const inactiveKernel: SqliteKernel = {
+      ...kernelForRows(row()),
+      queryAll: async () => [],
+    };
+    await expect(createAdvancedTimingRepository(inactiveKernel)
+      .getAdvancedTimingContext("missing")).resolves.toBeNull();
+
+    const activeRowsKernel: SqliteKernel = {
+      ...kernelForRows(row()),
+      queryAll: async <Row extends Record<string, unknown>>(sql: string) => {
+        if (sql.includes("JOIN session_advanced_timing_states")) {
+          return [{ id: "session-1" }] as unknown as readonly Row[];
+        }
+        if (sql.includes("FROM workout_sessions")) {
+          return [{ revision: 1, active_set_id: "set-1" }] as unknown as readonly Row[];
+        }
+        if (sql.includes("FROM session_advanced_timing_states")) {
+          return [row()] as unknown as readonly Row[];
+        }
+        return [] as readonly Row[];
+      },
+    };
+    await expect(createAdvancedTimingRepository(activeRowsKernel)
+      .listActiveTimingContexts()).resolves.toEqual([expect.objectContaining({
+      sessionId: "session-1",
+      state: expect.objectContaining({ state: "running" }),
+    })]);
+  });
+
+  it("returns the implicit idle state when an active session has no stored advanced state", async () => {
+    const { kernel } = kernelForTransition({ state: null });
+    await expect(createAdvancedTimingRepository(kernel)
+      .getAdvancedTimingContext("session-1")).resolves.toEqual({
+      sessionId: "session-1",
+      sessionRevision: 1,
+      state: {
+        version: 1,
+        state: "idle",
+        revision: 0,
+        targetSessionSetId: null,
+      },
+    });
+  });
+
+  it("rejects command conflicts before persisting advanced state", async () => {
+    const repository = createAdvancedTimingRepository(kernelForRows(row()));
+    await expect(repository.startAdvancedTiming({
+      sessionId: "session-1",
+      sessionSetId: "set-1",
+      expectedSessionRevision: 0,
+      expectedAdvancedTimingRevision: 2,
+      nowMs: 1_000,
+      config: {
+        version: 1,
+        mode: "per_rep",
+        intervalMs: 1_000,
+        cueChannels: "haptic",
+      },
+    })).rejects.toThrow("advanced_timing_session_revision_conflict");
+  });
+
+  it("persists an active set timing override without changing advanced state", async () => {
+    let configJson: string | undefined;
+    const { kernel, executeCount } = kernelForTransition({
+      state: null,
+      target: { status: "draft", advanced_timing_resolved_json: offJson },
+    });
+    const configuredKernel: SqliteKernel = {
+      ...kernel,
+      write: async <Result>(command: (executor: SqliteTransactionExecutor) => Promise<Result>) =>
+        command({
+          execute: async (sql, params) => {
+            if (sql.includes("advanced_timing_override_json")) {
+              configJson = String(params?.[0]);
+            }
+            return { changes: 1, lastInsertRowId: 0 };
+          },
+          queryAll: kernel.queryAll,
+        }),
+    };
+    await expect(createAdvancedTimingRepository(configuredKernel).configureAdvancedTiming({
+      sessionId: "session-1",
+      sessionSetId: "set-1",
+      expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 0,
+      nowMs: 1_000,
+      config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+    })).resolves.toEqual({
+      invalidationScopes: [["active-workout", "session-1"], ["today"]],
+      sessionRevision: 2,
+      state: {
+        version: 1,
+        state: "idle",
+        revision: 0,
+        targetSessionSetId: null,
+      },
+    });
+    expect(configJson).toBe(perRepJson);
+    expect(executeCount()).toBe(0);
+  });
+
+  it.each([
+    ["set update", [0]],
+    ["session revision update", [1, 0]],
+  ])("rejects failed %s while configuring timing", async (_label, changes) => {
+    let executeIndex = 0;
+    const { kernel } = kernelForTransition({
+      state: null,
+      target: { status: "draft", advanced_timing_resolved_json: offJson },
+    });
+    const configuredKernel: SqliteKernel = {
+      ...kernel,
+      write: async <Result>(command: (executor: SqliteTransactionExecutor) => Promise<Result>) =>
+        command({
+          execute: async () => {
+            const change = changes[Math.min(executeIndex, changes.length - 1)]!;
+            executeIndex += 1;
+            return { changes: change, lastInsertRowId: 0 };
+          },
+          queryAll: kernel.queryAll,
+        }),
+    };
+    await expect(createAdvancedTimingRepository(configuredKernel).configureAdvancedTiming({
+      sessionId: "session-1",
+      sessionSetId: "set-1",
+      expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 0,
+      nowMs: 1_000,
+      config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+    })).rejects.toThrow(_label === "set update"
+      ? "advanced_timing_config_conflict"
+      : "advanced_timing_session_revision_conflict");
+  });
+
+  it.each([
+    ["missing session", { session: null }, "advanced_timing_session_missing"],
+    ["missing target ownership", { target: null }, "advanced_timing_target_not_owned"],
+    ["invalid stored state", { state: row({ config_json: "{}" }) }, "advanced_timing_state_invalid"],
+    ["invalid snapshot", { target: { status: "planned" as const, advanced_timing_resolved_json: "{}" } }, "advanced_timing_snapshot_invalid"],
+    ["cluster snapshot mismatch", { target: { status: "planned" as const, advanced_timing_resolved_json: clusterJson } }, "advanced_timing_config_mismatch"],
+    ["different start config", {}, "advanced_timing_config_mismatch"],
+  ])("rejects %s without writing durable state", async (_label, scenario, code) => {
+    const { kernel, executeCount } = kernelForTransition(scenario);
+    await expect(createAdvancedTimingRepository(kernel).startAdvancedTiming({
+      sessionId: "session-1",
+      sessionSetId: "set-1",
+      expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 2,
+      nowMs: 1_000,
+      config: {
+        version: 1,
+        mode: "per_rep",
+        intervalMs: _label === "different start config" ? 2_000 : 1_000,
+        cueChannels: "haptic",
+      },
+    })).rejects.toThrow(code);
+    expect(executeCount()).toBe(0);
+  });
+
+  it("rejects timing configuration while a timer is active", async () => {
+    const { kernel, executeCount } = kernelForTransition({ state: row() });
+    await expect(createAdvancedTimingRepository(kernel).configureAdvancedTiming({
+      sessionId: "session-1",
+      sessionSetId: "set-1",
+      expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 2,
+      nowMs: 1_000,
+      config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+    })).rejects.toThrow("advanced_timing_config_active");
+    expect(executeCount()).toBe(0);
+  });
+
+  it("persists stopped cluster state distinctly from cluster readiness", async () => {
+    const { kernel } = kernelForTransition({
+      state: row({
+        mode: "cluster",
+        config_json: clusterJson,
+        progress_json: '{"currentGroupIndex":1,"phase":"ready"}',
+        status: "stopped",
+        started_at_ms: null,
+        next_boundary_at_ms: null,
+        stopped_at_ms: 0,
+      }),
+      target: { status: "draft", advanced_timing_resolved_json: clusterJson },
+    });
+    await expect(createAdvancedTimingRepository(kernel).stopAdvancedTiming({
+      sessionId: "session-1",
+      sessionSetId: "set-1",
+      expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 2,
+      nowMs: 10_000,
+    })).resolves.toEqual(expect.objectContaining({
+      state: {
+        version: 1,
+        state: "stopped",
+        mode: "cluster",
+        revision: 3,
+        targetSessionSetId: "set-1",
+        stoppedAtMs: 10_000,
+        currentGroupIndex: 1,
+      },
+    }));
+  });
+
+  it("characterizes every retained internal timing transition", async () => {
+    const base = {
+      sessionId: "session-1",
+      sessionSetId: "set-1",
+      expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 2,
+      nowMs: 10_000,
+    };
+    const clusterReady = kernelForTransition({
+      state: row({
+        mode: "cluster", config_json: clusterJson,
+        progress_json: '{"currentGroupIndex":0,"phase":"ready"}',
+        status: "stopped", started_at_ms: null, next_boundary_at_ms: null,
+        stopped_at_ms: 0,
+      }),
+      target: { status: "draft", advanced_timing_resolved_json: clusterJson },
+    });
+    await expect(createAdvancedTimingRepository(clusterReady.kernel)
+      .beginAdvancedTimingClusterGap(base)).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "cluster_gap_running" }),
+    }));
+
+    const clusterRunning = kernelForTransition({
+      state: row({
+        mode: "cluster", config_json: clusterJson,
+        progress_json: '{"currentGroupIndex":0}',
+        status: "running", started_at_ms: 9_000, next_boundary_at_ms: 11_000,
+      }),
+      target: { status: "draft", advanced_timing_resolved_json: clusterJson },
+    });
+    await expect(createAdvancedTimingRepository(clusterRunning.kernel)
+      .pauseAdvancedTiming(base)).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "cluster_gap_paused" }),
+    }));
+    await expect(createAdvancedTimingRepository(clusterRunning.kernel)
+      .skipAdvancedTimingClusterGap(base)).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "cluster_ready" }),
+    }));
+
+    const perRepRunning = kernelForTransition({ state: row() });
+    await expect(createAdvancedTimingRepository(perRepRunning.kernel)
+      .pauseAdvancedTiming(base)).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "paused" }),
+    }));
+
+    const perRepPaused = kernelForTransition({
+      state: row({
+        status: "paused", started_at_ms: null, next_boundary_at_ms: null,
+        remaining_ms: 500,
+      }),
+    });
+    await expect(createAdvancedTimingRepository(perRepPaused.kernel)
+      .resumeAdvancedTiming(base)).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "running" }),
+    }));
+
+    await expect(createAdvancedTimingRepository(perRepRunning.kernel)
+      .stopAdvancedTiming(base)).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "stopped" }),
+    }));
+
+    const warmup = kernelForTransition({
+      state: null,
+      target: {
+        status: "draft",
+        set_kind: "warmup",
+        session_exercise_id: "session-exercise-1",
+        advanced_timing_resolved_json: perRepJson,
+      },
+    });
+    await expect(createAdvancedTimingRepository(warmup.kernel).startAdvancedTiming({
+      ...base,
+      expectedAdvancedTimingRevision: 0,
+      config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+    })).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "running" }),
+    }));
+
+    await expect(createAdvancedTimingRepository(perRepRunning.kernel)
+      .pauseAdvancedTiming({ ...base, expectedAdvancedTimingRevision: 3 }))
+      .rejects.toThrow("advanced_timing_revision_conflict");
+
+    await expect(createAdvancedTimingRepository(perRepRunning.kernel)
+      .reconcileAdvancedTiming({
+        ...base,
+        nowMs: 2_500,
+        foregroundSinceMs: 1_500,
+      })).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "running", revision: 3 }),
+    }));
+
+    const setConfig = kernelForConfigUpdate({ state: null });
+    await expect(createAdvancedTimingRepository(setConfig.kernel)
+      .updateSessionSetAdvancedTiming({
+        sessionId: "session-1",
+        sessionSetId: "set-1",
+        expectedSessionRevision: 1,
+        expectedSetRevision: 2,
+        override: null,
+        nowMs: 1_000,
+      })).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "idle" }),
+    }));
+    await expect(createAdvancedTimingRepository(setConfig.kernel)
+      .updateSessionSetAdvancedTiming({
+        sessionId: "session-1",
+        sessionSetId: "set-1",
+        expectedSessionRevision: 1,
+        expectedSetRevision: 2,
+        override: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+        nowMs: 1_000,
+      })).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "idle" }),
+    }));
+  });
+
+  it("maps shared context conflicts while configuring timing", async () => {
+    const { kernel, executeCount } = kernelForTransition({ session: null });
+    await expect(createAdvancedTimingRepository(kernel).configureAdvancedTiming({
+      sessionId: "session-1",
+      sessionSetId: "set-1",
+      expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 0,
+      nowMs: 1_000,
+      config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+    })).rejects.toThrow("advanced_timing_session_missing");
+    expect(executeCount()).toBe(0);
+  });
+
+  it("accepts a draft target and maps target and state transition conflicts", async () => {
+    const draft = kernelForTransition({
+      state: null,
+      target: {
+        status: "draft",
+        set_kind: "working",
+        session_exercise_id: "session-exercise-1",
+        advanced_timing_resolved_json: perRepJson,
+      },
+    });
+    await expect(createAdvancedTimingRepository(draft.kernel).startAdvancedTiming({
+      sessionId: "session-1",
+      sessionSetId: "set-1",
+      expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 0,
+      nowMs: 1_000,
+      config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+    })).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "running", revision: 1 }),
+    }));
+    expect(draft.executeCount()).toBe(1);
+
+    const inactive = kernelForTransition({
+      session: {
+        revision: 1,
+        active_session_exercise_id: "session-exercise-1",
+        active_set_id: "different-set",
+      },
+    });
+    await expect(createAdvancedTimingRepository(inactive.kernel).startAdvancedTiming({
+      sessionId: "session-1", sessionSetId: "set-1", expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 2, nowMs: 1_000,
+      config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+    })).rejects.toThrow("advanced_timing_target_not_active");
+
+    const unavailable = kernelForTransition({
+      target: {
+        status: "completed",
+        set_kind: "working",
+        session_exercise_id: "session-exercise-1",
+        advanced_timing_resolved_json: perRepJson,
+      },
+    });
+    await expect(createAdvancedTimingRepository(unavailable.kernel).startAdvancedTiming({
+      sessionId: "session-1", sessionSetId: "set-1", expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 2, nowMs: 1_000,
+      config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+    })).rejects.toThrow("advanced_timing_target_not_available");
+
+    const mismatched = kernelForTransition({
+      state: row({ session_set_id: "different-set" }),
+    });
+    await expect(createAdvancedTimingRepository(mismatched.kernel).pauseAdvancedTiming({
+      sessionId: "session-1", sessionSetId: "set-1", expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 2, nowMs: 1_000,
+    })).rejects.toThrow("advanced_timing_target_mismatch");
+
+    const stopped = kernelForTransition({
+      state: row({
+        status: "stopped", started_at_ms: null, next_boundary_at_ms: null, stopped_at_ms: 1_000,
+      }),
+    });
+    await expect(createAdvancedTimingRepository(stopped.kernel).pauseAdvancedTiming({
+      sessionId: "session-1", sessionSetId: "set-1", expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 2, nowMs: 1_000,
+    })).rejects.toThrow("advanced_timing_not_running");
+  });
+
+  it("does not write when foreground reconciliation has no elapsed boundary", async () => {
+    const { kernel, executeCount } = kernelForTransition({ state: row() });
+    await expect(createAdvancedTimingRepository(kernel).reconcileAdvancedTiming({
+      sessionId: "session-1",
+      sessionSetId: "set-1",
+      expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 2,
+      nowMs: 1_500,
+      foregroundSinceMs: 1_500,
+    })).resolves.toEqual(expect.objectContaining({
+      cue: null,
+      state: expect.objectContaining({ state: "running", revision: 2 }),
+    }));
+    expect(executeCount()).toBe(0);
+  });
+
+  it("propagates unexpected stored-state read failures", async () => {
+    const { kernel } = kernelForTransition({
+      storedStateError: new Error("injected_stored_state_read_failure"),
+    });
+    await expect(createAdvancedTimingRepository(kernel).startAdvancedTiming({
+      sessionId: "session-1", sessionSetId: "set-1", expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 2, nowMs: 1_000,
+      config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+    })).rejects.toThrow("injected_stored_state_read_failure");
+  });
+
+  it("propagates unexpected durable-write failures", async () => {
+    const { kernel } = kernelForTransition({
+      state: null,
+      executeError: new Error("injected_advanced_timing_write_failure"),
+    });
+    await expect(createAdvancedTimingRepository(kernel).startAdvancedTiming({
+      sessionId: "session-1", sessionSetId: "set-1", expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 0, nowMs: 1_000,
+      config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+    })).rejects.toThrow("injected_advanced_timing_write_failure");
+  });
+
+  it.each([
+    [
+      "missing exercise",
+      { exercise: null },
+      "advanced_timing_session_exercise_config_conflict",
+    ],
+    [
+      "stale session",
+      { exercise: { session_revision: 2, exercise_revision: 2, status: "planned" as const } },
+      "advanced_timing_session_revision_conflict",
+    ],
+    [
+      "stale exercise",
+      { exercise: { session_revision: 1, exercise_revision: 3, status: "planned" as const } },
+      "advanced_timing_session_exercise_config_conflict",
+    ],
+    [
+      "completed exercise",
+      { exercise: { session_revision: 1, exercise_revision: 2, status: "completed" as const } },
+      "advanced_timing_session_exercise_config_conflict",
+    ],
+    [
+      "active timer",
+      { state: row() },
+      "advanced_timing_config_active",
+    ],
+    [
+      "invalid stored state",
+      { state: row({ config_json: "{}" }) },
+      "advanced_timing_state_invalid",
+    ],
+    [
+      "unexpected stored-state read failure",
+      { storedStateError: new Error("injected_exercise_config_read_failure") },
+      "injected_exercise_config_read_failure",
+    ],
+    [
+      "failed exercise update",
+      { executeChanges: [0] },
+      "advanced_timing_session_exercise_config_conflict",
+    ],
+    [
+      "failed session update",
+      { executeChanges: [1, 1, 0] },
+      "advanced_timing_session_revision_conflict",
+    ],
+  ])("rejects %s while updating a session exercise timing default", async (
+    _label,
+    scenario,
+    code,
+  ) => {
+    const { kernel } = kernelForConfigUpdate(scenario);
+    await expect(createAdvancedTimingRepository(kernel)
+      .updateSessionExerciseAdvancedTiming({
+        sessionId: "session-1",
+        sessionExerciseId: "exercise-1",
+        expectedSessionRevision: 1,
+        expectedSessionExerciseRevision: 2,
+        nowMs: 1_000,
+        config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+      })).rejects.toThrow(code);
+  });
+
+  it.each([
+    [
+      "missing set",
+      { set: null },
+      "advanced_timing_session_set_config_conflict",
+    ],
+    [
+      "stale session",
+      { set: { session_revision: 2, set_revision: 2, status: "planned" as const, exercise_default_json: offJson } },
+      "advanced_timing_session_revision_conflict",
+    ],
+    [
+      "stale set",
+      { set: { session_revision: 1, set_revision: 3, status: "planned" as const, exercise_default_json: offJson } },
+      "advanced_timing_session_set_config_conflict",
+    ],
+    [
+      "skipped set",
+      { set: { session_revision: 1, set_revision: 2, status: "skipped" as const, exercise_default_json: offJson } },
+      "advanced_timing_session_set_config_conflict",
+    ],
+    [
+      "active timer",
+      { state: row() },
+      "advanced_timing_config_active",
+    ],
+    [
+      "invalid stored state",
+      { state: row({ config_json: "{}" }) },
+      "advanced_timing_state_invalid",
+    ],
+    [
+      "unexpected stored-state read failure",
+      { storedStateError: new Error("injected_set_config_read_failure") },
+      "injected_set_config_read_failure",
+    ],
+    [
+      "invalid inherited default",
+      { set: { session_revision: 1, set_revision: 2, status: "planned" as const, exercise_default_json: "{}" } },
+      "advanced_timing_snapshot_invalid",
+    ],
+    [
+      "failed set update",
+      { executeChanges: [0] },
+      "advanced_timing_session_set_config_conflict",
+    ],
+    [
+      "failed session update",
+      { executeChanges: [1, 0] },
+      "advanced_timing_session_revision_conflict",
+    ],
+  ])("rejects %s while updating a session set timing override", async (
+    _label,
+    scenario,
+    code,
+  ) => {
+    const { kernel } = kernelForConfigUpdate(scenario);
+    await expect(createAdvancedTimingRepository(kernel)
+      .updateSessionSetAdvancedTiming({
+        sessionId: "session-1",
+        sessionSetId: "set-1",
+        expectedSessionRevision: 1,
+        expectedSetRevision: 2,
+        nowMs: 1_000,
+        override: null,
+      })).rejects.toThrow(code);
+  });
+});

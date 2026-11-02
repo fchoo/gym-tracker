@@ -3,6 +3,7 @@ import type {
   ActiveWorkoutExercise,
   ActiveWorkoutSet,
   ActiveWorkoutView,
+  EmptyWorkoutView,
 } from "../domains/workout";
 import type { ActiveWorkoutCommands } from "../ui/screens/ActiveWorkoutScreen";
 import type {
@@ -427,6 +428,16 @@ if (phase2SetCorrectionPreviewView.activeSetId === null) {
 }
 export const phase2TodayPlanOneView = workoutView([previewExercises[0]]);
 export const phase2TodayPlanManyView = workoutView(previewExercises);
+export const phase2TodayPlanEmptyView: EmptyWorkoutView = {
+  state: "empty_workout",
+  id: "preview-empty-session",
+  status: "in_progress",
+  revision: 1,
+  activeSetId: null,
+  activeExerciseId: null,
+  progress: { completedWorkingSets: 0, totalWorkingSets: 0 },
+  rest: { version: 1, state: "idle", revision: 0, nextSetId: null },
+};
 
 const restResult: RestCommandResult = {
   state: phase2SetMutationPreviewView.rest,

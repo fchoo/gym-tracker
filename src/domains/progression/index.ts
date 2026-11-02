@@ -30,8 +30,11 @@ export {
 export {
   acceptRecommendation,
   keepCurrentTarget,
+  canonicalRecommendationDecisionRequest,
   recordExerciseEffort,
+  validateRecommendationDecisionInput,
   type ProgressionRepository,
+  type RecommendationDecision,
   type RecommendationDecisionInput,
   type RecommendationDecisionResult,
   type RecommendationStatus,

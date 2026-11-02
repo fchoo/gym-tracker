@@ -1,0 +1,19 @@
+{
+  "source_head": "95450b602bf4633518a8a5087f154bcf9a55dad6",
+  "typecheck_last_passed_at": "12bf8d47026bcffaf38c29b9a9f899800fb9b357",
+  "boundary_files": 468,
+  "runtime_tests": 112,
+  "runtime_four_metric_percent": 100,
+  "writer_tests": 126,
+  "writer_four_metric_percent": {
+    "statements": 100,
+    "branches": 100,
+    "functions": 100,
+    "lines": 100
+  },
+  "writer_report_sha256": "11d42d1bc2ffab537157d815b1b28a7b9e5d11e23c46f1902204930bd36b0ccc",
+  "protected_root_coverage_sha256": "07950580b33c230a1491019309b2338a25f413ae0f43fbf38f24f2e17f06a1a4",
+  "native_acceptance": "pending",
+  "production_build": "not_started",
+  "attended_samsung_available": false
+}

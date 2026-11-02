@@ -57,6 +57,7 @@ import {
 import {
   createPlansWorkoutRepository,
 } from "../../src/platform/sqlite/repositories/plansWorkoutRepository";
+import { captureStrengthOccurrenceSnapshot } from "../../src/platform/sqlite/repositories/strengthOccurrenceSnapshot";
 import {
   createScheduleRepository,
 } from "../../src/platform/sqlite/repositories/scheduleRepository";
@@ -369,6 +370,214 @@ async function insertValidCustomOwnedPlan(
 }
 
 describe("Today schedule workout integration", () => {
+  it("starts an edited planned day using its current revision and rejects an old selection", async () => {
+    const runtime = await setupRuntime();
+    const instantMs = Date.UTC(2026, 7, 17, 4);
+    runtime.setNow(instantMs);
+    await runtime.kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE plan_days SET revision = revision + 1 WHERE id = 'plan-day-copy'`,
+      );
+    });
+    const today = await runtime.schedule.loadToday(instantMs);
+    const selected = today?.selectedStrengthOccurrence;
+    if (selected === null || selected === undefined) {
+      throw new Error("selected_strength_opportunity_missing");
+    }
+    const [day] = await runtime.kernel.queryAll<{ revision: number }>(
+      `SELECT revision FROM plan_days WHERE id = ?`,
+      [selected.planDayId],
+    );
+    expect(selected.sourceRevisions.day).toBe(day!.revision);
+    const repository = createPlansWorkoutRepository(runtime.kernel);
+    const request = {
+      mode: "scheduled" as const,
+      planId: selected.planId,
+      planDayId: selected.planDayId,
+      localDate: selected.localDate,
+      timezone: selected.timeZone,
+      startedAtMs: instantMs,
+      commandIdentity: "c".repeat(64),
+      selectedOccurrence: selected,
+    };
+    await expect(startWorkout({ repository, request: {
+      ...request,
+      selectedOccurrence: {
+        ...selected,
+        sourceRevisions: { ...selected.sourceRevisions, day: day!.revision - 1 },
+      },
+    } })).rejects.toMatchObject({
+      code: "sqlite_transaction_failed",
+      cause: { message: "workout_selected_occurrence_stale" },
+    });
+    const session = await startWorkout({ repository, request });
+    await expect(runtime.kernel.queryAll(
+      `SELECT day_revision FROM workout_session_schedule_links WHERE workout_session_id = ?`,
+      [session.id],
+    )).resolves.toEqual([{ day_revision: day!.revision }]);
+  });
+
+  it("starts only from the captured Strength opportunity and stores immutable provenance", async () => {
+    const runtime = await setupRuntime();
+    const instantMs = Date.UTC(2026, 7, 17, 4);
+    runtime.setNow(instantMs);
+    const today = await runtime.schedule.loadToday(instantMs);
+    if (today === null || today.view.state !== "scheduled") {
+      throw new Error("selected_strength_opportunity_missing");
+    }
+    const [version] = await runtime.kernel.queryAll<{
+      id: string;
+      day_revision: number;
+    }>(
+      `SELECT version.id, day.revision AS day_revision
+       FROM owned_plan_schedule_versions version
+       JOIN owned_plan_schedule_bindings binding
+         ON binding.schedule_version_id = version.id
+       JOIN plan_days day ON day.id = binding.plan_day_id
+       WHERE version.schedule_id = ? AND binding.plan_day_id = ?`,
+      [today.scheduleId, today.view.dayId],
+    );
+    if (version === undefined) throw new Error("selected_strength_version_missing");
+    const session = await startWorkout({
+      repository: createPlansWorkoutRepository(runtime.kernel),
+      request: {
+        mode: "scheduled",
+        planId: today.planId,
+        planDayId: today.view.dayId,
+        localDate: today.localDate,
+        timezone: today.timeZone,
+        startedAtMs: instantMs,
+        commandIdentity: "a".repeat(64),
+        selectedOccurrence: {
+          kind: "strength",
+          opportunityId: `schedule-opportunity:${today.scheduleId}:${today.localDate}:weekday`,
+          planId: today.planId,
+          planDayId: today.view.dayId,
+          scheduleId: today.scheduleId,
+          scheduleVersionId: version.id,
+          localDate: today.localDate,
+          timeZone: today.timeZone,
+          sourceRevisions: {
+            plan: today.planRevision,
+            day: version.day_revision,
+            schedule: today.scheduleRevision,
+            opportunity: 1,
+          },
+        },
+      },
+    });
+    await expect(runtime.kernel.queryAll(
+      `SELECT opportunity_id, plan_id, plan_day_id, schedule_id
+       FROM workout_session_schedule_links WHERE workout_session_id = ?`,
+      [session.id],
+    )).resolves.toEqual([{
+      opportunity_id: `schedule-opportunity:${today.scheduleId}:${today.localDate}:weekday`,
+      plan_id: today.planId,
+      plan_day_id: today.view.dayId,
+      schedule_id: today.scheduleId,
+    }]);
+    await expect(runtime.kernel.queryAll(
+      `SELECT workout_session_id FROM workout_schedule_reconciliation_receipts
+       WHERE workout_session_id = ?`,
+      [session.id],
+    )).resolves.toEqual([{ workout_session_id: session.id }]);
+
+    await expect(startWorkout({
+      repository: createPlansWorkoutRepository(runtime.kernel),
+      request: {
+        mode: "scheduled",
+        planId: today.planId,
+        planDayId: today.view.dayId,
+        localDate: today.localDate,
+        timezone: today.timeZone,
+        startedAtMs: instantMs + 1,
+        selectedOccurrence: {
+          kind: "strength",
+          opportunityId: `schedule-opportunity:${today.scheduleId}:${today.localDate}:weekday`,
+          planId: today.planId,
+          planDayId: today.view.dayId,
+          scheduleId: today.scheduleId,
+          scheduleVersionId: "stale-schedule-version",
+          localDate: today.localDate,
+          timeZone: today.timeZone,
+          sourceRevisions: {
+            plan: today.planRevision,
+            day: version.day_revision,
+            schedule: today.scheduleRevision,
+            opportunity: 1,
+          },
+        },
+      },
+    })).rejects.toThrow("sqlite_transaction_failed");
+    await expect(startWorkout({
+      repository: createPlansWorkoutRepository(runtime.kernel),
+      request: {
+        mode: "scheduled",
+        planId: today.planId,
+        planDayId: today.view.dayId,
+        localDate: today.localDate,
+        timezone: today.timeZone,
+        startedAtMs: instantMs + 2,
+        selectedOccurrence: {
+          kind: "strength",
+          opportunityId: `schedule-opportunity:${today.scheduleId}:${today.localDate}:weekday`,
+          planId: today.planId,
+          planDayId: today.view.dayId,
+          scheduleId: today.scheduleId,
+          scheduleVersionId: version.id,
+          localDate: today.localDate,
+          timeZone: today.timeZone,
+          sourceRevisions: {
+            plan: today.planRevision,
+            day: version.day_revision,
+            schedule: today.scheduleRevision,
+            opportunity: 1,
+          },
+        },
+      },
+    })).rejects.toThrow("sqlite_transaction_failed");
+  });
+
+  it("starts a captured Strength opportunity without inventing a reconciliation receipt", async () => {
+    const runtime = await setupRuntime();
+    const instantMs = Date.UTC(2026, 7, 17, 4);
+    runtime.setNow(instantMs);
+    const today = await runtime.schedule.loadToday(instantMs);
+    if (today === null || today.view.state !== "scheduled") {
+      throw new Error("unreceipted_strength_opportunity_missing");
+    }
+    const [version] = await runtime.kernel.queryAll<{ id: string; day_revision: number }>(
+      `SELECT version.id, day.revision AS day_revision
+       FROM owned_plan_schedule_versions version
+       JOIN owned_plan_schedule_bindings binding
+         ON binding.schedule_version_id = version.id
+       JOIN plan_days day ON day.id = binding.plan_day_id
+       WHERE version.schedule_id = ? AND binding.plan_day_id = ?`,
+      [today.scheduleId, today.view.dayId],
+    );
+    if (version === undefined) throw new Error("unreceipted_strength_version_missing");
+    const session = await startWorkout({
+      repository: createPlansWorkoutRepository(runtime.kernel),
+      request: {
+        mode: "scheduled", planId: today.planId, planDayId: today.view.dayId,
+        localDate: today.localDate, timezone: today.timeZone, startedAtMs: instantMs,
+        selectedOccurrence: {
+          kind: "strength",
+          opportunityId: `schedule-opportunity:${today.scheduleId}:${today.localDate}:weekday`,
+          planId: today.planId, planDayId: today.view.dayId,
+          scheduleId: today.scheduleId, scheduleVersionId: version.id,
+          localDate: today.localDate, timeZone: today.timeZone,
+          sourceRevisions: { plan: today.planRevision, day: version.day_revision, schedule: today.scheduleRevision, opportunity: 1 },
+        },
+      },
+    });
+    await expect(runtime.kernel.queryAll(
+      `SELECT workout_session_id FROM workout_schedule_reconciliation_receipts
+       WHERE workout_session_id = ?`,
+      [session.id],
+    )).resolves.toEqual([]);
+  });
+
   it("projects corrected partial card facts from its active overlay after a cold reopen", async () => {
     const runtime = await setupRuntime();
     const plans = createPlansWorkoutRepository(runtime.kernel);
@@ -510,6 +719,22 @@ describe("Today schedule workout integration", () => {
       throw new Error("corrected_partial_missing_from_today");
     }
 
+    await reopened.write((transaction) => transaction.execute(
+      `UPDATE workout_sessions
+       SET active_session_exercise_id = NULL, active_set_id = NULL
+       WHERE id = ?`,
+      [session.id],
+    ));
+    await expect(createPlansWorkoutRepository(reopened).getTodayView({
+      localDate: "2026-08-17",
+      weekday: 1,
+    })).resolves.toMatchObject({
+      state: "saved_partial",
+      sessionId: session.id,
+      exerciseName: null,
+      setLabel: null,
+    });
+
     await expect(resumePartialWorkout({
       repository: createWorkoutOutcomeRepository(reopened),
       input: {
@@ -521,6 +746,36 @@ describe("Today schedule workout integration", () => {
       sessionId: session.id,
       sessionRevision: partial.detail.revision + 1,
       status: "in_progress",
+    });
+  });
+
+  it("labels a saved partial's persisted warm-up cursor", async () => {
+    const runtime = await setupRuntime();
+    const plans = createPlansWorkoutRepository(runtime.kernel);
+    const session = await startWorkout({
+      repository: plans,
+      request: {
+        mode: "scheduled", planId: "plan-copy", planDayId: "plan-day-copy",
+        localDate: "2026-08-17", timezone: "Asia/Singapore",
+        startedAtMs: 1_786_853_600_000,
+      },
+    });
+    await runtime.kernel.write((transaction) => transaction.execute(
+      `UPDATE session_sets SET set_kind = 'warmup'
+       WHERE id = (SELECT active_set_id FROM workout_sessions WHERE id = ?)`,
+      [session.id],
+    ));
+    await finishPartial({
+      repository: createWorkoutOutcomeRepository(runtime.kernel),
+      input: {
+        sessionId: session.id, expectedSessionRevision: session.revision,
+        confirmation: "save_partial_workout", endedAtMs: 1_786_853_700_000,
+      },
+    });
+    await expect(plans.getTodayView({
+      localDate: "2026-08-17", weekday: 1,
+    })).resolves.toMatchObject({
+      state: "saved_partial", sessionId: session.id, setLabel: "Warm-up 1",
     });
   });
 
@@ -790,6 +1045,155 @@ describe("Today schedule workout integration", () => {
         recommendationStatus: "pending",
       }],
     });
+  });
+
+  it("reads a pending owned Strength occurrence with immutable provenance and fails closed for malformed graph readback", async () => {
+    const runtime = await setupRuntime();
+    const plans = createPlansWorkoutRepository(runtime.kernel);
+    const [ownedSchedule] = await runtime.kernel.queryAll<{
+      id: string;
+      revision: number;
+    }>(
+      "SELECT id, revision FROM owned_plan_schedules WHERE plan_id = 'plan-copy' AND plan_kind = 'strength'",
+    );
+    if (ownedSchedule === undefined) {
+      throw new Error("planned_strength_owned_schedule_missing");
+    }
+    await runtime.kernel.write(async (transaction) => {
+      await transaction.execute(
+        `INSERT INTO owned_plan_schedule_versions
+          (id, schedule_id, version_number, effective_local_date, mode,
+           timezone, rotation_pointer, created_at_ms)
+         VALUES ('owned-schedule-version-copy', ?, 3, '2026-08-17',
+                 'weekday', 'Asia/Singapore', NULL, 1)`,
+        [ownedSchedule.id],
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_schedule_bindings
+          (id, schedule_version_id, mode, ordinal, week_index, weekday,
+           plan_day_id)
+         VALUES ('owned-schedule-binding-copy', 'owned-schedule-version-copy',
+                 'weekday', 0, 0, 'Monday', 'plan-day-copy')`,
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_schedule_opportunities
+          (id, schedule_id, schedule_version_id, local_date, source,
+           plan_day_id, state, outcome, session_id, revision, consumed_at_ms)
+         VALUES ('planned-strength-occurrence', ?,
+                 'owned-schedule-version-copy', '2026-08-17', 'weekday',
+                 'plan-day-copy', 'pending', NULL, NULL, 4, NULL)`,
+        [ownedSchedule.id],
+      );
+      await transaction.execute(
+        `INSERT INTO plan_days (id, plan_id, ordinal, name, revision)
+         VALUES ('plan-day-readback-no-target', 'plan-copy', 9,
+                 'Readback no target', 1),
+                ('plan-day-readback-empty', 'plan-copy', 10,
+                 'Readback empty', 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_day_exercises
+          (id, plan_day_id, exercise_id, ordinal,
+           between_exercise_rest_seconds, metric_profile,
+           metric_contract_version, exercise_metric_generation, revision)
+         VALUES ('owned-readback-no-target', 'plan-day-readback-no-target',
+                 'exercise-squat', 0, 120, 'load_reps', 1, 1, 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_schedule_opportunities
+          (id, schedule_id, schedule_version_id, local_date, source,
+           plan_day_id, state, outcome, session_id, revision, consumed_at_ms)
+         VALUES ('planned-strength-no-target', ?,
+                 'owned-schedule-version-copy', '2026-08-18', 'weekday',
+                 'plan-day-readback-no-target', 'pending', NULL, NULL, 1, NULL),
+                ('planned-strength-empty', ?,
+                 'owned-schedule-version-copy', '2026-08-19', 'weekday',
+                 'plan-day-readback-empty', 'pending', NULL, NULL, 1, NULL)`,
+        [ownedSchedule.id, ownedSchedule.id],
+      );
+      await captureStrengthOccurrenceSnapshot(transaction, "planned-strength-occurrence", 100);
+      await captureStrengthOccurrenceSnapshot(transaction, "planned-strength-no-target", 101);
+      await captureStrengthOccurrenceSnapshot(transaction, "planned-strength-empty", 102);
+    });
+
+    await expect(plans.loadPlannedStrengthOccurrence?.(
+      'missing-strength-occurrence',
+    )).resolves.toBeNull();
+    await expect(plans.loadPlannedStrengthOccurrence?.(
+      'planned-strength-occurrence',
+    )).resolves.toEqual(expect.objectContaining({
+      occurrenceId: 'planned-strength-occurrence',
+      planId: 'plan-copy',
+      planName: 'Full Body Foundation',
+      planDayId: 'plan-day-copy',
+      dayName: 'Full Body A',
+      scheduleId: ownedSchedule.id,
+      scheduleVersionId: 'owned-schedule-version-copy',
+      localDate: '2026-08-17',
+      timezone: 'Asia/Singapore',
+      sourceRevisions: { plan: 8, day: 2, schedule: ownedSchedule.revision, opportunity: 4 },
+      exercises: [expect.objectContaining({
+        id: 'owned-day-exercise-squat-a', exerciseId: 'exercise-squat',
+        exerciseName: 'Squat',
+        ordinal: 0,
+        targets: [expect.objectContaining({
+          id: 'owned-working-target-a', ordinal: 0,
+        })],
+      })],
+    }));
+
+    await expect(plans.loadPlannedStrengthOccurrence?.(
+      'planned-strength-no-target',
+    )).resolves.toBeNull();
+    await expect(plans.loadPlannedStrengthOccurrence?.(
+      'planned-strength-empty',
+    )).resolves.toBeNull();
+
+    await runtime.kernel.write((transaction) => transaction.execute(
+      `UPDATE owned_plan_working_set_targets
+          SET target_json = json_set(target_json, '$.loadGrams', 999999),
+              revision = revision + 1
+        WHERE id = 'owned-working-target-a'`,
+    ));
+    await expect(plans.loadPlannedStrengthOccurrence?.(
+      'planned-strength-occurrence',
+    )).resolves.toMatchObject({
+      exercises: [{ targets: [{ targetJson: expect.not.stringContaining("999999") }] }],
+    });
+
+    await runtime.kernel.write((transaction) => transaction.execute(
+      `UPDATE owned_plan_schedules
+          SET lifecycle = 'inactive', deactivated_at_ms = 999999
+        WHERE id = ?`,
+      [ownedSchedule.id],
+    ));
+    await expect(plans.loadPlannedStrengthOccurrence?.(
+      'planned-strength-occurrence',
+    )).resolves.toBeNull();
+
+    await runtime.kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE owned_plan_schedules
+            SET lifecycle = 'active', deactivated_at_ms = NULL
+          WHERE id = ?`,
+        [ownedSchedule.id],
+      );
+      await transaction.execute(
+        `UPDATE plans SET revision = revision + 1 WHERE id = 'plan-copy'`,
+      );
+    });
+    await expect(plans.loadPlannedStrengthOccurrence?.(
+      'planned-strength-occurrence',
+    )).resolves.toBeNull();
+  });
+
+  it("loads a missing planned Strength occurrence without a snapshot executor", async () => {
+    const plans = createPlansWorkoutRepository({
+      queryAll: async () => [],
+    } as never);
+
+    await expect(plans.loadPlannedStrengthOccurrence?.("missing-occurrence"))
+      .resolves.toBeNull();
   });
 
   it("activates a valid unscheduled owned plan through Save schedule and projects Today", async () => {
@@ -1219,7 +1623,7 @@ describe("Today schedule workout integration", () => {
 
     const completion = await completeSet({
       repository: workout,
-      haptics: { committed: jest.fn(async () => undefined) },
+      haptics: { committed: jest.fn(async () => undefined), cue: jest.fn(async () => undefined) },
       invalidate: jest.fn(async () => undefined),
       drainEffects: jest.fn(async () => undefined),
       input: {
@@ -1265,6 +1669,110 @@ describe("Today schedule workout integration", () => {
       });
   });
 
+  it("consumes an edited scheduled session exactly once across a retry", async () => {
+    const runtime = await setupRuntime();
+    const before = await runtime.schedule.loadSchedule("plan-copy");
+    await runtime.schedule.saveSchedule({
+      planId: "plan-copy",
+      scheduleId: before.scheduleId,
+      expectedPlanRevision: before.planRevision,
+      expectedScheduleRevision: before.scheduleRevision,
+      expectedActivePair: before.activeSchedule,
+      before: before.current,
+      todayLocalDate: "2026-08-18",
+      next: {
+        effectiveLocalDate: "2026-08-18",
+        mode: "weekday",
+        timeZone: "Asia/Singapore",
+        bindings: [{
+          ordinal: 0,
+          weekIndex: 0,
+          weekday: "Tuesday",
+          planDayId: "plan-day-copy",
+        }],
+      },
+    });
+    runtime.setNow(Date.UTC(2026, 7, 18, 4));
+    const today = await runtime.schedule.loadToday(Date.UTC(2026, 7, 18, 4));
+    if (today === null || today.view.state !== "scheduled") {
+      throw new Error("edited_schedule_opportunity_missing");
+    }
+    const plans = createPlansWorkoutRepository(runtime.kernel);
+    const session = await startWorkout({
+      repository: plans,
+      request: {
+        mode: "scheduled",
+        planId: today.planId,
+        planDayId: today.view.dayId,
+        localDate: today.localDate,
+        timezone: today.timeZone,
+        startedAtMs: Date.UTC(2026, 7, 18, 4),
+      },
+    });
+    const workout = createWorkoutRepository(runtime.kernel);
+    const added = await workout.addExercise!({
+      requestId: "edited-scheduled-add",
+      requestSha256: "a".repeat(64),
+      sessionId: session.id,
+      expectedSessionRevision: session.revision,
+      occurredAtMs: Date.UTC(2026, 7, 18, 4, 1),
+      libraryExerciseId: "exercise-squat",
+      sessionExerciseId: "edited-scheduled-added-exercise",
+      setId: "edited-scheduled-added-set",
+    });
+    await runtime.kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE session_sets
+         SET status = 'completed',
+             observed_load_grams = target_load_grams,
+             observed_reps = target_max_reps,
+             observed_json = json_object(
+               'version', 1, 'profile', 'load_reps',
+               'loadGrams', target_load_grams,
+               'reps', target_max_reps, 'source', 'manual'
+             ),
+             completed_at_ms = ?,
+             revision = revision + 1
+         WHERE session_exercise_id IN (
+           SELECT id FROM session_exercises WHERE session_id = ?
+         )`,
+        [Date.UTC(2026, 7, 18, 4, 2), session.id],
+      );
+      await transaction.execute(
+        `UPDATE session_exercises
+         SET status = 'completed', revision = revision + 1
+         WHERE session_id = ?`,
+        [session.id],
+      );
+    });
+    await finishCompleted({
+      repository: createWorkoutOutcomeRepository(runtime.kernel),
+      input: {
+        sessionId: session.id,
+        expectedSessionRevision: added.sessionRevision,
+        endedAtMs: Date.UTC(2026, 7, 18, 4, 3),
+      },
+    });
+
+    const first = await runtime.schedule.completeScheduledSession(session.id);
+    await expect(runtime.schedule.completeScheduledSession(session.id))
+      .resolves.toEqual(first);
+    await expect(runtime.kernel.queryAll(
+      `SELECT state, outcome, session_id
+       FROM owned_plan_schedule_opportunities
+       WHERE session_id = ?`,
+      [session.id],
+    )).resolves.toEqual([{
+      state: "consumed",
+      outcome: "completed",
+      session_id: session.id,
+    }]);
+    await expect(runtime.kernel.queryAll(
+      "SELECT modified_from_plan FROM workout_sessions WHERE id = ?",
+      [session.id],
+    )).resolves.toEqual([{ modified_from_plan: 1 }]);
+  });
+
   it("retains all six accepted starters and exact D-55 five-day behavior", async () => {
     const pack = await parseAcceptedStarterPlanPack({
       starterPackBytes: readFileSync(
@@ -1307,5 +1815,87 @@ describe("Today schedule workout integration", () => {
         metricIdentity.profile === "load_reps"
       )
     )).toBe(true);
+  });
+
+  it("characterizes dormant legacy timing bytes alongside selected-occurrence recovery after relaunch", async () => {
+    const runtime = await setupRuntime();
+    const session = await startWorkout({
+      repository: createPlansWorkoutRepository(runtime.kernel),
+      request: {
+        mode: "scheduled",
+        planId: "plan-copy",
+        planDayId: "plan-day-copy",
+        localDate: "2026-08-17",
+        timezone: "Asia/Singapore",
+        startedAtMs: 1_786_853_600_000,
+      },
+    });
+    const [target] = await runtime.kernel.queryAll<{ id: string }>(
+      `SELECT id FROM session_sets
+       WHERE session_exercise_id IN (
+         SELECT id FROM session_exercises WHERE session_id = ?
+       ) ORDER BY ordinal LIMIT 1`,
+      [session.id],
+    );
+    if (target === undefined) throw new Error("timing_characterization_target_missing");
+    const configJson = '{"version":1,"mode":"cluster","groupSizes":[3,3],"intraRestMs":20000,"cueChannels":"haptic"}';
+    const progressJson = '{"currentGroupIndex":1}';
+    await runtime.kernel.write(async (transaction) => {
+      await transaction.execute(
+        "UPDATE session_sets SET advanced_timing_resolved_json = ? WHERE id = ?",
+        [configJson, target.id],
+      );
+      await transaction.execute(
+        `INSERT INTO session_advanced_timing_states
+          (session_id, session_set_id, state_version, revision, status, mode,
+           config_json, progress_json, started_at_ms, next_boundary_at_ms,
+           remaining_ms, stopped_at_ms)
+         VALUES (?, ?, 1, 7, 'paused', 'cluster', ?, ?, NULL, NULL, 15_000, NULL)`,
+        [session.id, target.id, configJson, progressJson],
+      );
+      await transaction.execute(
+        `INSERT INTO session_rest_states
+          (session_id, state_version, status, started_at_ms, ends_at_ms,
+           remaining_ms, expired_at_ms, next_set_id, revision)
+         VALUES (?, 1, 'paused', NULL, NULL, 45_000, NULL, ?, 9)`,
+        [session.id, target.id],
+      );
+    });
+    const expected = await runtime.kernel.queryAll<{
+      config_json: string;
+      progress_json: string;
+      active_session_exercise_id: string | null;
+      active_set_id: string | null;
+      remaining_ms: number | null;
+      schedule_version_id: string;
+    }>(
+      `SELECT ats.config_json, ats.progress_json, ws.active_session_exercise_id,
+              ws.active_set_id, rest.remaining_ms, link.schedule_version_id
+       FROM workout_sessions ws
+       JOIN session_advanced_timing_states ats ON ats.session_id = ws.id
+       JOIN session_rest_states rest ON rest.session_id = ws.id
+       JOIN workout_session_schedule_links link ON link.workout_session_id = ws.id
+       WHERE ws.id = ?`,
+      [session.id],
+    );
+
+    await runtime.kernel.close();
+    kernels.delete(runtime.kernel);
+    const writer = new NodeSqliteConnection(new DatabaseSync(runtime.databasePath));
+    const reader = new NodeSqliteConnection(new DatabaseSync(runtime.databasePath));
+    await configureSqliteConnection(writer, { enableWal: true });
+    await configureSqliteConnection(reader, { enableWal: false });
+    const reopened = createSqliteKernel({ reader, writer });
+    kernels.add(reopened);
+    await expect(reopened.queryAll(
+      `SELECT ats.config_json, ats.progress_json, ws.active_session_exercise_id,
+              ws.active_set_id, rest.remaining_ms, link.schedule_version_id
+       FROM workout_sessions ws
+       JOIN session_advanced_timing_states ats ON ats.session_id = ws.id
+       JOIN session_rest_states rest ON rest.session_id = ws.id
+       JOIN workout_session_schedule_links link ON link.workout_session_id = ws.id
+       WHERE ws.id = ?`,
+      [session.id],
+    )).resolves.toEqual(expected);
   });
 });

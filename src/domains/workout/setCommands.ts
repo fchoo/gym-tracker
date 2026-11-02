@@ -43,6 +43,19 @@ function validTime(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 0;
 }
 
+function validateCompletedSetCorrection(input: ReviseCompletedSetInput): void {
+  if (!validIdentifier(input.correctionIdempotencyKey, PERSISTED_ENTITY_ID_MAX_LENGTH)) {
+    throw new TypeError("invalid_correction_idempotency_key");
+  }
+  if (!validIdentifier(input.sessionId, PERSISTED_ENTITY_ID_MAX_LENGTH)
+    || !validIdentifier(input.setId, PERSISTED_ENTITY_ID_MAX_LENGTH)
+    || !validRevision(input.expectedSessionRevision)
+    || !validRevision(input.expectedSetRevision)
+    || !validTime(input.revisedAtMs)) {
+    throw new TypeError("invalid_completed_set_correction");
+  }
+}
+
 function validateRemoveInput(
   input: RemoveWarmupInput | RemoveWorkingSetInput,
 ): void {
@@ -236,9 +249,7 @@ export async function reviseCompletedSet(input: Readonly<{
   repository: ActiveWorkoutRepository;
   input: ReviseCompletedSetInput;
 }>) {
-  if (input.input.correctionIdempotencyKey.trim().length === 0) {
-    throw new TypeError("invalid_correction_idempotency_key");
-  }
+  validateCompletedSetCorrection(input.input);
   validateObservation(
     input.input.metricIdentity,
     input.input.observation,

@@ -1,5 +1,7 @@
 import { Search } from "lucide-react-native";
 import React, {
+  forwardRef,
+  useImperativeHandle,
   useRef,
 } from "react";
 import {
@@ -36,6 +38,10 @@ export type M3SearchFieldProps = Readonly<{
   testID?: string;
 }>;
 
+export type M3SearchFieldHandle = Readonly<{
+  blur(): void;
+}>;
+
 function accessibilityLabelForState(
   label: string,
   state: M3SearchFieldState,
@@ -57,7 +63,8 @@ function accessibilityLabelForState(
   }
 }
 
-export function M3SearchField({
+export const M3SearchField = forwardRef<M3SearchFieldHandle, M3SearchFieldProps>(
+function M3SearchField({
   label,
   value,
   onChangeText,
@@ -69,8 +76,11 @@ export function M3SearchField({
   disabled = false,
   placeholder,
   testID = "m3-search-field",
-}: M3SearchFieldProps) {
+}, ref) {
   const inputRef = useRef<TextInput>(null);
+  useImperativeHandle(ref, () => ({
+    blur: () => inputRef.current?.blur(),
+  }), []);
   const { colors } = useAppTheme();
   const resolvedState = state ?? (busy ? "busy" : "idle");
   const stateAccessibilityLabel = accessibilityLabelForState(
@@ -150,7 +160,8 @@ export function M3SearchField({
       )}
     </View>
   );
-}
+},
+);
 
 const styles = StyleSheet.create({
   group: {

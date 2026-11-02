@@ -51,7 +51,7 @@ describe("Expo foreground rest feedback adapter", () => {
         sound: "default",
         vibrate: [],
       }),
-      trigger: { channelId: "workout-rest-v2-sound-only" },
+      trigger: { channelId: "workout-rest-v3-sound-only" },
     });
   });
 

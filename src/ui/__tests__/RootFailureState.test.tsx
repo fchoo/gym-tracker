@@ -11,6 +11,7 @@ import {
 } from "@jest/globals";
 import React from "react";
 
+import { AppLoadingShell } from "../screens/RootScreens";
 import { RootFailureState } from "../screens/RootFailureState";
 import { AppearanceProvider } from "../theme";
 
@@ -89,5 +90,40 @@ describe("Plan 01-06 RootFailureState", () => {
       screen.getByRole("button", { name: "View diagnostic code" }),
     );
     expect(screen.getByText("Storage · GT-WRITER01")).toBeOnTheScreen();
+  });
+
+  it("maps font failures to bounded recovery copy without exposing raw errors", async () => {
+    await render(
+      <AppearanceProvider>
+        <RootFailureState
+          failure={{
+            category: "font",
+            code: "font_load_failed_/private/secret.ttf",
+            correlationCode: "GT-FONT01",
+            retryable: true,
+          }}
+          onRetry={jest.fn()}
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "View diagnostic code" }));
+    expect(screen.getByText("Font · GT-FONT01")).toBeOnTheScreen();
+    expect(screen.queryByText(/private|secret|ttf/i)).not.toBeOnTheScreen();
+  });
+
+  it("shows one truthful busy announcement with disabled four-root geometry while opening data", async () => {
+    await render(
+      <AppearanceProvider>
+        <AppLoadingShell width={840} />
+      </AppearanceProvider>,
+    );
+
+    expect(screen.getByRole("progressbar", { name: "Opening workout data" })).toBeOnTheScreen();
+    expect(screen.getAllByRole("tab")).toHaveLength(4);
+    for (const tab of screen.getAllByRole("tab")) {
+      expect(tab).toBeDisabled();
+    }
+    expect(screen.queryByLabelText("Root navigation rail")).not.toBeOnTheScreen();
   });
 });

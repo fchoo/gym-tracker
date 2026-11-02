@@ -6,14 +6,22 @@ import {
 } from "@jest/globals";
 
 import {
+  applyCompletedWorkoutPlanWriteBack,
+  beginCompletedWorkoutPlanWriteBack,
   discardWorkout,
   finishCompleted,
   finishPartial,
+  keepCompletedWorkoutPlanAsIs,
+  previewCompletedWorkoutPlanWriteBack,
   resumePartialWorkout,
   saveZeroSetWorkout,
   skipExercise,
+  type CompletedWorkoutPlanWriteBackPort,
   type WorkoutOutcomeRepository,
 } from "./finishWorkout";
+import type {
+  SessionExerciseEditsForPlanPreview,
+} from "../plans";
 import {
   nextWorkoutStatus,
   sessionIsResumable,
@@ -48,7 +56,150 @@ function repository(): WorkoutOutcomeRepository {
   };
 }
 
+const writeBackPreview: SessionExerciseEditsForPlanPreview = {
+  kind: "session_exercise_edits",
+  sourceSessionId: "session-1",
+  sourceSessionRevision: 4,
+  planId: "plan-owner",
+  planName: "Owner Strength",
+  planDayId: "day-owner",
+  dayName: "Strength Day",
+  expectedPlanRevision: 3,
+  currentWorkoutUnaffected: true,
+  previewToken: `session-writeback-v1:${"a".repeat(64)}`,
+  composition: [],
+  changes: [],
+};
+
+function writeBackPort(
+  overrides: Partial<CompletedWorkoutPlanWriteBackPort> = {},
+): CompletedWorkoutPlanWriteBackPort {
+  return {
+    previewSessionExerciseEdits: jest.fn(async () => writeBackPreview),
+    applySessionExerciseEdits: jest.fn(async () => ({
+      outcome: "committed" as const,
+      planId: writeBackPreview.planId,
+      planRevision: writeBackPreview.expectedPlanRevision + 1,
+      sourceSessionId: writeBackPreview.sourceSessionId,
+    })),
+    ...overrides,
+  };
+}
+
 describe("Plan 01-10 outcome transitions and commands", () => {
+  it("models the completed-session plan write-back choice and preserves a stale preview for retry", async () => {
+    const noChange = writeBackPort({
+      previewSessionExerciseEdits: jest.fn(async () => null),
+    });
+    await expect(previewCompletedWorkoutPlanWriteBack({
+      port: noChange,
+      sessionId: "session-1",
+    })).resolves.toEqual({
+      state: "completed",
+      disposition: "not_eligible",
+    });
+    expect(noChange.applySessionExerciseEdits).not.toHaveBeenCalled();
+
+    const stale = writeBackPort({
+      applySessionExerciseEdits: jest.fn(async () => {
+        throw Object.assign(new Error("plan_impact_preview_stale"), {
+          code: "plan_impact_preview_stale",
+        });
+      }),
+    });
+    const awaiting = await previewCompletedWorkoutPlanWriteBack({
+      port: stale,
+      sessionId: "session-1",
+    });
+    expect(awaiting).toEqual({
+      state: "awaiting_choice",
+      preview: writeBackPreview,
+    });
+    if (awaiting.state !== "awaiting_choice") {
+      throw new Error("expected_awaiting_choice");
+    }
+    expect(keepCompletedWorkoutPlanAsIs(awaiting)).toEqual({
+      state: "completed",
+      disposition: "kept",
+    });
+    expect(stale.applySessionExerciseEdits).not.toHaveBeenCalled();
+
+    const applying = beginCompletedWorkoutPlanWriteBack(awaiting);
+    expect(applying).toEqual({
+      state: "applying",
+      preview: writeBackPreview,
+    });
+    const failed = await applyCompletedWorkoutPlanWriteBack({
+      port: stale,
+      state: applying,
+    });
+    expect(failed).toEqual({
+      state: "save_failed",
+      preview: writeBackPreview,
+      failure: {
+        kind: "stale",
+        code: "plan_impact_preview_stale",
+      },
+    });
+    if (failed.state !== "save_failed") {
+      throw new Error("expected_save_failed");
+    }
+
+    const retry = writeBackPort();
+    const saved = await applyCompletedWorkoutPlanWriteBack({
+      port: retry,
+      state: beginCompletedWorkoutPlanWriteBack(failed),
+    });
+    expect(saved).toEqual({
+      state: "completed",
+      disposition: "saved",
+      outcome: "committed",
+    });
+    expect(retry.applySessionExerciseEdits).toHaveBeenCalledWith({
+      sourceSessionId: writeBackPreview.sourceSessionId,
+      expectedPlanRevision: writeBackPreview.expectedPlanRevision,
+      previewToken: writeBackPreview.previewToken,
+      composition: writeBackPreview.composition,
+    });
+  });
+
+  it.each([
+    [
+      "classifies a non-stale coded write-back failure",
+      Object.assign(new Error("write_back_conflict"), {
+        code: "owned_plan_revision_conflict",
+      }),
+      { kind: "failed", code: "owned_plan_revision_conflict" },
+    ],
+    [
+      "classifies an uncoded write-back failure",
+      new Error("write_back_failed"),
+      { kind: "failed", code: "session_write_back_failed" },
+    ],
+    [
+      "classifies a non-error write-back failure",
+      "write_back_failed",
+      { kind: "failed", code: "session_write_back_failed" },
+    ],
+  ] as const)("%s", async (...[_label, error, failure]) => {
+    const port = writeBackPort({
+      applySessionExerciseEdits: jest.fn(async () => {
+        throw error;
+      }),
+    });
+
+    const result = await applyCompletedWorkoutPlanWriteBack({
+      port,
+      state: { state: "applying", preview: writeBackPreview },
+    });
+
+    expect(result).toEqual({
+      state: "save_failed",
+      preview: writeBackPreview,
+      failure,
+    });
+  });
+
   it.each([
     { from: "in_progress", action: "finish_completed", to: "completed" },
     { from: "in_progress", action: "finish_partial", to: "partial" },

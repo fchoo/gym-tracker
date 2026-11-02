@@ -1,9 +1,12 @@
 const shared = {
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
-  roots: ["<rootDir>/app", "<rootDir>/src", "<rootDir>/tests"],
+  roots: ["<rootDir>/app", "<rootDir>/src", "<rootDir>/tests", "<rootDir>/modules", "<rootDir>/plugins"],
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
   testPathIgnorePatterns: ["/node_modules/", "/android/", "/ios/"],
 };
+
+const nativeRouterTransformIgnorePatterns = require("jest-expo/jest-preset").transformIgnorePatterns
+  .map((pattern) => pattern.replace("standard-navigation)", "standard-navigation|decode-uri-component)"));
 
 module.exports = {
   ...shared,
@@ -29,13 +32,23 @@ module.exports = {
       displayName: "unit",
       preset: "jest-expo",
       testEnvironment: "node",
+      transform: {
+        "^.+\\.(?:[jt]sx?|mjs)$": [
+          "babel-jest",
+          {
+            presets: ["babel-preset-expo"],
+          },
+        ],
+      },
       testMatch: [
         "<rootDir>/src/**/*.test.ts",
         "<rootDir>/src/**/*.test.tsx",
+        "<rootDir>/modules/**/src/**/*.test.ts",
+        "<rootDir>/plugins/**/*.test.ts",
       ],
       testPathIgnorePatterns: [
         ...shared.testPathIgnorePatterns,
-        "/src/ui/",
+        "/src/ui/(?!garmin/useGarminConnectionController\\.test\\.tsx$)",
       ],
     },
     {
@@ -49,6 +62,20 @@ module.exports = {
         "<rootDir>/src/ui/**/*.test.ts",
         "<rootDir>/src/ui/**/*.test.tsx",
       ],
+      testPathIgnorePatterns: [
+        ...shared.testPathIgnorePatterns,
+        "/src/ui/garmin/useGarminConnectionController\\.test\\.tsx$",
+        "/app/__tests__/recovery-router-transition\\.test\\.tsx$",
+      ],
+    },
+    {
+      ...shared,
+      displayName: "native-router",
+      preset: "jest-expo",
+      testEnvironment: "node",
+      moduleFileExtensions: ["native.ts", "native.tsx", "native.js", ...shared.moduleFileExtensions],
+      transformIgnorePatterns: nativeRouterTransformIgnorePatterns,
+      testMatch: ["<rootDir>/app/__tests__/recovery-router-transition.test.tsx"],
     },
     {
       ...shared,

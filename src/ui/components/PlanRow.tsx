@@ -74,7 +74,10 @@ export function PlanRow({
         accessibilityRole="button"
         focusable
         onPress={onPress}
-        style={styles.mainAction}
+        style={[
+          styles.mainAction,
+          item.status === "Active" ? styles.activePlanAction : styles.collectionAction,
+        ]}
       >
         <Text
           style={[
@@ -176,9 +179,10 @@ const styles = StyleSheet.create({
   mainAction: {
     flex: 1,
     gap: space[1],
-    minHeight: sizes.minimumTarget,
     minWidth: 0,
   },
+  collectionAction: { minHeight: sizes.collectionRow },
+  activePlanAction: { minHeight: sizes.activePlanRow },
   actionCluster: {
     alignSelf: "stretch",
   },

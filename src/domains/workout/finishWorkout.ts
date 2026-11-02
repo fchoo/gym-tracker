@@ -1,4 +1,8 @@
 import type {
+  ApplySessionExerciseEditsToPlanInput,
+  SessionExerciseEditsForPlanPreview,
+} from "../plans";
+import type {
   FinishOutcomeResult,
   SessionDetail,
 } from "./sessionDetail";
@@ -16,6 +20,14 @@ export type FinishCompletedInput = Readonly<{
 
 export type FinishPartialInput = FinishCompletedInput & Readonly<{
   confirmation: string;
+}>;
+
+export type FinishPartialResult = FinishOutcomeResult & Readonly<{
+  outcome: "committed" | "already_committed";
+  receipt: Readonly<{
+    requestId: string;
+    requestSha256: string;
+  }>;
 }>;
 
 export type SaveZeroSetInput = FinishPartialInput;
@@ -52,6 +64,134 @@ export interface WorkoutOutcomeRepository {
     sessionRevision: number;
   }>>;
   getSessionDetail(sessionId: string): Promise<SessionDetail>;
+  getSessionDetailAtRevision?(
+    sessionId: string,
+    sourceRevision: number,
+  ): Promise<SessionDetail>;
+}
+
+export type CompletedWorkoutPlanWriteBackFailure = Readonly<{
+  kind: "stale" | "failed";
+  code: string;
+}>;
+
+export type CompletedWorkoutPlanWriteBackCompletedState =
+  | Readonly<{
+      state: "completed";
+      disposition: "not_eligible" | "kept";
+    }>
+  | Readonly<{
+      state: "completed";
+      disposition: "saved";
+      outcome: "committed" | "already_committed";
+    }>;
+
+export type CompletedWorkoutPlanWriteBackAwaitingChoiceState = Readonly<{
+  state: "awaiting_choice";
+  preview: SessionExerciseEditsForPlanPreview;
+}>;
+
+export type CompletedWorkoutPlanWriteBackApplyingState = Readonly<{
+  state: "applying";
+  preview: SessionExerciseEditsForPlanPreview;
+}>;
+
+export type CompletedWorkoutPlanWriteBackSaveFailedState = Readonly<{
+  state: "save_failed";
+  preview: SessionExerciseEditsForPlanPreview;
+  failure: CompletedWorkoutPlanWriteBackFailure;
+}>;
+
+export type CompletedWorkoutPlanWriteBackChoiceState =
+  | CompletedWorkoutPlanWriteBackAwaitingChoiceState
+  | CompletedWorkoutPlanWriteBackSaveFailedState;
+
+export type CompletedWorkoutPlanWriteBackState =
+  | CompletedWorkoutPlanWriteBackCompletedState
+  | CompletedWorkoutPlanWriteBackAwaitingChoiceState
+  | CompletedWorkoutPlanWriteBackApplyingState
+  | CompletedWorkoutPlanWriteBackSaveFailedState;
+
+export type CompletedWorkoutPlanWriteBackPort = Readonly<{
+  previewSessionExerciseEdits(input: Readonly<{
+    sessionId: string;
+  }>): Promise<SessionExerciseEditsForPlanPreview | null>;
+  applySessionExerciseEdits(
+    input: Omit<ApplySessionExerciseEditsToPlanInput, "requestId">,
+  ): Promise<Readonly<{
+    outcome: "committed" | "already_committed";
+  }>>;
+}>;
+
+function planWriteBackFailure(
+  error: unknown,
+): CompletedWorkoutPlanWriteBackFailure {
+  const code = error instanceof Error
+    && "code" in error
+    && typeof error.code === "string"
+    ? error.code
+    : "session_write_back_failed";
+  return {
+    kind: code === "plan_impact_preview_stale" ? "stale" : "failed",
+    code,
+  };
+}
+
+export async function previewCompletedWorkoutPlanWriteBack(input: Readonly<{
+  port: CompletedWorkoutPlanWriteBackPort;
+  sessionId: string;
+}>): Promise<
+  | CompletedWorkoutPlanWriteBackCompletedState
+  | CompletedWorkoutPlanWriteBackAwaitingChoiceState
+> {
+  const preview = await input.port.previewSessionExerciseEdits({
+    sessionId: input.sessionId,
+  });
+  return preview === null
+    ? { state: "completed", disposition: "not_eligible" }
+    : { state: "awaiting_choice", preview };
+}
+
+export function beginCompletedWorkoutPlanWriteBack(
+  state: CompletedWorkoutPlanWriteBackChoiceState,
+): CompletedWorkoutPlanWriteBackApplyingState {
+  return { state: "applying", preview: state.preview };
+}
+
+export function keepCompletedWorkoutPlanAsIs(
+  state: CompletedWorkoutPlanWriteBackChoiceState,
+): CompletedWorkoutPlanWriteBackCompletedState {
+  void state;
+  return { state: "completed", disposition: "kept" };
+}
+
+export async function applyCompletedWorkoutPlanWriteBack(input: Readonly<{
+  port: CompletedWorkoutPlanWriteBackPort;
+  state: CompletedWorkoutPlanWriteBackApplyingState;
+}>): Promise<
+  | CompletedWorkoutPlanWriteBackCompletedState
+  | CompletedWorkoutPlanWriteBackSaveFailedState
+> {
+  const { preview } = input.state;
+  try {
+    const result = await input.port.applySessionExerciseEdits({
+      sourceSessionId: preview.sourceSessionId,
+      expectedPlanRevision: preview.expectedPlanRevision,
+      previewToken: preview.previewToken,
+      composition: preview.composition,
+    });
+    return {
+      state: "completed",
+      disposition: "saved",
+      outcome: result.outcome,
+    };
+  } catch (error) {
+    return {
+      state: "save_failed",
+      preview,
+      failure: planWriteBackFailure(error),
+    };
+  }
 }
 
 function timestamp(value: number): boolean {
@@ -75,6 +215,16 @@ export function finishCompleted(input: Readonly<{
   return input.repository.finishCompleted(input.input);
 }
 
+export function finishPartial(input: Readonly<{
+  repository: WorkoutOutcomeRepository & Readonly<{
+    finishPartial(input: FinishPartialInput): Promise<FinishPartialResult>;
+  }>;
+  input: FinishPartialInput;
+}>): Promise<FinishPartialResult>;
+export function finishPartial(input: Readonly<{
+  repository: WorkoutOutcomeRepository;
+  input: FinishPartialInput;
+}>): Promise<FinishOutcomeResult>;
 export function finishPartial(input: Readonly<{
   repository: WorkoutOutcomeRepository;
   input: FinishPartialInput;

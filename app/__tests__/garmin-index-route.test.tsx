@@ -1,0 +1,173 @@
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react-native";
+import {
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from "@jest/globals";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import React from "react";
+
+const mockBack = jest.fn();
+const mockPush = jest.fn();
+const mockUseGarminImportRuntime = jest.fn();
+let mockParams: Readonly<{ origin?: string | readonly string[] }> = {};
+let mockScreenProps: Readonly<Record<string, unknown>> = {};
+let mockShellProps: Readonly<Record<string, unknown>> = {};
+
+jest.mock("expo-router", () => ({
+  router: {
+    back: (...args: readonly unknown[]) => mockBack(...args),
+    push: (...args: readonly unknown[]) => mockPush(...args),
+  },
+  useLocalSearchParams: () => mockParams,
+}));
+
+jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
+  useWorkoutAppRuntime: () => ({
+    garminImport: {
+      confirmGarminImport: jest.fn(),
+      loadGarminActivities: jest.fn(),
+    },
+  }),
+}));
+
+jest.mock("../../src/bootstrap/garminImportRuntime", () => ({
+  parseGarminRootOrigin: (value: unknown) =>
+    value === "calendar" || value === "library" || value === "progress"
+      ? value
+      : "workout",
+  useGarminImportRuntime: (...args: readonly unknown[]) => mockUseGarminImportRuntime(...args),
+}));
+
+jest.mock("../../src/ui/screens/GarminSyncScreen", () => ({
+  GarminSyncScreen: (props: Readonly<Record<string, unknown>>) => {
+    const ReactModule = require("react") as typeof import("react");
+    const {
+      Pressable: MockPressable,
+      ScrollView: MockScrollView,
+      Text: MockText,
+    } = require("react-native") as typeof import("react-native");
+    const mockOpenActivity = props.onOpenActivity as jest.Mock;
+    const mockRequestBack = props.onBack as jest.Mock;
+    mockScreenProps = props;
+    return ReactModule.createElement(
+      MockScrollView,
+      { onScroll: props.onScroll as never, testID: "garmin-root-screen" },
+      ReactModule.createElement(
+        MockPressable,
+        {
+          accessibilityRole: "button",
+          onPress: () => mockOpenActivity("activity-local-01"),
+        },
+        ReactModule.createElement(MockText, null, "Open retained activity"),
+      ),
+      ReactModule.createElement(
+        MockPressable,
+        {
+          accessibilityRole: "button",
+          onPress: () => mockRequestBack(),
+        },
+        ReactModule.createElement(MockText, null, "Back"),
+      ),
+    );
+  },
+}));
+
+jest.mock("../../src/ui/garmin/GarminRouteShell", () => ({
+  GarminRouteShell: (props: Readonly<Record<string, unknown>>) => {
+    const ReactModule = require("react") as typeof import("react");
+    const { View: MockView } = require("react-native") as typeof import("react-native");
+    mockShellProps = props;
+    return ReactModule.createElement(
+      MockView,
+      { testID: "garmin-route-shell" },
+      props.children as React.ReactNode,
+    );
+  },
+}));
+
+import GarminRootRoute, { createGarminRootHref } from "../garmin/index";
+
+describe("Garmin root route", () => {
+  beforeEach(() => {
+    mockBack.mockReset();
+    mockPush.mockReset();
+    mockUseGarminImportRuntime.mockReset();
+    mockUseGarminImportRuntime.mockReturnValue({
+      source: {},
+      coordinator: {},
+      loadActivities: jest.fn(),
+    });
+    mockParams = { origin: "calendar" };
+    mockScreenProps = {};
+    mockShellProps = {};
+  });
+
+  it.each(["workout", "calendar", "library", "progress"] as const)(
+    "keeps the approved %s origin and no arbitrary return href",
+    (origin) => {
+      expect(createGarminRootHref(origin)).toEqual({
+        pathname: "/garmin",
+        params: { origin },
+      });
+    },
+  );
+
+  it("keeps Garmin outside the tab list while preserving the existing four root destinations", () => {
+    const tabsLayout = readFileSync(join(process.cwd(), "app/(tabs)/_layout.tsx"), "utf8");
+    expect([...tabsLayout.matchAll(/<Tabs\.Screen name="([^"]+)" options=\{\{ title: "([^"]+)" \}\} \/>/gu)]
+      .map((match) => [match[1]!, match[2]!] as const))
+      .toEqual([
+        ["index", "Workout"],
+        ["calendar", "Calendar"],
+        ["library", "Library"],
+        ["progress", "Progress"],
+      ]);
+    expect(tabsLayout).not.toContain("name=\"garmin\"");
+  });
+
+  it.each([
+    undefined,
+    "garmin",
+    "settings",
+    "https://arbitrary.example/return",
+    ["calendar"],
+  ])("defaults invalid origin %p to Workout", (origin) => {
+    expect(createGarminRootHref(origin)).toEqual({
+      pathname: "/garmin",
+      params: { origin: "workout" },
+    });
+  });
+
+  it("opens detail with only the opaque local ID and restores selection/scroll on focus return", async () => {
+    await render(<GarminRootRoute />);
+    expect(screen.getByTestId("garmin-route-shell")).toBeTruthy();
+    expect(mockShellProps.origin).toBe("calendar");
+    expect(Object.keys(mockScreenProps)).toContain("contextOrigin");
+    expect(mockScreenProps.contextOrigin).toBe("calendar");
+    await fireEvent(screen.getByTestId("garmin-root-screen"), "scroll", {
+      nativeEvent: { contentOffset: { y: 144 } },
+    });
+    await fireEvent.press(screen.getByRole("button", { name: "Open retained activity" }));
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/garmin/activity/[activityId]",
+      params: { activityId: "activity-local-01", origin: "calendar" },
+    });
+    await waitFor(() => {
+      expect(mockScreenProps.returnFocusActivityId).toBe("activity-local-01");
+      expect(mockScreenProps.returnFocusVersion).toBe(1);
+      expect(mockScreenProps.scrollOffset).toBe(144);
+    });
+    await fireEvent.press(screen.getByRole("button", { name: "Back" }));
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+});

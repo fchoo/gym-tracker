@@ -7,11 +7,14 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useDeviceTimeZone } from "../time/useDeviceTimeZone";
+import { useExactRestAlarmAccess } from "../../bootstrap/useExactRestAlarmAccess";
 import {
   StyleSheet,
   Switch,
   Text,
   View,
+  type View as ViewHandle,
   type TextStyle,
 } from "react-native";
 
@@ -71,23 +74,36 @@ export type SettingsScreenProps = Readonly<{
     preferences: RestAlertPreferences,
   ): void | Promise<void | RestAlertPreferenceSaveResult>;
   onOpenNotificationSettings(): void | Promise<void>;
+  onRefreshPreciseRestAlarms?(): Promise<void>;
   onOpenRemovedSessions(): void;
   onOpenDataAndRecovery(): void;
   width?: number;
 }>;
 
-export function SettingsScreen({
+export type AppSettingsContentProps = Omit<SettingsScreenProps, "onBack" | "width"> & Readonly<{
+  /** Called by a sheet host before a callback changes the route. */
+  onNavigate?: () => void;
+  removedSessionsTriggerRef?: React.RefObject<ViewHandle | null>;
+  dataAndRecoveryTriggerRef?: React.RefObject<ViewHandle | null>;
+}>;
+
+/** Router-independent settings sections. Presentation owners supply navigation chrome. */
+export function AppSettingsContent({
   preferences,
   restAlertPreferencesLoading,
   notificationPermission,
-  onBack,
   onChangeRestAlertPreferences,
   onOpenNotificationSettings,
+  onRefreshPreciseRestAlarms,
   onOpenRemovedSessions,
   onOpenDataAndRecovery,
-  width,
-}: SettingsScreenProps) {
+  onNavigate,
+  removedSessionsTriggerRef,
+  dataAndRecoveryTriggerRef,
+}: AppSettingsContentProps) {
   const { appearance, colors, setAppearance } = useAppTheme();
+  const displayTimeZone = useDeviceTimeZone();
+  const preciseAlerts = useExactRestAlarmAccess(undefined, onRefreshPreciseRestAlarms);
   const latestPreferencesRef = useRef(preferences);
   const latestExternalPreferencesRef = useRef(preferences);
   const pendingExternalPreferencesRef = useRef<RestAlertPreferences | null>(null);
@@ -96,7 +112,6 @@ export function SettingsScreen({
   const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [optimisticPreferences, setOptimisticPreferences] = useState(preferences);
   const [saveFailed, setSaveFailed] = useState(false);
-  const adaptiveWidth = width === undefined ? {} : { width };
 
   useEffect(() => {
     if (samePreferences(latestExternalPreferencesRef.current, preferences)) {
@@ -161,14 +176,19 @@ export function SettingsScreen({
   }
 
   return (
-    <AdaptiveScreen
-      {...adaptiveWidth}
-      primary={
-        <>
-          <ScreenHeader backAction={onBack} title="Settings" />
+    <>
           <ContentCard>
             <View style={styles.section}>
               <SectionHeader title="Appearance" tone="card" />
+              <Text
+                style={[
+                  typeScale.body as TextStyle,
+                  { color: colors.contentCardTextSecondary },
+                ]}
+              >
+                Appearance applies to all four destinations, Active Workout, Garmin,
+                sheets, dialogs, and recovery routes.
+              </Text>
               <View
                 accessibilityLabel="Appearance"
                 accessibilityRole="radiogroup"
@@ -224,13 +244,21 @@ export function SettingsScreen({
 
           <ContentCard>
             <View style={styles.section}>
+              <SectionHeader title="Dates and times" tone="card" />
+              <Text style={[typeScale.body as TextStyle, { color: colors.contentCardText }]}>{displayTimeZone}</Text>
+              <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>Uses your phone's current timezone for activity and workout displays.</Text>
+            </View>
+          </ContentCard>
+
+          <ContentCard>
+            <View style={styles.section}>
               <SectionHeader title="Rest alerts" tone="card" />
               {restAlertPreferencesLoading ? (
                 <LoadingRestAlertRows />
               ) : (
                 <>
                   <RestAlertSwitch
-                    hint="Plays short beeps at 3, 2, and 1 seconds and a longer beep when rest ends."
+                    hint="Plays two short beeps at 2 and 1 seconds, then a longer beep when rest ends."
                     label="Rest sound"
                     onValueChange={(soundEnabled) => {
                       changeRestAlertPreferences({
@@ -304,6 +332,38 @@ export function SettingsScreen({
                   />
                 </View>
               ) : null}
+              {preciseAlerts.access === "not_required" ? null : (
+                <View style={styles.section}>
+                  <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>
+                    Precise background alerts
+                  </Text>
+                  <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
+                    {preciseAlerts.access === "allowed"
+                      ? "Allowed. Rest completion alerts can use Android's precise alarms."
+                      : "Allow alarm access so Android can deliver rest completion alerts promptly while the app is in the background."}
+                  </Text>
+                  {preciseAlerts.access === "denied" ? (
+                    <SecondaryAction
+                      disabled={preciseAlerts.opening}
+                      label="Allow precise rest alerts"
+                      onPress={() => { void preciseAlerts.openSettings(); }}
+                    />
+                  ) : null}
+                  {preciseAlerts.openFailed || preciseAlerts.access === "unavailable" ? (
+                    <Text accessibilityRole="alert" style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
+                      Precise alert settings are unavailable. Your timer stays accurate; background alerts may arrive later.
+                    </Text>
+                  ) : null}
+                  {preciseAlerts.refreshFailed ? (
+                    <>
+                      <Text accessibilityRole="alert" style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
+                        Pending rest alerts could not be updated. Your timer stays accurate.
+                      </Text>
+                      <SecondaryAction label="Retry precise rest alerts" onPress={() => { void preciseAlerts.retryRefresh(); }} />
+                    </>
+                  ) : null}
+                </View>
+              )}
             </View>
           </ContentCard>
 
@@ -320,7 +380,11 @@ export function SettingsScreen({
               </Text>
               <SecondaryAction
                 label="Removed sessions"
-                onPress={onOpenRemovedSessions}
+                onPress={() => {
+                  onNavigate?.();
+                  onOpenRemovedSessions();
+                }}
+                ref={removedSessionsTriggerRef}
               />
             </View>
           </ContentCard>
@@ -334,17 +398,39 @@ export function SettingsScreen({
                   { color: colors.contentCardTextSecondary },
                 ]}
               >
-                Create a secure backup, restore a previous backup, or export readable CSV data.
+                Automatic Google Drive backup and manual recovery tools are available here.
               </Text>
               <SecondaryAction
+                ref={dataAndRecoveryTriggerRef}
                 label="Data and recovery"
-                onPress={onOpenDataAndRecovery}
+                onPress={() => {
+                  onNavigate?.();
+                  onOpenDataAndRecovery();
+                }}
                 testID="more-data-and-recovery"
               />
             </View>
           </ContentCard>
+    </>
+  );
+}
+
+/** Full-route wrapper for direct/deep-link settings navigation. */
+export function SettingsScreen({
+  onBack,
+  width,
+  ...contentProps
+}: SettingsScreenProps) {
+  const adaptiveWidth = width === undefined ? {} : { width };
+  return (
+    <AdaptiveScreen
+      {...adaptiveWidth}
+      primary={(
+        <>
+          <ScreenHeader backAction={onBack} title="App Settings" />
+          <AppSettingsContent {...contentProps} />
         </>
-      }
+      )}
     />
   );
 }

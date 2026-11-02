@@ -4,8 +4,6 @@ import React, {
   useState,
 } from "react";
 import {
-  Modal,
-  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -25,6 +23,7 @@ import {
   SecondaryAction,
   SkeletonBlock,
 } from "./index";
+import { BottomSheet } from "./BottomSheet";
 import {
   radius,
   sizes,
@@ -71,8 +70,7 @@ export function RestAlertSettingsSheet({
   onOpenNotificationSettings(): void | Promise<void>;
   onOpenAppearance(): void;
 }>) {
-  const { colors, reduceMotion } = useAppTheme();
-  const headingRef = useRef<View>(null);
+  const { colors } = useAppTheme();
   const latestPreferencesRef = useRef(preferences);
   const latestExternalPreferencesRef = useRef(preferences);
   const pendingExternalPreferencesRef =
@@ -91,7 +89,6 @@ export function RestAlertSettingsSheet({
       if (pendingWritesRef.current === 0) {
         setSaveFailed(false);
       }
-      headingRef.current?.focus();
     }
     wasVisibleRef.current = visible;
   }, [visible]);
@@ -114,11 +111,6 @@ export function RestAlertSettingsSheet({
         : preferences
     ));
   }, [preferences]);
-
-  function close() {
-    onClose();
-    restoreFocusRef?.current?.focus();
-  }
 
   function change(next: RestAlertPreferences) {
     setSaveFailed(false);
@@ -169,29 +161,16 @@ export function RestAlertSettingsSheet({
   }
 
   return (
-    <Modal
-      animationType={reduceMotion ? "none" : "fade"}
-      onRequestClose={loading ? () => undefined : close}
-      transparent
+    <BottomSheet
+      cancelDisabled={loading}
+      cancelLabel="Close rest alerts"
+      contentStyle={styles.content}
+      heading="Rest alerts"
+      onCancel={onClose}
+      restoreFocusRef={restoreFocusRef}
+      scrollTestID="rest-alert-settings-sheet-content"
       visible={visible}
     >
-      <View accessibilityViewIsModal style={styles.backdrop}>
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          style={[styles.sheet, { backgroundColor: colors.surface }]}
-          testID="rest-alert-settings-sheet-content"
-        >
-          <View
-            accessibilityRole="header"
-            accessible
-            focusable
-            ref={headingRef}
-          >
-            <Text style={[typeScale.screenTitle as TextStyle, { color: colors.textPrimary }]}>
-              Rest alerts
-            </Text>
-          </View>
           <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
             Choose feedback for rest completion. The in-app timer remains the
             authoritative workout record.
@@ -259,14 +238,7 @@ export function RestAlertSettingsSheet({
             label="Appearance"
             onPress={onOpenAppearance}
           />
-          <SecondaryAction
-            disabled={loading}
-            label="Close rest alerts"
-            onPress={close}
-          />
-        </ScrollView>
-      </View>
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -338,16 +310,6 @@ function SettingSwitch({
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    backgroundColor: "rgba(0, 0, 0, 0.48)",
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    borderTopLeftRadius: radius.emphasized,
-    borderTopRightRadius: radius.emphasized,
-    maxHeight: "90%",
-  },
   content: {
     gap: space[4],
     padding: space[6],

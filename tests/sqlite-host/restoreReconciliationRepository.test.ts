@@ -37,7 +37,14 @@ import {
 } from "../../src/platform/sqlite/repositories/historyProjectionRepository";
 import {
   createRestoreReconciliationRepository,
+  type RestoreReconciliationFaultStage,
 } from "../../src/platform/sqlite/repositories/restoreReconciliationRepository";
+import {
+  createRunningActivityMatchRepository,
+} from "../../src/platform/sqlite/repositories/runningActivityMatchRepository";
+import {
+  createRunningPlanRepository,
+} from "../../src/platform/sqlite/repositories/runningPlanRepository";
 import {
   createSqliteKernel,
   type SqliteStatementResult,
@@ -199,6 +206,82 @@ async function seedRestoredSource(kernel: SqliteKernel): Promise<void> {
   });
 }
 
+async function seedRestoredActivityLifecycle(kernel: SqliteKernel): Promise<void> {
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      `INSERT INTO imported_activities
+        (id, source, source_activity_id, started_at_ms, aggregate_json, imported_at_ms)
+       VALUES ('restored-activity', 'garmin_connect_account:owner', 'external-restored',
+               1724428800000, '{"confirmed_local_date":"2026-08-24"}', 1)`,
+    );
+    await transaction.execute(
+      `INSERT INTO imported_activity_identities
+        (activity_id, source_kind, account_namespace, external_activity_id,
+         aggregate_revision, accepted_normalized_sha256, removal_state)
+       VALUES ('restored-activity', 'garmin_connect_account', 'owner',
+               'external-restored', 1, ?, 'active')`,
+      ["a".repeat(64)],
+    );
+    await transaction.execute(
+      `INSERT INTO imported_activity_events
+        (id, activity_id, aggregate_revision, event_type, payload_json, created_at_ms)
+       VALUES ('restored-activity:import', 'restored-activity', 1, 'imported', '{}', 1)`,
+    );
+    // Restore deliberately clears this rebuildable relation. Its source event
+    // and durable identity remain authoritative.
+    await transaction.execute("DELETE FROM imported_activity_current_lifecycle");
+  });
+}
+
+async function seedRestoredRunningMatch(kernel: SqliteKernel): Promise<void> {
+  const plans = createRunningPlanRepository(kernel);
+  await plans.createInactiveMinimum({
+    planId: "restored-running-plan", planName: "Restored Running",
+    anchorDayId: "restored-running-anchor", scheduleId: "restored-running-schedule",
+    scheduleVersionId: "restored-running-version", scheduleBindingId: "restored-running-binding",
+    createdAtMs: 1, effectiveLocalDate: "2026-08-24", timezone: "Asia/Singapore",
+    recoveryRevisionId: "restored-running-session", slots: [{
+      id: "restored-running-slot", weekday: "Monday", ordinal: 0,
+      sessionRevisionId: "restored-running-session",
+    }],
+  });
+  await plans.activateMinimum({
+    planId: "restored-running-plan", scheduleId: "restored-running-schedule",
+    expectedPlanRevision: 1, expectedScheduleRevision: 1, activatedAtMs: 2,
+  });
+  await plans.materializeOccurrences({
+    planId: "restored-running-plan", scheduleId: "restored-running-schedule",
+    scheduleVersionId: "restored-running-version", localDate: "2026-08-24",
+    timezone: "Asia/Singapore", createdAtMs: 3,
+    occurrenceIds: ["restored-running-opportunity"],
+  });
+  const matches = createRunningActivityMatchRepository(kernel);
+  await matches.confirm({
+    requestId: "restored-running-match", requestSha256: "b".repeat(64), action: "match",
+    activityId: "restored-activity", expectedActivityRevision: 1,
+    expectedAcceptedPayloadSha256: "a".repeat(64),
+    opportunityId: "restored-running-opportunity", expectedOpportunityRevision: 1,
+    expectedRelationRevision: 0, planId: "restored-running-plan", scheduleId: "restored-running-schedule",
+    scheduleVersionId: "restored-running-version", slotId: "restored-running-slot",
+    expectedScheduleRevision: 2,
+    planDayId: "restored-running-anchor", expectedPlanDayRevision: 1,
+    slotRevisionId: "restored-running-slot:revision:1", expectedSlotRevision: 1,
+    sessionRevisionId: "restored-running-session", expectedSessionRevision: 1, occurredAtMs: 4,
+  });
+  await kernel.write(async (transaction) => {
+    await transaction.execute("DELETE FROM running_activity_current_matches");
+  });
+}
+
+async function phase13SourceDigest(kernel: SqliteKernel): Promise<unknown> {
+  const [identities, lifecycleEvents, matchEvents] = await Promise.all([
+    kernel.queryAll("SELECT * FROM imported_activity_identities ORDER BY activity_id"),
+    kernel.queryAll("SELECT * FROM imported_activity_events ORDER BY id"),
+    kernel.queryAll("SELECT * FROM running_activity_match_events ORDER BY id"),
+  ]);
+  return { identities, lifecycleEvents, matchEvents };
+}
+
 async function sourceFacts(kernel: SqliteKernel): Promise<unknown> {
   const [exercises, sessions, sets] = await Promise.all([
     kernel.queryAll("SELECT id, origin, name FROM exercises ORDER BY id"),
@@ -253,6 +336,50 @@ function repository(kernel: SqliteKernel, failSearch = false) {
         }
       : search,
   });
+}
+
+function repositoryWithFault(
+  kernel: SqliteKernel,
+  faultAfter: (stage: RestoreReconciliationFaultStage) => Promise<void>,
+) {
+  const search = createExerciseSearchIndexRepository(kernel);
+  return createRestoreReconciliationRepository(kernel, {
+    history: createHistoryProjectionRepository(kernel), nowMs: () => 99, search, faultAfter,
+  });
+}
+
+function withTriggerCaptureMutation(
+  kernel: SqliteKernel,
+  targetCall: number,
+  mutate: (rows: readonly Readonly<{ name: string; sql: string }>[]) =>
+    readonly Readonly<{ name: string; sql: string }>[],
+): SqliteKernel {
+  return {
+    queryAll: kernel.queryAll.bind(kernel),
+    close: kernel.close.bind(kernel),
+    write: async <Result>(
+      command: (transaction: SqliteTransactionExecutor) => Promise<Result>,
+    ) => kernel.write(async (transaction) => {
+      let captureCalls = 0;
+      const wrapped: SqliteTransactionExecutor = {
+        execute: transaction.execute.bind(transaction),
+        async queryAll<Row extends Record<string, unknown>>(
+          sql: string,
+          parameters: readonly (null | number | string | Uint8Array)[] = [],
+        ) {
+          const rows = await transaction.queryAll<Row>(sql, parameters);
+          if (sql.includes("SELECT name, sql FROM sqlite_master")) {
+            captureCalls += 1;
+            if (captureCalls === targetCall) {
+              return mutate(rows as unknown as readonly Readonly<{ name: string; sql: string }>[]) as unknown as readonly Row[];
+            }
+          }
+          return rows;
+        },
+      };
+      return command(wrapped);
+    }),
+  } as SqliteKernel;
 }
 
 function fakeTransactionExecutor(
@@ -331,6 +458,114 @@ function loadRepsObservation(loadGrams: number, reps: number): string {
 }
 
 describe("restore reconciliation repository", () => {
+  it("rebuilds Phase 13 current lifecycle from immutable source without advancing backup generation", async () => {
+    const kernel = await open();
+    await seedRestoredSource(kernel);
+    await seedRestoredActivityLifecycle(kernel);
+    const [before] = await kernel.queryAll<{ mutation_generation: number }>(
+      "SELECT mutation_generation FROM automatic_backup_state WHERE id = 1",
+    );
+
+    await expect(repository(kernel).reconcileAndRebuild()).resolves.toMatchObject({
+      outcome: "rebuilt",
+      state: "ready",
+    });
+    await expect(kernel.queryAll(
+      `SELECT activity_id, aggregate_revision, removal_state, lifecycle_event_id
+       FROM imported_activity_current_lifecycle`,
+    )).resolves.toEqual([{
+      activity_id: "restored-activity",
+      aggregate_revision: 1,
+      removal_state: "active",
+      lifecycle_event_id: "restored-activity:import",
+    }]);
+    await expect(kernel.queryAll<{ mutation_generation: number }>(
+      "SELECT mutation_generation FROM automatic_backup_state WHERE id = 1",
+    )).resolves.toEqual([before!]);
+  });
+
+  it.each<readonly [RestoreReconciliationFaultStage]>([
+    ["phase13_current_relations"], ["history_seed"], ["search"], ["history"], ["parity"],
+  ])("retains rebuild_pending after a %s fault and relaunch retries without source or backup mutation", async (stage) => {
+    const kernel = await open();
+    await seedRestoredSource(kernel);
+    await seedRestoredActivityLifecycle(kernel);
+    await seedRestoredRunningMatch(kernel);
+    const beforeSource = await phase13SourceDigest(kernel);
+    const [beforeBackup] = await kernel.queryAll<{ mutation_generation: number }>(
+      "SELECT mutation_generation FROM automatic_backup_state WHERE id = 1",
+    );
+
+    await expect(repositoryWithFault(kernel, async (actual) => {
+      if (actual === stage) throw new Error(`injected_${stage}`);
+    }).reconcileAndRebuild()).resolves.toMatchObject({
+      outcome: "retryable_failure", state: "rebuild_pending",
+    });
+    await expect(phase13SourceDigest(kernel)).resolves.toEqual(beforeSource);
+    await expect(kernel.queryAll<{ mutation_generation: number }>(
+      "SELECT mutation_generation FROM automatic_backup_state WHERE id = 1",
+    )).resolves.toEqual([beforeBackup!]);
+    await expect(repository(kernel).reconcileAndRebuild()).resolves.toMatchObject({
+      outcome: "rebuilt", state: "ready",
+    });
+    await expect(kernel.queryAll(
+      "SELECT opportunity_id, activity_id, relation_revision FROM running_activity_current_matches",
+    )).resolves.toEqual([{
+      opportunity_id: "restored-running-opportunity", activity_id: "restored-activity", relation_revision: 1,
+    }]);
+  });
+
+  const triggerCaptureCases: ReadonlyArray<readonly [
+    string,
+    number,
+    (rows: readonly Readonly<{ name: string; sql: string }>[]) =>
+      readonly Readonly<{ name: string; sql: string }>[],
+  ]> = [
+    ["missing lifecycle trigger", 1, (rows: readonly Readonly<{ name: string; sql: string }>[]) => rows.slice(1)],
+    ["blank lifecycle trigger SQL", 1, (rows: readonly Readonly<{ name: string; sql: string }>[]) => rows.map((row, index) => index === 0 ? { ...row, sql: "" } : row)],
+    ["changed restored lifecycle trigger", 2, (rows: readonly Readonly<{ name: string; sql: string }>[]) => rows.map((row, index) => index === 0 ? { ...row, sql: `${row.sql} ` } : row)],
+  ];
+  it.each(triggerCaptureCases)("keeps rebuild pending for %s", async (_label, targetCall, mutate) => {
+    const kernel = await open();
+    await seedRestoredSource(kernel);
+    await seedRestoredActivityLifecycle(kernel);
+    const wrapped = withTriggerCaptureMutation(kernel, targetCall, mutate);
+
+    await expect(repository(wrapped).reconcileAndRebuild()).resolves.toMatchObject({
+      outcome: "retryable_failure",
+      state: "rebuild_pending",
+    });
+  });
+
+  it("rebuilds identical Phase 13 derivatives twice without duplicating facts or advancing backup generation", async () => {
+    const kernel = await open();
+    await seedRestoredSource(kernel);
+    await seedRestoredActivityLifecycle(kernel);
+    await seedRestoredRunningMatch(kernel);
+    const beforeSource = await phase13SourceDigest(kernel);
+    const [beforeBackup] = await kernel.queryAll<{ mutation_generation: number }>(
+      "SELECT mutation_generation FROM automatic_backup_state WHERE id = 1",
+    );
+
+    await expect(repository(kernel).reconcileAndRebuild()).resolves.toMatchObject({ outcome: "rebuilt" });
+    const firstDerivatives = await Promise.all([
+      kernel.queryAll("SELECT * FROM imported_activity_current_lifecycle ORDER BY activity_id"),
+      kernel.queryAll("SELECT * FROM running_activity_current_matches ORDER BY opportunity_id"),
+    ]);
+    await kernel.write((transaction) => transaction.execute(
+      "UPDATE portability_restore_state SET state = 'rebuild_pending', updated_at_ms = 100 WHERE id = 1",
+    ));
+    await expect(repository(kernel).reconcileAndRebuild()).resolves.toMatchObject({ outcome: "rebuilt" });
+    await expect(Promise.all([
+      kernel.queryAll("SELECT * FROM imported_activity_current_lifecycle ORDER BY activity_id"),
+      kernel.queryAll("SELECT * FROM running_activity_current_matches ORDER BY opportunity_id"),
+    ])).resolves.toEqual(firstDerivatives);
+    await expect(phase13SourceDigest(kernel)).resolves.toEqual(beforeSource);
+    await expect(kernel.queryAll<{ mutation_generation: number }>(
+      "SELECT mutation_generation FROM automatic_backup_state WHERE id = 1",
+    )).resolves.toEqual([beforeBackup!]);
+  });
+
   it("rebuilds local FTS and all history/progress/recommendation derivatives from committed source facts", async () => {
     const kernel = await open();
     await seedRestoredSource(kernel);

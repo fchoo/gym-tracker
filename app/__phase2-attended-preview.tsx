@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import * as Font from "expo-font";
 import {
   Redirect,
   useLocalSearchParams,
@@ -13,6 +14,10 @@ import React, {
 import {
   StyleSheet,
   Text,
+  PixelRatio,
+  type LayoutChangeEvent,
+  type TextLayoutEvent,
+  type TextStyle,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -27,6 +32,7 @@ import {
   phase2SetMutationPreviewCommands,
   phase2SetMutationPreviewView,
   phase2TodayPlanManyView,
+  phase2TodayPlanEmptyView,
   phase2TodayPlanOneView,
   previewSectionPreference,
   resolvePhase2AttendedPreviewRoute,
@@ -35,6 +41,7 @@ import {
   type Phase2SetMutationPreviewVariant,
   type Phase2TodayPlanPreviewVariant,
 } from "../src/testing/phase2AttendedPreviewFixtures";
+import { PHASE14_FONT_PROOF } from "../src/testing/phase14FontProof";
 import {
   AppearanceSheet,
   CalendarField,
@@ -56,10 +63,6 @@ import {
   AppLoadingShell,
 } from "../src/ui/screens/RootScreens";
 import { TodayScreen } from "../src/ui/screens/TodayScreen";
-import {
-  WorkoutPlanOverviewScreen,
-  type WorkoutPlanOverviewScene,
-} from "../src/ui/screens/WorkoutPlanOverviewScreen";
 import { useAppTheme } from "../src/ui/theme";
 
 const noOp = () => undefined;
@@ -175,6 +178,123 @@ function UnknownPreview() {
           </>
         )}
       />
+    </View>
+  );
+}
+
+// React Native 0.86's TextStyle omits the variable-axis 890 value. Keep the
+// exact source value in this proof-only harness instead of silently rounding it.
+const phase14TitleStyle = {
+  fontFamily: PHASE14_FONT_PROOF.oracle.fontFamily,
+  fontSize: PHASE14_FONT_PROOF.oracle.fontSizePx,
+  fontStretch: PHASE14_FONT_PROOF.oracle.fontStretch,
+  fontWeight: `${PHASE14_FONT_PROOF.oracle.fontWeight}`,
+  letterSpacing: PHASE14_FONT_PROOF.oracle.fontSizePx
+    * PHASE14_FONT_PROOF.oracle.letterSpacingEm,
+  lineHeight: PHASE14_FONT_PROOF.oracle.lineHeightPx,
+} as unknown as TextStyle;
+
+function Phase14FontProofPreview() {
+  const { fontScale } = useWindowDimensions();
+  const displayDensity = PixelRatio.get();
+  const fontLoaded = (() => {
+    try {
+      return Font.isLoaded(PHASE14_FONT_PROOF.oracle.fontFamily);
+    } catch {
+      return false;
+    }
+  })();
+  const [layoutObservation, setLayoutObservation] = useState(() => ({
+    availableWidthPx: null as number | null,
+    blockWidthPx: null as number | null,
+    blockHeightPx: null as number | null,
+    lineAdvancesPx: [] as readonly number[],
+    lineHeightsPx: [] as readonly number[],
+    lineBaselinesPx: [] as readonly {
+      ascenderPx: number;
+      descenderPx: number;
+      yPx: number;
+      heightPx: number;
+      baselineOffsetPx: number;
+    }[],
+    textBounds: null as { x: number; y: number; width: number; height: number } | null,
+    containerBounds: null as { x: number; y: number; width: number; height: number } | null,
+    wrapBreakpoints: [] as readonly string[],
+  }));
+  const captureContainerLayout = useCallback((event: LayoutChangeEvent) => {
+    const layout = event.nativeEvent.layout;
+    setLayoutObservation((current) => ({
+      ...current,
+      availableWidthPx: layout.width,
+      // Text onLayout coordinates are local to this container, so retain the
+      // container dimensions in that same coordinate space for containment.
+      containerBounds: { x: 0, y: 0, width: layout.width, height: layout.height },
+    }));
+  }, []);
+  const captureTitleLayout = useCallback((event: LayoutChangeEvent) => {
+    const layout = event.nativeEvent.layout;
+    setLayoutObservation((current) => ({ ...current, textBounds: layout }));
+  }, []);
+  const captureTextLayout = useCallback((event: TextLayoutEvent) => {
+    const lines = event.nativeEvent.lines;
+    const next = {
+      blockWidthPx: Math.max(0, ...lines.map((line) => line.width)),
+      blockHeightPx: lines.reduce((height, line) => height + line.height, 0),
+      lineAdvancesPx: lines.map((line) => line.width),
+      lineHeightsPx: lines.map((line) => line.height),
+      lineBaselinesPx: lines.map((line) => ({
+        ascenderPx: line.ascender,
+        descenderPx: line.descender,
+        yPx: line.y,
+        heightPx: line.height,
+        baselineOffsetPx: line.y + line.ascender,
+      })),
+      wrapBreakpoints: lines.map((line) => line.text.trim()),
+    };
+    setLayoutObservation((current) => ({ ...current, ...next }));
+  }, []);
+  return (
+    <View style={styles.phase14Proof} testID="phase14-font-proof-root">
+      <Text style={styles.phase14ProofLabel}>Development Test · Phase 14</Text>
+      <Text testID="phase14-font-proof-family">
+        {`${PHASE14_FONT_PROOF.oracle.fontFamily} ${fontLoaded ? "loaded" : "pending"}`}
+      </Text>
+      <View
+        onLayout={captureContainerLayout}
+        style={{ maxWidth: PHASE14_FONT_PROOF.oracle.contentMaxWidthPx }}
+        testID="phase14-font-proof-title-container"
+      >
+      <Text
+        accessibilityLabel="Phase 14 font axis oracle title"
+        onTextLayout={captureTextLayout}
+        onLayout={captureTitleLayout}
+        style={phase14TitleStyle}
+        testID="phase14-font-proof-title"
+      >
+        {PHASE14_FONT_PROOF.oracle.sourceText}
+      </Text>
+      </View>
+      {PHASE14_FONT_PROOF.cases.map((proofCase) => (
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          key={proofCase.id}
+          pointerEvents="none"
+          testID={`phase14-font-proof-measurement-${proofCase.id}`}
+        />
+      ))}
+      <Text testID="phase14-font-proof-observation">
+        {JSON.stringify({
+          ...layoutObservation,
+          family: PHASE14_FONT_PROOF.oracle.fontFamily,
+          fontLoaded,
+          fontScale,
+          displayDensity,
+        })}
+      </Text>
+      <Text testID="phase14-font-proof-overlay-inputs">
+        {`Revision 18 · 57px · condensed · wght 890 · -0.07em · ${PHASE14_FONT_PROOF.oracle.approvedHtmlSha256}`}
+      </Text>
     </View>
   );
 }
@@ -399,84 +519,20 @@ function SetMutationLoadingPreview({
   );
 }
 
-function TodayPlanPreview({
-  scene,
-  activeView,
-}: Readonly<{
-  scene: WorkoutPlanOverviewScene;
-  activeView?: React.ComponentProps<typeof ActiveWorkoutScreen>["view"];
-}>) {
-  const [destination, setDestination] = useState<Readonly<{
-    reviewExerciseId?: string;
-    state: "active" | "plan";
-  }>>({ state: "plan" });
-  if (destination.state === "active") {
-    if (activeView === undefined) {
-      return (
-        <AdaptiveScreen
-          constrainActiveWork
-          primary={(
-            <>
-              <ScreenHeader
-                backAction={() => setDestination({ state: "plan" })}
-                eyebrow="FOCUSED WORKOUT"
-                title="Empty workout"
-              />
-              <InlineNotice
-                body="No exercises are planned in this session yet. Save a zero-set visit explicitly, finish later, or discard it."
-                heading="Empty workout in progress"
-                tone="neutral"
-              />
-              <PrimaryAction label="Save zero-set workout" onPress={noOp} />
-              <SecondaryAction label="Finish workout later" onPress={noOp} />
-              <SecondaryAction destructive label="Discard workout" onPress={noOp} />
-            </>
-          )}
-        />
-      );
-    }
-    return (
-      <ActiveWorkoutScreen
-        commands={phase2SetMutationPreviewCommands}
-        nowMs={() => 1_800_000_000_000}
-        onFinishLater={noOp}
-        onGoBack={() => setDestination({ state: "plan" })}
-        onReturnToCurrent={() => setDestination({ state: "active" })}
-        {...(destination.reviewExerciseId === undefined
-          ? {}
-          : { reviewExerciseId: destination.reviewExerciseId })}
-        sessionId={activeView.id}
-        view={activeView}
-      />
-    );
-  }
-
-  return (
-    <WorkoutPlanOverviewScreen
-      onBack={noOp}
-      onReturnToActiveWorkout={() => setDestination({ state: "active" })}
-      onReviewExercise={(reviewExerciseId) => setDestination({
-        reviewExerciseId,
-        state: "active",
-      })}
-      scene={scene}
-    />
-  );
-}
-
 function TodayPlanCardinalityPreview({
   variant,
 }: Readonly<{ variant: Phase2TodayPlanPreviewVariant }>) {
-  const activeView = variant === "zero"
-    ? undefined
+  const view = variant === "zero"
+    ? phase2TodayPlanEmptyView
     : variant === "one" ? phase2TodayPlanOneView : phase2TodayPlanManyView;
-  const scene: WorkoutPlanOverviewScene = variant === "zero"
-    ? { state: "empty" }
-    : { state: "ready", view: activeView! };
   return (
-    <TodayPlanPreview
-      {...(activeView === undefined ? {} : { activeView })}
-      scene={scene}
+    <ActiveWorkoutScreen
+      commands={phase2SetMutationPreviewCommands}
+      nowMs={() => 1_800_000_000_000}
+      onFinishLater={noOp}
+      onGoBack={noOp}
+      sessionId={view.id}
+      view={view}
     />
   );
 }
@@ -507,16 +563,9 @@ function scenarioContent(
     case "set-mutations-loading":
       return <SetMutationLoadingPreview variant={variant as Phase2SetMutationPreviewVariant} />;
     case "todays-plan-empty":
-      return <TodayPlanPreview scene={{ state: "empty" }} />;
+      return <TodayPlanCardinalityPreview variant="zero" />;
     case "todays-plan-loading":
-      return (
-        <WorkoutPlanOverviewScreen
-          onBack={noOp}
-          onReturnToActiveWorkout={noOp}
-          onReviewExercise={noOp}
-          scene={{ state: "loading" }}
-        />
-      );
+      return <AppLoadingShell width={windowWidth} />;
     case "todays-plan-zero-one-many":
       return <TodayPlanCardinalityPreview variant={variant as Phase2TodayPlanPreviewVariant} />;
   }
@@ -555,6 +604,10 @@ export default function Phase2AttendedPreviewRoute() {
   if (!enabled) {
     return <Redirect href="/" />;
   }
+  if (parameters.scenario === "phase14-font-axis"
+    && parameters.variant === undefined) {
+    return <Phase14FontProofPreview />;
+  }
   if (route === null) {
     return <UnknownPreview />;
   }
@@ -579,5 +632,13 @@ const styles = StyleSheet.create({
   },
   preview: {
     flex: 1,
+  },
+  phase14Proof: {
+    flex: 1,
+    maxWidth: PHASE14_FONT_PROOF.oracle.contentMaxWidthPx,
+    padding: 16,
+  },
+  phase14ProofLabel: {
+    marginBottom: 16,
   },
 });

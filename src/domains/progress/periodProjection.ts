@@ -2,7 +2,9 @@ import type {
   HistoryProjectionPeriodInput,
 } from "../history";
 import {
+  areMetricExposuresComparable,
   compareMetricObservations,
+  isMetricExposureEligible,
 } from "../metrics";
 import {
   parseMetricIdentity,
@@ -24,9 +26,55 @@ import type {
   ProgressRecord,
   ProgressScheduledOpportunity,
   ProgressSourceReference,
+  ProgressStrengthFactInput,
   ProgressTrendRow,
   ProgressWindow,
 } from "./contracts";
+
+function validRevision(value: number): boolean {
+  return Number.isSafeInteger(value) && value > 0;
+}
+
+function candidateOrder(left: ProgressStrengthFactInput, right: ProgressStrengthFactInput): number {
+  return left.record.localDate.localeCompare(right.record.localDate)
+    || left.record.sessionId.localeCompare(right.record.sessionId)
+    || left.record.setId.localeCompare(right.record.setId);
+}
+
+/**
+ * Produces the candidate list shared by Strength dashboard/chart consumers.
+ * Effective source revisions stay authoritative; no UI code replays metric
+ * eligibility or recommendation-fence logic.
+ */
+export function projectStrengthComparableFacts(
+  candidates: readonly ProgressStrengthFactInput[],
+): readonly ProgressRecord[] {
+  const accepted: ProgressStrengthFactInput[] = [];
+  const firstByMetric = new Map<string, ProgressStrengthFactInput>();
+  for (const candidate of candidates.slice().sort(candidateOrder)) {
+    if (!validRevision(candidate.effectiveRevision) || !validRevision(candidate.targetRevision)) {
+      continue;
+    }
+    const recommendation = candidate.recommendation;
+    if (recommendation?.status === "pending"
+      && (recommendation.sourceRevision !== candidate.effectiveRevision
+        || recommendation.targetRevision !== candidate.targetRevision)) {
+      continue;
+    }
+    if (!isMetricExposureEligible(candidate.metricExposure)) {
+      continue;
+    }
+    const key = `${candidate.record.exerciseId}\u0000${candidate.record.identityKey}`;
+    const first = firstByMetric.get(key);
+    if (first !== undefined
+      && !areMetricExposuresComparable(first.metricExposure, candidate.metricExposure)) {
+      continue;
+    }
+    firstByMetric.set(key, first ?? candidate);
+    accepted.push(candidate);
+  }
+  return Object.freeze(accepted.map(({ record }) => Object.freeze({ ...record })));
+}
 
 type ExposureGroup = Readonly<{
   exerciseId: string;
@@ -107,12 +155,12 @@ function windowFor(input: ProgressPeriodProjectionInput): ProgressWindow {
   ];
   const start = sourceDates.length === 0
     ? end
-    : sourceDates.toSorted(compareLocalDates)[0]!;
+    : sourceDates.slice().sort(compareLocalDates)[0]!;
   return Object.freeze({ start, end });
 }
 
 function sortedUnique(values: readonly string[]): readonly string[] {
-  return Object.freeze([...new Set(values)].toSorted());
+  return Object.freeze([...new Set(values)].slice().sort());
 }
 
 function sortedExerciseReferences(
@@ -127,7 +175,7 @@ function sortedExerciseReferences(
       exerciseName,
     }));
   }
-  return Object.freeze([...references.values()].toSorted((left, right) =>
+  return Object.freeze([...references.values()].slice().sort((left, right) =>
     left.exerciseName.localeCompare(right.exerciseName)
       || left.exerciseId.localeCompare(right.exerciseId)
   ));
@@ -167,7 +215,7 @@ function filteredSourceSessions(
       exercises,
     }));
   }
-  return Object.freeze(included.toSorted((left, right) =>
+  return Object.freeze(included.slice().sort((left, right) =>
     left.localDate.localeCompare(right.localDate)
       || left.sessionId.localeCompare(right.sessionId)
   ));
@@ -191,12 +239,6 @@ function sourceReferenceForSessionIds(input: Readonly<{
     return source === undefined ? [] : [source];
   });
   return sourceReferenceForSessions(sources);
-}
-
-function sessionOnlySourceReference(
-  sessionIds: readonly string[],
-): ProgressSourceReference {
-  return sourceReference({ sessionIds, exercises: [] });
 }
 
 function sourceReferenceForExposures(
@@ -244,7 +286,7 @@ function filteredPeriodInputs(
     requireCount(row.comparableExposureCount, "progress_comparable_exposure_count_invalid");
     return true;
   });
-  return Object.freeze(included.toSorted((left, right) =>
+  return Object.freeze(included.slice().sort((left, right) =>
     left.localDate.localeCompare(right.localDate)
   ));
 }
@@ -277,7 +319,7 @@ function filteredExposures(
     seen.add(key);
     return true;
   });
-  return Object.freeze(included.toSorted(compareExposures));
+  return Object.freeze(included.slice().sort(compareExposures));
 }
 
 function filteredOpportunities(
@@ -296,7 +338,7 @@ function filteredOpportunities(
     ids.add(row.id);
     return true;
   });
-  return Object.freeze(included.toSorted((left, right) =>
+  return Object.freeze(included.slice().sort((left, right) =>
     left.localDate.localeCompare(right.localDate) || left.id.localeCompare(right.id)
   ));
 }
@@ -312,7 +354,7 @@ function groupedExposures(
     groups.set(key, current);
   }
   return Object.freeze([...groups.values()].map((values) => {
-    const ordered = values.toSorted(compareExposures);
+    const ordered = values.slice().sort(compareExposures);
     const first = ordered[0]!;
     return Object.freeze({
       exerciseId: first.exerciseId,
@@ -320,7 +362,7 @@ function groupedExposures(
       comparatorKey: first.comparatorKey,
       exposures: Object.freeze(ordered),
     });
-  }).toSorted((left, right) =>
+  }).slice().sort((left, right) =>
     left.exerciseId.localeCompare(right.exerciseId)
       || left.identityKey.localeCompare(right.identityKey)
       || left.comparatorKey.localeCompare(right.comparatorKey)
@@ -364,6 +406,7 @@ function bestRecord(group: ExposureGroup): ProgressRecord {
     sessionId: best.sessionId,
     setId: best.setId,
     localDate: best.localDate,
+    sourceRevision: best.sourceRevision ?? null,
     targetJson: best.targetJson,
     observationJson: best.observationJson,
   });
@@ -414,7 +457,7 @@ function trendRows(input: Readonly<{
       row.sessionIds.add(item.sessionId);
     }
   }
-  return Object.freeze([...rows.entries()].toSorted(([left], [right]) =>
+  return Object.freeze([...rows.entries()].slice().sort(([left], [right]) =>
     left.localeCompare(right)
   ).map(([localDate, row]) => Object.freeze({
     localDate,
@@ -426,10 +469,10 @@ function trendRows(input: Readonly<{
       completed: row.workingCompleted,
       planned: row.workingPlanned,
     }),
-    sessionIds: Object.freeze([...row.sessionIds].toSorted()),
+    sessionIds: Object.freeze([...row.sessionIds].slice().sort()),
     exerciseIds: Object.freeze(
       [...new Set([...row.exercises.values()].map(({ exerciseId }) => exerciseId))]
-        .toSorted(),
+        .slice().sort(),
     ),
     exercises: sortedExerciseReferences([...row.exercises.values()]),
   })));
@@ -447,7 +490,7 @@ function sortedAttention(
     }
     ids.add(value.id);
   }
-  return Object.freeze(values.toSorted((left, right) =>
+  return Object.freeze(values.slice().sort((left, right) =>
     left.exerciseId.localeCompare(right.exerciseId) || left.id.localeCompare(right.id)
   ));
 }
@@ -488,7 +531,7 @@ export function projectProgressPeriod(
       localDate: latest.localDate,
     });
   }));
-  const records = Object.freeze(groups.map(bestRecord).toSorted((left, right) =>
+  const records = Object.freeze(groups.map(bestRecord).slice().sort((left, right) =>
     right.localDate.localeCompare(left.localDate)
       || right.sessionId.localeCompare(left.sessionId)
       || left.exerciseId.localeCompare(right.exerciseId)

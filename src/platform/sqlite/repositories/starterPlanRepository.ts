@@ -1,4 +1,7 @@
+import { LIBRARY_PLAN_DELETION_KEY_PREFIX } from "../../../domains/library/planDeletion";
+import { assertLibraryPlanNotDeleted } from "./libraryPlanDeletionRepository";
 import type {
+  AcceptedStarterPack,
   AcceptedScheduleBinding,
   AcceptedStarterOccurrence,
   AcceptedStarterPlanActivation,
@@ -16,6 +19,11 @@ import type {
   SqliteKernel,
   SqliteTransactionExecutor,
 } from "../sqliteKernel";
+
+type AcceptedStarterSourceInput = Pick<
+  AcceptedStarterPlanRepositoryInput,
+  "pack" | "template" | "assetSha256"
+>;
 
 export type StarterPlanRepositoryErrorCode =
   | "starter_active_workout_blocked"
@@ -227,6 +235,12 @@ async function readCopyReceipt(
 async function readActiveSchedule(
   transaction: SqliteTransactionExecutor,
 ): Promise<ActiveScheduleRow | undefined> {
+  const planColumns = await transaction.queryAll<{ name: string }>(
+    "PRAGMA table_info(plans)",
+  );
+  const supportsPlanKinds = planColumns.some(({ name }) => name === "plan_kind");
+  const planKindFilter = supportsPlanKinds ? " AND plan.plan_kind = 'strength'" : "";
+  const scheduleKindFilter = supportsPlanKinds ? " AND plan_kind = 'strength'" : "";
   const activePlans = await transaction.queryAll<ActiveScheduleRow>(
     `SELECT schedule.id AS schedule_id,
             schedule.revision AS schedule_revision,
@@ -237,7 +251,7 @@ async function readActiveSchedule(
      LEFT JOIN owned_plan_schedules schedule
        ON schedule.plan_id = plan.id
       AND schedule.lifecycle = 'active'
-     WHERE plan.is_active = 1
+     WHERE plan.is_active = 1${planKindFilter}
      ORDER BY plan.id`,
   );
   const activeSchedules = await transaction.queryAll<{
@@ -247,7 +261,7 @@ async function readActiveSchedule(
   }>(
     `SELECT id AS schedule_id, revision AS schedule_revision, plan_id
      FROM owned_plan_schedules
-     WHERE lifecycle = 'active'
+     WHERE lifecycle = 'active'${scheduleKindFilter}
      ORDER BY id`,
   );
   if (activePlans.length > 1 || activeSchedules.length > 1) {
@@ -283,6 +297,7 @@ async function readCopies(
      WHERE source.source_namespace = ?
        AND source.template_id = ?
        AND source.source_revision = ?
+       AND NOT EXISTS (SELECT 1 FROM app_settings deleted WHERE deleted.key = '${LIBRARY_PLAN_DELETION_KEY_PREFIX}' || plan.id)
      ORDER BY plan.id`,
     [input.pack.namespace, input.template.id, input.template.revision],
   );
@@ -373,7 +388,7 @@ async function validateExerciseReferences(
 
 async function validateSource(
   transaction: SqliteTransactionExecutor,
-  input: AcceptedStarterPlanRepositoryInput,
+  input: AcceptedStarterSourceInput,
 ): Promise<StarterPlanRepositoryErrorCode | null> {
   const [source] = await transaction.queryAll<{
     asset_sha256: string;
@@ -438,7 +453,7 @@ async function validateUpdateSource(
 
 async function insertSource(
   transaction: SqliteTransactionExecutor,
-  input: AcceptedStarterPlanRepositoryInput,
+  input: AcceptedStarterSourceInput,
 ): Promise<void> {
   await transaction.execute(
     `INSERT INTO starter_plan_sources
@@ -456,6 +471,26 @@ async function insertSource(
       input.pack.acceptedAtMs,
     ],
   );
+}
+
+export async function installAcceptedStarterPlanSources(
+  kernel: SqliteKernel,
+  pack: AcceptedStarterPack,
+): Promise<void> {
+  const accepted = await kernel.write(async (transaction) => {
+    for (const template of pack.templates) {
+      const source = { pack, template, assetSha256: pack.assetSha256 };
+      if (await validateSource(transaction, source) !== null) {
+        return false;
+      }
+    }
+    for (const template of pack.templates) {
+      const source = { pack, template, assetSha256: pack.assetSha256 };
+      await insertSource(transaction, source);
+    }
+    return true;
+  });
+  if (!accepted) throw new StarterPlanRepositoryError("starter_source_conflict");
 }
 
 async function insertOwnedAggregateState(
@@ -1133,23 +1168,32 @@ async function insertCopyReceipt(
   input: AcceptedStarterPlanCopyRepositoryInput,
   result: AcceptedStarterPlanCopy,
 ): Promise<void> {
+  const directStarterCopy = isDirectStarterCopy(input);
   await transaction.execute(
     `INSERT INTO owned_plan_mutation_requests
       (request_id, request_sha256, operation, source_plan_id,
        result_plan_id, expected_revision, result_revision, result_json,
        committed_at_ms)
-     VALUES (?, ?, 'duplicate', ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.requestId,
       input.requestSha256,
-      input.sourceOwnedPlanId,
+      directStarterCopy ? "create" : "duplicate",
+      directStarterCopy ? null : input.sourceOwnedPlanId,
       result.plan.id,
-      input.expectedSourcePlanRevision,
+      directStarterCopy ? null : input.expectedSourcePlanRevision,
       result.plan.revision,
       JSON.stringify(result),
       input.createdAtMs,
     ],
   );
+}
+
+function isDirectStarterCopy(
+  input: AcceptedStarterPlanCopyRepositoryInput,
+): boolean {
+  return input.sourceOwnedPlanId === `starter:${input.template.id}:r${input.template.revision}`
+    && input.expectedSourcePlanRevision === input.template.revision;
 }
 
 export function createStarterPlanRepository(
@@ -1162,8 +1206,15 @@ export function createStarterPlanRepository(
     ): Promise<AcceptedStarterPlanActivation> {
       const outcome = await kernel.write<ActivationOutcome>(
         async (transaction) => {
+          if (input.copyChoice?.type === "reactivate_existing") {
+            await assertLibraryPlanNotDeleted(transaction, input.copyChoice.planId);
+          }
           const receipt = await readReceipt(transaction, input.requestId);
           if (receipt !== undefined) {
+            if (receipt.request_sha256 === input.requestSha256) {
+              const result = parseCommittedResult(receipt.result_json);
+              await assertLibraryPlanNotDeleted(transaction, result.plan.id);
+            }
             return receipt.request_sha256 === input.requestSha256
               ? {
                   kind: "result",
@@ -1293,7 +1344,7 @@ export function createStarterPlanRepository(
                 };
           }
           const active = await readActiveSchedule(transaction);
-          if (!expectedActiveRevisionMatches(
+          if (!isDirectStarterCopy(input) && !expectedActiveRevisionMatches(
             active,
             input.expectedActiveScheduleRevision,
           )) {
@@ -1302,12 +1353,14 @@ export function createStarterPlanRepository(
               code: "starter_schedule_revision_conflict",
             };
           }
-          const sourceConflict = await validateUpdateSource(
-            transaction,
-            input,
-          );
-          if (sourceConflict !== null) {
-            return { kind: "conflict", code: sourceConflict };
+          if (!isDirectStarterCopy(input)) {
+            const sourceConflict = await validateUpdateSource(
+              transaction,
+              input,
+            );
+            if (sourceConflict !== null) {
+              return { kind: "conflict", code: sourceConflict };
+            }
           }
           const referenceConflict = await validateExerciseReferences(
             transaction,
@@ -1318,11 +1371,7 @@ export function createStarterPlanRepository(
           }
           const acceptedSourceConflict = await validateSource(
             transaction,
-            {
-              ...input,
-              activatedAtMs: input.createdAtMs,
-              copyChoice: null,
-            },
+            input,
           );
           if (acceptedSourceConflict !== null) {
             return {

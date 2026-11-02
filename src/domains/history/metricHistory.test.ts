@@ -9,6 +9,8 @@ import type {
 } from "../metrics";
 import {
   buildExerciseMetricHistory,
+  projectComparableExerciseTrend,
+  projectLoadMetricHistorySeries,
   type EffectiveMetricHistorySet,
 } from "./metricHistory";
 
@@ -56,6 +58,35 @@ function loadSet(
 }
 
 describe("effective metric history", () => {
+  it("projects at most six reverse-chronological completed comparable sessions", () => {
+    const history = buildExerciseMetricHistory({
+      exerciseId: "bench-press",
+      sets: Array.from({ length: 8 }, (_, index) => loadSet({
+        sessionId: `session-${index + 1}`,
+        setId: `set-${index + 1}`,
+        localDate: `2026-08-${String(index + 1).padStart(2, "0")}`,
+        completedAtMs: 1_724_428_800_000 + index * 86_400_000,
+        observation: {
+          version: 1,
+          profile: "load_reps",
+          loadGrams: 40_000 + index * 2_500,
+          reps: 8,
+          source: "manual",
+        },
+      })),
+    });
+
+    const trend = projectComparableExerciseTrend(history);
+
+    expect(trend).toMatchObject({
+      recent: { setId: "set-8" },
+      best: { setId: "set-8" },
+    });
+    expect(trend?.sessions.map(({ setId }) => setId)).toEqual([
+      "set-8", "set-7", "set-6", "set-5", "set-4", "set-3",
+    ]);
+  });
+
   it("uses only fully completed working-set visits for Best, Average, and Last", () => {
     const history = buildExerciseMetricHistory({
       exerciseId: "bench-press",
@@ -174,5 +205,196 @@ describe("effective metric history", () => {
         expect.objectContaining({ plannedDistanceMeters: 2_000 }),
         expect.objectContaining({ plannedDistanceMeters: 5_000 }),
       ]));
+  });
+
+  it("projects target-at-date, immutable source revision, and dated relative basis from the same comparable sets", () => {
+    const first = loadSet({
+      sessionId: "session-first",
+      setId: "set-first",
+      localDate: "2026-08-23",
+      completedAtMs: 1_724_428_800_000,
+      sourceRevision: 1,
+      targetAtDate: {
+        version: 1,
+        profile: "load_reps",
+        loadGrams: 37_500,
+        minReps: 8,
+        maxReps: 10,
+        incrementGrams: 2_500,
+        perSide: false,
+      },
+      relativeStrength: {
+        loadGrams: 40_000,
+        relativeLoad: 0.5,
+        basis: { grams: 80_000, localDate: "2026-08-20" },
+      },
+    });
+    const corrected = loadSet({
+      sessionId: "session-corrected",
+      setId: "set-corrected",
+      localDate: "2026-08-24",
+      completedAtMs: 1_724_515_200_000,
+      sourceRevision: 3,
+      historyStatus: "corrected_effective",
+      observation: {
+        version: 1,
+        profile: "load_reps",
+        loadGrams: 45_000,
+        reps: 8,
+        source: "manual",
+      },
+      relativeStrength: {
+        loadGrams: 45_000,
+        relativeLoad: 0.5,
+        basis: { grams: 90_000, localDate: "2026-08-24" },
+      },
+    });
+    const segment = buildExerciseMetricHistory({
+      exerciseId: "bench-press",
+      sets: [corrected, first],
+    }).segments[0]!;
+
+    expect(projectLoadMetricHistorySeries(segment, "load")?.points).toEqual([
+      expect.objectContaining({
+        sessionId: "session-first",
+        sourceRevision: 1,
+        targetAtDate: 37.5,
+        value: 40,
+      }),
+      expect.objectContaining({
+        sessionId: "session-corrected",
+        sourceRevision: 3,
+        statusLabel: "Corrected effective fact",
+        targetAtDate: 40,
+        value: 45,
+      }),
+    ]);
+    expect(projectLoadMetricHistorySeries(segment, "relative")?.points).toEqual([
+      expect.objectContaining({ value: 0.5, targetAtDate: 0.46875 }),
+      expect.objectContaining({
+        value: 0.5,
+        targetAtDate: 40_000 / 90_000,
+        basisDisclosure: "Using 90 kg from 24 August 2026",
+      }),
+    ]);
+  });
+
+  it("fails closed for missing completion timestamps and ignores non-observations", () => {
+    expect(buildExerciseMetricHistory({
+      exerciseId: "bench-press",
+      sets: [loadSet({ observation: null })],
+    }).segments).toEqual([]);
+    expect(() => buildExerciseMetricHistory({
+      exerciseId: "bench-press",
+      sets: [loadSet({ completedAtMs: null })],
+    })).toThrow("history_metric_completed_timestamp_missing");
+  });
+
+  it("rejects incompatible load-series views without inventing points", () => {
+    const nonLoad = buildExerciseMetricHistory({
+      exerciseId: "rower",
+      sets: [{
+        ...loadSet({ exerciseId: "rower", exerciseName: "Rower" }),
+        identity: { profile: "fixed_distance", contractVersion: 1, exerciseMetricGeneration: 1 },
+        target: { version: 1, profile: "fixed_distance", plannedDistanceMeters: 2_000 },
+        observation: { version: 1, profile: "fixed_distance", distanceMeters: 2_000, durationMs: 600_000, source: "manual" },
+      } as never],
+    }).segments[0]!;
+    expect(projectLoadMetricHistorySeries(nonLoad, "load")).toBeNull();
+
+    const loadSegment = buildExerciseMetricHistory({
+      exerciseId: "bench-press",
+      sets: [loadSet()],
+    }).segments[0]!;
+    expect(projectLoadMetricHistorySeries(loadSegment, "relative")).toBeNull();
+    expect(projectLoadMetricHistorySeries({
+      ...loadSegment,
+      referenceTarget: { version: 1, profile: "fixed_distance", plannedDistanceMeters: 2_000 } as never,
+    }, "load")).toBeNull();
+    expect(projectLoadMetricHistorySeries({
+      ...loadSegment,
+      comparableSets: [{
+        ...loadSegment.comparableSets[0]!,
+        observation: { version: 1, profile: "bodyweight_reps", reps: 8, source: "manual" } as never,
+      }],
+    }, "load")?.points).toEqual([]);
+    expect(projectLoadMetricHistorySeries({
+      ...loadSegment,
+      comparableSets: [{
+        ...loadSegment.comparableSets[0]!,
+        targetAtDate: { version: 1, profile: "fixed_distance", plannedDistanceMeters: 2_000 } as never,
+      }],
+    }, "load")?.points).toEqual([]);
+  });
+
+  it("deduplicates trend sessions and handles empty histories", () => {
+    expect(projectComparableExerciseTrend({
+      exerciseId: "bench-press",
+      segments: [],
+      warmupVisits: [],
+    })).toBeNull();
+    const history = buildExerciseMetricHistory({
+      exerciseId: "bench-press",
+      sets: [
+        loadSet({ setId: "same-session-a", completedAtMs: 2 }),
+        loadSet({ setId: "same-session-b", completedAtMs: 1 }),
+      ],
+    });
+    expect(projectComparableExerciseTrend(history)?.sessions).toHaveLength(1);
+
+    const mixed = buildExerciseMetricHistory({
+      exerciseId: "bench-press",
+      sets: [
+        loadSet({ sessionId: "shared-session", setId: "shared-set", completedAtMs: 10 }),
+        {
+          ...loadSet({ sessionId: "shared-session", setId: "shared-set", completedAtMs: 10 }),
+          identity: { profile: "fixed_distance", contractVersion: 1, exerciseMetricGeneration: 1 },
+          target: { version: 1, profile: "fixed_distance", plannedDistanceMeters: 2_000 },
+          observation: { version: 1, profile: "fixed_distance", distanceMeters: 2_000, durationMs: 600_000, source: "manual" },
+        } as never,
+      ],
+    });
+    expect(projectComparableExerciseTrend(mixed)).not.toBeNull();
+  });
+
+  it("retains a privacy-safe fallback disclosure for an absent date basis", () => {
+    const segment = buildExerciseMetricHistory({
+      exerciseId: "bench-press",
+      sets: [loadSet({
+        relativeStrength: {
+          loadGrams: 40_000,
+          relativeLoad: 0.5,
+          basis: { grams: 80_000, localDate: "" },
+        },
+      })],
+    }).segments[0]!;
+    expect(projectLoadMetricHistorySeries(segment, "relative")?.points[0]?.basisDisclosure)
+      .toBe("Using 80 kg from ");
+  });
+
+  it("covers every stable set, target, session, ordinal, and identity tie-break", () => {
+    const tied = [
+      loadSet({ sessionId: "same", setId: "set-a", setOrdinal: 0, completedAtMs: 10 }),
+      loadSet({ sessionId: "same", setId: "set-b", setOrdinal: 0, completedAtMs: 10 }),
+      loadSet({ sessionId: "same", setId: "set-c", setOrdinal: 1, completedAtMs: 10 }),
+      loadSet({ sessionId: "z-session", setId: "set-d", setOrdinal: 0, completedAtMs: 10 }),
+      loadSet({
+        sessionId: "target-session",
+        setId: "target-set",
+        completedAtMs: 10,
+        target: {
+          ...loadSet().target,
+          loadGrams: 42_500,
+        } as never,
+      }),
+    ];
+    const history = buildExerciseMetricHistory({ exerciseId: "bench-press", sets: tied });
+    expect(history.segments.length).toBeGreaterThanOrEqual(1);
+    expect(projectLoadMetricHistorySeries(history.segments[0]!, "load")?.points.length)
+      .toBeGreaterThan(0);
+    expect(buildExerciseMetricHistory({
+      exerciseId: "bench-press",
+      sets: [loadSet({ exerciseName: "" })],
+    }).exerciseName).toBeNull();
   });
 });
