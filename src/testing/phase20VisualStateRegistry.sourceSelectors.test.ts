@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 import { LibraryScreen, type LibraryBrowseSnapshot } from "../ui/screens/LibraryScreen";
@@ -97,7 +98,11 @@ describe("Phase 20 registry selectors on current production Library", () => {
   });
 
   it("preserves all approved state identities and references while projecting consistent native metadata", () => {
-    const original = JSON.parse(execFileSync("git", ["show", "48e8a3156280b267d33cd6f719166e9ae22cc66a:src/testing/phase20VisualStateRegistry.json"], { encoding: "utf8" }));
+    // Exact original Git blob, retained for shallow checkouts and squash merges.
+    // Source: 48e8a3156280b267d33cd6f719166e9ae22cc66a:src/testing/phase20VisualStateRegistry.json
+    const originalBytes = readFileSync("scripts/testing/data/phase20-visual-state-registry-48e8a315.json");
+    expect(createHash("sha256").update(originalBytes).digest("hex")).toBe("04c523517d662e3e54221d78972412f48d1401afc82f22c9520fd186d2cf8e09");
+    const original = JSON.parse(originalBytes.toString("utf8"));
     const json = JSON.parse(readFileSync("src/testing/phase20VisualStateRegistry.json", "utf8"));
     expect(json).toEqual(PHASE20_VISUAL_STATE_REGISTRY);
     const keys = ["id", "name", "route", "component", "route_params", "fixture_id", "fixture_seed", "scenario", "fixture_variant", "fixture_facts", "interactions", "expected_visible_semantics", "evidence_scope", "reference"];
@@ -113,7 +118,7 @@ describe("Phase 20 registry selectors on current production Library", () => {
   it("reproduces the registry-only projection without rewriting the native flow", () => {
     const paths = ["src/testing/phase20VisualStateRegistry.json", "src/testing/phase20VisualStateRegistry.generated.ts", "maestro/v1.2/visual-production-states.yaml"];
     const before = paths.map((path) => readFileSync(path, "utf8"));
-    execFileSync("/Users/bytedance/.nvm/versions/node/v24.19.0/bin/node", ["scripts/generate-phase20-visual-state-registry.mjs", "--registry-only"], { encoding: "utf8" });
+    execFileSync(process.execPath, ["scripts/generate-phase20-visual-state-registry.mjs", "--registry-only"], { encoding: "utf8" });
     expect(paths.map((path) => readFileSync(path, "utf8"))).toEqual(before);
   });
 
