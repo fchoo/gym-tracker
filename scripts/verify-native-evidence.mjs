@@ -47,7 +47,7 @@ const migrationsEffectsContractSource = readFileSync(
 );
 const migrationsEffectsCaseBlock = migrationsEffectsContractSource.match(
   /export const MIGRATIONS_EFFECTS_CONTRACT_CASES = \[([\s\S]*?)\] as const;/u,
-)?[1] ?? '';
+)?.[1] ?? '';
 const MIGRATIONS_EFFECTS_CASE_IDS = [
   ...migrationsEffectsCaseBlock.matchAll(/"([a-z0-9-]+)"/gu),
 ].map((match) => match[1]);
