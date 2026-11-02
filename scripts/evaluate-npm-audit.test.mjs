@@ -163,3 +163,11 @@ test("accepts only the recorded nightly range variant without changing locked pa
   audit.vulnerabilities["@react-native/virtualized-lists"].range = "*";
   assert.throws(() => evaluateAudit(audit, { now }), /npm_audit_policy_rejected/u);
 });
+
+test("derived release ranges may grow only while still covering the exact reviewed locked versions", () => {
+  const audit = structuredClone(reviewedBuildTimeAudit);
+  audit.vulnerabilities["@react-native/virtualized-lists"].range += " || >=0.90.0-nightly-20261102-abcdef";
+  assert.doesNotThrow(() => evaluateAudit(audit, { now }));
+  audit.vulnerabilities["@react-native/virtualized-lists"].range = ">=999.0.0";
+  assert.throws(() => evaluateAudit(audit, { now }), /npm_audit_policy_rejected/u);
+});

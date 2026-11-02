@@ -44,10 +44,12 @@ Three residual roots are reviewed rather than presented as fixed:
   v3.1.5 contains neither preprocessing function nor that option.
 
 npm reports propagated vulnerability entries, including known package cycles.
-The validator binds the forward graph to the reviewed record; it does not approve
+The validator binds the forward graph and direct advisory records; it does not approve
 arbitrary recursive closure. npm sometimes omits indirect reverse `effects`
 links, so each reported link is checked against that graph. Reverse links for
-all three advisory roots must match exactly.
+all three advisory roots must match exactly. Derived ranges may expand with new
+upstream releases only when they still contain each exact reviewed locked version.
+Direct advisory ranges remain exact; unexpected nodes or new advisory roots fail.
 
 The four required PR checks retain their existing names and enforce install,
 audit/configuration guards, types, boundaries, unit/component/SQLite/integration

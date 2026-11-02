@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
+import semver from "semver";
 
 const SEVERITIES = ["info", "low", "moderate", "high", "critical"];
 const POLICY = JSON.parse(readFileSync(new URL("./dependency-audit-policy.json", import.meta.url), "utf8"));
@@ -27,8 +28,8 @@ function reviewedRecord(value) {
     return item;
   }).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
   if (new Set(via.map(item => typeof item === "string" ? item : item.source)).size !== via.length) reject();
-  const variants = POLICY.accepted_derived_ranges[value.name];
-  const range = variants?.includes(value.range) ? POLICY.vulnerabilities[value.name].range : value.range;
+  const range = Object.hasOwn(POLICY.roots, value.name)
+    ? value.range : POLICY.vulnerabilities[value.name]?.range;
   return { name:value.name, severity:value.severity, isDirect:value.isDirect, range,
     nodes:uniqueStrings(value.nodes), via };
 }
@@ -62,8 +63,21 @@ export function evaluateAudit(audit, { now = new Date(), lock } = {}) {
   if (now.getTime() > Date.parse(POLICY.review_by)) reject();
   if (entries.length === 0) return Object.freeze({ reviewed:0 });
   for (const [name, value] of entries) {
-    if (!Object.hasOwn(POLICY.vulnerabilities, name)
-      || !isDeepStrictEqual(reviewedRecord(value), reviewedRecord(POLICY.vulnerabilities[name]))) reject();
+    if (!Object.hasOwn(POLICY.vulnerabilities, name)) reject();
+    const actual = reviewedRecord(value), expected = reviewedRecord(POLICY.vulnerabilities[name]);
+    for (const field of Object.keys(expected)) {
+      if (!isDeepStrictEqual(actual[field], expected[field])) {
+        throw new Error(`npm_audit_policy_rejected:${name}:${field}`);
+      }
+    }
+    if (!Object.hasOwn(POLICY.roots, name)) {
+      if (semver.validRange(value.range) === null
+        || (value.range === "*" && POLICY.vulnerabilities[name].range !== "*")) reject();
+      for (const node of value.nodes) {
+        const version = POLICY.locked_versions[node];
+        if (typeof version !== "string" || !semver.satisfies(version, value.range, { includePrerelease:true })) reject();
+      }
+    }
     const effects = uniqueStrings(value.effects);
     const expectedEffects = Object.entries(POLICY.vulnerabilities)
       .filter(([, dependent]) => dependent.via.includes(name)).map(([dependent]) => dependent).sort();
