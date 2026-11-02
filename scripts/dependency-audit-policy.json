@@ -1,0 +1,696 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-11-02",
+  "review_by": "2026-11-30T23:59:59.999Z",
+  "roots": {
+    "zod": {
+      "advisory": "https://github.com/advisories/GHSA-mrhx-c7xc-m3w5",
+      "reason": "Only Expo SDK 57 CLI nested Zod 3.25.76 is retained. App schemas resolve patched top-level Zod 4.6.6. CLI parses developer-owned configuration; no app input reaches the nested package."
+    },
+    "deepmerge": {
+      "advisory": "https://github.com/advisories/GHSA-gcqx-w48m-w2h4",
+      "reason": "No patched upstream npm release is available. Exact 4.3.1 node is used by developer-owned Expo/Jest configuration, not application runtime inputs."
+    },
+    "minimatch": {
+      "advisory": "https://github.com/advisories/GHSA-g3hv-75wg-m249",
+      "reason": "Only four Jest/test-exclude minimatch 3.1.5 nodes remain. Reviewed advisory describes firstPhasePreProcess at optimizationLevel >=2 in 10.2.6; v3.1.5 has neither preprocessing function nor optimizationLevel. Modern tooling nodes use patched 11.0.3. Preserve Jest v3 callable API rather than replacing it with the incompatible v11 module."
+    }
+  },
+  "vulnerabilities": {
+    "@expo/cli": {
+      "name": "@expo/cli",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@expo/config",
+        "@expo/metro-config",
+        "@expo/prebuild-config",
+        "zod"
+      ],
+      "effects": [
+        "expo"
+      ],
+      "range": "0.19.0-canary-20240625-2333e70 - 58.1.17",
+      "nodes": [
+        "node_modules/expo/node_modules/@expo/cli"
+      ]
+    },
+    "@expo/config": {
+      "name": "@expo/config",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "deepmerge"
+      ],
+      "effects": [
+        "@expo/cli",
+        "@expo/local-build-cache-provider",
+        "@expo/metro-config",
+        "@expo/prebuild-config",
+        "expo"
+      ],
+      "range": "9.1.0-canary-20240628-1ba8152 - 58.0.9",
+      "nodes": [
+        "node_modules/@expo/config"
+      ]
+    },
+    "@expo/local-build-cache-provider": {
+      "name": "@expo/local-build-cache-provider",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "@expo/config"
+      ],
+      "effects": [
+        "expo"
+      ],
+      "range": "<=58.0.9",
+      "nodes": [
+        "node_modules/@expo/local-build-cache-provider"
+      ]
+    },
+    "@expo/metro-config": {
+      "name": "@expo/metro-config",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "@expo/config"
+      ],
+      "effects": [
+        "@expo/cli",
+        "expo"
+      ],
+      "range": "0.19.0-canary-20240625-2333e70 - 58.0.19",
+      "nodes": [
+        "node_modules/@expo/metro-config"
+      ]
+    },
+    "@expo/prebuild-config": {
+      "name": "@expo/prebuild-config",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "@expo/config"
+      ],
+      "effects": [
+        "@expo/cli"
+      ],
+      "range": "7.1.0-canary-20240904-69100c1 - 58.0.17",
+      "nodes": [
+        "node_modules/@expo/prebuild-config"
+      ]
+    },
+    "@jest/core": {
+      "name": "@jest/core",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "@jest/reporters",
+        "@jest/transform",
+        "jest-config",
+        "jest-resolve-dependencies",
+        "jest-runner",
+        "jest-runtime",
+        "jest-snapshot"
+      ],
+      "effects": [
+        "jest",
+        "jest-cli"
+      ],
+      "range": "*",
+      "nodes": [
+        "node_modules/@jest/core"
+      ]
+    },
+    "@jest/expect": {
+      "name": "@jest/expect",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "jest-snapshot"
+      ],
+      "effects": [
+        "@jest/globals",
+        "jest-circus"
+      ],
+      "range": "*",
+      "nodes": [
+        "node_modules/@jest/expect"
+      ]
+    },
+    "@jest/globals": {
+      "name": "@jest/globals",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "@jest/expect"
+      ],
+      "effects": [
+        "jest-expo",
+        "jest-runtime"
+      ],
+      "range": ">=28.0.0-alpha.0",
+      "nodes": [
+        "node_modules/@jest/globals"
+      ]
+    },
+    "@jest/reporters": {
+      "name": "@jest/reporters",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "@jest/transform",
+        "glob"
+      ],
+      "effects": [
+        "@jest/core"
+      ],
+      "range": "*",
+      "nodes": [
+        "node_modules/@jest/reporters"
+      ]
+    },
+    "@jest/transform": {
+      "name": "@jest/transform",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "babel-plugin-istanbul"
+      ],
+      "effects": [
+        "@jest/core",
+        "@jest/reporters",
+        "babel-jest",
+        "jest-runner",
+        "jest-runtime",
+        "jest-snapshot"
+      ],
+      "range": "*",
+      "nodes": [
+        "node_modules/@jest/transform"
+      ]
+    },
+    "@react-native/jest-preset": {
+      "name": "@react-native/jest-preset",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "babel-jest"
+      ],
+      "effects": [
+        "jest-expo",
+        "react-native"
+      ],
+      "range": "*",
+      "nodes": [
+        "node_modules/@react-native/jest-preset"
+      ]
+    },
+    "@react-native/virtualized-lists": {
+      "name": "@react-native/virtualized-lists",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "react-native"
+      ],
+      "effects": [
+        "react-native"
+      ],
+      "range": "0.85.0-nightly-20260108-1236b6be4 - 0.87.0-rc.4",
+      "nodes": [
+        "node_modules/@react-native/virtualized-lists"
+      ]
+    },
+    "@testing-library/react-native": {
+      "name": "@testing-library/react-native",
+      "severity": "low",
+      "isDirect": true,
+      "via": [
+        "jest"
+      ],
+      "effects": [
+        "expo-router"
+      ],
+      "range": ">=11.1.0",
+      "nodes": [
+        "node_modules/@testing-library/react-native"
+      ]
+    },
+    "babel-jest": {
+      "name": "babel-jest",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "@jest/transform",
+        "babel-plugin-istanbul"
+      ],
+      "effects": [
+        "@react-native/jest-preset",
+        "jest-config",
+        "jest-expo"
+      ],
+      "range": ">=24.0.0-alpha.0",
+      "nodes": [
+        "node_modules/babel-jest"
+      ]
+    },
+    "babel-plugin-istanbul": {
+      "name": "babel-plugin-istanbul",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "test-exclude"
+      ],
+      "effects": [
+        "@jest/transform",
+        "babel-jest"
+      ],
+      "range": ">=5.0.1",
+      "nodes": [
+        "node_modules/babel-plugin-istanbul"
+      ]
+    },
+    "create-jest": {
+      "name": "create-jest",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "jest-config"
+      ],
+      "effects": [
+        "jest-cli"
+      ],
+      "range": ">=29.7.0",
+      "nodes": [
+        "node_modules/create-jest"
+      ]
+    },
+    "deepmerge": {
+      "name": "deepmerge",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1243505,
+          "name": "deepmerge",
+          "dependency": "deepmerge",
+          "title": "deepmerge mergeObject() allows prototype poisoning of returned objects",
+          "url": "https://github.com/advisories/GHSA-gcqx-w48m-w2h4",
+          "severity": "low",
+          "cwe": [
+            "CWE-1321"
+          ],
+          "cvss": {
+            "score": 5.3,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N"
+          },
+          "range": ">=4.2.0 <=4.3.1"
+        }
+      ],
+      "effects": [
+        "@expo/config",
+        "jest-config"
+      ],
+      "range": ">=4.2.0",
+      "nodes": [
+        "node_modules/deepmerge"
+      ]
+    },
+    "expo": {
+      "name": "expo",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "@expo/cli",
+        "@expo/config",
+        "@expo/local-build-cache-provider",
+        "@expo/metro-config"
+      ],
+      "effects": [],
+      "range": "52.0.0-canary-20240625-2333e70 - 58.0.21",
+      "nodes": [
+        "node_modules/expo"
+      ]
+    },
+    "expo-router": {
+      "name": "expo-router",
+      "severity": "low",
+      "isDirect": true,
+      "via": [
+        "@testing-library/react-native"
+      ],
+      "effects": [],
+      "range": ">=5.2.0-canary-20250611-f0afe80",
+      "nodes": [
+        "node_modules/expo-router"
+      ]
+    },
+    "glob": {
+      "name": "glob",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "minimatch"
+      ],
+      "effects": [
+        "@jest/reporters",
+        "jest-config",
+        "jest-runtime",
+        "test-exclude"
+      ],
+      "range": "3.0.0 - 13.0.6",
+      "nodes": [
+        "node_modules/@jest/reporters/node_modules/glob",
+        "node_modules/jest-config/node_modules/glob",
+        "node_modules/jest-runtime/node_modules/glob",
+        "node_modules/test-exclude/node_modules/glob"
+      ]
+    },
+    "jest": {
+      "name": "jest",
+      "severity": "low",
+      "isDirect": true,
+      "via": [
+        "@jest/core",
+        "jest-cli"
+      ],
+      "effects": [
+        "@testing-library/react-native",
+        "jest-watch-typeahead"
+      ],
+      "range": ">=25.2.0-alpha.86",
+      "nodes": [
+        "node_modules/jest"
+      ]
+    },
+    "jest-circus": {
+      "name": "jest-circus",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "@jest/expect",
+        "jest-runtime",
+        "jest-snapshot"
+      ],
+      "effects": [
+        "jest-config"
+      ],
+      "range": ">=25.2.4",
+      "nodes": [
+        "node_modules/jest-circus"
+      ]
+    },
+    "jest-cli": {
+      "name": "jest-cli",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "@jest/core",
+        "create-jest",
+        "jest-config"
+      ],
+      "effects": [
+        "jest"
+      ],
+      "range": ">=25.2.0-alpha.86",
+      "nodes": [
+        "node_modules/jest-cli"
+      ]
+    },
+    "jest-config": {
+      "name": "jest-config",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "babel-jest",
+        "deepmerge",
+        "glob",
+        "jest-circus",
+        "jest-runner"
+      ],
+      "effects": [
+        "@jest/core",
+        "create-jest",
+        "jest-cli"
+      ],
+      "range": ">=19.1.0-alpha.eed82034",
+      "nodes": [
+        "node_modules/jest-config"
+      ]
+    },
+    "jest-expo": {
+      "name": "jest-expo",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": [
+        "@jest/globals",
+        "@react-native/jest-preset",
+        "babel-jest",
+        "jest-snapshot",
+        "jest-watch-typeahead"
+      ],
+      "effects": [],
+      "range": ">=33.0.0-rc.0",
+      "nodes": [
+        "node_modules/jest-expo"
+      ]
+    },
+    "jest-resolve-dependencies": {
+      "name": "jest-resolve-dependencies",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "jest-snapshot"
+      ],
+      "effects": [
+        "@jest/core"
+      ],
+      "range": ">=27.0.0-next.0",
+      "nodes": [
+        "node_modules/jest-resolve-dependencies"
+      ]
+    },
+    "jest-runner": {
+      "name": "jest-runner",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "@jest/transform",
+        "jest-runtime"
+      ],
+      "effects": [
+        "@jest/core",
+        "jest-config"
+      ],
+      "range": ">=24.0.0-alpha.0",
+      "nodes": [
+        "node_modules/jest-runner"
+      ]
+    },
+    "jest-runtime": {
+      "name": "jest-runtime",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "@jest/globals",
+        "@jest/transform",
+        "glob",
+        "jest-snapshot"
+      ],
+      "effects": [
+        "@jest/core",
+        "jest-circus",
+        "jest-runner"
+      ],
+      "range": ">=24.0.0-alpha.0",
+      "nodes": [
+        "node_modules/jest-runtime"
+      ]
+    },
+    "jest-snapshot": {
+      "name": "jest-snapshot",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "@jest/transform"
+      ],
+      "effects": [
+        "@jest/core",
+        "@jest/expect",
+        "jest-circus",
+        "jest-expo",
+        "jest-resolve-dependencies",
+        "jest-runtime"
+      ],
+      "range": ">=27.0.0-next.0",
+      "nodes": [
+        "node_modules/jest-snapshot"
+      ]
+    },
+    "jest-watch-typeahead": {
+      "name": "jest-watch-typeahead",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "jest"
+      ],
+      "effects": [
+        "jest-expo"
+      ],
+      "range": ">=0.6.0",
+      "nodes": [
+        "node_modules/jest-watch-typeahead"
+      ]
+    },
+    "minimatch": {
+      "name": "minimatch",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1244012,
+          "name": "minimatch",
+          "dependency": "minimatch",
+          "title": "minimatch has potential denial of service via globparts amplification",
+          "url": "https://github.com/advisories/GHSA-g3hv-75wg-m249",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-405"
+          ],
+          "cvss": {
+            "score": 0,
+            "vectorString": null
+          },
+          "range": "<11.0.1"
+        }
+      ],
+      "effects": [
+        "glob",
+        "test-exclude"
+      ],
+      "range": "<11.0.1",
+      "nodes": [
+        "node_modules/@jest/reporters/node_modules/minimatch",
+        "node_modules/jest-config/node_modules/minimatch",
+        "node_modules/jest-runtime/node_modules/minimatch",
+        "node_modules/test-exclude/node_modules/minimatch"
+      ]
+    },
+    "react-native": {
+      "name": "react-native",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": [
+        "@react-native/jest-preset",
+        "@react-native/virtualized-lists"
+      ],
+      "effects": [
+        "@react-native/virtualized-lists"
+      ],
+      "range": "0.85.0-nightly-20260108-1236b6be4 - 0.87.0-rc.4",
+      "nodes": [
+        "node_modules/react-native"
+      ]
+    },
+    "test-exclude": {
+      "name": "test-exclude",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "glob",
+        "minimatch"
+      ],
+      "effects": [
+        "babel-plugin-istanbul"
+      ],
+      "range": "4.2.2 || >=5.0.0",
+      "nodes": [
+        "node_modules/test-exclude"
+      ]
+    },
+    "zod": {
+      "name": "zod",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1243066,
+          "name": "zod",
+          "dependency": "zod",
+          "title": "Zod can exhaust memory while validating oversized constrained collections",
+          "url": "https://github.com/advisories/GHSA-mrhx-c7xc-m3w5",
+          "severity": "high",
+          "cwe": [
+            "CWE-770"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "<4.6.6"
+        }
+      ],
+      "effects": [
+        "@expo/cli"
+      ],
+      "range": "<4.6.6",
+      "nodes": [
+        "node_modules/expo/node_modules/zod"
+      ]
+    }
+  },
+  "locked_versions": {
+    "node_modules/expo/node_modules/@expo/cli": "57.0.28",
+    "node_modules/@expo/config": "57.0.10",
+    "node_modules/@expo/local-build-cache-provider": "57.0.8",
+    "node_modules/@expo/metro-config": "57.0.13",
+    "node_modules/@expo/prebuild-config": "57.0.17",
+    "node_modules/@jest/core": "29.7.0",
+    "node_modules/@jest/expect": "29.7.0",
+    "node_modules/@jest/globals": "29.7.0",
+    "node_modules/@jest/reporters": "29.7.0",
+    "node_modules/@jest/transform": "29.7.0",
+    "node_modules/@react-native/jest-preset": "0.86.3",
+    "node_modules/@react-native/virtualized-lists": "0.86.3",
+    "node_modules/@testing-library/react-native": "14.0.1",
+    "node_modules/babel-jest": "29.7.0",
+    "node_modules/babel-plugin-istanbul": "6.1.1",
+    "node_modules/create-jest": "29.7.0",
+    "node_modules/deepmerge": "4.3.1",
+    "node_modules/expo": "57.0.27",
+    "node_modules/expo-router": "57.0.25",
+    "node_modules/@jest/reporters/node_modules/glob": "7.2.3",
+    "node_modules/jest-config/node_modules/glob": "7.2.3",
+    "node_modules/jest-runtime/node_modules/glob": "7.2.3",
+    "node_modules/test-exclude/node_modules/glob": "7.2.3",
+    "node_modules/jest": "29.7.0",
+    "node_modules/jest-circus": "29.7.0",
+    "node_modules/jest-cli": "29.7.0",
+    "node_modules/jest-config": "29.7.0",
+    "node_modules/jest-expo": "57.0.5",
+    "node_modules/jest-resolve-dependencies": "29.7.0",
+    "node_modules/jest-runner": "29.7.0",
+    "node_modules/jest-runtime": "29.7.0",
+    "node_modules/jest-snapshot": "29.7.0",
+    "node_modules/jest-watch-typeahead": "2.2.1",
+    "node_modules/@jest/reporters/node_modules/minimatch": "3.1.5",
+    "node_modules/jest-config/node_modules/minimatch": "3.1.5",
+    "node_modules/jest-runtime/node_modules/minimatch": "3.1.5",
+    "node_modules/test-exclude/node_modules/minimatch": "3.1.5",
+    "node_modules/react-native": "0.86.3",
+    "node_modules/test-exclude": "6.0.0",
+    "node_modules/expo/node_modules/zod": "3.25.76"
+  },
+  "required_versions": {
+    "node_modules/zod": "4.6.6",
+    "node_modules/decode-uri-component": "0.5.1",
+    "node_modules/glob": "14.0.3",
+    "node_modules/minimatch": "11.0.3"
+  },
+  "accepted_derived_ranges": {
+    "@react-native/virtualized-lists": [
+      "0.85.0-nightly-20260108-1236b6be4 - 0.87.0-rc.4",
+      "0.85.0-nightly-20260108-1236b6be4 - 0.87.0-rc.4 || >=0.89.0-nightly-20260909-b830082cf"
+    ]
+  }
+}
