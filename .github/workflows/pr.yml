@@ -47,7 +47,7 @@ jobs:
       - name: Enforce dependency advisory policy
         run: npm run audit:dependencies
       - name: Test dependency policy and configuration guards
-        run: node --test scripts/evaluate-npm-audit.test.mjs scripts/google-oauth-config.test.mjs scripts/assert-generated-production-android.test.mjs
+        run: node --test scripts/evaluate-npm-audit.test.mjs scripts/google-oauth-config.test.mjs scripts/assert-generated-android.test.mjs scripts/assert-generated-production-android.test.mjs
       - name: Verify Expo compatibility
         env:
           EXPO_OFFLINE: "1"

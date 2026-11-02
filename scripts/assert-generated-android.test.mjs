@@ -19,7 +19,7 @@ function fixture(t) {
   const exclusions = [['database', '.'], ['file', 'backup-staging'], ['file', 'plaintext-staging'],
     ['external', 'backup-staging'], ['external', 'plaintext-staging']]
     .map(([domain, excludedPath]) => `<exclude domain="${domain}" path="${excludedPath}" />`).join('\n');
-  const manifest = `<manifest><uses-permission android:name="android.permission.INTERNET" /><uses-permission android:name="android.permission.VIBRATE" />
+  const manifest = `<manifest><uses-permission android:name="android.permission.INTERNET" /><uses-permission android:name="android.permission.VIBRATE" /><uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 <application android:debuggable="true" android:allowBackup="true" android:fullBackupContent="@xml/backup_rules" android:dataExtractionRules="@xml/data_extraction_rules">
 <data android:scheme="gymtracker-devtest" /><service android:name=".GymTrackerPhysicalTestService" android:exported="true" android:permission="android.permission.DUMP" /></application></manifest>`;
   const gradle = `apply plugin: "com.facebook.react"
@@ -72,5 +72,47 @@ test('devtest generated debug capability does not relax identity, backup, or ser
     assert.match(result.stderr, message);
     write('android/app/build.gradle', gradle);
     write('android/app/src/main/AndroidManifest.xml', manifest);
+  }
+});
+
+test('devtest requires the explicit rest-alert alarm declaration to remain active', t => {
+  const { write, run, manifest } = fixture(t);
+  assert.equal(run().status, 0);
+  for (const candidate of [
+    manifest.replace('<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />', ''),
+    manifest.replace('android:name="android.permission.SCHEDULE_EXACT_ALARM"', 'android:name="android.permission.SCHEDULE_EXACT_ALARM" tools:node="remove"'),
+  ]) {
+    write('android/app/src/main/AndroidManifest.xml', candidate);
+    const result = run();
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /expected Android permission is missing: android\.permission\.SCHEDULE_EXACT_ALARM/u);
+  }
+});
+
+test('devtest rejects automatic alarm access but accepts its removal directive', t => {
+  const { write, run, manifest } = fixture(t);
+  write('android/app/src/main/AndroidManifest.xml', manifest.replace('<manifest>', '<manifest><uses-permission android:name="android.permission.USE_EXACT_ALARM" tools:node="remove" />'));
+  assert.equal(run().status, 0);
+  write('android/app/src/main/AndroidManifest.xml', manifest.replace('<manifest>', '<manifest><uses-permission android:name="android.permission.USE_EXACT_ALARM" />'));
+  const result = run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /exact-alarm permission must not be active: android\.permission\.USE_EXACT_ALARM/u);
+});
+
+test('reviewed rest-alert access does not permit unreviewed Android permissions', t => {
+  const { write, run, manifest } = fixture(t);
+  write('android/app/src/main/AndroidManifest.xml', manifest.replace('<manifest>', '<manifest><uses-permission android:name="android.permission.CAMERA" />'));
+  const result = run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /unreviewed Android permission is active: android\.permission\.CAMERA/u);
+});
+
+test('notification dependencies cannot introduce either exact-alarm permission', t => {
+  const { write, run } = fixture(t);
+  for (const permission of ['SCHEDULE_EXACT_ALARM', 'USE_EXACT_ALARM']) {
+    write('node_modules/expo-notifications/android/src/main/AndroidManifest.xml', `<uses-permission android:name="android.permission.POST_NOTIFICATIONS" /><uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" /><uses-permission android:name="android.permission.${permission}" />`);
+    const result = run();
+    assert.equal(result.status, 1);
+    assert.ok(result.stderr.includes(`expo-notifications declares a forbidden exact-alarm permission: android.permission.${permission}`));
   }
 });
